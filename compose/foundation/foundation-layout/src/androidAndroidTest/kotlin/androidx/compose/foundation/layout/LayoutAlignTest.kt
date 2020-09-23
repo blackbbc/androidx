@@ -23,6 +23,7 @@ import androidx.compose.ui.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.onPositioned
 import androidx.compose.ui.platform.LayoutDirectionAmbient
@@ -46,7 +47,7 @@ import kotlin.math.roundToInt
 @RunWith(JUnit4::class)
 class LayoutAlignTest : LayoutTest() {
     @Test
-    fun test2DAlignedModifier() = with(density) {
+    fun test2DWrapContentSize() = with(density) {
         val sizeDp = 50.dp
         val size = sizeDp.toIntPx()
 
@@ -81,7 +82,7 @@ class LayoutAlignTest : LayoutTest() {
     }
 
     @Test
-    fun test1DAlignedModifier() = with(density) {
+    fun test1DWrapContentSize() = with(density) {
         val sizeDp = 50.dp
         val size = sizeDp.toIntPx()
 
@@ -119,7 +120,7 @@ class LayoutAlignTest : LayoutTest() {
     }
 
     @Test
-    fun testAlignedModifier_rtl() = with(density) {
+    fun testWrapContentSize_rtl() = with(density) {
         val sizeDp = 200.toDp()
         val size = sizeDp.toIntPx()
 
@@ -128,23 +129,23 @@ class LayoutAlignTest : LayoutTest() {
         val childPosition = Array(3) { Ref<Offset>() }
         show {
             Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
-                Stack(Modifier.fillMaxSize()) {
-                    Stack(Modifier.fillMaxSize().wrapContentSize(Alignment.TopStart)) {
-                        Stack(
+                Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().wrapContentSize(Alignment.TopStart)) {
+                        Box(
                             Modifier.preferredSize(sizeDp)
                                 .saveLayoutInfo(childSize[0], childPosition[0], positionedLatch)
                         ) {
                         }
                     }
-                    Stack(Modifier.fillMaxSize().wrapContentHeight(Alignment.CenterVertically)) {
-                        Stack(
+                    Box(Modifier.fillMaxSize().wrapContentHeight(Alignment.CenterVertically)) {
+                        Box(
                             Modifier.preferredSize(sizeDp)
                                 .saveLayoutInfo(childSize[1], childPosition[1], positionedLatch)
                         ) {
                         }
                     }
-                    Stack(Modifier.fillMaxSize().wrapContentSize(Alignment.BottomEnd)) {
-                        Stack(
+                    Box(Modifier.fillMaxSize().wrapContentSize(Alignment.BottomEnd)) {
+                        Box(
                             Modifier.preferredSize(sizeDp)
                                 .saveLayoutInfo(childSize[2], childPosition[2], positionedLatch)
                         ) {
@@ -196,7 +197,7 @@ class LayoutAlignTest : LayoutTest() {
     }
 
     @Test
-    fun testAlignedModifier_wrapsContent_whenMeasuredWithInfiniteConstraints() = with(density) {
+    fun testWrapContentSize_wrapsContent_whenMeasuredWithInfiniteConstraints() = with(density) {
         val sizeDp = 50.dp
         val size = sizeDp.toIntPx()
 
@@ -239,7 +240,7 @@ class LayoutAlignTest : LayoutTest() {
     }
 
     @Test
-    fun testLayoutAlignModifier_respectsMinConstraints() = with(density) {
+    fun testWrapContentSize_respectsMinConstraints() = with(density) {
         val sizeDp = 50.dp
         val size = sizeDp.toIntPx()
         val doubleSizeDp = sizeDp * 2
@@ -291,6 +292,52 @@ class LayoutAlignTest : LayoutTest() {
         )
     }
 
+    @Test
+    fun testWrapContentSize_unbounded() = with(density) {
+        val outerSize = 10f
+        val innerSize = 20f
+
+        val positionedLatch = CountDownLatch(4)
+        show {
+            Box(
+                Modifier.size(outerSize.toDp())
+                    .onPositioned {
+                        assertEquals(outerSize, it.size.width.toFloat())
+                        positionedLatch.countDown()
+                    }
+            ) {
+                Box(
+                    Modifier.wrapContentSize(Alignment.BottomEnd, unbounded = true)
+                        .size(innerSize.toDp())
+                        .onPositioned {
+                            assertEquals(
+                                Offset(outerSize - innerSize, outerSize - innerSize),
+                                it.positionInParent
+                            )
+                            positionedLatch.countDown()
+                        }
+                )
+                Box(
+                    Modifier.wrapContentWidth(Alignment.End, unbounded = true)
+                        .size(innerSize.toDp())
+                        .onPositioned {
+                            assertEquals(outerSize - innerSize, it.positionInParent.x)
+                            positionedLatch.countDown()
+                        }
+                )
+                Box(
+                    Modifier.wrapContentHeight(Alignment.Bottom, unbounded = true)
+                        .size(innerSize.toDp())
+                        .onPositioned {
+                            assertEquals(outerSize - innerSize, it.positionInParent.y)
+                            positionedLatch.countDown()
+                        }
+                )
+            }
+        }
+        assertTrue(positionedLatch.await(1, TimeUnit.SECONDS))
+    }
+
     // TODO(popam): this should be unit test instead
     @Test
     fun testAlignmentCoordinates_evenSize() {
@@ -323,9 +370,11 @@ class LayoutAlignTest : LayoutTest() {
 
     @Test
     fun test2DAlignedModifier_hasCorrectIntrinsicMeasurements() = with(density) {
-        testIntrinsics(@Composable {
-            Container(Modifier.wrapContentSize(Alignment.TopStart).aspectRatio(2f)) { }
-        }) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
+        testIntrinsics(
+            @Composable {
+                Container(Modifier.wrapContentSize(Alignment.TopStart).aspectRatio(2f)) { }
+            }
+        ) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
             // Min width.
             assertEquals(0, minIntrinsicWidth(0))
             assertEquals(25.dp.toIntPx() * 2, minIntrinsicWidth(25.dp.toIntPx()))
@@ -351,8 +400,9 @@ class LayoutAlignTest : LayoutTest() {
     @Test
     fun test1DAlignedModifier_hasCorrectIntrinsicMeasurements() = with(density) {
         testIntrinsics({
-            Container(Modifier.wrapContentHeight(Alignment.CenterVertically)
-                .aspectRatio(2f)
+            Container(
+                Modifier.wrapContentHeight(Alignment.CenterVertically)
+                    .aspectRatio(2f)
             ) { }
         }) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
 
@@ -410,7 +460,8 @@ class LayoutAlignTest : LayoutTest() {
                         ) {
                         }
                     }
-                }, measureBlock = { measurables, constraints ->
+                },
+                measureBlock = { measurables, constraints ->
                     val placeable = measurables.first().measure(Constraints())
                     layout(constraints.maxWidth, constraints.maxHeight) {
                         placeable.placeRelative(0, 0)

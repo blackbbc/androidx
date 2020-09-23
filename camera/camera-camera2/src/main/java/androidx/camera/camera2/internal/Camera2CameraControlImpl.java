@@ -28,7 +28,6 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.util.ArrayMap;
-import android.util.Log;
 import android.util.Rational;
 
 import androidx.annotation.GuardedBy;
@@ -41,6 +40,7 @@ import androidx.camera.core.ExperimentalExposureCompensation;
 import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.FocusMeteringResult;
 import androidx.camera.core.ImageCapture;
+import androidx.camera.core.Logger;
 import androidx.camera.core.impl.CameraCaptureCallback;
 import androidx.camera.core.impl.CameraCaptureFailure;
 import androidx.camera.core.impl.CameraCaptureResult;
@@ -118,7 +118,6 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
     private volatile int mFlashMode = FLASH_MODE_OFF;
 
     //******************** Should only be accessed by executor *****************************//
-    private Rect mCropRect = null;
     private final CameraCaptureCallbackSet mCameraCaptureCallbackSet =
             new CameraCaptureCallbackSet();
     //**************************************************************************************//
@@ -281,16 +280,6 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
         return Futures.nonCancellationPropagating(mZoomControl.setLinearZoom(linearZoom));
     }
 
-    /** {@inheritDoc} */
-    @Override
-    public void setCropRegion(@Nullable final Rect crop) {
-        if (!isControlInUse()) {
-            Log.w(TAG, "Camera is not active.");
-            return;
-        }
-        mExecutor.execute(() -> setCropRegionInternal(crop));
-    }
-
     @ImageCapture.FlashMode
     @Override
     public int getFlashMode() {
@@ -301,7 +290,7 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
     @Override
     public void setFlashMode(@ImageCapture.FlashMode int flashMode) {
         if (!isControlInUse()) {
-            Log.w(TAG, "Camera is not active.");
+            Logger.w(TAG, "Camera is not active.");
             return;
         }
         // update mFlashMode immediately so that following getFlashMode() returns correct value.
@@ -371,7 +360,7 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
     public void cancelAfAeTrigger(final boolean cancelAfTrigger,
             final boolean cancelAePrecaptureTrigger) {
         if (!isControlInUse()) {
-            Log.w(TAG, "Camera is not active.");
+            Logger.w(TAG, "Camera is not active.");
             return;
         }
         mExecutor.execute(() -> mFocusMeteringControl.cancelAfAeTrigger(cancelAfTrigger,
@@ -393,7 +382,7 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
     @Override
     public void submitCaptureRequests(@NonNull final List<CaptureConfig> captureConfigs) {
         if (!isControlInUse()) {
-            Log.w(TAG, "Camera is not active.");
+            Logger.w(TAG, "Camera is not active.");
             return;
         }
         mExecutor.execute(() -> submitCaptureRequestsInternal(captureConfigs));
@@ -413,21 +402,10 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
         mControlUpdateCallback.onCameraControlUpdateSessionConfig(mSessionConfigBuilder.build());
     }
 
-    @SuppressWarnings("WeakerAccess") /* synthetic accessor */
-    @ExecutedBy("mExecutor")
-    void setCropRegionInternal(final Rect crop) {
-        mCropRect = crop;
-        updateSessionConfig();
-    }
-
     @ExecutedBy("mExecutor")
     @NonNull
     Rect getCropSensorRegion() {
-        Rect cropRect = mCropRect;
-        if (cropRect == null) {
-            cropRect = getSensorRect();
-        }
-        return cropRect;
+        return mZoomControl.getCropSensorRegion();
     }
 
     @Override
@@ -508,6 +486,8 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
 
         mAeFpsRange.addAeFpsRangeOptions(builder);
 
+        mZoomControl.addZoomOption(builder);
+
         int aeMode = CaptureRequest.CONTROL_AE_MODE_ON;
         if (mIsTorchOn) {
             builder.setCaptureRequestOption(CaptureRequest.FLASH_MODE,
@@ -530,10 +510,6 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
         builder.setCaptureRequestOption(
                 CaptureRequest.CONTROL_AWB_MODE,
                 getSupportedAwbMode(CaptureRequest.CONTROL_AWB_MODE_AUTO));
-
-        if (mCropRect != null) {
-            builder.setCaptureRequestOption(CaptureRequest.SCALER_CROP_REGION, mCropRect);
-        }
 
         mExposureControl.setCaptureRequestOption(builder);
 
@@ -740,7 +716,7 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
                         callback.onCaptureCompleted(cameraCaptureResult);
                     });
                 } catch (RejectedExecutionException e) {
-                    Log.e(TAG, "Executor rejected to invoke onCaptureCompleted.", e);
+                    Logger.e(TAG, "Executor rejected to invoke onCaptureCompleted.", e);
                 }
             }
         }
@@ -754,7 +730,7 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
                         callback.onCaptureFailed(failure);
                     });
                 } catch (RejectedExecutionException e) {
-                    Log.e(TAG, "Executor rejected to invoke onCaptureFailed.", e);
+                    Logger.e(TAG, "Executor rejected to invoke onCaptureFailed.", e);
                 }
             }
         }
@@ -768,7 +744,7 @@ final class Camera2CameraControlImpl implements CameraControlInternal {
                         callback.onCaptureCancelled();
                     });
                 } catch (RejectedExecutionException e) {
-                    Log.e(TAG, "Executor rejected to invoke onCaptureCancelled.", e);
+                    Logger.e(TAG, "Executor rejected to invoke onCaptureCancelled.", e);
                 }
             }
         }

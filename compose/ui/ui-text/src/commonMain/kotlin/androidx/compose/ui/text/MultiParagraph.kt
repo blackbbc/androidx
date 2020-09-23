@@ -36,12 +36,13 @@ import kotlin.math.max
  * @param intrinsics previously calculated text intrinsics
  * @param maxLines the maximum number of lines that the text can have
  * @param ellipsis whether to ellipsize text, applied only when [maxLines] is set
+ * @param width how wide the text is allowed to be
  */
 class MultiParagraph(
     val intrinsics: MultiParagraphIntrinsics,
     val maxLines: Int = DefaultMaxLines,
     ellipsis: Boolean = false,
-    constraints: ParagraphConstraints
+    width: Float
 ) {
 
     /**
@@ -56,7 +57,7 @@ class MultiParagraph(
      * thrown.
      * @param maxLines the maximum number of lines that the text can have
      * @param ellipsis whether to ellipsize text, applied only when [maxLines] is set
-     * @param constraints how wide the text is allowed to be
+     * @param width how wide the text is allowed to be
      * @param density density of the device
      * @param resourceLoader [Font.ResourceLoader] to be used to load the font given in [SpanStyle]s
      *
@@ -70,7 +71,7 @@ class MultiParagraph(
         placeholders: List<AnnotatedString.Range<Placeholder>> = listOf(),
         maxLines: Int = Int.MAX_VALUE,
         ellipsis: Boolean = false,
-        constraints: ParagraphConstraints,
+        width: Float,
         density: Density,
         resourceLoader: Font.ResourceLoader
     ) : this(
@@ -83,7 +84,7 @@ class MultiParagraph(
         ),
         maxLines = maxLines,
         ellipsis = ellipsis,
-        constraints = constraints
+        width = width
     )
 
     private val annotatedString get() = intrinsics.annotatedString
@@ -178,7 +179,7 @@ class MultiParagraph(
                 paragraphInfo.intrinsics,
                 maxLines - currentLineCount,
                 ellipsis,
-                constraints
+                width
             )
 
             val paragraphTop = currentHeight
@@ -202,7 +203,8 @@ class MultiParagraph(
             )
 
             if (paragraph.didExceedMaxLines ||
-                (endLineIndex == maxLines && index != intrinsics.infoList.lastIndex)) {
+                (endLineIndex == maxLines && index != intrinsics.infoList.lastIndex)
+            ) {
                 didExceedMaxLines = true
                 break
             }
@@ -212,7 +214,7 @@ class MultiParagraph(
         this.lineCount = currentLineCount
         this.didExceedMaxLines = didExceedMaxLines
         this.paragraphInfoList = paragraphInfoList
-        this.width = constraints.width
+        this.width = width
         this.placeholderRects = paragraphInfoList.flatMap { paragraphInfo ->
             with(paragraphInfo) {
                 paragraph.placeholderRects.map { it?.toGlobal() }
@@ -248,7 +250,7 @@ class MultiParagraph(
     fun getPathForRange(start: Int, end: Int): Path {
         require(start in 0..end && end <= annotatedString.text.length) {
             "Start($start) or End($end) is out of range [0..${annotatedString.text.length})," +
-                    " or start > end!"
+                " or start > end!"
         }
 
         if (start == end) return Path()
@@ -763,7 +765,7 @@ internal data class ParagraphInfo(
      * [MultiParagraph].
      */
     fun Rect.toGlobal(): Rect {
-        return shift(Offset(0f, this@ParagraphInfo.top))
+        return translate(Offset(0f, this@ParagraphInfo.top))
     }
 
     /**
@@ -773,7 +775,7 @@ internal data class ParagraphInfo(
      * Notice that this function changes the input value.
      */
     fun Path.toGlobal(): Path {
-        shift(Offset(0f, top))
+        translate(Offset(0f, top))
         return this
     }
 

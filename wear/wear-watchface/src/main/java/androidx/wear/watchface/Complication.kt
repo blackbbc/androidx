@@ -25,8 +25,10 @@ import android.graphics.drawable.Drawable
 import android.icu.util.Calendar
 import android.support.wearable.complications.ComplicationData
 import androidx.annotation.UiThread
+import androidx.lifecycle.Observer
 import androidx.wear.complications.SystemProviders
 import androidx.wear.complications.rendering.ComplicationDrawable
+import androidx.wear.watchface.data.ComplicationBoundsType
 
 /** Common interface for rendering complications. */
 interface ComplicationRenderer {
@@ -116,36 +118,41 @@ open class ComplicationDrawableRenderer(
         get() = _drawable
         set(value) {
             _drawable = value
-            _drawable.inAmbientMode = watchState.isAmbient
-            _drawable.lowBitAmbient = watchState.hasLowBitAmbient
-            _drawable.setBurnInProtection(watchState.hasBurnInProtection)
+            _drawable.inAmbientMode = watchState.isAmbient.value
+            _drawable.lowBitAmbient = watchState.hasLowBitAmbient.value
+            _drawable.setBurnInProtection(watchState.hasBurnInProtection.value)
 
             attachedComplication?.scheduleUpdateActiveComplications()
         }
 
-    private inner class SystemStateListener : WatchState.Listener {
-        override fun onAmbientModeChanged(isAmbient: Boolean) {
-            drawable.inAmbientMode = isAmbient
-        }
+    private val isAmbientObserver = Observer<Boolean> {
+        drawable.inAmbientMode = it
     }
 
-    private val systemStateListener = SystemStateListener()
+    private val lowBitAmbientObserver = Observer<Boolean> {
+        drawable.lowBitAmbient = it
+    }
+
+    private val burnInProtectionObserver = Observer<Boolean> {
+        drawable.setBurnInProtection(it)
+    }
+
     private var attachedComplication: Complication? = null
     private var complicationData: ComplicationData? = null
 
     /** {@inheritDoc} */
     override fun onAttach(complication: Complication) {
         attachedComplication = complication
-        drawable.inAmbientMode = watchState.isAmbient
-        drawable.lowBitAmbient = watchState.hasLowBitAmbient
-        drawable.setBurnInProtection(watchState.hasBurnInProtection)
-
-        watchState.addListener(systemStateListener)
+        watchState.isAmbient.observe(isAmbientObserver)
+        watchState.hasLowBitAmbient.observe(lowBitAmbientObserver)
+        watchState.hasBurnInProtection.observe(burnInProtectionObserver)
     }
 
     /** {@inheritDoc} */
     override fun onDetach() {
-        watchState.removeListener(systemStateListener)
+        watchState.isAmbient.removeObserver(isAmbientObserver)
+        watchState.hasLowBitAmbient.removeObserver(lowBitAmbientObserver)
+        watchState.hasBurnInProtection.removeObserver(burnInProtectionObserver)
         attachedComplication = null
     }
 
@@ -193,12 +200,12 @@ open class ComplicationDrawableRenderer(
 
 /**
  * Represents a individual complication on the screen. The number of complications is fixed
- * (see {@link ComplicationsHolder}) but complications can be enabled or disabled as needed.
+ * (see {@link ComplicationsManager}) but complications can be enabled or disabled as needed.
  */
 class Complication internal constructor(
     internal val id: Int,
     @ComplicationBoundsType internal val boundsType: Int,
-    val unitSquareBounds: RectF,
+    unitSquareBounds: RectF,
     renderer: ComplicationRenderer,
     internal val supportedTypes: IntArray,
     internal val defaultProviderPolicy: DefaultComplicationProviderPolicy,
@@ -303,28 +310,45 @@ class Complication internal constructor(
             providers.isEmpty() && systemProviderFallback == WatchFace.NO_DEFAULT_PROVIDER
     }
 
-    private lateinit var complicationsHolder: ComplicationsHolder
+    private lateinit var complicationsManager: ComplicationsManager
     private lateinit var invalidateCallback: ComplicationRenderer.InvalidateCallback
-    private var _enabled = true
 
+    private var _unitSquareBounds = unitSquareBounds
+    var unitSquareBounds: RectF
+        @UiThread
+        get() = _unitSquareBounds
+
+        @UiThread
+        set(value) {
+            _unitSquareBounds = value
+
+            // The caller might modify a number of complications. For efficiency we need to coalesce
+            // these into one update task.
+            complicationsManager.scheduleUpdateActiveComplications()
+        }
+
+    private var _enabled = true
     var enabled: Boolean
         @JvmName("isEnabled")
         @UiThread
         get() = _enabled
+
         @UiThread
         set(value) {
             _enabled = value
 
             // The caller might enable/disable a number of complications. For efficiency we need
             // to coalesce these into one update task.
-            complicationsHolder.scheduleUpdateActiveComplications()
+            if (this::complicationsManager.isInitialized) {
+                complicationsManager.scheduleUpdateActiveComplications()
+            }
         }
 
     private var _renderer = renderer
-
     var renderer: ComplicationRenderer
         @UiThread
         get() = _renderer
+
         @UiThread
         set(value) {
             renderer.onDetach()
@@ -370,19 +394,19 @@ class Complication internal constructor(
     }
 
     internal fun init(
-        complicationsHolder: ComplicationsHolder,
+        complicationsManager: ComplicationsManager,
         invalidateCallback: ComplicationRenderer.InvalidateCallback
     ) {
-        this.complicationsHolder = complicationsHolder
+        this.complicationsManager = complicationsManager
         this.invalidateCallback = invalidateCallback
         initRenderer()
     }
 
     internal fun scheduleUpdateActiveComplications() {
         // In tests this may not be initialized.
-        if (this::complicationsHolder.isInitialized) {
+        if (this::complicationsManager.isInitialized) {
             // Update active complications to ensure accessibility data is up to date.
-            complicationsHolder.scheduleUpdateActiveComplications()
+            complicationsManager.scheduleUpdateActiveComplications()
         }
     }
 

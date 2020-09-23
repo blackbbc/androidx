@@ -32,6 +32,7 @@ import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -40,7 +41,6 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import android.Manifest;
 import android.app.Instrumentation;
 import android.content.Context;
 import android.graphics.Rect;
@@ -51,6 +51,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.camera.camera2.Camera2Config;
 import androidx.camera.camera2.impl.Camera2ImplConfig;
 import androidx.camera.core.CameraControl;
@@ -74,9 +75,9 @@ import androidx.core.os.HandlerCompat;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
+import androidx.test.filters.SdkSuppress;
 import androidx.test.filters.SmallTest;
 import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.rule.GrantPermissionRule;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -85,6 +86,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -101,8 +103,7 @@ import java.util.concurrent.TimeoutException;
 @RunWith(AndroidJUnit4.class)
 public final class Camera2CameraControlImplTest {
     @Rule
-    public GrantPermissionRule mRuntimePermissionRule = GrantPermissionRule.grant(
-            Manifest.permission.CAMERA);
+    public TestRule mUseCamera = CameraUtil.grantCameraPermissionAndPreTest();
 
     private Camera2CameraControlImpl mCamera2CameraControlImpl;
     private CameraControlInternal.ControlUpdateCallback mControlUpdateCallback;
@@ -166,6 +167,12 @@ public final class Camera2CameraControlImplTest {
         }
     }
 
+    private boolean isAndroidRZoomEnabled() {
+        return (Build.VERSION.SDK_INT >= 30
+                && mCameraCharacteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
+                != null);
+    }
+
     private int getMaxAfRegionCount() {
         return mCameraCharacteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
     }
@@ -195,30 +202,6 @@ public final class Camera2CameraControlImplTest {
 
         mCamera2CameraControlImpl.decrementUseCount();
         mCamera2CameraControlImpl.decrementUseCount();
-    }
-
-    @Test
-    public void setCropRegion_cropRectSetAndRepeatingRequestUpdated() throws InterruptedException {
-        Rect rect = new Rect(0, 0, 10, 10);
-
-        mCamera2CameraControlImpl.setCropRegion(rect);
-
-        HandlerUtil.waitForLooperToIdle(mHandler);
-
-        verify(mControlUpdateCallback, times(1)).onCameraControlUpdateSessionConfig(
-                mSessionConfigArgumentCaptor.capture());
-        SessionConfig sessionConfig = mSessionConfigArgumentCaptor.getValue();
-        Camera2ImplConfig repeatingConfig = new Camera2ImplConfig(
-                sessionConfig.getImplementationOptions());
-        assertThat(repeatingConfig.getCaptureRequestOption(
-                CaptureRequest.SCALER_CROP_REGION, null))
-                .isEqualTo(rect);
-
-        Camera2ImplConfig singleConfig = new Camera2ImplConfig(
-                mCamera2CameraControlImpl.getSessionOptions());
-        assertThat(singleConfig.getCaptureRequestOption(
-                CaptureRequest.SCALER_CROP_REGION, null))
-                .isEqualTo(rect);
     }
 
     @Test
@@ -784,6 +767,7 @@ public final class Camera2CameraControlImplTest {
     @Test
     public void setZoomRatio_CropRegionIsUpdatedCorrectly() throws InterruptedException {
         assumeTrue(isZoomSupported());
+        assumeFalse(isAndroidRZoomEnabled());
         mCamera2CameraControlImpl.setZoomRatio(2.0f);
 
         HandlerUtil.waitForLooperToIdle(mHandler);
@@ -796,6 +780,18 @@ public final class Camera2CameraControlImplTest {
         Rect cropRect = new Rect(cropX, cropY, cropX + sensorRect.width() / 2,
                 cropY + sensorRect.height() / 2);
         assertThat(sessionCropRegion).isEqualTo(cropRect);
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 30)
+    public void setZoomRatio_androidRZoomRatioIsUpdatedCorrectly() throws InterruptedException {
+        assumeTrue(isAndroidRZoomEnabled());
+        mCamera2CameraControlImpl.setZoomRatio(2.0f);
+
+        HandlerUtil.waitForLooperToIdle(mHandler);
+        float sessionZoomRatio = getSessionZoomRatio(mControlUpdateCallback);
+
+        assertThat(sessionZoomRatio).isEqualTo(2.0f);
     }
 
     @NonNull
@@ -813,9 +809,26 @@ public final class Camera2CameraControlImplTest {
                 CaptureRequest.SCALER_CROP_REGION, null);
     }
 
+    @NonNull
+    @RequiresApi(30)
+    private Float getSessionZoomRatio(
+            CameraControlInternal.ControlUpdateCallback controlUpdateCallback)
+            throws InterruptedException {
+        verify(controlUpdateCallback, times(1)).onCameraControlUpdateSessionConfig(
+                mSessionConfigArgumentCaptor.capture());
+        SessionConfig sessionConfig = mSessionConfigArgumentCaptor.getValue();
+        Camera2ImplConfig camera2Config = new Camera2ImplConfig(
+                sessionConfig.getImplementationOptions());
+
+        reset(controlUpdateCallback);
+        return camera2Config.getCaptureRequestOption(
+                CaptureRequest.CONTROL_ZOOM_RATIO, null);
+    }
+
     @Test
     public void setLinearZoom_CropRegionIsUpdatedCorrectly() throws InterruptedException {
         assumeTrue(isZoomSupported());
+        assumeFalse(isAndroidRZoomEnabled());
         mCamera2CameraControlImpl.setLinearZoom(1.0f);
         HandlerUtil.waitForLooperToIdle(mHandler);
 
@@ -834,9 +847,37 @@ public final class Camera2CameraControlImplTest {
     }
 
     @Test
+    @SdkSuppress(minSdkVersion = 30)
+    public void setLinearZoom_androidRZoomRatioUpdatedCorrectly() throws InterruptedException {
+        assumeTrue(isAndroidRZoomEnabled());
+        final float cropWidth = 10000f;
+
+        mCamera2CameraControlImpl.setLinearZoom(1.0f);
+        HandlerUtil.waitForLooperToIdle(mHandler);
+        float sessionZoomRatioForLinearMax = getSessionZoomRatio(mControlUpdateCallback);
+        float cropWidthForLinearMax = cropWidth / sessionZoomRatioForLinearMax;
+
+        mCamera2CameraControlImpl.setLinearZoom(0f);
+        HandlerUtil.waitForLooperToIdle(mHandler);
+        float sessionZoomRatioForLinearMin = getSessionZoomRatio(mControlUpdateCallback);
+        float cropWidthForLinearMin = cropWidth / sessionZoomRatioForLinearMin;
+
+        mCamera2CameraControlImpl.setLinearZoom(0.5f);
+
+        HandlerUtil.waitForLooperToIdle(mHandler);
+
+        float sessionZoomRatioForLinearHalf = getSessionZoomRatio(mControlUpdateCallback);
+        float cropWidthForLinearHalf = cropWidth / sessionZoomRatioForLinearHalf;
+
+        Assert.assertEquals(cropWidthForLinearHalf,
+                (cropWidthForLinearMin + cropWidthForLinearMax) / 2.0f, 1
+                /* 1 pixel tolerance */);
+    }
+
+    @Test
     public void setZoomRatio_cameraControlInactive_operationCanceled() {
         mCamera2CameraControlImpl.setActive(false);
-        ListenableFuture<Void> listenableFuture = mCamera2CameraControlImpl.setZoomRatio(2.0f);
+        ListenableFuture<Void> listenableFuture = mCamera2CameraControlImpl.setZoomRatio(1.0f);
         try {
             listenableFuture.get(1000, TimeUnit.MILLISECONDS);
         } catch (ExecutionException e) {

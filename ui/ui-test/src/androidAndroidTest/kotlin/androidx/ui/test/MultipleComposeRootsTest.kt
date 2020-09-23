@@ -58,10 +58,7 @@ fun MutableState<ToggleableState>.toggle() {
 class MultipleComposeRootsTest {
 
     @get:Rule
-    val rule = createAndroidComposeRule<ComponentActivity>()
-
-    @get:Rule
-    val disableTransitions = DisableTransitions()
+    val rule = createAndroidComposeRule<ComponentActivity>(disableTransitions = true)
 
     /**
      * In this setup we have the following configuration:
@@ -116,7 +113,8 @@ class MultipleComposeRootsTest {
                                 state2.toggle()
                                 updateTitle1()
                                 updateTitle2()
-                            })
+                            }
+                        )
                     }
                 }
             }
@@ -132,7 +130,8 @@ class MultipleComposeRootsTest {
                                 state2.toggle()
                                 updateTitle1()
                                 updateTitle2()
-                            })
+                            }
+                        )
                     }
                 }
             }

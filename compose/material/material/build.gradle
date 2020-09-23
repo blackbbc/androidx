@@ -29,7 +29,7 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin project(path: ":compose:compose-compiler")
+    kotlinPlugin project(path: ":compose:compiler:compiler")
 }
 
 kotlin {
@@ -69,7 +69,7 @@ kotlin {
         }
 
         androidAndroidTest.dependencies {
-            implementation project(":compose:material:material:samples")
+            implementation project(":compose:material:material:material-samples")
             implementation project(":test-screenshot")
             implementation project(":ui:ui-test")
 

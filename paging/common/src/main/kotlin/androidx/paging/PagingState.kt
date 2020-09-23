@@ -45,6 +45,20 @@ class PagingState<Key : Any, Value : Any> constructor(
     @IntRange(from = 0)
     private val leadingPlaceholderCount: Int
 ) {
+
+    override fun equals(other: Any?): Boolean {
+        return other is PagingState<*, *> &&
+                pages == other.pages &&
+                anchorPosition == other.anchorPosition &&
+                config == other.config &&
+                leadingPlaceholderCount == other.leadingPlaceholderCount
+    }
+
+    override fun hashCode(): Int {
+        return pages.hashCode() + anchorPosition.hashCode() + config.hashCode() +
+                leadingPlaceholderCount.hashCode()
+    }
+
     /**
      * Coerces [anchorPosition] to closest loaded value in [pages].
      *
@@ -112,7 +126,7 @@ class PagingState<Key : Any, Value : Any> constructor(
      */
     fun lastItemOrNull(): Value? = pages.lastOrNull { it.data.isNotEmpty() }?.data?.lastOrNull()
 
-    private inline fun <T> anchorPositionToPagedIndices(
+    internal inline fun <T> anchorPositionToPagedIndices(
         anchorPosition: Int,
         block: (pageIndex: Int, index: Int) -> T
     ): T {

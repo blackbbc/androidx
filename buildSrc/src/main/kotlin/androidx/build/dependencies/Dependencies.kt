@@ -70,8 +70,12 @@ const val KOTLINPOET_METADATA = "com.squareup:kotlinpoet-metadata:1.4.0"
 const val KOTLINPOET_METADATA_SPECS = "com.squareup:kotlinpoet-metadata-specs:1.4.0"
 const val KOTLINPOET_CLASSINSPECTOR_ELEMENTS =
     "com.squareup:kotlinpoet-classinspector-elements:1.4.0"
-const val KOTLIN_COMPILE_TESTING = "com.github.tschuchortdev:kotlin-compile-testing:1.2.9"
-const val KOTLIN_GRADLE_PLUGIN = "org.jetbrains.kotlin:kotlin-gradle-plugin:1.3.20"
+const val KOTLIN_COMPILE_TESTING = "com.github.tschuchortdev:kotlin-compile-testing:1.2.10"
+const val KOTLIN_COMPILE_TESTING_KSP = "com.github.tschuchortdev:kotlin-compile-testing-ksp:1.2.10"
+const val KSP_VERSION = "1.4.0-dev-experimental-20200914"
+const val KOTLIN_KSP_API = "org.jetbrains.kotlin:kotlin-symbol-processing-api:$KSP_VERSION"
+const val KOTLIN_KSP = "org.jetbrains.kotlin:kotlin-ksp:$KSP_VERSION"
+const val KOTLIN_GRADLE_PLUGIN = "org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.0-rc"
 
 const val KOTLIN_METADATA = "me.eugeniomarletti.kotlin.metadata:kotlin-metadata:1.4.0"
 const val KOTLIN_METADATA_JVM = "org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.1.0"
@@ -79,7 +83,7 @@ const val KOTLIN_METADATA_JVM = "org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.1.
 const val LEAKCANARY = "com.squareup.leakcanary:leakcanary-android:2.2"
 const val LEAKCANARY_INSTRUMENTATION =
     "com.squareup.leakcanary:leakcanary-android-instrumentation:2.2"
-const val MATERIAL = "com.google.android.material:material:1.0.0"
+const val MATERIAL = "com.google.android.material:material:1.2.1"
 const val MOCKITO_CORE = "org.mockito:mockito-core:2.25.0"
 const val MOCKITO_KOTLIN = "com.nhaarman.mockitokotlin2:mockito-kotlin:2.1.0"
 const val MULTIDEX = "androidx.multidex:multidex:2.0.1"
@@ -149,8 +153,6 @@ val KOTLIN_COROUTINES_SWING
     get() = "org.jetbrains.kotlinx:kotlinx-coroutines-swing:$kotlinCoroutinesVersion"
 val KOTLIN_COROUTINES_CORE
     get() = "org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion"
-val KOTLIN_COROUTINES_CORE_COMMON
-    get() = "org.jetbrains.kotlinx:kotlinx-coroutines-core-common:$kotlinCoroutinesVersion"
 val KOTLIN_COROUTINES_GUAVA
     get() = "org.jetbrains.kotlinx:kotlinx-coroutines-guava:$kotlinCoroutinesVersion"
 val KOTLIN_COROUTINES_TEST

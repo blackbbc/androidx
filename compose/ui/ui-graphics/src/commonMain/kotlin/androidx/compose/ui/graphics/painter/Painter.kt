@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.drawCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.withSaveLayer
 import androidx.compose.ui.unit.LayoutDirection
@@ -196,14 +196,14 @@ abstract class Painter {
             left = 0.0f,
             top = 0.0f,
             right = this.size.width - size.width,
-            bottom = this.size.height - size.height) {
+            bottom = this.size.height - size.height
+        ) {
 
             if (alpha > 0.0f && size.width > 0 && size.height > 0) {
                 if (useLayer) {
-                    val layerRect =
-                        Rect(Offset.Zero, Size(size.width, size.height))
+                    val layerRect = Rect(Offset.Zero, Size(size.width, size.height))
                     // TODO (b/154550724) njawad replace with RenderNode/Layer API usage
-                    drawCanvas { canvas, _ ->
+                    drawIntoCanvas { canvas ->
                         canvas.withSaveLayer(layerRect, obtainPaint()) {
                             onDraw()
                         }

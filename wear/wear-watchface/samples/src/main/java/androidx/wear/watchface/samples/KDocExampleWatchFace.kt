@@ -31,13 +31,14 @@ import androidx.wear.watchface.CanvasRenderer
 import androidx.wear.watchface.CanvasType
 import androidx.wear.watchface.Complication
 import androidx.wear.watchface.ComplicationDrawableRenderer
-import androidx.wear.watchface.ComplicationsHolder
+import androidx.wear.watchface.ComplicationsManager
 import androidx.wear.watchface.WatchFace
 import androidx.wear.watchface.WatchFaceHost
 import androidx.wear.watchface.WatchFaceService
 import androidx.wear.watchface.WatchFaceType
 import androidx.wear.watchface.WatchState
 import androidx.wear.watchface.style.ListUserStyleCategory
+import androidx.wear.watchface.style.UserStyle
 import androidx.wear.watchface.style.UserStyleCategory
 import androidx.wear.watchface.style.UserStyleRepository
 
@@ -73,7 +74,10 @@ fun kDocCreateExampleWatchFaceService(): WatchFaceService {
                                 "Blue",
                                 icon = null
                             )
-                        )
+                        ),
+                        UserStyleCategory.LAYER_WATCH_FACE_BASE or
+                                UserStyleCategory.LAYER_COMPLICATONS or
+                                UserStyleCategory.LAYER_WATCH_FACE_UPPER
                     ),
                     ListUserStyleCategory(
                         "hand_style_category",
@@ -92,11 +96,12 @@ fun kDocCreateExampleWatchFaceService(): WatchFaceService {
                                 "Gothic",
                                 icon = null
                             )
-                        )
+                        ),
+                        UserStyleCategory.LAYER_WATCH_FACE_UPPER
                     )
                 )
             )
-            val complicationSlots = ComplicationsHolder(
+            val complicationSlots = ComplicationsManager(
                 listOf(
                     Complication.Builder(
                         /*id */ 0,
@@ -144,9 +149,7 @@ fun kDocCreateExampleWatchFaceService(): WatchFaceService {
                 init {
                     userStyleRepository.addUserStyleListener(
                         object : UserStyleRepository.UserStyleListener {
-                            override fun onUserStyleChanged(
-                                userStyle: Map<UserStyleCategory, UserStyleCategory.Option>
-                            ) {
+                            override fun onUserStyleChanged(userStyle: UserStyle) {
                                 // `userStyle` will contain two userStyle categories with options
                                 // from the lists above. ...
                             }
