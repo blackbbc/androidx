@@ -62,7 +62,7 @@ internal actual fun SemanticsNode.clippedNodeBoundsInWindow(): Rect {
         composeView.getLocationInWindow(it)
         Offset(it[0].toFloat(), it[1].toFloat())
     }
-    return boundsInRoot.shift(rootLocationInWindow)
+    return boundsInRoot.translate(rootLocationInWindow)
 }
 
 @OptIn(ExperimentalLayoutNodeApi::class)
@@ -82,7 +82,7 @@ internal actual fun SemanticsNode.isInScreenBounds(): Boolean {
     }
 
     return nodeBoundsInWindow.top >= globalRootRect.top &&
-            nodeBoundsInWindow.left >= globalRootRect.left &&
-            nodeBoundsInWindow.right <= globalRootRect.right &&
-            nodeBoundsInWindow.bottom <= globalRootRect.bottom
+        nodeBoundsInWindow.left >= globalRootRect.left &&
+        nodeBoundsInWindow.right <= globalRootRect.right &&
+        nodeBoundsInWindow.bottom <= globalRootRect.bottom
 }

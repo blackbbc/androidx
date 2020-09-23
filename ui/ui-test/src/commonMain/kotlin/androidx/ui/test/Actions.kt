@@ -71,7 +71,7 @@ fun SemanticsNodeInteraction.performScrollTo(): SemanticsNodeInteraction {
     val parentInRoot = scrollableNode.componentNode.coordinates.parentCoordinates
         ?.positionInRoot ?: Offset.Zero
 
-    val viewPort = viewPortInParent.shift(parentInRoot)
+    val viewPort = viewPortInParent.translate(parentInRoot)
     val target = Rect(node.positionInRoot, node.size.toSize())
 
     val mustScrollUp = target.bottom > viewPort.bottom
@@ -179,7 +179,8 @@ fun <T : Function<Boolean>> SemanticsNodeInteraction.performSemanticsAction(
         throw AssertionError(
             buildGeneralErrorMessage(
                 "Failed to perform ${key.name} action as it is not defined on the node.",
-                selector, node)
+                selector, node
+            )
         )
     }
 

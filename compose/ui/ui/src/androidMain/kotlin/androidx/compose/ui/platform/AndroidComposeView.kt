@@ -69,6 +69,7 @@ import androidx.compose.ui.node.MeasureAndLayoutDelegate
 import androidx.compose.ui.node.OwnedLayer
 import androidx.compose.ui.semantics.SemanticsModifierCore
 import androidx.compose.ui.semantics.SemanticsOwner
+import androidx.compose.ui.text.InternalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.input.TextInputServiceAndroid
 import androidx.compose.ui.text.input.textInputServiceFactory
@@ -137,7 +138,7 @@ internal class AndroidComposeView constructor(
         properties = {}
     )
 
-    override val focusManager: FocusManager = FocusManager()
+    private val focusManager: FocusManager = FocusManager()
 
     private val keyInputModifier = KeyInputModifier(null, null)
 
@@ -416,6 +417,10 @@ internal class AndroidComposeView constructor(
         snapshotObserver.observeReads(node, onCommitAffectingMeasure, block)
     }
 
+    override fun <T : Any> observeReads(target: T, onChanged: (T) -> Unit, block: () -> Unit) {
+        snapshotObserver.observeReads(target, onChanged, block)
+    }
+
     fun observeLayerModelReads(layer: OwnedLayer, block: () -> Unit) {
         snapshotObserver.observeReads(layer, onCommitAffectingLayer, block)
     }
@@ -546,7 +551,7 @@ internal class AndroidComposeView constructor(
             val savedStateRegistryOwner =
                 ViewTreeSavedStateRegistryOwner.get(this) ?: throw IllegalStateException(
                     "Composed into the View which doesn't propagate" +
-                            "ViewTreeSavedStateRegistryOwner!"
+                        "ViewTreeSavedStateRegistryOwner!"
                 )
             val viewTreeOwners = AndroidOwner.ViewTreeOwners(
                 lifecycleOwner = lifecycleOwner,
@@ -607,6 +612,7 @@ internal class AndroidComposeView constructor(
     private val textInputServiceAndroid = TextInputServiceAndroid(this)
 
     override val textInputService =
+        @OptIn(InternalTextApi::class)
         @Suppress("DEPRECATION_ERROR")
         textInputServiceFactory(textInputServiceAndroid)
 

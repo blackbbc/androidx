@@ -25,7 +25,7 @@ import android.opengl.Matrix
 import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
-import androidx.wear.watchface.ComplicationsHolder
+import androidx.wear.watchface.ComplicationsManager
 import androidx.wear.watchface.DrawMode
 import androidx.wear.watchface.GlesRenderer
 import androidx.wear.watchface.WatchFace
@@ -34,6 +34,7 @@ import androidx.wear.watchface.WatchFaceService
 import androidx.wear.watchface.WatchFaceType
 import androidx.wear.watchface.WatchState
 import androidx.wear.watchface.style.ListUserStyleCategory
+import androidx.wear.watchface.style.UserStyleCategory
 import androidx.wear.watchface.style.UserStyleRepository
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -83,10 +84,11 @@ class ExampleOpenGLWatchFaceService : WatchFaceService() {
                     "Green",
                     Icon.createWithResource(this, R.drawable.green_style)
                 )
-            )
+            ),
+            UserStyleCategory.LAYER_WATCH_FACE_BASE or UserStyleCategory.LAYER_WATCH_FACE_UPPER
         )
         val userStyleRepository = UserStyleRepository(listOf(colorStyleCategory))
-        val complicationSlots = ComplicationsHolder(emptyList())
+        val complicationSlots = ComplicationsManager(emptyList())
         val renderer = ExampleOpenGLRenderer(
             surfaceHolder,
             userStyleRepository,
@@ -445,7 +447,7 @@ class ExampleOpenGLRenderer(
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             ambientVpMatrix
         } else {
-            when (userStyleRepository.userStyle[colorStyleCategory]!!.id) {
+            when (userStyleRepository.userStyle.options[colorStyleCategory]!!.id) {
                 "red_style" -> GLES20.glClearColor(0.5f, 0.2f, 0.2f, 1f)
                 "green_style" -> GLES20.glClearColor(0.2f, 0.5f, 0.2f, 1f)
             }
@@ -491,7 +493,7 @@ class ExampleOpenGLRenderer(
                 modelMatrices[secIndex],
                 0
             )
-            secondHandTriangleMap[userStyleRepository.userStyle[colorStyleCategory]!!.id]
+            secondHandTriangleMap[userStyleRepository.userStyle.options[colorStyleCategory]!!.id]
                 ?.draw(mvpMatrix)
         }
 

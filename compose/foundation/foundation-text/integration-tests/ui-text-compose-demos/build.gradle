@@ -10,7 +10,7 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin project(path: ":compose:compose-compiler")
+    kotlinPlugin project(path: ":compose:compiler:compiler")
 
     implementation(KOTLIN_STDLIB)
 
@@ -21,7 +21,7 @@ dependencies {
     implementation project(":compose:runtime:runtime")
     implementation project(":compose:ui:ui")
     implementation project(":compose:ui:ui-text")
-    implementation project(":compose:ui:ui-text:samples")
+    implementation project(":compose:ui:ui-text:ui-text-samples")
 }
 
 android {

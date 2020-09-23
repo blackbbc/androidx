@@ -18,16 +18,13 @@ package androidx.compose.material
 
 import androidx.compose.animation.VectorConverter
 import androidx.compose.animation.animatedValue
-import androidx.compose.animation.core.AnimatedValue
-import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.foundation.Box
-import androidx.compose.foundation.ContentGravity
 import androidx.compose.foundation.IndicationAmbient
 import androidx.compose.foundation.Interaction
 import androidx.compose.foundation.InteractionState
 import androidx.compose.foundation.ProvideTextStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSizeConstraints
@@ -38,6 +35,7 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.onCommit
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -65,7 +63,7 @@ import androidx.compose.ui.unit.dp
  * @param backgroundColor The background color. Use [Color.Transparent] to have no color
  * @param contentColor The preferred content color for content inside this FAB
  * @param elevation The z-coordinate at which to place this FAB. This controls the size
- * of the shadow below the FAB. See [FloatingActionButtonConstants.defaultAnimatedElevation] for
+ * of the shadow below the FAB. See [FloatingActionButtonConstants.animateDefaultElevation] for
  * the default elevation that animates between [Interaction]s.
  * @param icon the content of this FAB
  */
@@ -77,7 +75,7 @@ fun FloatingActionButton(
     shape: Shape = MaterialTheme.shapes.small.copy(CornerSize(percent = 50)),
     backgroundColor: Color = MaterialTheme.colors.secondary,
     contentColor: Color = contentColorFor(backgroundColor),
-    elevation: Dp = FloatingActionButtonConstants.defaultAnimatedElevation(interactionState).value,
+    elevation: Dp = FloatingActionButtonConstants.animateDefaultElevation(interactionState),
     icon: @Composable () -> Unit
 ) {
     // TODO(aelias): Avoid manually managing the ripple once http://b/157687898
@@ -98,9 +96,8 @@ fun FloatingActionButton(
                 modifier = Modifier
                     .defaultMinSizeConstraints(minWidth = FabSize, minHeight = FabSize)
                     .indication(interactionState, IndicationAmbient.current()),
-                gravity = ContentGravity.Center,
-                children = icon
-            )
+                alignment = Alignment.Center
+            ) { icon() }
         }
     }
 }
@@ -134,7 +131,7 @@ fun FloatingActionButton(
  * @param backgroundColor The background color. Use [Color.Transparent] to have no color
  * @param contentColor The preferred content color. Will be used by text and iconography
  * @param elevation The z-coordinate at which to place this FAB. This controls the size
- * of the shadow below the button. See [FloatingActionButtonConstants.defaultAnimatedElevation] for
+ * of the shadow below the button. See [FloatingActionButtonConstants.animateDefaultElevation] for
  * the default elevation that animates between [Interaction]s.
  */
 @Composable
@@ -147,7 +144,7 @@ fun ExtendedFloatingActionButton(
     shape: Shape = MaterialTheme.shapes.small.copy(CornerSize(percent = 50)),
     backgroundColor: Color = MaterialTheme.colors.secondary,
     contentColor: Color = contentColorFor(backgroundColor),
-    elevation: Dp = FloatingActionButtonConstants.defaultAnimatedElevation(interactionState).value
+    elevation: Dp = FloatingActionButtonConstants.animateDefaultElevation(interactionState)
 ) {
     FloatingActionButton(
         modifier = modifier.preferredSizeIn(
@@ -166,12 +163,12 @@ fun ExtendedFloatingActionButton(
                 start = ExtendedFabTextPadding,
                 end = ExtendedFabTextPadding
             ),
-            gravity = ContentGravity.Center
+            alignment = Alignment.Center
         ) {
             if (icon == null) {
                 text()
             } else {
-                Row(verticalAlignment = ContentGravity.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     icon()
                     Spacer(Modifier.preferredWidth(ExtendedFabIconPadding))
                     text()
@@ -185,14 +182,6 @@ fun ExtendedFloatingActionButton(
  * Contains the default values used by [FloatingActionButton]
  */
 object FloatingActionButtonConstants {
-    /**
-     * Value holder class to cache the last [Interaction], so we can calculate which outgoing
-     * [AnimationSpec] to use.
-     *
-     * @see defaultAnimatedElevation
-     */
-    private class InteractionHolder(var interaction: Interaction?)
-
     // TODO: b/152525426 add support for focused and hovered states
     /**
      * Represents the default elevation for a button in different [Interaction]s, and how the
@@ -206,13 +195,15 @@ object FloatingActionButtonConstants {
      * [Interaction.Pressed].
      */
     @Composable
-    fun defaultAnimatedElevation(
+    fun animateDefaultElevation(
         interactionState: InteractionState,
         defaultElevation: Dp = 6.dp,
         pressedElevation: Dp = 12.dp
         // focused: Dp = 8.dp,
         // hovered: Dp = 8.dp,
-    ): AnimatedValue<Dp, AnimationVector1D> {
+    ): Dp {
+        class InteractionHolder(var interaction: Interaction?)
+
         val interaction = interactionState.value.lastOrNull {
             it is Interaction.Pressed
         }
@@ -238,7 +229,7 @@ object FloatingActionButtonConstants {
             previousInteractionHolder.interaction = interaction
         }
 
-        return animatedElevation
+        return animatedElevation.value
     }
 }
 

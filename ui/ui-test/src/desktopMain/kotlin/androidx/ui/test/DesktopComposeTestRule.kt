@@ -28,11 +28,15 @@ import androidx.compose.ui.platform.setContent
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import org.jetbrains.skija.Surface
 import org.junit.runner.Description
 import org.junit.runners.model.Statement
 import java.awt.Component
 import java.util.LinkedList
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.FutureTask
+import javax.swing.SwingUtilities.invokeAndWait
 
 actual fun createComposeRule(
     disableTransitions: Boolean,
@@ -87,8 +91,8 @@ class DesktopComposeTestRule(
 
     @OptIn(ExperimentalComposeApi::class)
     private fun isIdle() =
-                !Snapshot.current.hasPendingChanges() &&
-                !Recomposer.current().hasPendingChanges()
+        !Snapshot.current.hasPendingChanges() &&
+            !Recomposer.current().hasPendingChanges()
 
     override fun waitForIdle() {
         while (!isIdle()) {
@@ -97,14 +101,31 @@ class DesktopComposeTestRule(
         }
     }
 
+    @ExperimentalTesting
+    override suspend fun awaitIdle() {
+        while (!isIdle()) {
+            runExecutionQueue()
+            delay(10)
+        }
+    }
+
     override fun <T> runOnUiThread(action: () -> T): T {
-        return action()
+        val task: FutureTask<T> = FutureTask(action)
+        invokeAndWait(task)
+        try {
+            return task.get()
+        } catch (e: ExecutionException) { // Expose the original exception
+            throw e.cause!!
+        }
     }
 
     override fun <T> runOnIdle(action: () -> T): T {
-        // Method below make sure that compose is idle.
+        // We are waiting for idle before and AFTER `action` to guarantee that changes introduced
+        // in `action` are propagated to components. In Android's version, it's executed in the
+        // Main thread which has similar effects. This code could be reconsidered after
+        // stabilization of the new rendering/dispatching model
         waitForIdle()
-        return action()
+        return action().also { waitForIdle() }
     }
 
     override fun setContent(composable: @Composable () -> Unit) {

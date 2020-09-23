@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toComposeRect
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Paragraph
-import androidx.compose.ui.text.ParagraphConstraints
 import androidx.compose.ui.text.ParagraphIntrinsics
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -72,7 +71,7 @@ internal actual fun ActualParagraph(
     placeholders: List<AnnotatedString.Range<Placeholder>>,
     maxLines: Int,
     ellipsis: Boolean,
-    constraints: ParagraphConstraints,
+    width: Float,
     density: Density,
     resourceLoader: Font.ResourceLoader
 ): Paragraph = DesktopParagraph(
@@ -86,7 +85,7 @@ internal actual fun ActualParagraph(
     ),
     maxLines,
     ellipsis,
-    constraints
+    width
 )
 
 @Suppress("UNUSED_PARAMETER")
@@ -94,19 +93,19 @@ internal actual fun ActualParagraph(
     paragraphIntrinsics: ParagraphIntrinsics,
     maxLines: Int,
     ellipsis: Boolean,
-    constraints: ParagraphConstraints
+    width: Float
 ): Paragraph = DesktopParagraph(
     paragraphIntrinsics as DesktopParagraphIntrinsics,
     maxLines,
     ellipsis,
-    constraints
+    width
 )
 
 internal class DesktopParagraph(
     intrinsics: ParagraphIntrinsics,
     val maxLines: Int,
     val ellipsis: Boolean,
-    val constraints: ParagraphConstraints
+    override val width: Float
 ) : Paragraph {
 
     val paragraphIntrinsics = intrinsics as DesktopParagraphIntrinsics
@@ -115,17 +114,18 @@ internal class DesktopParagraph(
      * Paragraph isn't always immutable, it could be changed via [paint] method without
      * rerunning layout
      */
-    var para = paragraphIntrinsics.para
+    val para: SkParagraph
+        get() = paragraphIntrinsics.para
 
     init {
-        para.layout(constraints.width)
+        if (resetMaxLinesIfNeeded()) {
+            rebuildParagraph()
+        }
+        para.layout(width)
     }
 
     private val text: String
         get() = paragraphIntrinsics.text
-
-    override val width: Float
-        get() = para.getMaxWidth()
 
     override val height: Float
         get() = para.getHeight()
@@ -143,8 +143,7 @@ internal class DesktopParagraph(
         get() = para.getLineMetrics().lastOrNull()?.run { baseline.toFloat() } ?: 0f
 
     override val didExceedMaxLines: Boolean
-        // TODO: support text ellipsize.
-        get() = para.lineNumber < maxLines
+        get() = para.didExceedMaxLines()
 
     override val lineCount: Int
         get() = para.lineNumber.toInt()
@@ -324,6 +323,10 @@ internal class DesktopParagraph(
             currentTextDecoration = textDecoration
         }
 
+        if (resetMaxLinesIfNeeded()) {
+            toRebuild = true
+        }
+
         if (toRebuild) {
             paragraphIntrinsics.builder.textStyle =
                 paragraphIntrinsics.builder.textStyle.copy(
@@ -331,10 +334,24 @@ internal class DesktopParagraph(
                     shadow = currentShadow,
                     textDecoration = currentTextDecoration
                 )
-            para = paragraphIntrinsics.builder.build()
-            para.layout(constraints.width)
+            rebuildParagraph()
+            para.layout(width)
         }
         para.paint(canvas.nativeCanvas, 0.0f, 0.0f)
+    }
+
+    fun resetMaxLinesIfNeeded(): Boolean {
+        if (maxLines != paragraphIntrinsics.builder.maxLines) {
+            paragraphIntrinsics.builder.maxLines = maxLines
+            paragraphIntrinsics.builder.ellipsis = if (ellipsis) "\u2026" else ""
+            return true
+        } else {
+            return false
+        }
+    }
+
+    fun rebuildParagraph() {
+        paragraphIntrinsics.para = paragraphIntrinsics.builder.build()
     }
 }
 
@@ -342,6 +359,8 @@ internal class ParagraphBuilder(
     val fontLoader: FontLoader,
     val text: String,
     var textStyle: TextStyle,
+    var ellipsis: String = "",
+    var maxLines: Int = Int.MAX_VALUE,
     spanStyles: List<SpanStyleRange>,
     placeholders: List<AnnotatedString.Range<Placeholder>>,
     val density: Density
@@ -361,6 +380,12 @@ internal class ParagraphBuilder(
     fun build(): SkParagraph {
         var pos = 0
         val ps = textStyleToParagraphStyle(textStyle)
+
+        if (maxLines != Int.MAX_VALUE) {
+            ps.maxLinesCount = maxLines.toLong()
+            ps.ellipsis = ellipsis
+        }
+
         val pb = ParagraphBuilder(ps, fontLoader.fonts)
 
         val currentStyles = mutableListOf(Pair(0, textStyle.toSpanStyle()))

@@ -31,7 +31,9 @@ import androidx.compose.ui.Measurable
 import androidx.compose.ui.MeasureScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.OnPositionedModifier
+import androidx.compose.ui.OnRemeasuredModifier
 import androidx.compose.ui.ParentDataModifier
+import androidx.compose.ui.Placeable
 import androidx.compose.ui.Remeasurement
 import androidx.compose.ui.RemeasurementModifier
 import androidx.compose.ui.ZIndexModifier
@@ -40,7 +42,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.drawCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.key.KeyInputModifier
 import androidx.compose.ui.input.pointer.PointerInputFilter
 import androidx.compose.ui.input.pointer.PointerInputModifier
@@ -58,6 +60,7 @@ import androidx.compose.ui.semantics.SemanticsWrapper
 import androidx.compose.ui.semantics.outerSemantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.util.deleteAt
 import androidx.compose.ui.util.nativeClass
@@ -367,7 +370,7 @@ class LayoutNode : Measurable, Remeasurement {
 
     override fun toString(): String {
         return "${simpleIdentityToString(this, null)} children: ${children.size} " +
-                "measureBlocks: $measureBlocks"
+            "measureBlocks: $measureBlocks"
     }
 
     /**
@@ -648,6 +651,7 @@ class LayoutNode : Measurable, Remeasurement {
             }
             val addedCallback = hasNewPositioningCallback()
             onPositionedCallbacks.clear()
+            onRemeasuredCallbacks.clear()
             outerZIndexModifier = null
             innerLayerWrapper = null
 
@@ -657,6 +661,9 @@ class LayoutNode : Measurable, Remeasurement {
                 var wrapper = toWrap
                 if (mod is OnPositionedModifier) {
                     onPositionedCallbacks += mod
+                }
+                if (mod is OnRemeasuredModifier) {
+                    onRemeasuredCallbacks += mod
                 }
                 if (mod is ZIndexModifier) {
                     outerZIndexModifier = mod
@@ -773,6 +780,11 @@ class LayoutNode : Measurable, Remeasurement {
     private val onPositionedCallbacks = mutableVectorOf<OnPositionedModifier>()
 
     /**
+     * List of all OnSizeChangedModifiers in the modifier chain.
+     */
+    private val onRemeasuredCallbacks = mutableVectorOf<OnRemeasuredModifier>()
+
+    /**
      * Flag used by [OnPositionedDispatcher] to identify LayoutNodes that have already
      * had their [OnPositionedModifier]'s dispatch called so that they aren't called
      * multiple times.
@@ -780,12 +792,11 @@ class LayoutNode : Measurable, Remeasurement {
     internal var needsOnPositionedDispatch = false
 
     fun place(x: Int, y: Int) {
-        with(InnerPlacementScope) {
-            val previousParentWidth = parentWidth
-            val previousLayoutDirection = parentLayoutDirection
-            updateValuesForRtlMirroring(layoutDirection, outerMeasurablePlaceable.measuredWidth)
+        Placeable.PlacementScope.executeWithRtlMirroringValues(
+            outerMeasurablePlaceable.measuredWidth,
+            layoutDirection
+        ) {
             outerMeasurablePlaceable.placeRelative(x, y)
-            updateValuesForRtlMirroring(previousLayoutDirection, previousParentWidth)
         }
     }
 
@@ -1009,7 +1020,7 @@ class LayoutNode : Measurable, Remeasurement {
             else -> UsageByParent.NotUsed
         }
         val newUsageHasLowerPriority = newUsageByParent == UsageByParent.InLayoutBlock &&
-                alignmentUsageByParent == UsageByParent.InMeasureBlock
+            alignmentUsageByParent == UsageByParent.InMeasureBlock
         if (!newUsageHasLowerPriority) {
             alignmentUsageByParent = newUsageByParent
         }
@@ -1037,6 +1048,14 @@ class LayoutNode : Measurable, Remeasurement {
         innerLayoutNodeWrapper.measureResult = measureResult
         this.providedAlignmentLines.clear()
         this.providedAlignmentLines += measureResult.alignmentLines
+
+        if (onRemeasuredCallbacks.isNotEmpty()) {
+            owner?.pauseModelReadObserveration {
+                val content = innerLayoutNodeWrapper
+                val size = IntSize(content.measuredWidth, content.measuredHeight)
+                onRemeasuredCallbacks.forEach { it.onRemeasured(size) }
+            }
+        }
     }
 
     /**
@@ -1344,9 +1363,7 @@ internal class LayoutNodeDrawScope : ContentDrawScope() {
     private var wrapped: LayoutNodeWrapper? = null
 
     override fun drawContent() {
-        drawCanvas { canvas, _ ->
-            wrapped?.draw(canvas)
-        }
+        drawIntoCanvas { canvas -> wrapped?.draw(canvas) }
     }
 
     internal fun draw(
