@@ -50,15 +50,15 @@ abstract class UserStyleCategory(
     val options: List<Option>,
 
     /**
-     * The default option index, used if nothing has been selected within the {@link #options} list.
+     * The default option index, used if nothing has been selected within the [options] list.
      */
     val defaultOptionIndex: Int,
 
     /**
      * Used by the style configuration UI. Describes which rendering layer this style affects. Must
      * be either 0 (for a style change with no visual effect, e.g. sound controls) or a combination
-     * of {@link #LAYER_WATCH_FACE_BASE}, {@link #LAYER_COMPLICATONS},
-     * {@link #LAYER_WATCH_FACE_UPPER}.
+     * (logical OR) of [LAYER_FLAG_WATCH_FACE_BASE], [LAYER_FLAG_COMPLICATONS],
+     * [LAYER_FLAG_WATCH_FACE_UPPER].
      */
     val layerFlags: Int
 ) {
@@ -67,16 +67,17 @@ abstract class UserStyleCategory(
          * The base watch face without complications or watch hands (or any other elements that
          * could occlude complications).
          */
-        const val LAYER_WATCH_FACE_BASE = 1 shl 0
+        const val LAYER_FLAG_WATCH_FACE_BASE = 1 shl 0
 
         /** The complications layer. */
-        const val LAYER_COMPLICATONS = 1 shl 1
+        const val LAYER_FLAG_COMPLICATONS = 1 shl 1
 
         /** Anything that could occlude complications, typically watch hands. */
-        const val LAYER_WATCH_FACE_UPPER = 1 shl 2
+        const val LAYER_FLAG_WATCH_FACE_UPPER = 1 shl 2
 
         internal const val INVALID_LAYER_MASK =
-            (LAYER_WATCH_FACE_BASE or LAYER_COMPLICATONS or LAYER_WATCH_FACE_UPPER).inv()
+            (LAYER_FLAG_WATCH_FACE_BASE or LAYER_FLAG_COMPLICATONS or LAYER_FLAG_WATCH_FACE_UPPER)
+                .inv()
 
         /** @hide */
         @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
@@ -179,7 +180,7 @@ abstract class UserStyleCategory(
      * categories that can't sensibly be fully enumerated (e.g. a full 24-bit color picker).
      *
      * @param optionId The ID of the option
-     * @return An {@link Option} corresponding to the name. This could either be one of the
+     * @return An [Option] corresponding to the name. This could either be one of the
      *     options from userStyleCategories or a newly constructed Option depending on the nature
      *     of the UserStyleCategory. If optionName is unrecognized then the default value for the
      *     category should be returned.

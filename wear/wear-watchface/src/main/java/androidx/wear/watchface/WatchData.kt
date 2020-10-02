@@ -17,17 +17,17 @@
 package androidx.wear.watchface
 
 import androidx.annotation.UiThread
-import androidx.lifecycle.Observer
 
 /**
  * An observable UI thread only data holder class.
  *
  * @param <T> The type of data hold by this instance
  */
-open class WatchData<T> protected constructor(protected var _value: T?) {
+open class WatchData<T : Any> protected constructor(internal var _value: T?) {
+
     private var iterating = false
-    internal val observers = ArrayList<Observer<T>>()
-    internal val toBeRemoved = HashSet<Observer<T>>()
+    private val observers = ArrayList<Observer<T>>()
+    private val toBeRemoved = HashSet<Observer<T>>()
 
     /** Whether or not this WatchData contains a value. */
     fun hasValue() = _value != null
@@ -48,18 +48,20 @@ open class WatchData<T> protected constructor(protected var _value: T?) {
             require(!iterating)
             iterating = true
             _value = v
-            for (observer in observers) {
-                // The observer might unregister itself and removing elements from a collection
-                // while it's being iterated is not allowed, so check if we should skip over this
-                // observer.
+
+            var index = 0
+            while (index < observers.size) {
+                val observer = observers[index++]
+                // The observer might unregister itself.
                 if (!toBeRemoved.contains(observer)) {
-                    observer.onChanged(_value)
+                    observer.onChanged(v)
                 }
             }
             iterating = false
             for (observer in toBeRemoved) {
                 observers.remove(observer)
             }
+            toBeRemoved.clear()
         }
 
     /**
@@ -68,15 +70,17 @@ open class WatchData<T> protected constructor(protected var _value: T?) {
      * observer.
      */
     @UiThread
-    fun observe(observer: Observer<T>) {
+    fun addObserver(observer: Observer<T>) {
         require(!observers.contains(observer))
         observers.add(observer)
-        if (hasValue()) {
-            observer.onChanged(_value)
+        // We want to dispatch a callback when added, and if we're iterating then adding to the end
+        // of the list is sufficient.
+        if (!iterating && _value != null) {
+            observer.onChanged(_value!!)
         }
     }
 
-    /** Removes an observer previously added by {@link observe}. */
+    /** Removes an observer previously added by [observe]. */
     @UiThread
     fun removeObserver(observer: Observer<T>) {
         require(observers.contains(observer))
@@ -90,12 +94,12 @@ open class WatchData<T> protected constructor(protected var _value: T?) {
 }
 
 /**
- * {@link WatchData} which publicly exposes {@link #setValue(T)} method
+ * [WatchData] which publicly exposes [setValue(T)] method
  *
  * @param <T> The type of data hold by this instance
  */
 @SuppressWarnings("WeakerAccess")
-class MutableWatchData<T>(initialValue: T?) : WatchData<T>(initialValue) {
+class MutableWatchData<T : Any>(initialValue: T?) : WatchData<T>(initialValue) {
     constructor() : this(null)
 
     override var value: T

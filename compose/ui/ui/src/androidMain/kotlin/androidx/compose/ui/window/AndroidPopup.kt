@@ -39,7 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.onPositioned
+import androidx.compose.ui.onGloballyPositioned
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.ViewAmbient
 import androidx.compose.ui.platform.setContent
@@ -65,8 +65,7 @@ import org.jetbrains.annotations.TestOnly
  *
  * @param popupPositionProvider Provides the screen position of the popup.
  * @param isFocusable Indicates if the popup can grab the focus.
- * @param onDismissRequest Executes when the popup tries to dismiss itself. This happens when
- * the popup is focusable and the user clicks outside.
+ * @param onDismissRequest Executes when the user clicks outside of the popup.
  * @param children The content to be displayed inside the popup.
  */
 @Composable
@@ -94,7 +93,7 @@ internal actual fun ActualPopup(
     // Get the parent's global position, size and layout direction
     Layout(
         children = emptyContent(),
-        modifier = Modifier.onPositioned { childCoordinates ->
+        modifier = Modifier.onGloballyPositioned { childCoordinates ->
             val coordinates = childCoordinates.parentCoordinates!!
             // Get the global position of the parent
             val layoutPosition = coordinates.localToGlobal(Offset.Zero).round()
@@ -116,7 +115,7 @@ internal actual fun ActualPopup(
     onCommit {
         composition = popupLayout.setContent(recomposer, parentComposition) {
             SimpleStack(
-                Modifier.semantics { this.popup() }.onPositioned {
+                Modifier.semantics { this.popup() }.onGloballyPositioned {
                     // Get the size of the content
                     popupLayout.popupContentSize = it.size
 
@@ -299,6 +298,10 @@ private class PopupLayout(
      * users clicks outside the popup.
      */
     override fun onTouchEvent(event: MotionEvent?): Boolean {
+        // Note that this implementation is taken from PopupWindow. It actually does not seem to
+        // matter whether we return true or false as some upper layer decides on whether the
+        // event is propagated to other windows or not. So for focusable the event is consumed but
+        // for not focusable it is propagated to other windows.
         if ((event?.action == MotionEvent.ACTION_DOWN) &&
             ((event.x < 0) || (event.x >= width) || (event.y < 0) || (event.y >= height))
         ) {
@@ -325,11 +328,13 @@ private class PopupLayout(
                 WindowManager.LayoutParams.FLAG_IGNORE_CHEEK_PRESSES or
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
                     WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
                 ).inv()
+
+            // Enables us to intercept outside clicks even when popup is not focusable
+            flags = flags or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
 
             type = WindowManager.LayoutParams.TYPE_APPLICATION_PANEL
 

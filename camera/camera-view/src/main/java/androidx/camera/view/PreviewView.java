@@ -25,6 +25,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Rational;
+import android.util.Size;
 import android.view.Display;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
@@ -124,7 +125,7 @@ public class PreviewView extends FrameLayout {
 
     @NonNull
     PreviewViewMeteringPointFactory mPreviewViewMeteringPointFactory =
-            new PreviewViewMeteringPointFactory();
+            new PreviewViewMeteringPointFactory(mPreviewTransform);
 
     // Detector for zoom-to-scale.
     @NonNull
@@ -135,8 +136,6 @@ public class PreviewView extends FrameLayout {
 
     private final OnLayoutChangeListener mOnLayoutChangeListener =
             (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
-
-                mPreviewViewMeteringPointFactory.setViewSize(getWidth(), getHeight());
                 boolean isSizeChanged =
                         right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop;
                 if (isSizeChanged) {
@@ -177,11 +176,6 @@ public class PreviewView extends FrameLayout {
 
             camera.getCameraState().addObserver(
                     ContextCompat.getMainExecutor(getContext()), streamStateObserver);
-
-            mPreviewViewMeteringPointFactory.setViewImplementationResolution(
-                    surfaceRequest.getResolution());
-            mPreviewViewMeteringPointFactory.setCameraInfo(camera.getCameraInfo());
-
             mImplementation.onSurfaceRequested(surfaceRequest, () -> {
                 // We've no longer needed this observer, if there is no new StreamStateObserver
                 // (another SurfaceRequest), reset the streamState to IDLE.
@@ -244,7 +238,6 @@ public class PreviewView extends FrameLayout {
         if (mImplementation != null) {
             mImplementation.onAttachedToWindow();
         }
-        mPreviewViewMeteringPointFactory.setDisplay(getDisplay());
         attachToControllerIfReady();
     }
 
@@ -255,7 +248,6 @@ public class PreviewView extends FrameLayout {
         if (mImplementation != null) {
             mImplementation.onDetachedFromWindow();
         }
-        mPreviewViewMeteringPointFactory.setDisplay(getDisplay());
         if (mCameraController != null) {
             mCameraController.clearPreviewSurface();
         }
@@ -354,7 +346,6 @@ public class PreviewView extends FrameLayout {
     @UiThread
     public void setScaleType(@NonNull final ScaleType scaleType) {
         mPreviewTransform.setScaleType(scaleType);
-        mPreviewViewMeteringPointFactory.setScaleType(scaleType);
         redrawPreview();
     }
 
@@ -419,16 +410,11 @@ public class PreviewView extends FrameLayout {
     }
 
     /**
-     * Returns a {@link Bitmap} representation of the content displayed on the preview
-     * {@link Surface}, or {@code null} if the camera preview hasn't started yet.
+     * Returns a {@link Bitmap} representation of the content displayed on the
+     * {@link PreviewView}, or {@code null} if the camera preview hasn't started yet.
      * <p>
-     * The returned {@link Bitmap} uses the {@link Bitmap.Config#ARGB_8888} pixel format, and its
-     * dimensions depend on the {@link PreviewView}'s {@link ScaleType}. When the
-     * {@link ScaleType} is {@link ScaleType#FILL_START}, {@link ScaleType#FILL_CENTER} or
-     * {@link ScaleType#FILL_END}, the returned {@link Bitmap} has the same size as the
-     * {@link PreviewView}. However, when the {@link ScaleType} is {@link ScaleType#FIT_START},
-     * {@link ScaleType#FIT_CENTER} or {@link ScaleType#FIT_END}, the returned {@link Bitmap}
-     * might be smaller than the {@link PreviewView}, since it doesn't also include its background.
+     * The returned {@link Bitmap} uses the {@link Bitmap.Config#ARGB_8888} pixel format and its
+     * dimensions are the same as this view's.
      * <p>
      * <strong>Do not</strong> invoke this method from a drawing method
      * ({@link View#onDraw(Canvas)} for instance).
@@ -436,7 +422,7 @@ public class PreviewView extends FrameLayout {
      * If an error occurs during the copy, an empty {@link Bitmap} will be returned.
      *
      * @return A {@link Bitmap.Config#ARGB_8888} {@link Bitmap} representing the content
-     * displayed on the preview {@link Surface}, or null if the camera preview hasn't started yet.
+     * displayed on the {@link PreviewView}, or null if the camera preview hasn't started yet.
      */
     @UiThread
     @Nullable
@@ -545,6 +531,8 @@ public class PreviewView extends FrameLayout {
         if (mImplementation != null) {
             mImplementation.redrawPreview();
         }
+        mPreviewViewMeteringPointFactory.recalculate(new Size(getWidth(), getHeight()),
+                getLayoutDirection());
     }
 
     // Synthetic access
