@@ -50,6 +50,7 @@ import androidx.compose.ui.drawLayer
 import androidx.compose.ui.focus.ExperimentalFocus
 import androidx.compose.ui.focus.FOCUS_TAG
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.FocusManagerImpl
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.CanvasHolder
 import androidx.compose.ui.hapticfeedback.AndroidHapticFeedback
@@ -63,6 +64,7 @@ import androidx.compose.ui.input.pointer.PointerInputEventProcessor
 import androidx.compose.ui.input.pointer.ProcessResult
 import androidx.compose.ui.node.ExperimentalLayoutNodeApi
 import androidx.compose.ui.node.InternalCoreApi
+import androidx.compose.ui.node.OwnerScope
 import androidx.compose.ui.node.LayoutNode
 import androidx.compose.ui.node.LayoutNode.UsageByParent
 import androidx.compose.ui.node.MeasureAndLayoutDelegate
@@ -138,7 +140,9 @@ internal class AndroidComposeView constructor(
         properties = {}
     )
 
-    private val focusManager: FocusManager = FocusManager()
+    private val _focusManager: FocusManagerImpl = FocusManagerImpl()
+    override val focusManager: FocusManager
+        get() = _focusManager
 
     private val keyInputModifier = KeyInputModifier(null, null)
 
@@ -149,7 +153,7 @@ internal class AndroidComposeView constructor(
         it.modifier = Modifier
             .drawLayer()
             .then(semanticsModifier)
-            .then(focusManager.modifier)
+            .then(_focusManager.modifier)
             .then(keyInputModifier)
     }
 
@@ -181,10 +185,12 @@ internal class AndroidComposeView constructor(
     // Used as an ambient for performing autofill.
     override val autofill: Autofill? get() = _autofill
 
+    private var observationClearRequested = false
+
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
         Log.d(FOCUS_TAG, "Owner FocusChanged($gainFocus)")
-        with(focusManager) {
+        with(_focusManager) {
             if (gainFocus) takeFocus() else releaseFocus()
         }
     }
@@ -251,7 +257,17 @@ internal class AndroidComposeView constructor(
 
     override fun onDetach(node: LayoutNode) {
         measureAndLayoutDelegate.onNodeDetached(node)
-        snapshotObserver.clear(node)
+        requestClearInvalidObservations()
+    }
+
+    fun requestClearInvalidObservations() {
+        if (!observationClearRequested) {
+            observationClearRequested = true
+            post {
+                observationClearRequested = false
+                snapshotObserver.removeObservationsFor { !(it as OwnerScope).isValid }
+            }
+        }
     }
 
     private var _androidViewsHandler: AndroidViewsHandler? = null
@@ -380,7 +396,7 @@ internal class AndroidComposeView constructor(
         // we postpone onPositioned callbacks until onLayout as LayoutCoordinates
         // are currently wrong if you try to get the global(activity) coordinates -
         // View is not yet laid out.
-        dispatchOnPositioned()
+        updatePositionCacheAndDispatch()
         if (_androidViewsHandler != null && androidViewsHandler.isLayoutRequested) {
             // Even if we laid out during onMeasure, this can happen when the Views hierarchy
             // receives forceLayout(). We need to relayout to clear the isLayoutRequested info
@@ -388,6 +404,9 @@ internal class AndroidComposeView constructor(
             androidViewsHandler.layout(0, 0, r - l, b - t)
         }
     }
+
+    override val hasPendingMeasureOrLayout
+        get() = measureAndLayoutDelegate.hasPendingMeasureOrLayout
 
     private var globalPosition: IntOffset = IntOffset.Zero
 
@@ -397,7 +416,7 @@ internal class AndroidComposeView constructor(
     // so that we don't have to continue using try/catch after fails once.
     private var isRenderNodeCompatible = true
 
-    private fun dispatchOnPositioned() {
+    private fun updatePositionCacheAndDispatch() {
         var positionChanged = false
         getLocationOnScreen(tmpPositionArray)
         if (globalPosition.x != tmpPositionArray[0] || globalPosition.y != tmpPositionArray[1]) {
@@ -417,7 +436,11 @@ internal class AndroidComposeView constructor(
         snapshotObserver.observeReads(node, onCommitAffectingMeasure, block)
     }
 
-    override fun <T : Any> observeReads(target: T, onChanged: (T) -> Unit, block: () -> Unit) {
+    override fun <T : OwnerScope> observeReads(
+        target: T,
+        onChanged: (T) -> Unit,
+        block: () -> Unit
+    ) {
         snapshotObserver.observeReads(target, onChanged, block)
     }
 
@@ -524,13 +547,13 @@ internal class AndroidComposeView constructor(
     // on a different position, but also in the position of each of the grandparents as all these
     // positions add up to final global position)
     private val globalLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
-        dispatchOnPositioned()
+        updatePositionCacheAndDispatch()
     }
 
     // executed when a scrolling container like ScrollView of RecyclerView performed the scroll,
     // this could affect our global position
     private val scrollChangedListener = ViewTreeObserver.OnScrollChangedListener {
-        dispatchOnPositioned()
+        updatePositionCacheAndDispatch()
     }
 
     override fun onAttachedToWindow() {
@@ -568,6 +591,7 @@ internal class AndroidComposeView constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        snapshotObserver.clear()
         snapshotObserver.enableStateUpdatesObserving(false)
         ifDebug { if (autofillSupported()) _autofill?.unregisterCallback() }
         if (measureAndLayoutScheduled) {
@@ -589,6 +613,15 @@ internal class AndroidComposeView constructor(
     // TODO(shepshapard): Test this method.
     override fun dispatchTouchEvent(motionEvent: MotionEvent): Boolean {
         measureAndLayout()
+        // TODO(b/166848812): Calling updatePositionCacheAndDispatch here seems necessary because
+        //  if the soft keyboard being displayed causes the AndroidComposeView to be offset from
+        //  the screen, we don't seem to have any timely callback that updates our globalPosition
+        //  cache. ViewTreeObserver.OnGlobalLayoutListener gets called, but not when the keyboard
+        //  opens. And when it gets called as the keyboard is closing, it is called before the
+        //  keyboard actually closes causing the globalPosition to be wrong.
+        // TODO(shepshapard): There is no test to garuntee that this method is called here as doing
+        //  so proved to be very difficult. A test should be added.
+        updatePositionCacheAndDispatch()
         val processResult = trace("AndroidOwner:onTouch") {
             val pointerInputEvent = motionEventAdapter.convertToPointerInputEvent(motionEvent)
             if (pointerInputEvent != null) {

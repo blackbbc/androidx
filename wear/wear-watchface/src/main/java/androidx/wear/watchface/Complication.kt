@@ -25,21 +25,20 @@ import android.graphics.drawable.Drawable
 import android.icu.util.Calendar
 import android.support.wearable.complications.ComplicationData
 import androidx.annotation.UiThread
-import androidx.lifecycle.Observer
 import androidx.wear.complications.SystemProviders
 import androidx.wear.complications.rendering.ComplicationDrawable
 import androidx.wear.watchface.data.ComplicationBoundsType
 
-/** Common interface for rendering complications. */
-interface ComplicationRenderer {
+/** Common interface for rendering complications onto a [Canvas]. */
+interface CanvasComplicationRenderer {
     /**
-     * Called when the ComplicationRenderer attaches to a {@link Complication}.
+     * Called when the CanvasComplicationRenderer attaches to a [Complication].
      */
     @UiThread
     fun onAttach(complication: Complication)
 
     /**
-     * Called when the ComplicationRenderer detaches from a {@link Complication}.
+     * Called when the CanvasComplicationRenderer detaches from a [Complication].
      */
     @UiThread
     fun onDetach()
@@ -50,13 +49,13 @@ interface ComplicationRenderer {
      * selection UI rendering. The width and height will be the same as that computed by
      * computeBounds but the translation and canvas size may differ.
      *
-     * @param canvas The {@link Canvas} to render into
-     * @param bounds A {@link Rect} describing the bounds of the complication
-     * @param calendar The current {@link Calendar}
-     * @param drawMode The current {@link DrawMode}
+     * @param canvas The [Canvas] to render into
+     * @param bounds A [Rect] describing the bounds of the complication
+     * @param calendar The current [Calendar]
+     * @param drawMode The current [DrawMode]
      */
     @UiThread
-    fun onDraw(
+    fun render(
         canvas: Canvas,
         bounds: Rect,
         calendar: Calendar,
@@ -73,15 +72,15 @@ interface ComplicationRenderer {
     fun setIsHighlighted(highlight: Boolean)
 
     /**
-     * Sets the current {@link ComplicationData}.
+     * Sets the current [ComplicationData].
      *
-     * @param data The {@link ComplicationData}
+     * @param data The [ComplicationData]
      */
     @UiThread
     fun setData(data: ComplicationData?)
 
     /**
-     * Returns the current {@link ComplicationData} associated with the ComplicationRenderer.
+     * Returns the current [ComplicationData] associated with the CanvasComplicationRenderer.
      */
     @UiThread
     fun getData(): ComplicationData?
@@ -93,9 +92,9 @@ interface ComplicationRenderer {
     }
 
     /**
-     * Called by the {@link WatchFace}
+     * Called by the [WatchFace]
      *
-     * @param callback The {@link InvalidateCallback} to register
+     * @param callback The [InvalidateCallback] to register
      */
     @UiThread
     @SuppressLint("ExecutorRegistration")
@@ -103,15 +102,15 @@ interface ComplicationRenderer {
 }
 
 /**
- * A complication rendered with {@link ComplicationDrawable} which renders complications in a
+ * A complication rendered with [ComplicationDrawable] which renders complications in a
  * material design style. This renderer can't be shared by multiple complications.
  */
-open class ComplicationDrawableRenderer(
+open class CanvasComplicationDrawableRenderer(
     /** The actual complication. */
     drawable: ComplicationDrawable,
 
     private val watchState: WatchState
-) : ComplicationRenderer {
+) : CanvasComplicationRenderer {
     private var _drawable = drawable
 
     var drawable: ComplicationDrawable
@@ -143,9 +142,9 @@ open class ComplicationDrawableRenderer(
     /** {@inheritDoc} */
     override fun onAttach(complication: Complication) {
         attachedComplication = complication
-        watchState.isAmbient.observe(isAmbientObserver)
-        watchState.hasLowBitAmbient.observe(lowBitAmbientObserver)
-        watchState.hasBurnInProtection.observe(burnInProtectionObserver)
+        watchState.isAmbient.addObserver(isAmbientObserver)
+        watchState.hasLowBitAmbient.addObserver(lowBitAmbientObserver)
+        watchState.hasBurnInProtection.addObserver(burnInProtectionObserver)
     }
 
     /** {@inheritDoc} */
@@ -157,7 +156,7 @@ open class ComplicationDrawableRenderer(
     }
 
     /** {@inheritDoc} */
-    override fun onDraw(
+    override fun render(
         canvas: Canvas,
         bounds: Rect,
         calendar: Calendar,
@@ -184,7 +183,7 @@ open class ComplicationDrawableRenderer(
 
     /** {@inheritDoc} */
     @SuppressLint("ExecutorRegistration")
-    override fun setInvalidateCallback(callback: ComplicationRenderer.InvalidateCallback) {
+    override fun setInvalidateCallback(callback: CanvasComplicationRenderer.InvalidateCallback) {
         drawable.callback = object :
             Drawable.Callback {
             override fun unscheduleDrawable(who: Drawable, what: Runnable) {}
@@ -200,17 +199,18 @@ open class ComplicationDrawableRenderer(
 
 /**
  * Represents a individual complication on the screen. The number of complications is fixed
- * (see {@link ComplicationsManager}) but complications can be enabled or disabled as needed.
+ * (see [ComplicationsManager]) but complications can be enabled or disabled as needed.
  */
 class Complication internal constructor(
     internal val id: Int,
     @ComplicationBoundsType internal val boundsType: Int,
     unitSquareBounds: RectF,
-    renderer: ComplicationRenderer,
+    renderer: CanvasComplicationRenderer,
     internal val supportedTypes: IntArray,
     internal val defaultProviderPolicy: DefaultComplicationProviderPolicy,
     internal val defaultProviderType: Int
 ) {
+    /** @hide */
     private companion object {
         internal val unitSquare = RectF(0f, 0f, 1f, 1f)
     }
@@ -222,11 +222,11 @@ class Complication internal constructor(
         /**
          * The renderer for this Complication. Renderers may not be sharable between complications.
          */
-        private val renderer: ComplicationRenderer,
+        private val renderer: CanvasComplicationRenderer,
 
         /**
-         * The types of complication supported by this Complication. Passed into {@link
-         * ComplicationHelperActivity#createProviderChooserHelperIntent} during complication
+         * The types of complication supported by this Complication. Passed into
+         * [ComplicationHelperActivity.createProviderChooserHelperIntent] during complication
          * configuration.
          */
         private val supportedTypes: IntArray,
@@ -311,7 +311,7 @@ class Complication internal constructor(
     }
 
     private lateinit var complicationsManager: ComplicationsManager
-    private lateinit var invalidateCallback: ComplicationRenderer.InvalidateCallback
+    private lateinit var invalidateCallback: CanvasComplicationRenderer.InvalidateCallback
 
     private var _unitSquareBounds = unitSquareBounds
     var unitSquareBounds: RectF
@@ -345,7 +345,7 @@ class Complication internal constructor(
         }
 
     private var _renderer = renderer
-    var renderer: ComplicationRenderer
+    var renderer: CanvasComplicationRenderer
         @UiThread
         get() = _renderer
 
@@ -361,18 +361,18 @@ class Complication internal constructor(
     /**
      * Watch faces should use this method to render a complication. Note the system may call this.
      *
-     * @param canvas The {@link Canvas} to render into
-     * @param calendar The current {@link Calendar}
-     * @param drawMode The current {@link DrawMode}
+     * @param canvas The [Canvas] to render into
+     * @param calendar The current [Calendar]
+     * @param drawMode The current [DrawMode]
      */
     @UiThread
-    fun draw(
+    fun render(
         canvas: Canvas,
         calendar: Calendar,
         @DrawMode drawMode: Int
     ) {
         val bounds = computeBounds(Rect(0, 0, canvas.width, canvas.height))
-        renderer.onDraw(canvas, bounds, calendar, drawMode)
+        renderer.render(canvas, bounds, calendar, drawMode)
     }
 
     /**
@@ -395,7 +395,7 @@ class Complication internal constructor(
 
     internal fun init(
         complicationsManager: ComplicationsManager,
-        invalidateCallback: ComplicationRenderer.InvalidateCallback
+        invalidateCallback: CanvasComplicationRenderer.InvalidateCallback
     ) {
         this.complicationsManager = complicationsManager
         this.invalidateCallback = invalidateCallback

@@ -30,7 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.background
 import androidx.compose.ui.draw.assertColor
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.onPositioned
+import androidx.compose.ui.onGloballyPositioned
 import androidx.compose.ui.platform.AndroidOwnerExtraAssertionsRule
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.testTag
@@ -446,7 +446,7 @@ class SubcomposeLayoutTest {
             val sizeIpx = with(density) { size.toIntPx() }
             Providers(DensityAmbient provides density) {
                 SubcomposeLayout<Unit>(
-                    Modifier.size(size).onPositioned {
+                    Modifier.size(size).onGloballyPositioned {
                         assertThat(it.size).isEqualTo(IntSize(sizeIpx, sizeIpx))
                     }
                 ) { constraints ->
@@ -455,6 +455,34 @@ class SubcomposeLayoutTest {
             }
         }
         rule.waitForIdle()
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    fun drawingOrderIsControlledByPlaceCalls() {
+        val layoutTag = "layout"
+
+        rule.setContent {
+            SubcomposeLayout<Color>(Modifier.testTag(layoutTag)) { constraints ->
+                val first = subcompose(Color.Red) {
+                    Spacer(Modifier.size(10.dp).background(Color.Red))
+                }.first().measure(constraints)
+                val second = subcompose(Color.Green) {
+                    Spacer(Modifier.size(10.dp).background(Color.Green))
+                }.first().measure(constraints)
+
+                layout(first.width, first.height) {
+                    second.place(0, 0)
+                    first.place(0, 0)
+                }
+            }
+        }
+
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(layoutTag)
+            .captureToBitmap()
+            .assertCenterPixelColor(Color.Red)
     }
 }
 

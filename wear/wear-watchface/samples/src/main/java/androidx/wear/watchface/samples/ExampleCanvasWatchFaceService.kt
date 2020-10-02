@@ -94,9 +94,9 @@ class ExampleCanvasWatchFaceService : WatchFaceService() {
                     Icon.createWithResource(this, R.drawable.green_style)
                 )
             ),
-            UserStyleCategory.LAYER_WATCH_FACE_BASE or
-                    UserStyleCategory.LAYER_COMPLICATONS or
-                    UserStyleCategory.LAYER_WATCH_FACE_UPPER
+            UserStyleCategory.LAYER_FLAG_WATCH_FACE_BASE or
+                    UserStyleCategory.LAYER_FLAG_COMPLICATONS or
+                    UserStyleCategory.LAYER_FLAG_WATCH_FACE_UPPER
         )
         val drawHourPipsStyleCategory =
             BooleanUserStyleCategory(
@@ -105,7 +105,7 @@ class ExampleCanvasWatchFaceService : WatchFaceService() {
                 "Whether to draw or not",
                 null,
                 true,
-                UserStyleCategory.LAYER_WATCH_FACE_BASE
+                UserStyleCategory.LAYER_FLAG_WATCH_FACE_BASE
             )
         val watchHandLengthStyleCategory =
             DoubleRangeUserStyleCategory(
@@ -116,7 +116,7 @@ class ExampleCanvasWatchFaceService : WatchFaceService() {
                 0.25,
                 1.0,
                 0.75,
-                UserStyleCategory.LAYER_WATCH_FACE_UPPER
+                UserStyleCategory.LAYER_FLAG_WATCH_FACE_UPPER
             )
         val complicationsStyleCategory = ListUserStyleCategory(
             "complications_style_category",
@@ -145,7 +145,7 @@ class ExampleCanvasWatchFaceService : WatchFaceService() {
                     null
                 )
             ),
-            UserStyleCategory.LAYER_COMPLICATONS
+            UserStyleCategory.LAYER_FLAG_COMPLICATONS
         )
         val userStyleRepository = UserStyleRepository(
             listOf(
@@ -326,10 +326,15 @@ class ExampleCanvasRenderer(
 
         canvas.drawColor(style.backgroundColor)
 
-        drawComplications(canvas, calendar)
-        drawClockHands(canvas, bounds, calendar, style)
+        if (drawMode != DrawMode.BASE_WATCHFACE && drawMode != DrawMode.UPPER_LAYER) {
+            drawComplications(canvas, calendar)
+        }
 
-        if (drawMode != DrawMode.AMBIENT && drawHourPips) {
+        if (drawMode != DrawMode.BASE_WATCHFACE) {
+            drawClockHands(canvas, bounds, calendar, style)
+        }
+
+        if (drawMode != DrawMode.AMBIENT && drawMode != DrawMode.UPPER_LAYER && drawHourPips) {
             drawNumberStyleOuterElement(canvas, bounds, style)
         }
     }
@@ -523,7 +528,7 @@ class ExampleCanvasRenderer(
     private fun drawComplications(canvas: Canvas, calendar: Calendar) {
         for ((_, complication) in complicationsManager.complications) {
             if (complication.enabled) {
-                complication.draw(canvas, calendar, drawMode)
+                complication.render(canvas, calendar, drawMode)
             }
         }
     }

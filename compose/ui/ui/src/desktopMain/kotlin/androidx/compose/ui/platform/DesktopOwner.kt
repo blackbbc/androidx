@@ -28,6 +28,7 @@ import androidx.compose.ui.autofill.AutofillTree
 import androidx.compose.ui.drawLayer
 import androidx.compose.ui.focus.ExperimentalFocus
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.FocusManagerImpl
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.DesktopCanvas
@@ -47,6 +48,7 @@ import androidx.compose.ui.node.LayoutNode
 import androidx.compose.ui.node.MeasureAndLayoutDelegate
 import androidx.compose.ui.node.OwnedLayer
 import androidx.compose.ui.node.Owner
+import androidx.compose.ui.node.OwnerScope
 import androidx.compose.ui.semantics.SemanticsModifierCore
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.text.input.TextInputService
@@ -80,14 +82,17 @@ class DesktopOwner(
         properties = {}
     )
 
-    private val focusManager: FocusManager = FocusManager()
+    private val _focusManager: FocusManagerImpl = FocusManagerImpl()
+    override val focusManager: FocusManager
+        get() = _focusManager
+
     private val keyInputModifier = KeyInputModifier(null, null)
 
     override val root = LayoutNode().also {
         it.measureBlocks = RootMeasureBlocks
         it.modifier = Modifier.drawLayer()
             .then(semanticsModifier)
-            .then(focusManager.modifier)
+            .then(_focusManager.modifier)
             .then(keyInputModifier)
         it.isPlaced = true
     }
@@ -166,6 +171,9 @@ class DesktopOwner(
         container.invalidate()
     }
 
+    override val hasPendingMeasureOrLayout
+        get() = measureAndLayoutDelegate.hasPendingMeasureOrLayout
+
     // Don't inline these variables into snapshotObserver.observeReads,
     // because observeReads requires that onChanged should always be the same instance.
     // Otherwise there will be a memory leak and FPS drop (see b/163905871)
@@ -181,7 +189,11 @@ class DesktopOwner(
         snapshotObserver.observeReads(node, onCommitAffectingMeasure, block)
     }
 
-    override fun <T : Any> observeReads(target: T, onChanged: (T) -> Unit, block: () -> Unit) {
+    override fun <T : OwnerScope> observeReads(
+        target: T,
+        onChanged: (T) -> Unit,
+        block: () -> Unit
+    ) {
         snapshotObserver.observeReads(target, onChanged, block)
     }
 
