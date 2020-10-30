@@ -44,27 +44,33 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Align
-import androidx.compose.ui.AlignmentLine
-import androidx.compose.ui.Layout
-import androidx.compose.ui.LayoutModifier
-import androidx.compose.ui.Measurable
-import androidx.compose.ui.MeasureScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.background
 import androidx.compose.ui.drawLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.globalPosition
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.node.ExperimentalLayoutNodeApi
 import androidx.compose.ui.node.LayoutEmitHelper
 import androidx.compose.ui.node.LayoutNode
 import androidx.compose.ui.node.Owner
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.node.isAttached
-import androidx.compose.ui.onGloballyPositioned
 import androidx.compose.ui.test.TestActivity
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertPixels
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -75,13 +81,9 @@ import androidx.test.espresso.Espresso
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA
 import androidx.test.espresso.matcher.ViewMatchers.withClassName
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.test.filters.SmallTest
-import androidx.ui.test.createAndroidComposeRule
-import androidx.ui.test.assertIsDisplayed
-import androidx.ui.test.assertPixels
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.onNodeWithTag
 import junit.framework.TestCase.assertNotNull
 import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.CoreMatchers.allOf
@@ -94,14 +96,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import kotlin.math.roundToInt
 
 /**
  * Testing the support for Android Views in Compose UI.
  */
-@SmallTest
-@RunWith(JUnit4::class)
+@MediumTest
+@RunWith(AndroidJUnit4::class)
 class AndroidViewCompatTest {
     @get:Rule
     val rule = createAndroidComposeRule<TestActivity>()
@@ -482,8 +483,9 @@ class AndroidViewCompatTest {
                     Box(Modifier.padding(paddingDp)) {
                         AndroidView(::FrameLayout) {
                             it.setContent {
-                                Box(Modifier.padding(paddingDp)
-                                    .onGloballyPositioned { coordinates = it }
+                                Box(
+                                    Modifier.padding(paddingDp)
+                                        .onGloballyPositioned { coordinates = it }
                                 )
                             }
                         }
@@ -626,7 +628,8 @@ class AndroidViewCompatTest {
         // The composition has been disposed.
         rule.runOnIdle {
             assertFalse(innerAndroidComposeView!!.isAttachedToWindow)
-            assertFalse(node!!.isAttached())
+            // the node stays attached after the compose view is detached
+            assertTrue(node!!.isAttached())
         }
     }
 
@@ -759,7 +762,7 @@ class AndroidViewCompatTest {
         override fun MeasureScope.measure(
             measurable: Measurable,
             constraints: Constraints
-        ): MeasureScope.MeasureResult {
+        ): MeasureResult {
             val placeable = measurable.measure(childConstraints)
             return layout(placeable.width, placeable.height) {
                 placeable.place(0, 0)
@@ -786,8 +789,8 @@ class AndroidViewCompatTest {
             measureScope: MeasureScope,
             measurables: List<Measurable>,
             constraints: Constraints
-        ): MeasureScope.MeasureResult {
-            return object : MeasureScope.MeasureResult {
+        ): MeasureResult {
+            return object : MeasureResult {
                 override val width = 0
                 override val height = 0
                 override val alignmentLines: Map<AlignmentLine, Int> get() = mapOf()

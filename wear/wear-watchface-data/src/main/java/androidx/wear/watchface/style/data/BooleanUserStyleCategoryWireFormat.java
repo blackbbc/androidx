@@ -39,13 +39,13 @@ public class BooleanUserStyleCategoryWireFormat extends UserStyleCategoryWireFor
 
     public BooleanUserStyleCategoryWireFormat(
             @NonNull String id,
-            @NonNull String displayName,
-            @NonNull String description,
+            @NonNull CharSequence displayName,
+            @NonNull CharSequence description,
             @Nullable Icon icon,
             @NonNull List<OptionWireFormat> options,
             int defaultOptionIndex,
-            int layerFlags)  {
-        super(id, displayName, description, icon, options, defaultOptionIndex, layerFlags);
+            @NonNull List<Integer> affectsLayers) {
+        super(id, displayName, description, icon, options, defaultOptionIndex, affectsLayers);
     }
 
     /**

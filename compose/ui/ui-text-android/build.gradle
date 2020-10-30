@@ -40,6 +40,7 @@ dependencies {
     androidTestImplementation project(":compose:ui:ui-test-font")
     androidTestImplementation(ANDROIDX_TEST_RULES)
     androidTestImplementation(ANDROIDX_TEST_RUNNER)
+    androidTestImplementation(ANDROIDX_TEST_EXT_JUNIT)
     androidTestImplementation(DEXMAKER_MOCKITO, libs.exclude_bytebuddy) // DexMaker has it"s own MockMaker
     androidTestImplementation(ESPRESSO_CORE)
     androidTestImplementation(JUNIT)
@@ -53,9 +54,9 @@ dependencies {
 androidx {
     name = "Compose UI Text Android support"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    generateDocs = false
     mavenVersion = LibraryVersions.COMPOSE
     mavenGroup = LibraryGroups.Compose.UI
     inceptionYear = "2018"
     description = "Android specific implementations for Text in Compose"
+    legacyDisableKotlinStrictApiMode = true
 }

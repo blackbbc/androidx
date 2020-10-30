@@ -22,6 +22,7 @@ import android.util.LayoutDirection
 import android.util.Size
 import androidx.camera.core.SurfaceRequest
 import androidx.test.filters.SmallTest
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -191,6 +192,8 @@ class PreviewViewMeteringPointFactoryDeviceTest(
         }
     }
 
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+
     @Test
     fun verifyMeteringPoint() {
         // Arrange.
@@ -198,12 +201,15 @@ class PreviewViewMeteringPointFactoryDeviceTest(
         previewTransformation.scaleType = scaleType
         previewTransformation.setTransformationInfo(
             SurfaceRequest.TransformationInfo.of
-                (cropRect, rotationDegrees, FAKE_TARGET_ROTATION), surfaceSize, isFrontCamera
+            (cropRect, rotationDegrees, FAKE_TARGET_ROTATION),
+            surfaceSize, isFrontCamera
         )
         val meteringPointFactory = PreviewViewMeteringPointFactory(previewTransformation)
 
         // Act.
-        meteringPointFactory.recalculate(previewViewSize, layoutDirection)
+        instrumentation.runOnMainSync {
+            meteringPointFactory.recalculate(previewViewSize, layoutDirection)
+        }
         val meteringPoint = meteringPointFactory.convertPoint(uiPoint.x, uiPoint.y)
 
         // Assert.

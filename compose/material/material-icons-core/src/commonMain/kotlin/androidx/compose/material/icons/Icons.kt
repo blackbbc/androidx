@@ -49,8 +49,8 @@ import androidx.compose.ui.unit.dp
  *
  * Note: Icons that start with a number, such as `360`, are prefixed with a '_', becoming '_360'.
  *
- * To draw an icon, you can use [androidx.compose.foundation.Icon]. This component applies tint and
- * provides layout size matching the icon.
+ * To draw an icon, you can use an [androidx.compose.material.Icon]. This component applies tint
+ * and provides layout size matching the icon.
  *
  * @sample androidx.compose.material.icons.samples.DrawIcon
  */
@@ -99,11 +99,14 @@ object Icons {
  * Utility delegate to construct a Material icon with default size information.
  * This is used by generated icons, and should not be used manually.
  *
+ * @param name the full name of the generated icon
  * @param block builder lambda to add paths to this vector asset
  */
 inline fun materialIcon(
+    name: String,
     block: VectorAssetBuilder.() -> VectorAssetBuilder
 ): VectorAsset = VectorAssetBuilder(
+    name = name,
     defaultWidth = MaterialIconDimension.dp,
     defaultHeight = MaterialIconDimension.dp,
     viewportWidth = MaterialIconDimension,

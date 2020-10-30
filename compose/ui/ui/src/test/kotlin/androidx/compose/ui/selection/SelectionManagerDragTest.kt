@@ -19,7 +19,6 @@ package androidx.compose.ui.selection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.style.ResolvedTextDirection
-import androidx.test.filters.SmallTest
 import com.google.common.truth.Truth.assertThat
 import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.doReturn
@@ -33,7 +32,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
-@SmallTest
 @RunWith(JUnit4::class)
 class SelectionManagerDragTest {
     private val selectionRegistrar = SelectionRegistrarImpl()
@@ -117,7 +115,6 @@ class SelectionManagerDragTest {
                 child = startLayoutCoordinates,
                 childLocal = getAdjustedCoordinates(Offset.Zero)
             )
-        verify_draggingHandle(expectedDraggingHandleValue = true)
         verify(spyLambda, times(0)).invoke(fakeResultSelection)
     }
 
@@ -130,7 +127,6 @@ class SelectionManagerDragTest {
                 child = endLayoutCoordinates,
                 childLocal = getAdjustedCoordinates(Offset.Zero)
             )
-        verify_draggingHandle(expectedDraggingHandleValue = true)
         verify(spyLambda, times(0)).invoke(fakeResultSelection)
     }
 
@@ -188,31 +184,7 @@ class SelectionManagerDragTest {
         assertThat(result).isEqualTo(dragDistance)
     }
 
-    @Test
-    fun handleDragObserver_onStop_disable_draggingHandle() {
-        selectionManager.handleDragObserver(false).onStart(Offset.Zero)
-        selectionManager.handleDragObserver(false).onDrag(Offset.Zero)
-
-        selectionManager.handleDragObserver(false).onStop(Offset.Zero)
-
-        verify_draggingHandle(expectedDraggingHandleValue = false)
-    }
-
     private fun getAdjustedCoordinates(position: Offset): Offset {
         return Offset(position.x, position.y - 1f)
-    }
-
-    private fun verify_draggingHandle(expectedDraggingHandleValue: Boolean) {
-        // Verify draggingHandle is true, by verifying LongPress does nothing. Vice Versa.
-        val position = Offset(100f, 100f)
-        selectionManager.longPressDragObserver.onLongPress(position)
-        verify(selectable, times(if (expectedDraggingHandleValue) 0 else 1))
-            .getSelection(
-                startPosition = position,
-                endPosition = position,
-                containerLayoutCoordinates = selectionManager.requireContainerCoordinates(),
-                longPress = true,
-                previousSelection = fakeInitialSelection
-            )
     }
 }

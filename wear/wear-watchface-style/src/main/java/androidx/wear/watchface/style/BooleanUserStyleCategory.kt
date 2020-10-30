@@ -19,19 +19,20 @@ package androidx.wear.watchface.style
 import android.graphics.drawable.Icon
 import androidx.annotation.RestrictTo
 import androidx.wear.watchface.style.data.BooleanUserStyleCategoryWireFormat
+import androidx.wear.watchface.style.data.BooleanUserStyleCategoryWireFormat.BooleanOptionWireFormat
 
 /** A BooleanUserStyleCategory represents a category with a true and a false setting. */
-class BooleanUserStyleCategory : UserStyleCategory {
+public class BooleanUserStyleCategory : UserStyleCategory {
 
-    constructor (
+    public constructor (
         /** Identifier for the element, must be unique. */
         id: String,
 
         /** Localized human readable name for the element, used in the userStyle selection UI. */
-        displayName: String,
+        displayName: CharSequence,
 
         /** Localized description string displayed under the displayName. */
-        description: String,
+        description: CharSequence,
 
         /** Icon for use in the userStyle selection UI. */
         icon: Icon?,
@@ -40,11 +41,9 @@ class BooleanUserStyleCategory : UserStyleCategory {
         defaultValue: Boolean,
 
         /**
-         * Used by the style configuration UI. Describes which rendering layer this style affects.
-         * Must be either 0 (for a style change with no visual effect, e.g. sound controls) or a
-         * combination of [LAYER_WATCH_FACE_BASE], [LAYER_COMPLICATONS], [LAYER_UPPER].
+         * Used by the style configuration UI. Describes which rendering layers this style affects.
          */
-        layerFlags: Int
+        affectsLayers: Collection<Layer>
     ) : super(
         id,
         displayName,
@@ -55,14 +54,14 @@ class BooleanUserStyleCategory : UserStyleCategory {
             true -> 0
             false -> 1
         },
-        layerFlags
+        affectsLayers
     )
 
     internal constructor(wireFormat: BooleanUserStyleCategoryWireFormat) : super(wireFormat)
 
     /** @hide */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-    override fun toWireFormat() =
+    override fun toWireFormat(): BooleanUserStyleCategoryWireFormat =
         BooleanUserStyleCategoryWireFormat(
             id,
             displayName,
@@ -70,31 +69,28 @@ class BooleanUserStyleCategory : UserStyleCategory {
             icon,
             getWireFormatOptionsList(),
             defaultOptionIndex,
-            layerFlags
+            affectsLayers.map { it.ordinal }
         )
 
     /**
      * Returns the default value.
      */
-    fun getDefaultValue() = (options[defaultOptionIndex] as BooleanOption).value
+    public fun getDefaultValue(): Boolean = (options[defaultOptionIndex] as BooleanOption).value
 
     /** Represents a true or false option in the [BooleanUserStyleCategory]. */
-    open class BooleanOption : Option {
-        val value: Boolean
+    public class BooleanOption : Option {
+        public val value: Boolean
 
-        constructor(value: Boolean) : super(value.toString()) {
+        public constructor(value: Boolean) : super(value.toString()) {
             this.value = value
         }
 
-        internal constructor(
-            wireFormat: BooleanUserStyleCategoryWireFormat.BooleanOptionWireFormat
-        ) : super(wireFormat.mId) {
+        internal constructor(wireFormat: BooleanOptionWireFormat) : super(wireFormat.mId) {
             value = wireFormat.mValue
         }
 
         /** @hide */
         @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-        override fun toWireFormat() =
-            BooleanUserStyleCategoryWireFormat.BooleanOptionWireFormat(id, value)
+        override fun toWireFormat(): BooleanOptionWireFormat = BooleanOptionWireFormat(id, value)
     }
 }

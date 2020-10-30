@@ -18,15 +18,13 @@ package androidx.compose.ui.gesture
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.anyPositionChangeConsumed
-import androidx.compose.ui.input.pointer.consume
+import androidx.compose.ui.input.pointer.consumePositionChange
 import androidx.compose.ui.input.pointer.down
 import androidx.compose.ui.input.pointer.invokeOverAllPasses
 import androidx.compose.ui.input.pointer.invokeOverPasses
 import androidx.compose.ui.input.pointer.moveBy
 import androidx.compose.ui.input.pointer.moveTo
-import androidx.compose.ui.input.pointer.pointerEventOf
 import androidx.compose.ui.input.pointer.up
 import androidx.compose.ui.unit.milliseconds
 import com.google.common.truth.Truth.assertThat
@@ -278,9 +276,9 @@ class RawScaleGestureFilterTest {
         scaleStartBlocked = false
 
         pointer1 =
-            pointer1.moveTo(10.milliseconds, 2f, 2f).consume(-1f, -2f)
+            pointer1.moveTo(10.milliseconds, 2f, 2f).apply { consumePositionChange(-1f, -2f) }
         pointer2 =
-            pointer2.moveTo(10.milliseconds, 5f, 1f).consume(1f, -2f)
+            pointer2.moveTo(10.milliseconds, 5f, 1f).apply { consumePositionChange(1f, -2f) }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer1, pointer2))
 
         assertThat(log.filter { it.methodName == "onStart" }).isEmpty()
@@ -329,7 +327,10 @@ class RawScaleGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer1, pointer2))
         scaleStartBlocked = false
 
-        pointer1 = pointer1.moveBy(10.milliseconds, dx = 0f, dy = 0f).consume(dx = -1f)
+        pointer1 =
+            pointer1.moveBy(10.milliseconds, dx = 0f, dy = 0f).apply {
+                consumePositionChange(-1f, 0f)
+            }
         pointer2 = pointer2.moveBy(10.milliseconds, dx = 0f, dy = 0f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer1, pointer2))
 
@@ -345,7 +346,10 @@ class RawScaleGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer1, pointer2))
         scaleStartBlocked = false
 
-        pointer1 = pointer1.moveBy(10.milliseconds, dx = 0f, dy = 0f).consume(dy = -1f)
+        pointer1 =
+            pointer1
+                .moveBy(10.milliseconds, dx = 0f, dy = 0f)
+                .apply { consumePositionChange(0f, -1f) }
         pointer2 = pointer2.moveBy(10.milliseconds, dx = 0f, dy = 0f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer1, pointer2))
 
@@ -587,17 +591,19 @@ class RawScaleGestureFilterTest {
 
     @Test
     fun onPointerEvent_1down_downNotConsumed() {
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down(0)))
-        assertThat(result.changes.first().consumed.downChange).isFalse()
+        val down = down(0)
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down))
+        assertThat(down.consumed.downChange).isFalse()
     }
 
     @Test
     fun onPointerEvent_2Down_downNotConsumed() {
         val down1 = down(0, x = 1f, y = 1f)
         val down2 = down(1, x = 2f, y = 2f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down1, down2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down1, down2))
 
-        assertThat(result.changes.count { !it.consumed.downChange }).isEqualTo(2)
+        assertThat(down1.consumed.downChange).isFalse()
+        assertThat(down2.consumed.downChange).isFalse()
     }
 
     @Test
@@ -609,9 +615,10 @@ class RawScaleGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 3f, 3f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes.count { !it.anyPositionChangeConsumed() }).isEqualTo(2)
+        assertThat(change1.anyPositionChangeConsumed()).isFalse()
+        assertThat(change2.anyPositionChangeConsumed()).isFalse()
     }
 
     @Test
@@ -622,9 +629,10 @@ class RawScaleGestureFilterTest {
         scaleStartBlocked = false
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 3f, 3f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes.count { !it.anyPositionChangeConsumed() }).isEqualTo(2)
+        assertThat(change1.anyPositionChangeConsumed()).isFalse()
+        assertThat(change2.anyPositionChangeConsumed()).isFalse()
     }
 
     @Test
@@ -637,9 +645,10 @@ class RawScaleGestureFilterTest {
         scaleStartBlocked = false
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 3f, 3f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes.count { !it.anyPositionChangeConsumed() }).isEqualTo(2)
+        assertThat(change1.anyPositionChangeConsumed()).isFalse()
+        assertThat(change2.anyPositionChangeConsumed()).isFalse()
     }
 
     @Test
@@ -655,7 +664,7 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 6f, 0f)
         scaleObserver.resultingScaleChange = 2f
-        var result = filter::onPointerEvent.invokeOverPasses(
+        filter::onPointerEvent.invokeOverPasses(
             pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
@@ -663,27 +672,13 @@ class RawScaleGestureFilterTest {
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-            result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-1f, 0f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(1f, 0f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(-1f, 0f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(1f, 0f))
     }
 
     @Test
@@ -699,7 +694,7 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 0f, 6f)
         scaleObserver.resultingScaleChange = 2f
-        var result = filter::onPointerEvent.invokeOverPasses(
+        filter::onPointerEvent.invokeOverPasses(
             pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
@@ -707,27 +702,13 @@ class RawScaleGestureFilterTest {
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, -1f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, 1f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(0f, -1f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(0f, 1f))
     }
 
     @Test
@@ -740,24 +721,10 @@ class RawScaleGestureFilterTest {
         scaleStartBlocked = false
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 3f, 3f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-1f, -1f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(1f, 1f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(-1f, -1f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(1f, 1f))
     }
 
     @Test
@@ -773,35 +740,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 2f, 0f)
         change2 = change2.moveTo(10.milliseconds, 6f, 0f)
         scaleObserver.resultingScaleChange = .75f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(1f, 0f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-1f, 0f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(1f, 0f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(-1f, 0f))
     }
 
     @Test
@@ -817,35 +770,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, 2f)
         change2 = change2.moveTo(10.milliseconds, 0f, 6f)
         scaleObserver.resultingScaleChange = .75f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, 1f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, -1f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(0f, 1f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(0f, -1f))
     }
 
     @Test
@@ -858,10 +797,10 @@ class RawScaleGestureFilterTest {
         scaleStartBlocked = false
         change1 = change1.moveTo(10.milliseconds, 2f, 2f)
         change2 = change2.moveTo(10.milliseconds, 6f, 6f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes[0].consumed.positionChange).isEqualTo(Offset(2f, 2f))
-        assertThat(result.changes[1].consumed.positionChange).isEqualTo(Offset(-2f, -2f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(2f, 2f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(-2f, -2f))
     }
 
     @Test
@@ -877,37 +816,22 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 2f, 0f)
         change2 = change2.moveTo(10.milliseconds, 8f, 0f)
         scaleObserver.resultingScaleChange = 2f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(
-                result, listOf(PointerEventPass.Final)
-            )
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2), listOf(PointerEventPass.Final)
+        )
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-1f, 0f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(1f, 0f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(-1f, 0f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(1f, 0f))
     }
 
     @Test
@@ -923,35 +847,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, 2f)
         change2 = change2.moveTo(10.milliseconds, 0f, 8f)
         scaleObserver.resultingScaleChange = 2f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, -1f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, 1f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(0f, -1f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(0f, 1f))
     }
 
     @Test
@@ -967,35 +877,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 4f, 0f)
         scaleObserver.resultingScaleChange = .75f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(1f, 0f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-1f, 0f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(1f, 0f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(-1f, 0f))
     }
 
     @Test
@@ -1011,35 +907,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, 0f)
         change2 = change2.moveTo(10.milliseconds, 0f, 4f)
         scaleObserver.resultingScaleChange = .75f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, 1f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(0f, -1f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(0f, 1f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(0f, -1f))
     }
 
     @Test
@@ -1055,35 +937,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, -3f)
         change2 = change2.moveTo(10.milliseconds, 0f, 3f)
         scaleObserver.resultingScaleChange = 2f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(.5f, -1.5f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-.5f, 1.5f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(.5f, -1.5f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(-.5f, 1.5f))
     }
 
     @Test
@@ -1099,35 +967,21 @@ class RawScaleGestureFilterTest {
         change1 = change1.moveTo(10.milliseconds, 0f, -2f)
         change2 = change2.moveTo(10.milliseconds, 0f, 2f)
         scaleObserver.resultingScaleChange = .75f
-        var result = filter::onPointerEvent.invokeOverPasses(
-                pointerEventOf(change1, change2),
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change1, change2),
             listOf(
                 PointerEventPass.Initial,
                 PointerEventPass.Main
             )
         )
         scaleObserver.resultingScaleChange = 1f
-        result = filter::onPointerEvent
-            .invokeOverPasses(result, listOf(PointerEventPass.Final))
+        filter::onPointerEvent
+            .invokeOverPasses(pointerEventOf(change1, change2), listOf(PointerEventPass.Final))
 
         // Assert
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(2f, -1f))
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    1
-                )
-            }.consumed.positionChange
-        )
-            .isEqualTo(Offset(-2f, 1f))
+        assertThat(change1.consumed.positionChange).isEqualTo(Offset(2f, -1f))
+        assertThat(change2.consumed.positionChange).isEqualTo(Offset(-2f, 1f))
     }
 
     @Test
@@ -1142,9 +996,10 @@ class RawScaleGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
         change1 = change1.up(20.milliseconds)
         change2 = change2.up(20.milliseconds)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes.count { it.consumed.downChange }).isEqualTo(0)
+        assertThat(change1.consumed.downChange).isEqualTo(false)
+        assertThat(change2.consumed.downChange).isEqualTo(false)
     }
 
     @Test
@@ -1157,9 +1012,10 @@ class RawScaleGestureFilterTest {
         scaleStartBlocked = false
         change1 = change1.up(20.milliseconds)
         change2 = change2.up(20.milliseconds)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes.count { it.consumed.downChange }).isEqualTo(0)
+        assertThat(change1.consumed.downChange).isEqualTo(false)
+        assertThat(change2.consumed.downChange).isEqualTo(false)
     }
 
     @Test
@@ -1173,15 +1029,9 @@ class RawScaleGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
         change1 = change1.up(20.milliseconds)
         change2 = change2.moveTo(20.milliseconds, 3f, 3f)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(
-                result.changes.first {
-                it.id == PointerId(
-                    0
-                )
-            }.consumed.downChange
-        ).isTrue()
+        assertThat(change1.consumed.downChange).isEqualTo(true)
     }
 
     @Test
@@ -1195,9 +1045,10 @@ class RawScaleGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
         change1 = change1.up(20.milliseconds)
         change2 = change2.up(20.milliseconds)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change1, change2))
 
-        assertThat(result.changes.count { it.consumed.downChange }).isEqualTo(2)
+        assertThat(change1.consumed.downChange).isEqualTo(true)
+        assertThat(change2.consumed.downChange).isEqualTo(true)
     }
 
     // Tests that verify when onCancel should not be called.

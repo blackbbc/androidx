@@ -18,6 +18,7 @@ package androidx.compose.compiler.plugins.kotlin
 
 import androidx.compose.compiler.plugins.kotlin.lower.ComposableFunctionBodyTransformer
 import androidx.compose.compiler.plugins.kotlin.lower.ComposerIntrinsicTransformer
+import androidx.compose.compiler.plugins.kotlin.lower.ComposableFunInterfaceLowering
 import androidx.compose.compiler.plugins.kotlin.lower.ComposerLambdaMemoization
 import androidx.compose.compiler.plugins.kotlin.lower.ComposerParamTransformer
 import androidx.compose.compiler.plugins.kotlin.lower.DurableKeyVisitor
@@ -33,7 +34,8 @@ import org.jetbrains.kotlin.resolve.DelegatingBindingTrace
 
 class ComposeIrGenerationExtension(
     @Suppress("unused") private val liveLiteralsEnabled: Boolean = false,
-    private val sourceInformationEnabled: Boolean = true
+    private val sourceInformationEnabled: Boolean = true,
+    private val intrinsicRememberEnabled: Boolean = false,
 ) : IrGenerationExtension {
     override fun generate(
         moduleFragment: IrModuleFragment,
@@ -62,6 +64,8 @@ class ComposeIrGenerationExtension(
             bindingTrace
         ).lower(moduleFragment)
 
+        ComposableFunInterfaceLowering(pluginContext).lower(moduleFragment)
+
         // Memoize normal lambdas and wrap composable lambdas
         ComposerLambdaMemoization(pluginContext, symbolRemapper, bindingTrace).lower(moduleFragment)
 
@@ -84,7 +88,8 @@ class ComposeIrGenerationExtension(
             pluginContext,
             symbolRemapper,
             bindingTrace,
-            sourceInformationEnabled
+            sourceInformationEnabled,
+            intrinsicRememberEnabled
         ).lower(moduleFragment)
 
         generateSymbols(pluginContext)

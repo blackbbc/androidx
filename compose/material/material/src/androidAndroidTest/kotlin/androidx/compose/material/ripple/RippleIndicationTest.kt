@@ -17,10 +17,10 @@
 package androidx.compose.material.ripple
 
 import android.os.Build
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.Interaction
 import androidx.compose.foundation.InteractionState
 import androidx.compose.foundation.indication
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.preferredHeight
@@ -44,23 +44,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.AndroidXScreenshotTestRule
 import androidx.test.screenshot.assertAgainstGolden
-import androidx.ui.test.ComposeTestRuleJUnit
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
 import com.google.common.truth.Truth
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @LargeTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterialApi::class)
 class RippleIndicationTest {
@@ -645,7 +645,7 @@ private fun RippleBox(interactionState: InteractionState, rippleIndication: Ripp
  * @param lightTheme whether the theme is light or dark
  * @param contentColor the contentColor that will be used for the ripple color
  */
-private fun ComposeTestRuleJUnit.setRippleContent(
+private fun ComposeTestRule.setRippleContent(
     interactionState: InteractionState,
     bounded: Boolean,
     lightTheme: Boolean,

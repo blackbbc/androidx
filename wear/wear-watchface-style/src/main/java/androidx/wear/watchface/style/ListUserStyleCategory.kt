@@ -19,20 +19,21 @@ package androidx.wear.watchface.style
 import android.graphics.drawable.Icon
 import androidx.annotation.RestrictTo
 import androidx.wear.watchface.style.data.ListUserStyleCategoryWireFormat
+import androidx.wear.watchface.style.data.ListUserStyleCategoryWireFormat.ListOptionWireFormat
 
 /** A ListStyleCategory represents a category with options selected from a List. */
-open class ListUserStyleCategory : UserStyleCategory {
+public open class ListUserStyleCategory : UserStyleCategory {
 
     @JvmOverloads
-    constructor (
+    public constructor (
         /** Identifier for the element, must be unique. */
         id: String,
 
         /** Localized human readable name for the element, used in the userStyle selection UI. */
-        displayName: String,
+        displayName: CharSequence,
 
         /** Localized description string displayed under the displayName. */
-        description: String,
+        description: CharSequence,
 
         /** Icon for use in the userStyle selection UI. */
         icon: Icon?,
@@ -41,11 +42,9 @@ open class ListUserStyleCategory : UserStyleCategory {
         options: List<ListOption>,
 
         /**
-         * Used by the style configuration UI. Describes which rendering layer this style affects.
-         * Must be either 0 (for a style change with no visual effect, e.g. sound controls) or a
-         * combination of [LAYER_WATCH_FACE_BASE], [LAYER_COMPLICATONS], [LAYER_UPPER].
+         * Used by the style configuration UI. Describes which rendering layers this style affects.
          */
-        layerFlags: Int,
+        affectsLayers: Collection<Layer>,
 
         /** The default option, used when data isn't persisted. */
         defaultOption: ListOption = options.first()
@@ -56,14 +55,14 @@ open class ListUserStyleCategory : UserStyleCategory {
         icon,
         options,
         options.indexOf(defaultOption),
-        layerFlags
+        affectsLayers
     )
 
     internal constructor(wireFormat: ListUserStyleCategoryWireFormat) : super(wireFormat)
 
     /** @hide */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-    override fun toWireFormat() =
+    override fun toWireFormat(): ListUserStyleCategoryWireFormat =
         ListUserStyleCategoryWireFormat(
             id,
             displayName,
@@ -71,34 +70,32 @@ open class ListUserStyleCategory : UserStyleCategory {
             icon,
             getWireFormatOptionsList(),
             defaultOptionIndex,
-            layerFlags
+            affectsLayers.map { it.ordinal }
         )
 
     /**
      * Represents choice within a [ListUserStyleCategory], these must be enumerated up front.
      */
-    open class ListOption : Option {
+    public class ListOption : Option {
         /** Localized human readable name for the setting, used in the style selection UI. */
-        val displayName: String
+        public val displayName: CharSequence
 
         /** Icon for use in the style selection UI. */
-        val icon: Icon?
+        public val icon: Icon?
 
-        constructor(id: String, displayName: String, icon: Icon?) : super(id) {
+        public constructor(id: String, displayName: CharSequence, icon: Icon?) : super(id) {
             this.displayName = displayName
             this.icon = icon
         }
 
-        internal constructor(
-            wireFormat: ListUserStyleCategoryWireFormat.ListOptionWireFormat
-        ) : super(wireFormat.mId) {
+        internal constructor(wireFormat: ListOptionWireFormat) : super(wireFormat.mId) {
             displayName = wireFormat.mDisplayName
             icon = wireFormat.mIcon
         }
 
         /** @hide */
         @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-        override fun toWireFormat() =
-            ListUserStyleCategoryWireFormat.ListOptionWireFormat(id, displayName, icon)
+        override fun toWireFormat(): ListOptionWireFormat =
+            ListOptionWireFormat(id, displayName, icon)
     }
 }

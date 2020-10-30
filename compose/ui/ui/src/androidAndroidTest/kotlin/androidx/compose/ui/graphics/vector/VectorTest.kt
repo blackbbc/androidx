@@ -18,9 +18,9 @@ package androidx.compose.ui.graphics.vector
 
 import android.graphics.Bitmap
 import android.os.Build
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.preferredHeight
 import androidx.compose.foundation.layout.preferredSize
 import androidx.compose.foundation.layout.preferredWidth
@@ -39,24 +39,24 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.test.filters.SmallTest
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
-import androidx.ui.test.onRoot
-import androidx.ui.test.performClick
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import java.util.concurrent.CountDownLatch
 
-@SmallTest
-@RunWith(JUnit4::class)
+@MediumTest
+@RunWith(AndroidJUnit4::class)
 class VectorTest {
 
     @get:Rule
@@ -274,20 +274,21 @@ class VectorTest {
     private fun createTestVectorPainter(size: Int = 200): VectorPainter {
         val sizePx = size.toFloat()
         val sizeDp = (size / DensityAmbient.current.density).dp
-        return VectorPainter(
+        return rememberVectorPainter(
             defaultWidth = sizeDp,
-            defaultHeight = sizeDp
-        ) { _, _ ->
-            Path(
-                pathData = PathData {
-                    lineTo(sizePx, 0.0f)
-                    lineTo(sizePx, sizePx)
-                    lineTo(0.0f, sizePx)
-                    close()
-                },
-                fill = SolidColor(Color.Black)
-            )
-        }
+            defaultHeight = sizeDp,
+            children = { _, _ ->
+                Path(
+                    pathData = PathData {
+                        lineTo(sizePx, 0.0f)
+                        lineTo(sizePx, sizePx)
+                        lineTo(0.0f, sizePx)
+                        close()
+                    },
+                    fill = SolidColor(Color.Black)
+                )
+            }
+        )
     }
 
     @Composable
@@ -299,7 +300,7 @@ class VectorTest {
         val sizePx = size.toFloat()
         val sizeDp = (size / DensityAmbient.current.density).dp
         val background = Modifier.paint(
-            VectorPainter(
+            rememberVectorPainter(
                 defaultWidth = sizeDp,
                 defaultHeight = sizeDp
             ) { _, _ ->
@@ -352,7 +353,7 @@ class VectorTest {
         val sizePx = size.toFloat()
         val sizeDp = (size / DensityAmbient.current.density).dp
         val background = Modifier.paint(
-            VectorPainter(
+            rememberVectorPainter(
                 defaultWidth = sizeDp,
                 defaultHeight = sizeDp
             ) { _, _ ->

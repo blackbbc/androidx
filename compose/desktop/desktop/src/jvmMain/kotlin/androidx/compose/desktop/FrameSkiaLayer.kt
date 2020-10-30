@@ -16,6 +16,9 @@
 
 package androidx.compose.desktop
 
+import androidx.compose.ui.platform.DesktopComponent
+import androidx.compose.ui.platform.FrameDispatcher
+import androidx.compose.ui.unit.Density
 import org.jetbrains.skija.Canvas
 import org.jetbrains.skija.Picture
 import org.jetbrains.skija.PictureRecorder
@@ -23,6 +26,8 @@ import org.jetbrains.skija.Rect
 import org.jetbrains.skiko.SkiaLayer
 import org.jetbrains.skiko.SkiaRenderer
 import java.awt.DisplayMode
+import java.awt.event.FocusEvent
+import java.awt.im.InputMethodRequests
 
 internal class FrameSkiaLayer {
     var renderer: Renderer? = null
@@ -37,23 +42,55 @@ internal class FrameSkiaLayer {
     private val picture = MutableResource<Picture>()
     private val pictureRecorder = PictureRecorder()
 
-    private fun onFrame(nanoTime: Long) {
+    private suspend fun onFrame(nanoTime: Long) {
         this.frameNanoTime = nanoTime
+        preparePicture(frameNanoTime)
         wrapped.redrawLayer()
     }
 
-    val wrapped = object : SkiaLayer() {
-        override fun redrawLayer() {
-            preparePicture(frameNanoTime)
-            super.redrawLayer()
+    var onDensityChanged: ((Density) -> Unit)? = null
+
+    private var _density: Density? = null
+    val density
+        get() = _density ?: detectCurrentDensity().also {
+            _density = it
         }
+
+    inner class Wrapped : SkiaLayer(), DesktopComponent {
+        var currentInputMethodRequests: InputMethodRequests? = null
+
+        override fun getInputMethodRequests() = currentInputMethodRequests
+
+        override fun enableInput(inputMethodRequests: InputMethodRequests) {
+            currentInputMethodRequests = inputMethodRequests
+            enableInputMethods(true)
+            val focusGainedEvent = FocusEvent(this, FocusEvent.FOCUS_GAINED)
+            inputContext.dispatchEvent(focusGainedEvent)
+        }
+
+        override fun disableInput() {
+            currentInputMethodRequests = null
+        }
+
+        override fun locationOnScreen() = locationOnScreen
+
+        override fun scaleCanvas(dpi: Float) {}
     }
+
+    val wrapped = Wrapped()
 
     init {
         wrapped.renderer = object : SkiaRenderer {
             override fun onRender(canvas: Canvas, width: Int, height: Int) {
-                picture.useWithoutClosing {
-                    it?.also(canvas::drawPicture)
+                try {
+                    picture.useWithoutClosing {
+                        it?.also(canvas::drawPicture)
+                    }
+                } catch (e: Throwable) {
+                    e.printStackTrace(System.err)
+                    if (System.getProperty("compose.desktop.render.ignore.errors") == null) {
+                        System.exit(1)
+                    }
                 }
             }
 
@@ -66,21 +103,40 @@ internal class FrameSkiaLayer {
     // We draw into picture, because SkiaLayer.draw can be called from the other thread,
     // but onRender should be called in AWT thread. Picture doesn't add any visible overhead on
     // CPU/RAM.
-    private fun preparePicture(frameTimeNanos: Long) {
-        val bounds = Rect.makeWH(wrapped.width.toFloat(), wrapped.height.toFloat())
+    private suspend fun preparePicture(frameTimeNanos: Long) {
+        val bounds = Rect.makeWH(wrapped.width * density.density, wrapped.height * density.density)
         val pictureCanvas = pictureRecorder.beginRecording(bounds)
-        renderer?.onRender(pictureCanvas, wrapped.width, wrapped.height, frameTimeNanos)
+        renderer?.onFrame(
+            pictureCanvas,
+            (wrapped.width * density.density).toInt(),
+            (wrapped.height * density.density).toInt(),
+            frameTimeNanos
+        )
         picture.set(pictureRecorder.finishRecordingAsPicture())
     }
 
     fun reinit() {
+        val currentDensity = detectCurrentDensity()
+        if (_density != currentDensity) {
+            _density = currentDensity
+            onDensityChanged?.invoke(density)
+        }
         check(!isDisposed)
         wrapped.reinit()
     }
 
-    private fun getFramesPerSecond(): Int {
+    // TODO(demin): detect OS fontScale
+    //  font size can be changed on Windows 10 in Settings - Ease of Access,
+    //  on Ubuntu in Settings - Universal Access
+    //  on macOS there is no such setting
+    private fun detectCurrentDensity(): Density {
+        val density = wrapped.graphicsConfiguration.defaultTransform.scaleX.toFloat()
+        return Density(density, 1f)
+    }
+
+    private fun getFramesPerSecond(): Float {
         val refreshRate = wrapped.graphicsConfiguration.device.displayMode.refreshRate
-        return if (refreshRate != DisplayMode.REFRESH_RATE_UNKNOWN) refreshRate else 60
+        return if (refreshRate != DisplayMode.REFRESH_RATE_UNKNOWN) refreshRate.toFloat() else 60f
     }
 
     fun updateLayer() {
@@ -104,6 +160,6 @@ internal class FrameSkiaLayer {
     }
 
     interface Renderer {
-        fun onRender(canvas: Canvas, width: Int, height: Int, nanoTime: Long)
+        suspend fun onFrame(canvas: Canvas, width: Int, height: Int, nanoTime: Long)
     }
 }

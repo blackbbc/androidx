@@ -53,6 +53,7 @@ import androidx.test.rule.GrantPermissionRule;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import org.junit.AssumptionViolatedException;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
@@ -565,20 +566,36 @@ public final class CameraUtil {
      * (3) Test the camera can be opened successfully.
      *
      * <p>This method will set {@link PreTestCamera} to throw an exception when the camera is
-     * unavailable if PRETEST_CAMERA_TAG is loggable at the debug level (see
-     * androidx.camera.core.Logger#isDebugEnabled()).
+     * unavailable if PRETEST_CAMERA_TAG is loggable at the debug level (see Log#isLoggable).
      */
     @NonNull
     public static RuleChain grantCameraPermissionAndPreTest() {
-        return RuleChain.outerRule(GrantPermissionRule.grant(Manifest.permission.CAMERA)).around(
+        RuleChain rule =
+                RuleChain.outerRule(GrantPermissionRule.grant(Manifest.permission.CAMERA)).around(
                 (base, description) -> new Statement() {
                     @Override
                     public void evaluate() throws Throwable {
+                        dumpCameraLensFacingInfo();
                         assumeTrue(deviceHasCamera());
                         base.evaluate();
                     }
-                }).around(
-                new CameraUtil.PreTestCamera(Log.isLoggable(PRETEST_CAMERA_TAG, Log.DEBUG)));
+                });
+        if (shouldRunPreTest()) {
+            rule = rule.around(
+                    new CameraUtil.PreTestCamera(Log.isLoggable(PRETEST_CAMERA_TAG, Log.DEBUG)));
+        }
+        return rule;
+    }
+
+    private static boolean shouldRunPreTest() {
+        if (Build.MODEL.contains("pixel 2") && Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            // TODO(b/170070248) Pixel 2 HAL died easily if the pretest and CameraX open the
+            //  camera device at the same time. Remove the code after the pixel 2 issue fixed.
+            Logger.d(LOG_TAG, "Skip camera pretest (b/170070248)");
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -628,12 +645,11 @@ public final class CameraUtil {
                         if (mThrowOnError) {
                             throw new RuntimeException(
                                     "CameraX_cannot_test_with_failed_camera, model:" + Build.MODEL);
-                        } else {
-                            // Ignore the test, so we only print a log without calling
-                            Logger.w(LOG_TAG,
-                                    "Camera fail, on test " + description.getDisplayName());
-                            base.evaluate();
                         }
+
+                        // Ignore the test, throw the AssumptionViolatedException.
+                        throw new AssumptionViolatedException("Ignore the test since the camera "
+                                + "failed, on test " + description.getDisplayName());
                     }
                 }
             };
@@ -818,5 +834,72 @@ public final class CameraUtil {
                 }
             }
         }
+    }
+
+    /**
+     * Log the camera lensFacing info for b/167201193 debug.
+     * Throw exception with a specific message if the Camera doesn't have both front/back lens
+     * facing in the daily testing.
+     */
+    static void dumpCameraLensFacingInfo() {
+        boolean error = false;
+
+        CameraManager manager =
+                (CameraManager) ApplicationProvider.getApplicationContext().getSystemService(
+                        Context.CAMERA_SERVICE);
+        String[] cameraIds = new String[0];
+        try {
+            cameraIds = manager.getCameraIdList();
+            Logger.d(LOG_TAG, "ids: " + Arrays.toString(cameraIds));
+        } catch (CameraAccessException e) {
+            error = true;
+            Logger.e(LOG_TAG, "Cannot find default camera id");
+        }
+
+        if (cameraIds != null && cameraIds.length > 0) {
+            List<String> ids = Arrays.asList(cameraIds);
+            boolean hasFront = false;
+            boolean hasBack = false;
+            for (String id : cameraIds) {
+                Logger.d(LOG_TAG, "++ Camera id: " + id);
+                try {
+                    CameraCharacteristics c = manager.getCameraCharacteristics(id);
+                    Logger.d(LOG_TAG, id + " character: " + c);
+                    if (c != null) {
+                        Integer lensFacing = c.get(CameraCharacteristics.LENS_FACING);
+                        Logger.d(LOG_TAG, id + " lensFacing: " + lensFacing);
+                        if (lensFacing == CameraCharacteristics.LENS_FACING_BACK) {
+                            hasBack = true;
+                        }
+                        if (lensFacing == CameraCharacteristics.LENS_FACING_FRONT) {
+                            hasFront = true;
+                        }
+                    }
+                } catch (Throwable t) {
+                    Logger.d(LOG_TAG, id + ", failed to get CameraCharacteristics", t);
+                }
+                Logger.d(LOG_TAG, "-- Camera id: " + id);
+            }
+
+            if (!ids.contains("0") || !ids.contains("1")) {
+                error = true;
+                Logger.e(LOG_TAG,
+                        "Camera Id 0 or 1 is missing,  ids: " + Arrays.toString(cameraIds));
+            }
+
+            if (!hasFront || !hasBack) {
+                Logger.e(LOG_TAG,
+                        "Missing front or back camera, has front camera: " + hasFront + ", has "
+                                + "back camera: " + hasBack);
+            }
+        } else {
+            error = true;
+            Logger.e(LOG_TAG, "cameraIds.length is zero");
+        }
+
+        if (error && Log.isLoggable("CameraXDumpIdList", Log.DEBUG)) {
+            throw new IllegalArgumentException("CameraIdList_incorrect:" + Build.MODEL);
+        }
+
     }
 }

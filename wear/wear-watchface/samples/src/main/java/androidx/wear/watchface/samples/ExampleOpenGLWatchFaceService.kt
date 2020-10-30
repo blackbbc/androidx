@@ -27,20 +27,23 @@ import android.support.wearable.complications.ComplicationData
 import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
+import androidx.wear.complications.DefaultComplicationProviderPolicy
 import androidx.wear.complications.SystemProviders
 import androidx.wear.watchface.Complication
 import androidx.wear.watchface.ComplicationsManager
 import androidx.wear.watchface.DrawMode
 import androidx.wear.watchface.GlesRenderer
 import androidx.wear.watchface.GlesTextureComplication
+import androidx.wear.watchface.LayerMode
 import androidx.wear.watchface.WatchFace
 import androidx.wear.watchface.WatchFaceHost
 import androidx.wear.watchface.WatchFaceService
 import androidx.wear.watchface.WatchFaceType
 import androidx.wear.watchface.WatchState
+import androidx.wear.watchface.style.Layer
 import androidx.wear.watchface.style.ListUserStyleCategory
-import androidx.wear.watchface.style.UserStyleCategory
 import androidx.wear.watchface.style.UserStyleRepository
+import androidx.wear.watchface.style.UserStyleSchema
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -93,10 +96,9 @@ class ExampleOpenGLWatchFaceService() : WatchFaceService() {
                     Icon.createWithResource(this, R.drawable.green_style)
                 )
             ),
-            UserStyleCategory.LAYER_FLAG_WATCH_FACE_BASE or
-                UserStyleCategory.LAYER_FLAG_WATCH_FACE_UPPER
+            listOf(Layer.BASE_LAYER, Layer.TOP_LAYER)
         )
-        val userStyleRepository = UserStyleRepository(listOf(colorStyleCategory))
+        val userStyleRepository = UserStyleRepository(UserStyleSchema(listOf(colorStyleCategory)))
         val complicationSlots = ComplicationsManager(
             listOf(
                 Complication.Builder(
@@ -109,11 +111,12 @@ class ExampleOpenGLWatchFaceService() : WatchFaceService() {
                         ComplicationData.TYPE_ICON,
                         ComplicationData.TYPE_SMALL_IMAGE
                     ),
-                    Complication.DefaultComplicationProviderPolicy(SystemProviders.DAY_OF_WEEK)
+                    DefaultComplicationProviderPolicy(SystemProviders.DAY_OF_WEEK)
                 ).setUnitSquareBounds(RectF(0.2f, 0.7f, 0.4f, 0.9f))
                     .setDefaultProviderType(ComplicationData.TYPE_SHORT_TEXT)
                     .build()
-            )
+            ),
+            userStyleRepository
         )
         val renderer = ExampleOpenGLRenderer(
             surfaceHolder,
@@ -130,7 +133,7 @@ class ExampleOpenGLWatchFaceService() : WatchFaceService() {
             renderer,
             watchFaceHost,
             watchState
-        ).setStatusBarGravity(Gravity.RIGHT or Gravity.TOP).build()
+        ).setWear2StatusBarGravity(Gravity.RIGHT or Gravity.TOP).build()
     }
 }
 
@@ -221,7 +224,8 @@ class ExampleOpenGLRenderer(
                 createHand(
                     coloredTriangleProgram,
                     0.02f /* width */,
-                    1.0f /* height */, floatArrayOf(
+                    1.0f /* height */,
+                    floatArrayOf(
                         1.0f /* red */,
                         0.0f /* green */,
                         0.0f /* blue */,
@@ -232,7 +236,8 @@ class ExampleOpenGLRenderer(
                 createHand(
                     coloredTriangleProgram,
                     0.02f /* width */,
-                    1.0f /* height */, floatArrayOf(
+                    1.0f /* height */,
+                    floatArrayOf(
                         0.0f /* red */,
                         1.0f /* green */,
                         0.0f /* blue */,
@@ -243,7 +248,8 @@ class ExampleOpenGLRenderer(
         minuteHandTriangle = createHand(
             coloredTriangleProgram,
             0.06f /* width */,
-            1f /* height */, floatArrayOf(
+            1f /* height */,
+            floatArrayOf(
                 0.7f /* red */,
                 0.7f /* green */,
                 0.7f /* blue */,
@@ -253,7 +259,8 @@ class ExampleOpenGLRenderer(
         hourHandTriangle = createHand(
             coloredTriangleProgram,
             0.1f /* width */,
-            0.6f /* height */, floatArrayOf(
+            0.6f /* height */,
+            floatArrayOf(
                 0.9f /* red */,
                 0.9f /* green */,
                 0.9f /* blue */,
@@ -381,7 +388,8 @@ class ExampleOpenGLRenderer(
             )
         }
         return Gles2ColoredTriangleList(
-            program, trianglesCoords, floatArrayOf(
+            program, trianglesCoords,
+            floatArrayOf(
                 1.0f /* red */,
                 1.0f /* green */,
                 1.0f /* blue */,
@@ -417,7 +425,8 @@ class ExampleOpenGLRenderer(
             index += 9
         }
         return Gles2ColoredTriangleList(
-            program, trianglesCoords, floatArrayOf(
+            program, trianglesCoords,
+            floatArrayOf(
                 0.5f /* red */,
                 0.5f /* green */,
                 0.5f /* blue */,
@@ -547,11 +556,11 @@ class ExampleOpenGLRenderer(
         // Draw background color and select the appropriate view projection matrix. The background
         // should always be black in ambient mode. The view projection matrix used is overhead in
         // ambient. In interactive mode, it's tilted depending on the current time.
-        val vpMatrix = if (drawMode == DrawMode.AMBIENT) {
+        val vpMatrix = if (renderParameters.drawMode == DrawMode.AMBIENT) {
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             ambientVpMatrix
         } else {
-            when (userStyleRepository.userStyle.options[colorStyleCategory]!!.id) {
+            when (userStyleRepository.userStyle.selectedOptions[colorStyleCategory]!!.id) {
                 "red_style" -> GLES20.glClearColor(0.5f, 0.2f, 0.2f, 1f)
                 "green_style" -> GLES20.glClearColor(0.2f, 0.5f, 0.2f, 1f)
             }
@@ -561,8 +570,9 @@ class ExampleOpenGLRenderer(
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
         // Draw the complication first.
-        if (drawMode != DrawMode.BASE_WATCHFACE && drawMode != DrawMode.UPPER_LAYER) {
-            complicationTexture.renderToTexture(calendar, drawMode)
+        // TODO(alexclarke): Implement LayerMode.DRAW_HIGHLIGHTED
+        if (renderParameters.layerParameters[Layer.COMPLICATIONS] != LayerMode.HIDE) {
+            complicationTexture.renderToTexture(calendar, renderParameters)
 
             textureTriangleProgram.bindProgramAndAttribs()
             complicationTexture.bind()
@@ -585,7 +595,8 @@ class ExampleOpenGLRenderer(
         val minIndex = (minutes / 60f * 360f).toInt()
         val hoursIndex = (hours / 12f * 360f).toInt()
 
-        if (drawMode != DrawMode.BASE_WATCHFACE) {
+        // Render hands.
+        if (renderParameters.layerParameters[Layer.TOP_LAYER] != LayerMode.HIDE) {
             Matrix.multiplyMM(
                 mvpMatrix,
                 0,
@@ -605,22 +616,24 @@ class ExampleOpenGLRenderer(
                 0
             )
             minuteHandTriangle.draw(mvpMatrix)
+
+            if (renderParameters.drawMode != DrawMode.AMBIENT) {
+                Matrix.multiplyMM(
+                    mvpMatrix,
+                    0,
+                    vpMatrix,
+                    0,
+                    modelMatrices[secIndex],
+                    0
+                )
+                secondHandTriangleMap[
+                    userStyleRepository.userStyle.selectedOptions[colorStyleCategory]!!.id
+                ]
+                    ?.draw(mvpMatrix)
+            }
         }
 
-        if (drawMode != DrawMode.AMBIENT && drawMode != DrawMode.BASE_WATCHFACE) {
-            Matrix.multiplyMM(
-                mvpMatrix,
-                0,
-                vpMatrix,
-                0,
-                modelMatrices[secIndex],
-                0
-            )
-            secondHandTriangleMap[userStyleRepository.userStyle.options[colorStyleCategory]!!.id]
-                ?.draw(mvpMatrix)
-        }
-
-        if (drawMode != DrawMode.UPPER_LAYER) {
+        if (renderParameters.layerParameters[Layer.BASE_LAYER] != LayerMode.HIDE) {
             majorTickTriangles.draw(vpMatrix)
             minorTickTriangles.draw(vpMatrix)
             coloredTriangleProgram.unbindAttribs()
@@ -925,8 +938,10 @@ class Gles2TexturedTriangleList(
             ("must be multiple of VERTICE_PER_TRIANGLE * COORDS_PER_VERTEX coordinates")
         }
         require(textureCoords.size % (VERTICE_PER_TRIANGLE * TEXTURE_COORDS_PER_VERTEX) == 0) {
-            ("must be multiple of VERTICE_PER_TRIANGLE * NUM_TEXTURE_COMPONENTS texture " +
-                "coordinates")
+            (
+                "must be multiple of VERTICE_PER_TRIANGLE * NUM_TEXTURE_COMPONENTS texture " +
+                    "coordinates"
+                )
         }
     }
 

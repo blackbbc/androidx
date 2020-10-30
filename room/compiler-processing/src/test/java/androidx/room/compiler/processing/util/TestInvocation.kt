@@ -17,16 +17,23 @@
 package androidx.room.compiler.processing.util
 
 import androidx.room.compiler.processing.XProcessingEnv
+import androidx.room.compiler.processing.javac.JavacProcessingEnv
 import androidx.room.compiler.processing.ksp.KspProcessingEnv
 import com.squareup.javapoet.ClassName
 import com.squareup.javapoet.TypeName
-import org.jetbrains.kotlin.ksp.processing.Resolver
+import com.google.devtools.ksp.processing.Resolver
+import javax.lang.model.util.Elements
 
 class TestInvocation(
     val processingEnv: XProcessingEnv
 ) {
+    val isKsp = processingEnv is KspProcessingEnv
+
     val kspResolver: Resolver
         get() = (processingEnv as KspProcessingEnv).resolver
+
+    val javaElementUtils: Elements
+        get() = (processingEnv as JavacProcessingEnv).elementUtils
 
     val types by lazy {
         if (processingEnv is KspProcessingEnv) {
@@ -35,7 +42,10 @@ class TestInvocation(
                 voidOrUnit = KotlinTypeNames.UNIT_CLASS_NAME,
                 objectOrAny = KotlinTypeNames.ANY_CLASS_NAME,
                 boxedInt = KotlinTypeNames.INT_CLASS_NAME,
-                int = KotlinTypeNames.INT_CLASS_NAME
+                int = KotlinTypeNames.INT_CLASS_NAME,
+                long = KotlinTypeNames.LONG_CLASS_NAME,
+                list = KotlinTypeNames.LIST_CLASS_NAME,
+                mutableSet = KotlinTypeNames.MUTABLESET_CLASS_NAME
             )
         } else {
             Types(
@@ -43,7 +53,10 @@ class TestInvocation(
                 voidOrUnit = TypeName.VOID,
                 objectOrAny = TypeName.OBJECT,
                 boxedInt = TypeName.INT.box(),
-                int = TypeName.INT
+                int = TypeName.INT,
+                long = TypeName.LONG,
+                list = ClassName.get("java.util", "List"),
+                mutableSet = ClassName.get("java.util", "Set")
             )
         }
     }
@@ -57,6 +70,9 @@ class TestInvocation(
         val voidOrUnit: TypeName,
         val objectOrAny: ClassName,
         val boxedInt: TypeName,
-        val int: TypeName
+        val int: TypeName,
+        val long: TypeName,
+        val list: ClassName,
+        val mutableSet: TypeName
     )
 }

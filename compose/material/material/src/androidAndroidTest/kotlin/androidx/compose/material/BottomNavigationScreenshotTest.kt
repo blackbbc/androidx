@@ -17,10 +17,9 @@
 package androidx.compose.material
 
 import android.os.Build
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.Icon
 import androidx.compose.foundation.Interaction
 import androidx.compose.foundation.InteractionState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.Composable
@@ -29,20 +28,20 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.AndroidXScreenshotTestRule
 import androidx.test.screenshot.assertAgainstGolden
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @LargeTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterialApi::class)
 class BottomNavigationScreenshotTest {

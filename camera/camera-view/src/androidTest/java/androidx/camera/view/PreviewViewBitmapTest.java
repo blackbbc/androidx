@@ -29,6 +29,7 @@ import androidx.camera.core.CameraXConfig;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.testing.CameraUtil;
+import androidx.camera.testing.CoreAppTestUtil;
 import androidx.camera.testing.fakes.FakeActivity;
 import androidx.camera.testing.fakes.FakeLifecycleOwner;
 import androidx.camera.view.PreviewView.ImplementationMode;
@@ -42,6 +43,7 @@ import androidx.test.rule.ActivityTestRule;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestRule;
@@ -65,6 +67,11 @@ public class PreviewViewBitmapTest {
     private static final int CAMERA_LENS = CameraSelector.LENS_FACING_BACK;
     private ProcessCameraProvider mCameraProvider;
 
+    @BeforeClass
+    public static void classSetUp() throws CoreAppTestUtil.ForegroundOccupiedError {
+        CoreAppTestUtil.prepareDeviceUI(InstrumentationRegistry.getInstrumentation());
+    }
+
     @Before
     public void setUp() throws ExecutionException, InterruptedException {
         Assume.assumeTrue(CameraUtil.hasCameraWithLensFacing(CAMERA_LENS));
@@ -85,28 +92,34 @@ public class PreviewViewBitmapTest {
 
     @Test
     public void bitmapIsNull_whenPreviewNotDisplaying_textureView() {
-        // Arrange
-        final PreviewView previewView = setUpPreviewView(ImplementationMode.COMPATIBLE);
-
-        // Act
-        startPreview(previewView);
-
-        // assert
-        final Bitmap bitmap = previewView.getBitmap();
-        assertThat(bitmap).isNull();
+        assertBitmapIsNullWhenPreviewNotDisplaying(ImplementationMode.COMPATIBLE);
     }
 
     @Test
     public void bitmapIsNull_whenPreviewNotDisplaying_surfaceView() {
+        assertBitmapIsNullWhenPreviewNotDisplaying(ImplementationMode.PERFORMANCE);
+    }
+
+    private void assertBitmapIsNullWhenPreviewNotDisplaying(ImplementationMode implementationMode) {
         // Arrange
-        final PreviewView previewView = setUpPreviewView(ImplementationMode.PERFORMANCE);
+        final PreviewView previewView = setUpPreviewView(implementationMode);
+        final Preview preview = new Preview.Builder().build();
+        final CameraSelector cameraSelector =
+                new CameraSelector.Builder().requireLensFacing(CAMERA_LENS).build();
+        final FakeLifecycleOwner lifecycleOwner = new FakeLifecycleOwner();
+        lifecycleOwner.startAndResume();
 
-        // Act
-        startPreview(previewView);
 
-        // assert
-        final Bitmap bitmap = previewView.getBitmap();
-        assertThat(bitmap).isNull();
+        runOnMainThread(() -> {
+            // Act.
+            preview.setSurfaceProvider(previewView.getSurfaceProvider());
+            mCameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview);
+
+            // Assert.
+            // To assert the status before preview is displaying, we have to do it in the same
+            // Runnable to avoid race condition.
+            assertThat(previewView.getBitmap()).isNull();
+        });
     }
 
     @Test
@@ -119,8 +132,10 @@ public class PreviewViewBitmapTest {
         waitForPreviewToStart(previewView);
 
         // assert
-        final Bitmap bitmap = previewView.getBitmap();
-        assertThat(bitmap).isNotNull();
+        runOnMainThread(() -> {
+            final Bitmap bitmap = previewView.getBitmap();
+            assertThat(bitmap).isNotNull();
+        });
     }
 
     @Test
@@ -133,8 +148,10 @@ public class PreviewViewBitmapTest {
         waitForPreviewToStart(previewView);
 
         // assert
-        final Bitmap bitmap = previewView.getBitmap();
-        assertThat(bitmap).isNotNull();
+        runOnMainThread(() -> {
+            final Bitmap bitmap = previewView.getBitmap();
+            assertThat(bitmap).isNotNull();
+        });
     }
 
     @Test
@@ -183,10 +200,12 @@ public class PreviewViewBitmapTest {
         waitForPreviewToStart(previewView);
 
         // assert
-        final Bitmap bitmap = previewView.getBitmap();
-        assertThat(bitmap).isNotNull();
-        assertThat(bitmap.getWidth()).isEqualTo(previewView.getWidth());
-        assertThat(bitmap.getHeight()).isEqualTo(previewView.getHeight());
+        runOnMainThread(() -> {
+            final Bitmap bitmap = previewView.getBitmap();
+            assertThat(bitmap).isNotNull();
+            assertThat(bitmap.getWidth()).isEqualTo(previewView.getWidth());
+            assertThat(bitmap.getHeight()).isEqualTo(previewView.getHeight());
+        });
     }
 
     @Test
@@ -235,12 +254,14 @@ public class PreviewViewBitmapTest {
         waitForPreviewToStart(previewView);
 
         // assert
-        final Bitmap bitmap = previewView.getBitmap();
-        assertThat(bitmap).isNotNull();
-        assertThat(bitmap.getWidth()).isAtMost(previewView.getWidth());
-        assertThat(bitmap.getHeight()).isAtMost(previewView.getHeight());
-        assertThat(bitmap.getWidth() == previewView.getWidth()
-                || bitmap.getHeight() == previewView.getHeight()).isTrue();
+        runOnMainThread(() -> {
+            final Bitmap bitmap = previewView.getBitmap();
+            assertThat(bitmap).isNotNull();
+            assertThat(bitmap.getWidth()).isAtMost(previewView.getWidth());
+            assertThat(bitmap.getHeight()).isAtMost(previewView.getHeight());
+            assertThat(bitmap.getWidth() == previewView.getWidth()
+                    || bitmap.getHeight() == previewView.getHeight()).isTrue();
+        });
     }
 
     @NonNull

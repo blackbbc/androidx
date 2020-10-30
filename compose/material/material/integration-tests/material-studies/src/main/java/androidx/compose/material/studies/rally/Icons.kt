@@ -16,41 +16,10 @@
 
 package androidx.compose.material.studies.rally
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.preferredSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.paint
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.VectorAsset
-import androidx.compose.ui.graphics.vector.VectorPainter
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-
-/**
- * 24x24dp icon from a resource id.
- *
- * TODO: b/150460257 remove this when androidx.compose.foundation.Icon supports minimum sizes
- */
-@Composable
-fun Icon(
-    vectorImage: VectorAsset,
-    tintColor: Color = Color.White,
-    modifier: Modifier = Modifier,
-    size: Dp = 24.dp
-) {
-    Box(
-        Modifier.preferredSize(size)
-            .then(modifier)
-            .paint(
-                VectorPainter(vectorImage), colorFilter = ColorFilter.tint(tintColor)
-            )
-    )
-}
 
 /**
  * Icons below are copied from [Icons.Filled] in material-icons-extended to avoid recompiling the
@@ -62,7 +31,7 @@ fun Icon(
  */
 
 val Icons.Filled.Sort: VectorAsset by lazy {
-    materialIcon {
+    materialIcon("Filled.Sort") {
         materialPath {
             moveTo(3.0f, 18.0f)
             horizontalLineToRelative(6.0f)
@@ -87,7 +56,7 @@ val Icons.Filled.Sort: VectorAsset by lazy {
 }
 
 val Icons.Filled.ArrowForwardIos: VectorAsset by lazy {
-    materialIcon {
+    materialIcon("Filled.ArrowForwardIos") {
         materialPath {
             moveTo(5.88f, 4.12f)
             lineTo(13.76f, 12.0f)
@@ -101,7 +70,7 @@ val Icons.Filled.ArrowForwardIos: VectorAsset by lazy {
 }
 
 val Icons.Filled.AttachMoney: VectorAsset by lazy {
-    materialIcon {
+    materialIcon("Filled.AttachMoney") {
         materialPath {
             moveTo(11.8f, 10.9f)
             curveToRelative(-2.27f, -0.59f, -3.0f, -1.2f, -3.0f, -2.15f)
@@ -130,7 +99,7 @@ val Icons.Filled.AttachMoney: VectorAsset by lazy {
 }
 
 val Icons.Filled.MoneyOff: VectorAsset by lazy {
-    materialIcon {
+    materialIcon("Filled.MoneyOff") {
         materialPath {
             moveTo(12.5f, 6.9f)
             curveToRelative(1.78f, 0.0f, 2.44f, 0.85f, 2.5f, 2.1f)
@@ -165,7 +134,7 @@ val Icons.Filled.MoneyOff: VectorAsset by lazy {
 }
 
 val Icons.Filled.PieChart: VectorAsset by lazy {
-    materialIcon {
+    materialIcon("Filled.PieChart") {
         materialPath {
             moveTo(11.0f, 2.0f)
             verticalLineToRelative(20.0f)

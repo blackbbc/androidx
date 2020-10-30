@@ -30,19 +30,19 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToBitmap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 @MediumTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class AndroidCanvasTest {
     @Suppress("DEPRECATION")
     @get:Rule

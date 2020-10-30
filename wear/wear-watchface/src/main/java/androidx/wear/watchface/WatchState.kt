@@ -18,8 +18,9 @@ package androidx.wear.watchface
 
 import android.app.NotificationManager
 import androidx.annotation.RestrictTo
+import androidx.wear.watchface.data.DeviceConfig
 
-class WatchState(
+public class WatchState(
     /**
      * The current user interruption settings. See [NotificationManager]. Based on the value
      * the watch face should adjust the amount of information it displays. For example, if it
@@ -31,22 +32,14 @@ class WatchState(
      * [NotificationManager.INTERRUPTION_FILTER_ALARMS], or
      * [NotificationManager.INTERRUPTION_FILTER_UNKNOWN].
      */
-    val interruptionFilter: WatchData<Int>,
+    public val interruptionFilter: ObservableWatchData<Int>,
 
     /**
      * Whether or not the watch is in ambient mode. The watch face should switch to a simplified low
      * intensity display when in ambient mode. E.g. if the watch face displays seconds, it should
      * hide them in ambient mode.
      */
-    val isAmbient: WatchData<Boolean>,
-
-    /**
-     * Whether or not the watch is in airplane mode. Only valid if
-     * [android.support.wearable.watchface.WatchFaceStyle.hideNotificationIndicator] is true.
-     *
-     * @hide
-     */
-    val inAirplaneMode: WatchData<Boolean>,
+    public val isAmbient: ObservableWatchData<Boolean>,
 
     /**
      * Whether or not we should conserve power due to a low battery which isn't charging. Only
@@ -55,96 +48,52 @@ class WatchState(
      *
      * @hide
      */
-    val isBatteryLowAndNotCharging: WatchData<Boolean>,
-
-    /**
-     * Whether or not the watch is charging. Only valid if
-     * [android.support.wearable.watchface.WatchFaceStyle.hideNotificationIndicator] is true.
-     *
-     * @hide
-     */
-    val isCharging: WatchData<Boolean>,
-
-    /**
-     * Whether or not the watch is connected to the companion phone. Only valid if
-     * [android.support.wearable.watchface.WatchFaceStyle.hideNotificationIndicator] is true.
-     *
-     * @hide
-     */
-    val isConnectedToCompanion: WatchData<Boolean>,
-
-    /**
-     * Whether or not GPS is active on the watch. Only valid if
-     * [android.support.wearable.watchface.WatchFaceStyle.hideNotificationIndicator] is true.
-     *
-     * @hide
-     */
-    val isGpsActive: WatchData<Boolean>,
-
-    /**
-     * Whether or not the watch's keyguard (lock screen) is locked. Only valid if
-     * [android.support.wearable.watchface.WatchFaceStyle.hideNotificationIndicator] is true.
-     *
-     * @hide
-     */
-    val isKeyguardLocked: WatchData<Boolean>,
-
-    /**
-     * Whether or not the watch is in theater mode. Only valid if
-     * [android.support.wearable.watchface.WatchFaceStyle.hideNotificationIndicator] is true.
-     *
-     * @hide
-     */
-    val isInTheaterMode: WatchData<Boolean>,
+    public val isBatteryLowAndNotCharging: ObservableWatchData<Boolean>,
 
     /** Whether or not the watch face is visible. */
-    val isVisible: WatchData<Boolean>,
+    public val isVisible: ObservableWatchData<Boolean>,
 
-    /** The total number of notification cards in the stream. */
-    val notificationCount: WatchData<Int>,
+    /** Whether or not the watch hardware supports low bit ambient support. */
+    public val hasLowBitAmbient: Boolean,
 
-    /** The total number of unread notification cards in the stream. */
-    val unreadNotificationCount: WatchData<Int>,
+    /** Whether or not the watch hardware supports burn in protection. */
+    public val hasBurnInProtection: Boolean,
 
-    /** Whether or not the watch has low bit ambient support. */
-    val hasLowBitAmbient: WatchData<Boolean>,
+    /**
+     * The physical shape of the screen. Should be one of [#SCREEN_SHAPE_ROUND] or
+     * [#SCREEN_SHAPE_RECTANGULAR].
+     */
+    public val screenShape: Int
+) {
+    public companion object {
+        /** The watch has a round (circular) screen. */
+        public const val SCREEN_SHAPE_ROUND: Int = DeviceConfig.SCREEN_SHAPE_ROUND
 
-    /** Whether or not the watch has burn in protection support. */
-    val hasBurnInProtection: WatchData<Boolean>
-)
+        /** The watch has a rectangular or square screen. */
+        public const val SCREEN_SHAPE_RECTANGULAR: Int =
+            DeviceConfig.SCREEN_SHAPE_RECTANGULAR
+    }
+}
 
 /** @hide */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-class MutableWatchState {
-    var interruptionFilter = MutableWatchData<Int>()
-    val isAmbient = MutableWatchData<Boolean>()
-    val inAirplaneMode = MutableWatchData<Boolean>()
-    val isBatteryLowAndNotCharging = MutableWatchData<Boolean>()
-    val isCharging = MutableWatchData<Boolean>()
-    val isConnectedToCompanion = MutableWatchData<Boolean>()
-    val isGpsActive = MutableWatchData<Boolean>()
-    val isKeyguardLocked = MutableWatchData<Boolean>()
-    val isInTheaterMode = MutableWatchData<Boolean>()
-    val isVisible = MutableWatchData<Boolean>()
-    val notificationCount = MutableWatchData<Int>()
-    val unreadNotificationCount = MutableWatchData<Int>()
-    val hasLowBitAmbient = MutableWatchData<Boolean>()
-    val hasBurnInProtection = MutableWatchData<Boolean>()
+public class MutableWatchState {
+    public var interruptionFilter: MutableObservableWatchData<Int> = MutableObservableWatchData()
+    public val isAmbient: MutableObservableWatchData<Boolean> = MutableObservableWatchData()
+    public val isBatteryLowAndNotCharging: MutableObservableWatchData<Boolean> =
+        MutableObservableWatchData()
+    public val isVisible: MutableObservableWatchData<Boolean> = MutableObservableWatchData()
+    public var hasLowBitAmbient: Boolean = false
+    public var hasBurnInProtection: Boolean = false
+    public var screenShape: Int = 0
 
-    fun asWatchState() = WatchState(
+    public fun asWatchState(): WatchState = WatchState(
         interruptionFilter = interruptionFilter,
         isAmbient = isAmbient,
-        inAirplaneMode = inAirplaneMode,
         isBatteryLowAndNotCharging = isBatteryLowAndNotCharging,
-        isCharging = isCharging,
-        isConnectedToCompanion = isConnectedToCompanion,
-        isGpsActive = isGpsActive,
-        isKeyguardLocked = isKeyguardLocked,
-        isInTheaterMode = isInTheaterMode,
         isVisible = isVisible,
-        notificationCount = notificationCount,
-        unreadNotificationCount = unreadNotificationCount,
         hasLowBitAmbient = hasLowBitAmbient,
-        hasBurnInProtection = hasBurnInProtection
+        hasBurnInProtection = hasBurnInProtection,
+        screenShape = screenShape
     )
 }

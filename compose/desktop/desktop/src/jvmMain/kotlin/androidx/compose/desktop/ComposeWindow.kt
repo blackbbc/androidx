@@ -19,6 +19,7 @@ import androidx.compose.ui.gesture.scrollorientationlocking.Orientation
 import androidx.compose.ui.input.mouse.MouseScrollEvent
 import androidx.compose.ui.input.mouse.MouseScrollUnit
 import androidx.compose.ui.platform.DesktopOwners
+import androidx.compose.ui.unit.Density
 import org.jetbrains.skija.Canvas
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -40,8 +41,14 @@ class ComposeWindow : JFrame {
     }
 
     val parent: AppFrame
-    private val layer = FrameSkiaLayer()
+    internal val layer = FrameSkiaLayer()
     private val events = AWTDebounceEventQueue()
+
+    val density get() = layer.density
+
+    fun onDensityChanged(action: ((Density) -> Unit)?) {
+        layer.onDensityChanged = action
+    }
 
     var owners: DesktopOwners? = null
         set(value) {
@@ -56,6 +63,7 @@ class ComposeWindow : JFrame {
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
                 layer.reinit()
+                needRedrawLayer()
             }
         })
         initCanvas()
@@ -96,37 +104,54 @@ class ComposeWindow : JFrame {
             override fun mouseClicked(event: MouseEvent) = Unit
 
             override fun mousePressed(event: MouseEvent) = events.post {
-                owners?.onMousePressed(event.x, event.y)
+                owners?.onMousePressed(
+                    (event.x * layer.density.density).toInt(),
+                    (event.y * layer.density.density).toInt()
+                )
             }
 
             override fun mouseReleased(event: MouseEvent) = events.post {
-                owners?.onMouseReleased(event.x, event.y)
+                owners?.onMouseReleased(
+                    (event.x * layer.density.density).toInt(),
+                    (event.y * layer.density.density).toInt()
+                )
             }
         })
         layer.wrapped.addMouseMotionListener(object : MouseMotionAdapter() {
             override fun mouseDragged(event: MouseEvent) = events.post {
-                owners?.onMouseDragged(event.x, event.y)
+                owners?.onMouseDragged(
+                    (event.x * layer.density.density).toInt(),
+                    (event.y * layer.density.density).toInt()
+                )
             }
+
             override fun mouseMoved(event: MouseEvent) = events.post {
-                owners?.onMouseMoved(event.x, event.y)
+                owners?.onMouseMoved(
+                    (event.x * layer.density.density).toInt(),
+                    (event.y * layer.density.density).toInt()
+                )
             }
         })
         layer.wrapped.addMouseWheelListener { event ->
             events.post {
-                owners?.onMouseScroll(event.x, event.y, event.toComposeEvent())
+                owners?.onMouseScroll(
+                    (event.x * layer.density.density).toInt(),
+                    (event.y * layer.density.density).toInt(),
+                    event.toComposeEvent()
+                )
             }
         }
         layer.wrapped.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(event: KeyEvent) = events.post {
-                owners?.onKeyPressed(event.keyCode, event.keyChar)
+                owners?.onKeyPressed(event)
             }
 
             override fun keyReleased(event: KeyEvent) = events.post {
-                owners?.onKeyReleased(event.keyCode, event.keyChar)
+                owners?.onKeyReleased(event)
             }
 
             override fun keyTyped(event: KeyEvent) = events.post {
-                owners?.onKeyTyped(event.keyChar)
+                owners?.onKeyTyped(event)
             }
         })
     }
@@ -134,6 +159,7 @@ class ComposeWindow : JFrame {
     override fun setVisible(value: Boolean) {
         if (value != isVisible) {
             super.setVisible(value)
+            layer.wrapped.requestFocus()
             updateLayer()
             needRedrawLayer()
         }
@@ -141,15 +167,8 @@ class ComposeWindow : JFrame {
 }
 
 private class OwnersRenderer(private val owners: DesktopOwners) : FrameSkiaLayer.Renderer {
-    override fun onRender(canvas: Canvas, width: Int, height: Int, nanoTime: Long) {
-        try {
-            owners.onRender(canvas, width, height, nanoTime)
-        } catch (e: Throwable) {
-            e.printStackTrace(System.err)
-            if (System.getProperty("compose.desktop.ignore.errors") == null) {
-                System.exit(1)
-            }
-        }
+    override suspend fun onFrame(canvas: Canvas, width: Int, height: Int, nanoTime: Long) {
+        owners.onFrame(canvas, width, height, nanoTime)
     }
 }
 

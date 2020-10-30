@@ -23,14 +23,12 @@ import androidx.compose.ui.gesture.scrollorientationlocking.ShareScrollOrientati
 import androidx.compose.ui.input.pointer.CustomEventDispatcher
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.anyPositionChangeConsumed
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.consumePositionChange
 import androidx.compose.ui.input.pointer.down
 import androidx.compose.ui.input.pointer.invokeOverAllPasses
 import androidx.compose.ui.input.pointer.invokeOverPasses
 import androidx.compose.ui.input.pointer.moveBy
 import androidx.compose.ui.input.pointer.moveTo
-import androidx.compose.ui.input.pointer.pointerEventOf
 import androidx.compose.ui.input.pointer.up
 import androidx.compose.ui.unit.Duration
 import androidx.compose.ui.unit.IntSize
@@ -106,7 +104,8 @@ class RawDragGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down1))
         dragStartBlocked = false
 
-        val move1 = down1.moveBy(10.milliseconds, 1f, 1f).consume(dx = 1f, dy = 1f)
+        val move1 =
+            down1.moveBy(10.milliseconds, 1f, 1f).apply { consumePositionChange(1f, 1f) }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(move1))
 
         assertThat(log.filter { it.methodName == "onStart" }).isEmpty()
@@ -203,7 +202,7 @@ class RawDragGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down))
         dragStartBlocked = false
 
-        val move = down.moveBy(10.milliseconds, 1f, 0f).consume(dx = 2f)
+        val move = down.moveBy(10.milliseconds, 1f, 0f).apply { consumePositionChange(2f, 0f) }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(move))
 
         assertThat(log.filter { it.methodName == "onStart" }).hasSize(1)
@@ -242,10 +241,10 @@ class RawDragGestureFilterTest {
         change = change.moveBy(100.milliseconds, -3f, 7f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
         change = change.moveBy(100.milliseconds, 11f, 13f)
-            .consumePositionChange(5f, 3f)
+            .apply { consumePositionChange(5f, 3f) }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
         change = change.moveBy(100.milliseconds, -13f, -11f)
-            .consumePositionChange(-3f, -5f)
+            .apply { consumePositionChange(-3f, -5f) }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
 
         // Assert
@@ -420,8 +419,9 @@ class RawDragGestureFilterTest {
 
     @Test
     fun onPointerEvent_down_downNotConsumed() {
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down(0)))
-        assertThat(result.changes.first().consumed.downChange).isFalse()
+        val down = down(0)
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down))
+        assertThat(down.consumed.downChange).isFalse()
     }
 
     @Test
@@ -435,19 +435,19 @@ class RawDragGestureFilterTest {
             0f
         )
         dragObserver.dragConsume = Offset(7f, -11f)
-        var result = filter::onPointerEvent.invokeOverPasses(
+        filter::onPointerEvent.invokeOverPasses(
             pointerEventOf(change),
             PointerEventPass.Initial,
             PointerEventPass.Main
         )
         dragObserver.dragConsume = Offset.Zero
-        result = filter::onPointerEvent.invokeOverPasses(
-            result,
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change),
             PointerEventPass.Initial,
             PointerEventPass.Main
         )
 
-        assertThat(result.changes.first().anyPositionChangeConsumed()).isFalse()
+        assertThat(change.anyPositionChangeConsumed()).isFalse()
     }
 
     @Test
@@ -463,9 +463,9 @@ class RawDragGestureFilterTest {
             1f,
             1f
         )
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
 
-        assertThat(result.changes.first().anyPositionChangeConsumed()).isFalse()
+        assertThat(change.anyPositionChangeConsumed()).isFalse()
     }
 
     @Test
@@ -481,9 +481,9 @@ class RawDragGestureFilterTest {
             1f,
             1f
         )
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
 
-        assertThat(result.changes.first().anyPositionChangeConsumed()).isFalse()
+        assertThat(change.anyPositionChangeConsumed()).isFalse()
     }
 
     @Test
@@ -498,19 +498,19 @@ class RawDragGestureFilterTest {
             -5f
         )
         dragObserver.dragConsume = Offset(7f, -11f)
-        var result = filter::onPointerEvent.invokeOverPasses(
+        filter::onPointerEvent.invokeOverPasses(
             pointerEventOf(change),
             PointerEventPass.Initial,
             PointerEventPass.Main
         )
         dragObserver.dragConsume = Offset.Zero
-        result = filter::onPointerEvent.invokeOverPasses(
-            result,
+        filter::onPointerEvent.invokeOverPasses(
+            pointerEventOf(change),
             PointerEventPass.Final
         )
 
-        assertThat(result.changes.first().consumed.positionChange.x).isEqualTo(7f)
-        assertThat(result.changes.first().consumed.positionChange.y).isEqualTo(-11f)
+        assertThat(change.consumed.positionChange.x).isEqualTo(7f)
+        assertThat(change.consumed.positionChange.y).isEqualTo(-11f)
     }
 
     @Test
@@ -526,9 +526,9 @@ class RawDragGestureFilterTest {
         )
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
         change = change.up(20.milliseconds)
-        val result = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(change))
 
-        assertThat(result.changes.first().consumed.downChange).isTrue()
+        assertThat(change.consumed.downChange).isTrue()
     }
 
     @Test
@@ -782,9 +782,9 @@ class RawDragGestureFilterTest {
 
         // Assert
         if (!blocked && (
-                filterOrientation == Orientation.Horizontal && dx != 0f ||
-                    filterOrientation == Orientation.Vertical && dy != 0f
-                )
+            filterOrientation == Orientation.Horizontal && dx != 0f ||
+                filterOrientation == Orientation.Vertical && dy != 0f
+            )
         ) {
             assertThat(scrollOrientationLocker.getPointersFor(listOf(move), otherOrientation))
                 .hasSize(0)

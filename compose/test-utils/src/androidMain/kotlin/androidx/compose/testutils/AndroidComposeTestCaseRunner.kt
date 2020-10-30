@@ -32,6 +32,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composition
 import androidx.compose.runtime.ExperimentalComposeApi
 import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.dispatch.AndroidUiDispatcher
 import androidx.compose.runtime.dispatch.MonotonicFrameClock
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.AndroidOwner
@@ -76,12 +77,10 @@ internal class AndroidComposeTestCaseRunner<T : ComposeTestCase>(
 
     private val screenWithSpec: Int
     private val screenHeightSpec: Int
-    private val capture = if (supportsRenderNode) {
-        RenderNodeCapture()
-    } else if (supportsMRenderNode) {
-        MRenderNodeCapture()
-    } else {
-        PictureCapture()
+    private val capture = when {
+        supportsRenderNode -> RenderNodeCapture()
+        supportsMRenderNode -> MRenderNodeCapture()
+        else -> PictureCapture()
     }
 
     private var canvas: Canvas? = null
@@ -96,7 +95,10 @@ internal class AndroidComposeTestCaseRunner<T : ComposeTestCase>(
     }
 
     private val frameClock = AutoFrameClock()
-    private val recomposer: Recomposer = Recomposer()
+    private val recomposerApplyScope = CoroutineScope(
+        AndroidUiDispatcher.Main + frameClock + Job()
+    )
+    private val recomposer: Recomposer = Recomposer(recomposerApplyScope.coroutineContext)
 
     private var simulationState: SimulationState = SimulationState.Initialized
 
@@ -135,12 +137,12 @@ internal class AndroidComposeTestCaseRunner<T : ComposeTestCase>(
 
     // TODO: This method may advance the global snapshot and should be just a getter
     override fun hasPendingChanges(): Boolean {
-        if (recomposer.hasPendingChanges() || hasPendingChangesInFrame()) {
+        if (recomposer.hasInvalidations() || hasPendingChangesInFrame()) {
             @OptIn(ExperimentalComposeApi::class)
             Snapshot.sendApplyNotifications()
         }
 
-        return recomposer.hasPendingChanges()
+        return recomposer.hasInvalidations()
     }
 
     /**

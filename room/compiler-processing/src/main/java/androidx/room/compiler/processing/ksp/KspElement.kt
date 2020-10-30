@@ -16,15 +16,13 @@
 
 package androidx.room.compiler.processing.ksp
 
-import androidx.room.compiler.processing.XAnnotationBox
 import androidx.room.compiler.processing.XElement
 import androidx.room.compiler.processing.XEquality
-import org.jetbrains.kotlin.ksp.symbol.KSAnnotated
-import org.jetbrains.kotlin.ksp.symbol.KSClassDeclaration
-import org.jetbrains.kotlin.ksp.symbol.KSFunctionDeclaration
-import org.jetbrains.kotlin.ksp.symbol.KSPropertyDeclaration
+import com.google.devtools.ksp.symbol.KSAnnotated
+import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.KSFunctionDeclaration
+import com.google.devtools.ksp.symbol.KSPropertyDeclaration
 import java.util.Locale
-import kotlin.reflect.KClass
 
 internal abstract class KspElement(
     protected val env: KspProcessingEnv,
@@ -32,24 +30,13 @@ internal abstract class KspElement(
 ) : XElement, XEquality {
     override fun kindName(): String {
         return when (declaration) {
-            is KSClassDeclaration -> (declaration as KSClassDeclaration).classKind.name
-                .toLowerCase(Locale.US)
+            is KSClassDeclaration ->
+                (declaration as KSClassDeclaration).classKind.name
+                    .toLowerCase(Locale.US)
             is KSPropertyDeclaration -> "property"
             is KSFunctionDeclaration -> "function"
             else -> declaration::class.simpleName ?: "unknown"
         }
-    }
-
-    override fun <T : Annotation> toAnnotationBox(annotation: KClass<T>): XAnnotationBox<T>? {
-        TODO("Not yet implemented")
-    }
-
-    override fun hasAnnotationWithPackage(pkg: String): Boolean {
-        TODO("Not yet implemented")
-    }
-
-    override fun hasAnnotation(annotation: KClass<out Annotation>): Boolean {
-        TODO("Not yet implemented")
     }
 
     override fun equals(other: Any?): Boolean {

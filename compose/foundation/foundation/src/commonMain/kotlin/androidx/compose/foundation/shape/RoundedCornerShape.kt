@@ -16,7 +16,7 @@
 
 package androidx.compose.foundation.shape
 
-import androidx.compose.ui.geometry.Radius
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.toRect
@@ -75,10 +75,10 @@ class RoundedCornerShape(
 
     override fun toString(): String {
         return "RoundedCornerShape(topLeft = $topLeft, topRight = $topRight, bottomRight = " +
-                "$bottomRight, bottomLeft = $bottomLeft)"
+            "$bottomRight, bottomLeft = $bottomLeft)"
     }
 
-    private /*inline*/ fun Float.toRadius() = Radius(this)
+    private /*inline*/ fun Float.toRadius() = CornerRadius(this)
 }
 
 /**

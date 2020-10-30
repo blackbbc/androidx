@@ -432,7 +432,7 @@ internal class ComposeViewAdapter : FrameLayout {
                 }
             }
         }
-        composition = setContent(Recomposer.current(), null, previewComposition)
+        composition = setContent(Recomposer.current(), previewComposition)
     }
 
     /**
@@ -485,8 +485,10 @@ internal class ComposeViewAdapter : FrameLayout {
             -1L
         }
 
-        val forceCompositionInvalidation = attrs.getAttributeBooleanValue(TOOLS_NS_URI,
-            "forceCompositionInvalidation", false)
+        val forceCompositionInvalidation = attrs.getAttributeBooleanValue(
+            TOOLS_NS_URI,
+            "forceCompositionInvalidation", false
+        )
 
         init(
             className = className,

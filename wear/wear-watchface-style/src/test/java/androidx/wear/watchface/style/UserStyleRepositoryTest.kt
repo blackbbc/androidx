@@ -40,7 +40,7 @@ class UserStyleRepositoryTest {
         "Watchface colorization", /* icon = */
         null,
         colorStyleList,
-        UserStyleCategory.LAYER_FLAG_WATCH_FACE_BASE
+        listOf(Layer.BASE_LAYER)
     )
 
     private val classicStyleOption =
@@ -61,7 +61,7 @@ class UserStyleRepositoryTest {
         "Hand visual look", /* icon = */
         null,
         watchHandStyleList,
-        UserStyleCategory.LAYER_FLAG_WATCH_FACE_UPPER
+        listOf(Layer.TOP_LAYER)
     )
     private val watchHandLengthStyleCategory =
         DoubleRangeUserStyleCategory(
@@ -72,7 +72,7 @@ class UserStyleRepositoryTest {
             0.25,
             1.0,
             0.75,
-            UserStyleCategory.LAYER_FLAG_WATCH_FACE_UPPER
+            listOf(Layer.TOP_LAYER)
         )
 
     private val mockListener1 = Mockito.mock(UserStyleRepository.UserStyleListener::class.java)
@@ -81,7 +81,9 @@ class UserStyleRepositoryTest {
 
     private val userStyleRepository =
         UserStyleRepository(
-            listOf(colorStyleCategory, watchHandStyleCategory, watchHandLengthStyleCategory)
+            UserStyleSchema(
+                listOf(colorStyleCategory, watchHandStyleCategory, watchHandLengthStyleCategory)
+            )
         )
 
     @Test
@@ -100,10 +102,12 @@ class UserStyleRepositoryTest {
         Mockito.verify(mockListener2).onUserStyleChanged(userStyleRepository.userStyle)
         Mockito.verify(mockListener3).onUserStyleChanged(userStyleRepository.userStyle)
 
-        val newStyle = UserStyle(hashMapOf(
-            colorStyleCategory to greenStyleOption,
-            watchHandStyleCategory to gothicStyleOption
-        ))
+        val newStyle = UserStyle(
+            hashMapOf(
+                colorStyleCategory to greenStyleOption,
+                watchHandStyleCategory to gothicStyleOption
+            )
+        )
 
         Mockito.reset(mockListener1)
         Mockito.reset(mockListener2)
@@ -118,24 +122,26 @@ class UserStyleRepositoryTest {
 
     @Test
     fun assigning_userStyle() {
-        val newStyle = UserStyle(hashMapOf(
-            colorStyleCategory to greenStyleOption,
-            watchHandStyleCategory to gothicStyleOption
-        ))
+        val newStyle = UserStyle(
+            hashMapOf(
+                colorStyleCategory to greenStyleOption,
+                watchHandStyleCategory to gothicStyleOption
+            )
+        )
 
         userStyleRepository.userStyle = newStyle
 
-        assertThat(userStyleRepository.userStyle.options[colorStyleCategory])
+        assertThat(userStyleRepository.userStyle.selectedOptions[colorStyleCategory])
             .isEqualTo(greenStyleOption)
-        assertThat(userStyleRepository.userStyle.options[watchHandStyleCategory])
+        assertThat(userStyleRepository.userStyle.selectedOptions[watchHandStyleCategory])
             .isEqualTo(gothicStyleOption)
     }
 
     @Test
     fun defaultValues() {
         val watchHandLengthOption =
-            userStyleRepository.userStyle.options[watchHandLengthStyleCategory]!! as
-                    DoubleRangeUserStyleCategory.DoubleRangeOption
+            userStyleRepository.userStyle.selectedOptions[watchHandLengthStyleCategory]!! as
+                DoubleRangeUserStyleCategory.DoubleRangeOption
         assertThat(watchHandLengthOption.value).isEqualTo(0.75)
     }
 }

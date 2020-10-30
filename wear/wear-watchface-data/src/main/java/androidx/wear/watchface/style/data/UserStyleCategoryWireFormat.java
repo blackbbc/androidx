@@ -49,12 +49,12 @@ public class UserStyleCategoryWireFormat implements VersionedParcelable, Parcela
     /** Localized human readable name for the element, used in the userStyle selection UI. */
     @ParcelField(2)
     @NonNull
-    public String mDisplayName = "";
+    public CharSequence mDisplayName = "";
 
     /** Localized description string displayed under the displayName. */
     @ParcelField(3)
     @NonNull
-    public String mDescription = "";
+    public CharSequence mDescription = "";
 
     /** Icon for use in the style selection UI. */
     @ParcelField(4)
@@ -68,14 +68,11 @@ public class UserStyleCategoryWireFormat implements VersionedParcelable, Parcela
     public int mDefaultOptionIndex;
 
     /**
-     * Used by the style configuration UI. Describes which rendering layer this style affects. Must
-     * be either 0 (for a style change with no visual effect, e.g. sound controls) or a combination
-     * of {@link UserStyleCategory#LAYER_WATCH_FACE_BASE},
-     * {@link UserStyleCategory#LAYER_COMPLICATONS},
-     * {@link UserStyleCategory#LAYER_WATCH_FACE_UPPER}.
+     * Used by the style configuration UI. Describes which rendering layers this style affects.
      */
     @ParcelField(6)
-    public int mLayerFlags;
+    @NonNull
+    public List<Integer> mAffectsLayers;
 
     /**
      * List of options for this UserStyleCategory. Depending on the type of UserStyleCategory this
@@ -94,19 +91,19 @@ public class UserStyleCategoryWireFormat implements VersionedParcelable, Parcela
 
     public UserStyleCategoryWireFormat(
             @NonNull String id,
-            @NonNull String displayName,
-            @NonNull String description,
+            @NonNull CharSequence displayName,
+            @NonNull CharSequence description,
             @Nullable Icon icon,
             @NonNull List<OptionWireFormat> options,
             int defaultOptionIndex,
-            int layerFlags) {
+            @NonNull List<Integer> affectsLayers) {
         mId = id;
         mDisplayName = displayName;
         mDescription = description;
         mIcon = icon;
         mOptions = options;
         mDefaultOptionIndex = defaultOptionIndex;
-        mLayerFlags = layerFlags;
+        mAffectsLayers = affectsLayers;
     }
 
     /** Serializes this UserStyleCategoryWireFormat to the specified {@link Parcel}. */
@@ -124,9 +121,8 @@ public class UserStyleCategoryWireFormat implements VersionedParcelable, Parcela
             new Parcelable.Creator<UserStyleCategoryWireFormat>() {
                 @Override
                 public UserStyleCategoryWireFormat createFromParcel(Parcel source) {
-                    return UserStyleCategoryWireFormatParcelizer.read(
-                            ParcelUtils.fromParcelable(source.readParcelable(
-                                    getClass().getClassLoader())));
+                    return ParcelUtils.fromParcelable(
+                            source.readParcelable(getClass().getClassLoader()));
                 }
 
                 @Override
@@ -170,9 +166,8 @@ public class UserStyleCategoryWireFormat implements VersionedParcelable, Parcela
                 new Parcelable.Creator<OptionWireFormat>() {
                     @Override
                     public OptionWireFormat createFromParcel(Parcel source) {
-                        return OptionWireFormatParcelizer.read(
-                                ParcelUtils.fromParcelable(source.readParcelable(
-                                        getClass().getClassLoader())));
+                        return ParcelUtils.fromParcelable(
+                                source.readParcelable(getClass().getClassLoader()));
                     }
 
                     @Override

@@ -37,10 +37,10 @@ import androidx.compose.testutils.assertNoPendingChanges
 import androidx.compose.testutils.benchmark.ComposeBenchmarkRule
 import androidx.compose.testutils.doFramesUntilNoChangesPending
 import androidx.compose.testutils.ComposeTestCase
-import androidx.compose.ui.Layout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Remeasurement
-import androidx.compose.ui.RemeasurementModifier
+import androidx.compose.ui.layout.Remeasurement
+import androidx.compose.ui.layout.RemeasurementModifier
 import androidx.compose.ui.drawLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -290,11 +290,14 @@ class ListRemeasureTestCase(
 
     @Composable
     fun RemeasurableItem() {
-        Layout(emptyContent(), modifier = object : RemeasurementModifier {
-            override fun onRemeasurementAvailable(remeasurement: Remeasurement) {
-                this@ListRemeasureTestCase.remeasurement = remeasurement
+        Layout(
+            emptyContent(),
+            modifier = object : RemeasurementModifier {
+                override fun onRemeasurementAvailable(remeasurement: Remeasurement) {
+                    this@ListRemeasureTestCase.remeasurement = remeasurement
+                }
             }
-        }) { _, _ ->
+        ) { _, _ ->
             val size = size.toIntPx()
             layout(size, size) {}
         }

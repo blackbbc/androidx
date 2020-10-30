@@ -35,6 +35,7 @@ object LibraryGroups {
     val BENCHMARK = LibraryGroup("androidx.benchmark", LibraryVersions.BENCHMARK)
     val CAMERA = LibraryGroup("androidx.camera", LibraryVersions.CAMERA)
     val CARDVIEW = LibraryGroup("androidx.cardview", LibraryVersions.CARDVIEW)
+    val CAR_APP = LibraryGroup("androidx.car.app", LibraryVersions.CAR_APP)
     val COLLECTION = LibraryGroup("androidx.collection", LibraryVersions.COLLECTION)
     val CONCURRENT = LibraryGroup("androidx.concurrent", LibraryVersions.FUTURES)
     val CONTENTACCESS = LibraryGroup("androidx.contentaccess", LibraryVersions.CONTENTACCESS)
@@ -106,8 +107,6 @@ object LibraryGroups {
         val COMPILER = LibraryGroup("androidx.compose.compiler", null)
         val FOUNDATION = LibraryGroup("androidx.compose.foundation", null)
         val MATERIAL = LibraryGroup("androidx.compose.material", null)
-        val NAVIGATION = LibraryGroup("androidx.compose.navigation", null)
-        val PAGING = LibraryGroup("androidx.compose.paging", null)
         val RUNTIME = LibraryGroup("androidx.compose.runtime", null)
         val UI = LibraryGroup("androidx.compose.ui", null)
     }

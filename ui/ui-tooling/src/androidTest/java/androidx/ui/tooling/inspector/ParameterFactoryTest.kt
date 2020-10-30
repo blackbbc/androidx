@@ -18,6 +18,7 @@ package androidx.ui.tooling.inspector
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,9 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.ZeroCornerSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.node.ExperimentalLayoutNodeApi
+import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -64,20 +69,21 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import androidx.test.filters.SmallTest
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.LargeTest
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @ExperimentalLayoutNodeApi
-@SmallTest
-@RunWith(JUnit4::class)
+@LargeTest
+@RunWith(AndroidJUnit4::class)
 class ParameterFactoryTest {
     private val node = MutableInspectorNode()
-    private val factory = ParameterFactory()
+    private val factory = ParameterFactory(InlineClassConverter())
     private val api = android.os.Build.VERSION.SDK_INT
 
     @Before
@@ -85,6 +91,12 @@ class ParameterFactoryTest {
         factory.density = Density(2.0f)
         node.width = 1000
         node.height = 500
+        isDebugInspectorInfoEnabled = true
+    }
+
+    @After
+    fun after() {
+        isDebugInspectorInfoEnabled = false
     }
 
     @Test
@@ -179,14 +191,14 @@ class ParameterFactoryTest {
 
     @Test
     fun testBrush() {
-        val preAPI26 = { api <= 26 }
-        val preAPI28 = { api <= 28 }
         assertThat(lookup(SolidColor(Color.Red)))
             .isEqualTo(ParameterType.Color to Color.Red.toArgb())
-        validate(factory.create(
-            node,
-            "brush",
-            LinearGradient(listOf(Color.Red, Color.Blue), 0.0f, 0.5f, 5.0f, 10.0f))!!
+        validate(
+            factory.create(
+                node,
+                "brush",
+                LinearGradient(listOf(Color.Red, Color.Blue), 0.0f, 0.5f, 5.0f, 10.0f)
+            )!!
         ) {
             parameter("brush", ParameterType.String, "LinearGradient") {
                 parameter("colors", ParameterType.String, "") {
@@ -198,14 +210,15 @@ class ParameterFactoryTest {
                 parameter("shader", ParameterType.String, "LinearGradient") {
                     parameter("mColor0", ParameterType.Int32, 0)
                     parameter("mColor1", ParameterType.Int32, 0)
-                    optional("mColors", ParameterType.String, "IntArray", preAPI28)
-                    optional("mNativeInstance", ParameterType.Int64, 0L, preAPI26)
+                    optional("mColors", ParameterType.String, "IntArray", { api <= 28 })
+                    optional("mNativeInstance", ParameterType.Int64, 0L, { api == 26 })
                     parameter("mTileMode", ParameterType.String, "CLAMP")
-                    optional("mType", ParameterType.Int32, 1, preAPI26)
+                    optional("mType", ParameterType.Int32, 1, { api <= 26 })
                     parameter("mX0", ParameterType.Float, 0.0f)
                     parameter("mX1", ParameterType.Float, 5.0f)
                     parameter("mY0", ParameterType.Float, 0.5f)
                     parameter("mY1", ParameterType.Float, 10.0f)
+                    ignore("native_instance", ParameterType.Int64) { api == 23 }
                 }
                 parameter("startX", ParameterType.Float, 0.0f)
                 parameter("startY", ParameterType.Float, 0.5f)
@@ -220,7 +233,7 @@ class ParameterFactoryTest {
         assertThat(lookup(Color.Blue)).isEqualTo(ParameterType.Color to 0xff0000ff.toInt())
         assertThat(lookup(Color.Red)).isEqualTo(ParameterType.Color to 0xffff0000.toInt())
         assertThat(lookup(Color.Transparent)).isEqualTo(ParameterType.Color to 0x00000000)
-        assertThat(lookup(Color.Unset)).isEqualTo(ParameterType.String to "Unset")
+        assertThat(lookup(Color.Unspecified)).isEqualTo(ParameterType.String to "Unspecified")
     }
 
     @Test
@@ -258,7 +271,7 @@ class ParameterFactoryTest {
 
     @Test
     fun testCornerSize() {
-        assertThat(lookup(ZeroCornerSize)).isEqualTo(ParameterType.DimensionDp to 0.0f)
+        assertThat(lookup(ZeroCornerSize)).isEqualTo(ParameterType.String to "ZeroCornerSize")
         assertThat(lookup(CornerSize(2.4.dp))).isEqualTo(ParameterType.DimensionDp to 2.4f)
         assertThat(lookup(CornerSize(2.4f))).isEqualTo(ParameterType.DimensionDp to 1.2f)
         assertThat(lookup(CornerSize(3))).isEqualTo(ParameterType.DimensionDp to 7.5f)
@@ -314,24 +327,24 @@ class ParameterFactoryTest {
 
     @Test
     fun testFontWeight() {
-        assertThat(lookup(FontWeight.Thin)).isEqualTo(ParameterType.String to "Thin")
-        assertThat(lookup(FontWeight.ExtraLight)).isEqualTo(ParameterType.String to "ExtraLight")
-        assertThat(lookup(FontWeight.Light)).isEqualTo(ParameterType.String to "Light")
-        assertThat(lookup(FontWeight.Normal)).isEqualTo(ParameterType.String to "Normal")
-        assertThat(lookup(FontWeight.Medium)).isEqualTo(ParameterType.String to "Medium")
-        assertThat(lookup(FontWeight.SemiBold)).isEqualTo(ParameterType.String to "SemiBold")
-        assertThat(lookup(FontWeight.Bold)).isEqualTo(ParameterType.String to "Bold")
-        assertThat(lookup(FontWeight.ExtraBold)).isEqualTo(ParameterType.String to "ExtraBold")
-        assertThat(lookup(FontWeight.Black)).isEqualTo(ParameterType.String to "Black")
-        assertThat(lookup(FontWeight.W100)).isEqualTo(ParameterType.String to "Thin")
-        assertThat(lookup(FontWeight.W200)).isEqualTo(ParameterType.String to "ExtraLight")
-        assertThat(lookup(FontWeight.W300)).isEqualTo(ParameterType.String to "Light")
-        assertThat(lookup(FontWeight.W400)).isEqualTo(ParameterType.String to "Normal")
-        assertThat(lookup(FontWeight.W500)).isEqualTo(ParameterType.String to "Medium")
-        assertThat(lookup(FontWeight.W600)).isEqualTo(ParameterType.String to "SemiBold")
-        assertThat(lookup(FontWeight.W700)).isEqualTo(ParameterType.String to "Bold")
-        assertThat(lookup(FontWeight.W800)).isEqualTo(ParameterType.String to "ExtraBold")
-        assertThat(lookup(FontWeight.W900)).isEqualTo(ParameterType.String to "Black")
+        assertThat(lookup(FontWeight.Thin)).isEqualTo(ParameterType.String to "W100")
+        assertThat(lookup(FontWeight.ExtraLight)).isEqualTo(ParameterType.String to "W200")
+        assertThat(lookup(FontWeight.Light)).isEqualTo(ParameterType.String to "W300")
+        assertThat(lookup(FontWeight.Normal)).isEqualTo(ParameterType.String to "W400")
+        assertThat(lookup(FontWeight.Medium)).isEqualTo(ParameterType.String to "W500")
+        assertThat(lookup(FontWeight.SemiBold)).isEqualTo(ParameterType.String to "W600")
+        assertThat(lookup(FontWeight.Bold)).isEqualTo(ParameterType.String to "W700")
+        assertThat(lookup(FontWeight.ExtraBold)).isEqualTo(ParameterType.String to "W800")
+        assertThat(lookup(FontWeight.Black)).isEqualTo(ParameterType.String to "W900")
+        assertThat(lookup(FontWeight.W100)).isEqualTo(ParameterType.String to "W100")
+        assertThat(lookup(FontWeight.W200)).isEqualTo(ParameterType.String to "W200")
+        assertThat(lookup(FontWeight.W300)).isEqualTo(ParameterType.String to "W300")
+        assertThat(lookup(FontWeight.W400)).isEqualTo(ParameterType.String to "W400")
+        assertThat(lookup(FontWeight.W500)).isEqualTo(ParameterType.String to "W500")
+        assertThat(lookup(FontWeight.W600)).isEqualTo(ParameterType.String to "W600")
+        assertThat(lookup(FontWeight.W700)).isEqualTo(ParameterType.String to "W700")
+        assertThat(lookup(FontWeight.W800)).isEqualTo(ParameterType.String to "W800")
+        assertThat(lookup(FontWeight.W900)).isEqualTo(ParameterType.String to "W900")
     }
 
     @Test
@@ -379,8 +392,7 @@ class ParameterFactoryTest {
                 node, "modifier",
                 Modifier
                     .background(Color.Blue)
-                    // TODO(b/163494569) uncomment this and code below when bug is fixed
-                    // .border(width = 5.dp, color = Color.Red)
+                    .border(width = 5.dp, color = Color.Red)
                     .padding(2.0.dp)
                     .fillMaxWidth()
                     .wrapContentHeight(Alignment.Bottom)
@@ -390,32 +402,27 @@ class ParameterFactoryTest {
         ) {
             parameter("modifier", ParameterType.String, "") {
                 parameter("background", ParameterType.Color, Color.Blue.toArgb()) {
-                    parameter("alpha", ParameterType.Float, 1.0f)
                     parameter("color", ParameterType.Color, Color.Blue.toArgb())
                     parameter("shape", ParameterType.String, "RectangleShape")
                 }
-                // TODO(b/163494569)
-                /*parameter("border", ParameterType.Color, Color.Red.toArgb()) {
+                parameter("border", ParameterType.Color, Color.Red.toArgb()) {
                     parameter("color", ParameterType.Color, Color.Red.toArgb())
+                    parameter("shape", ParameterType.String, "RectangleShape")
                     parameter("width", ParameterType.DimensionDp, 5.0f)
-                    parameter("shape", ParameterType.String, "Shape")
-                }*/
-                parameter("padding", ParameterType.DimensionDp, 2.0f) {
-                    parameter("bottom", ParameterType.DimensionDp, 2.0f)
-                    parameter("end", ParameterType.DimensionDp, 2.0f)
-                    parameter("start", ParameterType.DimensionDp, 2.0f)
-                    parameter("top", ParameterType.DimensionDp, 2.0f)
                 }
-                parameter("fillMaxWidth", ParameterType.String, "")
+                parameter("padding", ParameterType.DimensionDp, 2.0f)
+                parameter("fillMaxWidth", ParameterType.String, "") {
+                    parameter("fraction", ParameterType.Float, 1.0f)
+                }
                 parameter("wrapContentHeight", ParameterType.String, "") {
-                    parameter("alignment", ParameterType.String, "Bottom")
+                    parameter("align", ParameterType.String, "Bottom")
+                    parameter("unbounded", ParameterType.Boolean, false)
                 }
-                parameter("preferredWidth", ParameterType.DimensionDp, 30.0f) {
-                    parameter("width", ParameterType.DimensionDp, 30.0f)
-                }
+                parameter("preferredWidth", ParameterType.DimensionDp, 30.0f)
                 parameter("paint", ParameterType.String, "") {
                     parameter("alignment", ParameterType.String, "Center")
                     parameter("alpha", ParameterType.Float, 1.0f)
+                    parameter("contentScale", ParameterType.String, "Inside")
                     parameter("painter", ParameterType.String, "TestPainter") {
                         parameter("alpha", ParameterType.Float, 1.0f)
                         parameter("color", ParameterType.Color, Color.Red.toArgb())
@@ -441,10 +448,19 @@ class ParameterFactoryTest {
     fun testSingleModifier() {
         validate(factory.create(node, "modifier", Modifier.padding(2.0.dp))!!) {
             parameter("modifier", ParameterType.String, "") {
-                parameter("padding", ParameterType.DimensionDp, 2.0f) {
-                    parameter("bottom", ParameterType.DimensionDp, 2.0f)
-                    parameter("end", ParameterType.DimensionDp, 2.0f)
-                    parameter("start", ParameterType.DimensionDp, 2.0f)
+                parameter("padding", ParameterType.DimensionDp, 2.0f)
+            }
+        }
+    }
+
+    @Test
+    fun testSingleModifierWithParameters() {
+        validate(factory.create(node, "modifier", Modifier.padding(1.dp, 2.dp, 3.dp, 4.dp))!!) {
+            parameter("modifier", ParameterType.String, "") {
+                parameter("padding", ParameterType.String, "") {
+                    parameter("bottom", ParameterType.DimensionDp, 4.0f)
+                    parameter("end", ParameterType.DimensionDp, 3.0f)
+                    parameter("start", ParameterType.DimensionDp, 1.0f)
                     parameter("top", ParameterType.DimensionDp, 2.0f)
                 }
             }
@@ -460,10 +476,7 @@ class ParameterFactoryTest {
             }
         }
         validate(factory.create(node, "offset", Offset.Zero)!!) {
-            parameter("offset", ParameterType.String, Offset::class.java.simpleName) {
-                parameter("x", ParameterType.DimensionDp, 0.0f)
-                parameter("y", ParameterType.DimensionDp, 0.0f)
-            }
+            parameter("offset", ParameterType.String, "Zero")
         }
     }
 
@@ -504,10 +517,7 @@ class ParameterFactoryTest {
             parameter("shadow", ParameterType.String, Shadow::class.java.simpleName) {
                 parameter("blurRadius", ParameterType.DimensionDp, 1.25f)
                 parameter("color", ParameterType.Color, Color.Cyan.toArgb())
-                parameter("offset", ParameterType.String, Offset::class.java.simpleName) {
-                    parameter("x", ParameterType.DimensionDp, 0.0f)
-                    parameter("y", ParameterType.DimensionDp, 0.0f)
-                }
+                parameter("offset", ParameterType.String, "Zero")
             }
         }
         validate(factory.create(node, "shadow", Shadow(Color.Blue, Offset(1.0f, 4.0f), 1.5f))!!) {
@@ -576,7 +586,7 @@ class ParameterFactoryTest {
         )
         validate(factory.create(node, "style", style)!!) {
             parameter("style", ParameterType.String, TextStyle::class.java.simpleName) {
-                parameter("background", ParameterType.String, "Unset")
+                parameter("background", ParameterType.String, "Unspecified")
                 parameter("color", ParameterType.Color, Color.Red.toArgb())
                 parameter("fontSize", ParameterType.String, "Inherit")
                 parameter("letterSpacing", ParameterType.String, "Inherit")
@@ -597,6 +607,12 @@ class ParameterFactoryTest {
         assertThat(lookup(TextUnit.Em(2.0f))).isEqualTo(ParameterType.DimensionEm to 2.0f)
         assertThat(lookup(TextUnit.Em(1))).isEqualTo(ParameterType.DimensionEm to 1.0f)
         assertThat(lookup(TextUnit.Em(3.0))).isEqualTo(ParameterType.DimensionEm to 3.0f)
+    }
+
+    @Test
+    fun testVectorAssert() {
+        assertThat(lookup(Icons.Filled.Call)).isEqualTo(ParameterType.String to "Filled.Call")
+        assertThat(lookup(Icons.Rounded.Add)).isEqualTo(ParameterType.String to "Rounded.Add")
     }
 
     private fun lookup(value: Any): Pair<ParameterType, Any?>? {
@@ -655,7 +671,9 @@ class ParameterValidationReceiver(val parameterIterator: Iterator<NodeParameter>
         children.block()
         if (children.parameterIterator.hasNext()) {
             val elementNames = mutableListOf<String>()
-            children.parameterIterator.forEachRemaining { elementNames.add(it.name) }
+            while (children.parameterIterator.hasNext()) {
+                elementNames.add(children.parameterIterator.next().name)
+            }
             error("$name: has more elements like: ${elementNames.joinToString()}")
         }
     }
@@ -669,6 +687,18 @@ class ParameterValidationReceiver(val parameterIterator: Iterator<NodeParameter>
     ) {
         if (condition()) {
             parameter(name, type, value, children)
+        }
+    }
+
+    fun ignore(
+        name: String,
+        type: ParameterType,
+        condition: () -> Boolean,
+    ) {
+        if (condition()) {
+            val parameter = parameterIterator.next()
+            assertThat(parameter.name).isEqualTo(name)
+            assertWithMessage(name).that(parameter.type).isEqualTo(type)
         }
     }
 }

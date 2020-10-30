@@ -18,7 +18,6 @@ package androidx.compose.material
 
 import android.os.Build
 import androidx.compose.animation.core.ManualAnimationClock
-import androidx.compose.foundation.Icon
 import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -35,37 +34,37 @@ import androidx.compose.ui.draw.drawShadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performGesture
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.ui.test.assertTopPositionInRootIsEqualTo
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
-import androidx.ui.test.performGesture
-import androidx.ui.test.swipeDown
-import androidx.ui.test.swipeUp
 import com.google.common.truth.Truth
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @MediumTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalMaterialApi::class)
 class BottomSheetScaffoldTest {
 
     @get:Rule
-    val rule = createComposeRule(disableTransitions = true)
+    val rule = createComposeRule()
 
     private val peekHeight = 75.dp
 
@@ -105,7 +104,7 @@ class BottomSheetScaffoldTest {
             BottomSheetScaffold(
                 scaffoldState = rememberBottomSheetScaffoldState(
                     bottomSheetState =
-                    rememberBottomSheetState(initialValue = BottomSheetValue.Expanded)
+                        rememberBottomSheetState(initialValue = BottomSheetValue.Expanded)
                 ),
                 sheetContent = {
                     Box(Modifier.fillMaxWidth().height(300.dp).testTag(sheetContent))
@@ -126,7 +125,7 @@ class BottomSheetScaffoldTest {
         rule.setContent {
             BottomSheetScaffold(
                 scaffoldState =
-                rememberBottomSheetScaffoldState(bottomSheetState = bottomSheetState),
+                    rememberBottomSheetScaffoldState(bottomSheetState = bottomSheetState),
                 sheetContent = {
                     Box(Modifier.fillMaxWidth().height(300.dp).testTag(sheetContent))
                 },
@@ -163,7 +162,7 @@ class BottomSheetScaffoldTest {
         rule.setContent {
             BottomSheetScaffold(
                 scaffoldState =
-                rememberBottomSheetScaffoldState(bottomSheetState = bottomSheetState),
+                    rememberBottomSheetScaffoldState(bottomSheetState = bottomSheetState),
                 sheetContent = {
                     Box(Modifier.fillMaxWidth().height(300.dp).testTag(sheetContent))
                 },
@@ -201,7 +200,7 @@ class BottomSheetScaffoldTest {
         rule.setContent {
             BottomSheetScaffold(
                 scaffoldState =
-                rememberBottomSheetScaffoldState(bottomSheetState = bottomSheetState),
+                    rememberBottomSheetScaffoldState(bottomSheetState = bottomSheetState),
                 sheetContent = {
                     Box(Modifier.fillMaxWidth().height(300.dp).testTag(sheetContent))
                 },

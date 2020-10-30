@@ -22,25 +22,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.node.Ref
-import androidx.compose.ui.onGloballyPositioned
 import androidx.compose.ui.platform.LayoutDirectionAmbient
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.test.filters.SmallTest
-import androidx.ui.test.createComposeRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.MediumTest
 import org.junit.Assert
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import kotlin.math.roundToInt
 
-@SmallTest
-@RunWith(JUnit4::class)
+@MediumTest
+@RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalLayout::class)
 class ConstraintLayoutTest : LayoutTest() {
     @get:Rule

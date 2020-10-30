@@ -23,20 +23,18 @@ import androidx.compose.runtime.Composition
 import androidx.compose.runtime.CompositionLifecycleObserver
 import androidx.compose.runtime.CompositionReference
 import androidx.compose.runtime.ExperimentalComposeApi
-import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.compositionReference
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.emit
+import androidx.compose.runtime.emptyContent
 import androidx.compose.runtime.remember
-import androidx.compose.ui.AlignmentLine
-import androidx.compose.ui.Measurable
-import androidx.compose.ui.MeasureScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.materialize
 import androidx.compose.ui.node.ExperimentalLayoutNodeApi
 import androidx.compose.ui.node.LayoutEmitHelper
 import androidx.compose.ui.node.LayoutNode
 import androidx.compose.ui.node.LayoutNode.LayoutState
+import androidx.compose.ui.node.isAttached
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.LayoutDirectionAmbient
 import androidx.compose.ui.platform.subcomposeInto
@@ -74,11 +72,9 @@ annotation class ExperimentalSubcomposeLayoutApi
 @ExperimentalSubcomposeLayoutApi
 fun <T> SubcomposeLayout(
     modifier: Modifier = Modifier,
-    measureBlock: SubcomposeMeasureScope<T>.(Constraints) -> MeasureScope.MeasureResult
+    measureBlock: SubcomposeMeasureScope<T>.(Constraints) -> MeasureResult
 ) {
     val state = remember { SubcomposeLayoutState<T>() }
-    // TODO(lelandr): refactor these APIs so that recomposer isn't necessary
-    state.recomposer = currentComposer.recomposer
     state.compositionRef = compositionReference()
 
     val materialized = currentComposer.materialize(modifier)
@@ -101,7 +97,7 @@ fun <T> SubcomposeLayout(
  * subcompose a content during the measuring on top of the features provided by [MeasureScope].
  */
 @ExperimentalSubcomposeLayoutApi
-abstract class SubcomposeMeasureScope<T> : MeasureScope() {
+interface SubcomposeMeasureScope<T> : MeasureScope {
     /**
      * Performs subcomposition of the provided [content] with given [slotId].
      *
@@ -113,15 +109,13 @@ abstract class SubcomposeMeasureScope<T> : MeasureScope() {
      * @param content the composable content which defines the slot. It could emit multiple
      * layouts, in this case the returned list of [Measurable]s will have multiple elements.
      */
-    abstract fun subcompose(slotId: T, content: @Composable () -> Unit): List<Measurable>
+    fun subcompose(slotId: T, content: @Composable () -> Unit): List<Measurable>
 }
 
 @OptIn(ExperimentalLayoutNodeApi::class, ExperimentalSubcomposeLayoutApi::class)
 private class SubcomposeLayoutState<T> :
-    SubcomposeMeasureScope<T>(),
+    SubcomposeMeasureScope<T>,
     CompositionLifecycleObserver {
-    // Values set during the composition
-    var recomposer: Recomposer? = null
     var compositionRef: CompositionReference? = null
 
     // MeasureScope delegation
@@ -166,16 +160,19 @@ private class SubcomposeLayoutState<T> :
         currentIndex++
 
         val nodeState = nodeToNodeState.getOrPut(node) {
-            NodeState(slotId, content)
+            NodeState(slotId, emptyContent())
         }
-        nodeState.content = content
-        subcompose(node, nodeState)
+        val hasPendingChanges = nodeState.composition?.hasInvalidations() ?: true
+        if (nodeState.content !== content || hasPendingChanges) {
+            nodeState.content = content
+            subcompose(node, nodeState)
+        }
         return node.children
     }
 
     fun subcomposeIfRemeasureNotScheduled() {
         val root = root!!
-        if (root.layoutState != LayoutState.NeedsRemeasure) {
+        if (root.layoutState != LayoutState.NeedsRemeasure && root.isAttached()) {
             root.foldedChildren.fastForEach {
                 subcompose(it, nodeToNodeState.getValue(it))
             }
@@ -185,9 +182,14 @@ private class SubcomposeLayoutState<T> :
     private fun subcompose(node: LayoutNode, nodeState: NodeState<T>) {
         node.ignoreModelReads {
             val content = nodeState.content
-            nodeState.composition = subcomposeInto(node, recomposer!!, compositionRef!!) {
-                content()
-            }
+            nodeState.composition = subcomposeInto(
+                container = node,
+                parent = compositionRef ?: error("parent composition reference not set"),
+                // Do not optimize this by passing nodeState.content directly; the additional
+                // composable function call from the lambda expression affects the scope of
+                // recomposition and recomposition of siblings.
+                composable = { content() }
+            )
         }
     }
 

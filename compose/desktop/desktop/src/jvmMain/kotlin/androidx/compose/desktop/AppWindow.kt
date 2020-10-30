@@ -19,30 +19,46 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Providers
 import androidx.compose.runtime.ambientOf
 import androidx.compose.runtime.emptyContent
+import androidx.compose.ui.input.key.ExperimentalKeyInput
+import androidx.compose.ui.platform.Keyboard
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.MenuBar
 import java.awt.Dimension
+import java.awt.Frame
+import java.awt.image.BufferedImage
 import java.awt.Toolkit
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
+import javax.swing.JMenuBar
 import javax.swing.WindowConstants
 
 val AppWindowAmbient = ambientOf<AppWindow?>()
 
 fun Window(
-    title: String = "JetpackDesktopDialog",
-    size: IntSize = IntSize(1024, 768),
-    position: IntOffset = IntOffset(0, 0),
-    isCentered: Boolean = true,
+    title: String = "JetpackDesktopWindow",
+    size: IntSize = IntSize(800, 600),
+    location: IntOffset = IntOffset.Zero,
+    centered: Boolean = true,
+    icon: BufferedImage? = null,
+    menuBar: MenuBar? = null,
+    undecorated: Boolean = false,
+    events: WindowEvents = WindowEvents(),
     onDismissEvent: (() -> Unit)? = null,
     content: @Composable () -> Unit = emptyContent()
 ) {
     AppWindow(
         title = title,
         size = size,
-        position = position,
-        onDismissEvent = onDismissEvent,
-        centered = isCentered
+        location = location,
+        centered = centered,
+        icon = icon,
+        menuBar = menuBar,
+        undecorated = undecorated,
+        events = events,
+        onDismissEvent = onDismissEvent
     ).show {
         content()
     }
@@ -57,12 +73,46 @@ class AppWindow : AppFrame {
         window.apply {
             defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
             addWindowListener(object : WindowAdapter() {
-                override fun windowClosing(windowevent: WindowEvent) {
+                override fun windowClosing(event: WindowEvent) {
                     if (defaultCloseOperation != WindowConstants.DO_NOTHING_ON_CLOSE) {
                         onDismissEvents.forEach { it.invoke() }
+                        events.invokeOnClose()
                         AppManager.removeWindow(parent)
                         isClosed = true
                     }
+                }
+                override fun windowIconified(event: WindowEvent) {
+                    events.invokeOnMinimize()
+                }
+                override fun windowDeiconified(event: WindowEvent) {
+                    events.invokeOnRestore()
+                }
+            })
+            addWindowFocusListener(object : WindowAdapter() {
+                override fun windowGainedFocus(event: WindowEvent) {
+                    window.setJMenuBar(parent.menuBar?.menuBar)
+                    events.invokeOnFocusGet()
+                }
+                override fun windowLostFocus(event: WindowEvent) {
+                    events.invokeOnFocusLost()
+                }
+            })
+            addWindowStateListener(object : WindowAdapter() {
+                override fun windowStateChanged(event: WindowEvent) {
+                    val state = getState()
+                    if (state != Frame.NORMAL && state != Frame.ICONIFIED) {
+                        events.invokeOnMaximize()
+                    }
+                }
+            })
+            addComponentListener(object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent) {
+                    val size = IntSize(width, height)
+                    events.invokeOnResize(size)
+                }
+                override fun componentMoved(e: ComponentEvent) {
+                    val location = IntOffset(x, y)
+                    events.invokeOnRelocate(location)
                 }
             })
         }
@@ -71,32 +121,52 @@ class AppWindow : AppFrame {
     internal constructor(
         attached: AppFrame? = null,
         title: String = "JetpackDesktopWindow",
-        size: IntSize = IntSize(1024, 768),
-        position: IntOffset = IntOffset(0, 0),
-        onDismissEvent: (() -> Unit)? = null,
-        centered: Boolean = true
-    ) : this(title, size, position, onDismissEvent, centered) {
+        size: IntSize = IntSize(800, 600),
+        location: IntOffset = IntOffset.Zero,
+        centered: Boolean = true,
+        icon: BufferedImage? = null,
+        menuBar: MenuBar? = null,
+        undecorated: Boolean = false,
+        events: WindowEvents = WindowEvents(),
+        onDismissEvent: (() -> Unit)? = null
+    ) : this(title, size, location, centered, icon, menuBar, undecorated, events, onDismissEvent) {
         this.invoker = attached
     }
 
     constructor(
         title: String = "JetpackDesktopWindow",
-        size: IntSize = IntSize(1024, 768),
-        position: IntOffset = IntOffset(0, 0),
-        onDismissEvent: (() -> Unit)? = null,
-        centered: Boolean = true
+        size: IntSize = IntSize(800, 600),
+        location: IntOffset = IntOffset.Zero,
+        centered: Boolean = true,
+        icon: BufferedImage? = null,
+        menuBar: MenuBar? = null,
+        undecorated: Boolean = false,
+        events: WindowEvents = WindowEvents(),
+        onDismissEvent: (() -> Unit)? = null
     ) {
-        this.title = title
-        this.width = size.width
-        this.height = size.height
-        this.x = position.x
-        this.y = position.y
+        AppManager.addWindow(this)
+
+        setTitle(title)
+        setIcon(icon)
+        setSize(size.width, size.height)
+        if (centered) {
+            setWindowCentered()
+        } else {
+            setLocation(location.x, location.y)
+        }
+
+        this.menuBar = menuBar
+
+        if (this.menuBar == null && AppManager.sharedMenuBar != null) {
+            this.menuBar = AppManager.sharedMenuBar!!
+        }
+
+        this.events = events
+
+        window.setUndecorated(undecorated)
         if (onDismissEvent != null) {
             onDismissEvents.add(onDismissEvent)
         }
-        isCentered = centered
-
-        AppManager.addWindow(this)
     }
 
     internal var pair: AppFrame? = null
@@ -105,6 +175,33 @@ class AppWindow : AppFrame {
     }
     internal override fun disconnectPair() {
         pair = null
+    }
+
+    override fun setTitle(title: String) {
+        window.setTitle(title)
+    }
+
+    override fun setIcon(image: BufferedImage?) {
+        this.icon = image
+        if (icon != null) {
+            val taskbar = java.awt.Taskbar.getTaskbar()
+            try {
+                taskbar.setIconImage(icon)
+            } catch (e: UnsupportedOperationException) {
+                println("The os does not support: 'Taskbar.setIconImage'")
+            }
+            window.setIconImage(icon)
+        }
+    }
+
+    override fun setMenuBar(menuBar: MenuBar) {
+        this.menuBar = menuBar
+        window.setJMenuBar(menuBar.menuBar)
+    }
+
+    override fun removeMenuBar() {
+        this.menuBar = null
+        window.setJMenuBar(JMenuBar())
     }
 
     override fun setSize(width: Int, height: Int) {
@@ -118,21 +215,17 @@ class AppWindow : AppFrame {
         if (h <= 0) {
             h = this.height
         }
-        this.width = w
-        this.height = h
         window.setSize(w, h)
     }
 
-    override fun setPosition(x: Int, y: Int) {
-        this.x = x
-        this.y = y
+    override fun setLocation(x: Int, y: Int) {
         window.setLocation(x, y)
     }
 
     override fun setWindowCentered() {
         val dim: Dimension = Toolkit.getDefaultToolkit().getScreenSize()
-        this.x = dim.width / 2 - width / 2
-        this.y = dim.height / 2 - height / 2
+        val x = dim.width / 2 - width / 2
+        val y = dim.height / 2 - height / 2
         window.setLocation(x, y)
     }
 
@@ -145,6 +238,7 @@ class AppWindow : AppFrame {
         }
     }
 
+    @OptIn(ExperimentalKeyInput::class)
     override fun show(content: @Composable () -> Unit) {
         if (invoker != null) {
             invoker!!.lockWindow()
@@ -152,15 +246,12 @@ class AppWindow : AppFrame {
         }
 
         onCreate {
+            window.owners?.keyboard = keyboard
             content()
         }
 
-        if (isCentered) {
-            setWindowCentered()
-        }
-        window.title = title
-        window.setSize(width, height)
         window.setVisible(true)
+        events.invokeOnOpen()
     }
 
     override fun close() {
@@ -192,4 +283,7 @@ class AppWindow : AppFrame {
         }
         disconnectPair()
     }
+
+    @ExperimentalKeyInput
+    val keyboard: Keyboard = Keyboard()
 }
