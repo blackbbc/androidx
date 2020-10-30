@@ -28,24 +28,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertShape
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.LargeTest
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.ui.test.assertHeightIsEqualTo
-import androidx.ui.test.assertShape
-import androidx.ui.test.assertWidthIsEqualTo
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onRoot
 import org.junit.Assert
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @MediumTest
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class CanvasTest {
 
     val contentTag = "CanvasTest"
@@ -64,17 +65,19 @@ class CanvasTest {
             val containerSize = (containerSize * 2 / density).dp
             val minWidth = (boxWidth / density).dp
             val minHeight = (boxHeight / density).dp
-            Box(modifier = Modifier.preferredSize(containerSize)
-                .background(color = Color.White)
-                .wrapContentSize(Alignment.Center)) {
-                    Canvas(modifier = Modifier.preferredSize(minWidth, minHeight)) {
-                        drawLine(
-                            start = Offset.Zero,
-                            end = Offset(size.width, size.height),
-                            color = Color.Red,
-                            strokeWidth = strokeWidth
-                        )
-                    }
+            Box(
+                modifier = Modifier.preferredSize(containerSize)
+                    .background(color = Color.White)
+                    .wrapContentSize(Alignment.Center)
+            ) {
+                Canvas(modifier = Modifier.preferredSize(minWidth, minHeight)) {
+                    drawLine(
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                        color = Color.Red,
+                        strokeWidth = strokeWidth
+                    )
+                }
             }
         }
 
@@ -89,40 +92,70 @@ class CanvasTest {
             Assert.assertEquals(paintBoxColor, getPixel(imageStartX, imageStartY))
 
             // Top Left, to the left of the line
-            Assert.assertEquals(containerBgColor,
-                getPixel(imageStartX - strokeOffset, imageStartY))
+            Assert.assertEquals(
+                containerBgColor,
+                getPixel(imageStartX - strokeOffset, imageStartY)
+            )
 
             // Top Left, to the right of the line
-            Assert.assertEquals(containerBgColor,
-                getPixel(imageStartX + strokeOffset, imageStartY))
+            Assert.assertEquals(
+                containerBgColor,
+                getPixel(imageStartX + strokeOffset, imageStartY)
+            )
 
             // Bottom right
-            Assert.assertEquals(paintBoxColor, getPixel(imageStartX + boxWidth - 1,
-                imageStartY + boxHeight - 1))
+            Assert.assertEquals(
+                paintBoxColor,
+                getPixel(
+                    imageStartX + boxWidth - 1,
+                    imageStartY + boxHeight - 1
+                )
+            )
 
             // Bottom right to the right of the line
-            Assert.assertEquals(containerBgColor,
-                getPixel(imageStartX + boxWidth + strokeOffset,
-                    imageStartY + boxHeight))
+            Assert.assertEquals(
+                containerBgColor,
+                getPixel(
+                    imageStartX + boxWidth + strokeOffset,
+                    imageStartY + boxHeight
+                )
+            )
 
             // Bottom right to the left of the line
-            Assert.assertEquals(containerBgColor,
-                getPixel(imageStartX + boxWidth - strokeOffset,
-                    imageStartY + boxHeight))
+            Assert.assertEquals(
+                containerBgColor,
+                getPixel(
+                    imageStartX + boxWidth - strokeOffset,
+                    imageStartY + boxHeight
+                )
+            )
 
             // Middle
-            Assert.assertEquals(paintBoxColor, getPixel(imageStartX + boxWidth / 2,
-                imageStartY + boxHeight / 2))
+            Assert.assertEquals(
+                paintBoxColor,
+                getPixel(
+                    imageStartX + boxWidth / 2,
+                    imageStartY + boxHeight / 2
+                )
+            )
 
             // Middle to the left of the line
-            Assert.assertEquals(containerBgColor,
-                getPixel(imageStartX + boxWidth / 2 - strokeOffset,
-                    imageStartY + boxHeight / 2))
+            Assert.assertEquals(
+                containerBgColor,
+                getPixel(
+                    imageStartX + boxWidth / 2 - strokeOffset,
+                    imageStartY + boxHeight / 2
+                )
+            )
 
             // Middle to the right of the line
-            Assert.assertEquals(containerBgColor,
-                getPixel(imageStartX + boxWidth / 2 + strokeOffset,
-                    imageStartY + boxHeight / 2))
+            Assert.assertEquals(
+                containerBgColor,
+                getPixel(
+                    imageStartX + boxWidth / 2 + strokeOffset,
+                    imageStartY + boxHeight / 2
+                )
+            )
         }
     }
 
@@ -138,6 +171,7 @@ class CanvasTest {
     }
 
     @Test
+    @LargeTest
     fun canvas_exactSizes() {
         rule.setContentForSizeAssertions {
             Canvas(Modifier.preferredSize(100.dp)) {
@@ -156,6 +190,7 @@ class CanvasTest {
     }
 
     @Test
+    @LargeTest
     fun canvas_exactSizes_drawCircle() {
         rule.setContentForSizeAssertions {
             Canvas(Modifier.preferredSize(100.dp)) {

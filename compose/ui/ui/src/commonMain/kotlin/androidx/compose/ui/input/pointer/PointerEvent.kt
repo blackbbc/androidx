@@ -62,7 +62,7 @@ abstract class PointerInputFilter {
         pointerEvent: PointerEvent,
         pass: PointerEventPass,
         bounds: IntSize
-    ): List<PointerInputChange>
+    )
 
     /**
      * Invoked to notify the handler that no more calls to [PointerInputFilter] will be made, until
@@ -96,14 +96,17 @@ abstract class PointerInputFilter {
      */
     open fun onCustomEvent(customEvent: CustomEvent, pass: PointerEventPass) {}
 
-    internal lateinit var layoutCoordinates: LayoutCoordinates
+    internal var layoutCoordinates: LayoutCoordinates? = null
 
-    internal val size: IntSize
-        get() = layoutCoordinates.size
+    /**
+     * The layout size assigned to this [PointerInputFilter].
+     */
+    val size: IntSize
+        get() = layoutCoordinates?.size ?: IntSize.Zero
     internal val position: IntOffset
-        get() = layoutCoordinates.localToGlobal(Offset.Zero).round()
+        get() = layoutCoordinates?.run { localToGlobal(Offset.Zero).round() } ?: IntOffset.Zero
     internal val isAttached: Boolean
-        get() = layoutCoordinates.isAttached
+        get() = layoutCoordinates?.isAttached == true
 }
 
 /**
@@ -186,10 +189,9 @@ data class PointerInputData(
  * @param positionChange The amount of change to the position that has been consumed.
  * @param downChange True if a change to down or up has been consumed.
  */
-@Immutable
-data class ConsumedData(
-    val positionChange: Offset = Offset.Companion.Zero,
-    val downChange: Boolean = false
+class ConsumedData(
+    var positionChange: Offset = Offset.Companion.Zero,
+    var downChange: Boolean = false
 )
 
 /**
@@ -218,12 +220,6 @@ data class ConsumedData(
 enum class PointerEventPass {
     Initial, Main, Final
 }
-
-/**
- * A function used to react to and modify [PointerInputChange]s.
- */
-typealias PointerInputHandler =
-    (PointerEvent, PointerEventPass, IntSize) -> List<PointerInputChange>
 
 /**
  * The base type for all custom events.
@@ -350,20 +346,15 @@ fun PointerInputChange.anyChangeConsumed() = anyPositionChangeConsumed() || cons
 /**
  * Consume the up or down change of this [PointerInputChange] if there is an up or down change to
  * consume.
- *
- * Note: This function creates a modified copy of this [PointerInputChange].
  */
-fun PointerInputChange.consumeDownChange() =
+fun PointerInputChange.consumeDownChange() {
     if (current.down != previous.down) {
-        copy(consumed = consumed.copy(downChange = true))
-    } else {
-        this
+        consumed.downChange = true
     }
+}
 
 /**
  * Consumes some portion of the position change of this [PointerInputChange].
- *
- * Note: This function creates a modified copy of this [PointerInputChange]
  *
  * @param consumedDx The amount of position change on the x axis to consume.
  * @param consumedDy The amount of position change on the y axis to consume.
@@ -371,29 +362,17 @@ fun PointerInputChange.consumeDownChange() =
 fun PointerInputChange.consumePositionChange(
     consumedDx: Float,
     consumedDy: Float
-): PointerInputChange {
-    val newConsumedDx = consumedDx + consumed.positionChange.x
-    val newConsumedDy = consumedDy + consumed.positionChange.y
+) {
     // TODO(shepshapard): Handle case where consumption would make the consumption total to be
     //  less than the total change.
-    return copy(
-        consumed = this.consumed.copy(
-            positionChange = Offset(
-                newConsumedDx,
-                newConsumedDy
-            )
-        )
-    )
+    consumed.positionChange += Offset(consumedDx, consumedDy)
 }
 
 /**
  * Consumes all changes associated with the [PointerInputChange]
- *
- * Note: This function creates a modified copy of this [PointerInputChange]
  */
-fun PointerInputChange.consumeAllChanges(): PointerInputChange {
+fun PointerInputChange.consumeAllChanges() {
     val remainingPositionChange = this.positionChange()
-    return this
-        .consumeDownChange()
-        .consumePositionChange(remainingPositionChange.x, remainingPositionChange.y)
+    this.consumeDownChange()
+    this.consumePositionChange(remainingPositionChange.x, remainingPositionChange.y)
 }

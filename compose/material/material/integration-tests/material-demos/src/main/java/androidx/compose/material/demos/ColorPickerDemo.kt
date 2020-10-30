@@ -51,10 +51,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.WithConstraints
+import androidx.compose.ui.layout.WithConstraints
 import androidx.compose.ui.draw.drawOpacity
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Radius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.gesture.DragObserver
 import androidx.compose.ui.gesture.dragGestureFilter
@@ -63,7 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageAsset
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.isSet
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.DensityAmbient
@@ -106,7 +106,7 @@ private fun ColorPicker(onColorChange: (Color) -> Unit) {
                 // Work out if the new position is inside the circle we are drawing, and has a
                 // valid color associated to it. If not, keep the current position
                 val newColor = colorWheel.colorForPosition(newPosition)
-                if (newColor.isSet) {
+                if (newColor.isSpecified) {
                     position = newPosition
                     onColorChange(newColor)
                 }
@@ -117,7 +117,7 @@ private fun ColorPicker(onColorChange: (Color) -> Unit) {
         Box(Modifier.fillMaxSize()) {
             Image(modifier = inputModifier, asset = colorWheel.image)
             val color = colorWheel.colorForPosition(position)
-            if (color.isSet) {
+            if (color.isSpecified) {
                 Magnifier(visible = isDragging, position = position, color = color)
             }
         }
@@ -296,7 +296,7 @@ private val MagnifierPopupShape = GenericShape { size ->
     val arrowY = height * 0.8f
     val arrowXOffset = width * 0.4f
 
-    addRoundRect(RoundRect(0f, 0f, width, arrowY, radius = Radius(20f, 20f)))
+    addRoundRect(RoundRect(0f, 0f, width, arrowY, cornerRadius = CornerRadius(20f, 20f)))
 
     moveTo(arrowXOffset, arrowY)
     lineTo(width / 2f, height)
@@ -342,7 +342,7 @@ private fun ColorWheel.colorForPosition(position: Offset): Color {
     val x = position.x.toInt().coerceAtLeast(0)
     val y = position.y.toInt().coerceAtLeast(0)
     with(image.toPixelMap()) {
-        if (x >= width || y >= height) return Color.Unset
-        return this[x, y].takeIf { it.alpha == 1f } ?: Color.Unset
+        if (x >= width || y >= height) return Color.Unspecified
+        return this[x, y].takeIf { it.alpha == 1f } ?: Color.Unspecified
     }
 }

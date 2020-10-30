@@ -19,12 +19,13 @@ package androidx.wear.watchface.style
 import android.graphics.drawable.Icon
 import androidx.annotation.RestrictTo
 import androidx.wear.watchface.style.data.DoubleRangeUserStyleCategoryWireFormat
+import androidx.wear.watchface.style.data.DoubleRangeUserStyleCategoryWireFormat.DoubleRangeOptionWireFormat
 
 /**
  * A DoubleRangeUserStyleCategory represents a category with a [Double] value in the range
  * `[minimumValue .. maximumValue]`.
  */
-class DoubleRangeUserStyleCategory : UserStyleCategory {
+public class DoubleRangeUserStyleCategory : UserStyleCategory {
 
     internal companion object {
         internal fun createOptionsList(
@@ -48,15 +49,15 @@ class DoubleRangeUserStyleCategory : UserStyleCategory {
         }
     }
 
-    constructor (
+    public constructor (
         /** Identifier for the element, must be unique. */
         id: String,
 
         /** Localized human readable name for the element, used in the userStyle selection UI. */
-        displayName: String,
+        displayName: CharSequence,
 
         /** Localized description string displayed under the displayName. */
-        description: String,
+        description: CharSequence,
 
         /** Icon for use in the userStyle selection UI. */
         icon: Icon?,
@@ -71,11 +72,9 @@ class DoubleRangeUserStyleCategory : UserStyleCategory {
         defaultValue: Double,
 
         /**
-         * Used by the style configuration UI. Describes which rendering layer this style affects.
-         * Must be either 0 (for a style change with no visual effect, e.g. sound controls) or a
-         * combination  of [LAYER_WATCH_FACE_BASE], [LAYER_COMPLICATONS], [LAYER_UPPER].
+         * Used by the style configuration UI. Describes which rendering layers this style affects.
          */
-        layerFlags: Int
+        affectsLayers: Collection<Layer>
     ) : super(
         id,
         displayName,
@@ -87,14 +86,14 @@ class DoubleRangeUserStyleCategory : UserStyleCategory {
             minimumValue -> 0
             else -> 1
         },
-        layerFlags
+        affectsLayers
     )
 
     internal constructor(wireFormat: DoubleRangeUserStyleCategoryWireFormat) : super(wireFormat)
 
     /** @hide */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-    override fun toWireFormat() =
+    override fun toWireFormat(): DoubleRangeUserStyleCategoryWireFormat =
         DoubleRangeUserStyleCategoryWireFormat(
             id,
             displayName,
@@ -102,17 +101,17 @@ class DoubleRangeUserStyleCategory : UserStyleCategory {
             icon,
             getWireFormatOptionsList(),
             defaultOptionIndex,
-            layerFlags
+            affectsLayers.map { it.ordinal }
         )
 
     /**
      * Represents an option as a [Double] in the range [minimumValue .. maximumValue].
      */
-    class DoubleRangeOption : Option {
+    public class DoubleRangeOption : Option {
         /* The value for this option. Must be within the range [minimumValue .. maximumValue]. */
-        val value: Double
+        public val value: Double
 
-        constructor(value: Double) : super(value.toString()) {
+        public constructor(value: Double) : super(value.toString()) {
             this.value = value
         }
 
@@ -128,29 +127,29 @@ class DoubleRangeUserStyleCategory : UserStyleCategory {
 
         /** @hide */
         @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-        override fun toWireFormat() =
-            DoubleRangeUserStyleCategoryWireFormat.DoubleRangeOptionWireFormat(id, value)
+        override fun toWireFormat(): DoubleRangeOptionWireFormat =
+            DoubleRangeOptionWireFormat(id, value)
     }
 
     /**
      * Returns the minimum value.
      */
-    fun getMinimumValue() = (options.first() as DoubleRangeOption).value
+    public fun getMinimumValue(): Double = (options.first() as DoubleRangeOption).value
 
     /**
      * Returns the maximum value.
      */
-    fun getMaximumValue() = (options.last() as DoubleRangeOption).value
+    public fun getMaximumValue(): Double = (options.last() as DoubleRangeOption).value
 
     /**
      * Returns the default value.
      */
-    fun getDefaultValue() = (options[defaultOptionIndex] as DoubleRangeOption).value
+    public fun getDefaultValue(): Double = (options[defaultOptionIndex] as DoubleRangeOption).value
 
     /**
      * We support all values in the range [min ... max] not just min & max.
      */
-    override fun getOptionForId(optionId: String) =
+    override fun getOptionForId(optionId: String): Option =
         options.find { it.id == optionId } ?: checkedOptionForId(optionId)
 
     private fun checkedOptionForId(optionId: String): DoubleRangeOption {

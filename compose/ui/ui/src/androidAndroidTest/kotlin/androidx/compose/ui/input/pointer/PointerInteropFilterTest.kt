@@ -25,25 +25,25 @@ import android.view.MotionEvent.ACTION_POINTER_UP
 import android.view.MotionEvent.ACTION_UP
 import android.view.MotionEvent.TOOL_TYPE_UNKNOWN
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.AlignmentLine
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.gesture.PointerCoords
 import androidx.compose.ui.gesture.PointerProperties
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.milliseconds
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
-import androidx.ui.test.createAndroidComposeRule
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @SmallTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class PointerInteropFilterTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
@@ -559,7 +559,7 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val upConsumed = down.up(5.milliseconds).consumeDownChange()
+        val upConsumed = down.up(5.milliseconds).apply { consumeDownChange() }
         val expected =
             MotionEvent(
                 5,
@@ -598,7 +598,7 @@ class PointerInteropFilterTest {
             )
 
         val aMove = aDown.moveTo(7.milliseconds, 3f, 4f)
-        val bDownConsumed = down(8, 7.milliseconds, 10f, 11f).consumeDownChange()
+        val bDownConsumed = down(8, 7.milliseconds, 10f, 11f).apply { consumeDownChange() }
         val expected =
             MotionEvent(
                 7,
@@ -666,7 +666,7 @@ class PointerInteropFilterTest {
             )
 
         val aMove2 = aMove1.moveTo(13.milliseconds, 3f, 4f)
-        val bUpConsumed = bDown.up(13.milliseconds).consumeDownChange()
+        val bUpConsumed = bDown.up(13.milliseconds).apply { consumeDownChange() }
         val expected =
             MotionEvent(
                 13,
@@ -715,7 +715,9 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val moveConsumed = down.moveTo(7.milliseconds, 8f, 9f).consume(1f, 0f)
+        val moveConsumed =
+            down.moveTo(7.milliseconds, 8f, 9f)
+                .apply { consumePositionChange(1f, 0f) }
         val expected =
             MotionEvent(
                 7,
@@ -772,7 +774,8 @@ class PointerInteropFilterTest {
             )
 
         val aMove2 = aMove1.moveTo(15.milliseconds, 8f, 9f)
-        val bMoveConsumed = bDown.moveTo(15.milliseconds, 18f, 19f).consume(1f, 0f)
+        val bMoveConsumed =
+            bDown.moveTo(15.milliseconds, 18f, 19f).apply { consumePositionChange(1f, 0f) }
 
         val expected =
             MotionEvent(
@@ -814,7 +817,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_downConsumed_nothingDispatched() {
-        val downConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val downConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -834,7 +837,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_downConsumedThenMoveThenUp_nothingDispatched() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -882,7 +885,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_down1ConsumedThenDown2ThenMove2ThenUp2_nothingDispatched() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -947,7 +950,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_down1ConsumedThenDown2ThenUp1ThenDown3_nothingDispatched() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -1023,7 +1026,8 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(3f, 4f))
             )
 
-        val move1Consumed = down.moveTo(5.milliseconds, 6f, 7f).consume(0f, 1f)
+        val move1Consumed =
+            down.moveTo(5.milliseconds, 6f, 7f).apply { consumePositionChange(0f, 1f) }
         val motionEvent2 =
             MotionEvent(
                 5,
@@ -1087,7 +1091,7 @@ class PointerInteropFilterTest {
             )
 
         val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
-        val bDownConsumed = down(21, 11.milliseconds, 23f, 24f).consumeDownChange()
+        val bDownConsumed = down(21, 11.milliseconds, 23f, 24f).apply { consumeDownChange() }
         val motionEvent2 =
             MotionEvent(
                 11,
@@ -1157,7 +1161,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_down1ConsumedThenUp1ThenDown2_finalDownDispatched() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -1217,7 +1221,7 @@ class PointerInteropFilterTest {
 
         // Arrange
 
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -1496,7 +1500,7 @@ class PointerInteropFilterTest {
     }
 
     @Test
-    fun onPointerEvent_downThenMoveViewRetsFalseThenMoveThenUp_noDispatchAfterRetFalse() {
+    fun onPointerEvent_downThenMoveViewRetsFalseThenMove_moveDispatched() {
         val down = down(1, 2.milliseconds, 3f, 4f)
         val motionEvent1 =
             MotionEvent(
@@ -1530,17 +1534,6 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(11f, 12f))
             )
 
-        val up = move2.up(15.milliseconds)
-        val motionEvent4 =
-            MotionEvent(
-                15,
-                ACTION_UP,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(11f, 12f))
-            )
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(down, motionEvent = motionEvent1)
         )
@@ -1552,15 +1545,235 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(move2, motionEvent = motionEvent3)
         )
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(up, motionEvent = motionEvent4)
-        )
 
-        assertThat(dispatchedMotionEvents).hasSize(0)
+        assertThat(dispatchedMotionEvents).hasSize(1)
+        assertThat(dispatchedMotionEvents[0]).isSameInstanceAs(motionEvent3)
     }
 
     @Test
-    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenMoveThenUp1ThenUp2_noDispatchAfterRetFalse() {
+    fun onPointerEvent_downThenMoveViewRetsFalseThenUp_upDispatched() {
+        val down = down(1, 2.milliseconds, 3f, 4f)
+        val motionEvent1 =
+            MotionEvent(
+                2,
+                ACTION_DOWN,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(3f, 4f))
+            )
+
+        val move1 = down.moveTo(5.milliseconds, 6f, 7f)
+        val motionEvent2 =
+            MotionEvent(
+                5,
+                ACTION_MOVE,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(6f, 47f))
+            )
+
+        val up = move1.up(10.milliseconds)
+        val motionEvent3 =
+            MotionEvent(
+                10,
+                ACTION_UP,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(6f, 47f))
+            )
+
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(down, motionEvent = motionEvent1)
+        )
+        retVal = false
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(move1, motionEvent = motionEvent2)
+        )
+        dispatchedMotionEvents.clear()
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(up, motionEvent = motionEvent3)
+        )
+
+        assertThat(dispatchedMotionEvents).hasSize(1)
+        assertThat(dispatchedMotionEvents[0]).isSameInstanceAs(motionEvent3)
+    }
+
+    @Test
+    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenMove_moveIsDispatched() {
+        // Arrange
+
+        val aDown = down(1, 2.milliseconds, 3f, 4f)
+        val motionEvent1 =
+            MotionEvent(
+                2,
+                ACTION_DOWN,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(3f, 4f))
+            )
+
+        val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
+        val bDown = down(21, 11.milliseconds, 23f, 24f)
+        val motionEvent2 =
+            MotionEvent(
+                11,
+                ACTION_POINTER_DOWN,
+                2,
+                2,
+                arrayOf(PointerProperties(0), PointerProperties(1)),
+                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
+            )
+
+        val aMove2 = aMove1.moveTo(21.milliseconds, 31f, 32f)
+        val bMove = bDown.moveTo(21.milliseconds, 33f, 34f)
+        val motionEvent3 =
+            MotionEvent(
+                21,
+                ACTION_MOVE,
+                2,
+                0,
+                arrayOf(PointerProperties(0), PointerProperties(1)),
+                arrayOf(PointerCoords(31f, 32f), PointerCoords(33f, 34f))
+            )
+
+        // Act
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aDown, motionEvent = motionEvent1)
+        )
+        retVal = false
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
+        )
+        dispatchedMotionEvents.clear()
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMove, motionEvent = motionEvent3)
+        )
+
+        // Assert
+        assertThat(dispatchedMotionEvents).hasSize(1)
+        assertThat(dispatchedMotionEvents[0]).isSameInstanceAs(motionEvent3)
+    }
+
+    @Test
+    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenUp1_up1IsDispatched() {
+        // Arrange
+
+        val aDown = down(1, 2.milliseconds, 3f, 4f)
+        val motionEvent1 =
+            MotionEvent(
+                2,
+                ACTION_DOWN,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(3f, 4f))
+            )
+
+        val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
+        val bDown = down(21, 11.milliseconds, 23f, 24f)
+        val motionEvent2 =
+            MotionEvent(
+                11,
+                ACTION_POINTER_DOWN,
+                2,
+                2,
+                arrayOf(PointerProperties(0), PointerProperties(1)),
+                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
+            )
+
+        val aMove2 = aMove1.moveTo(21.milliseconds, 3f, 4f)
+        val bUp = bDown.up(21.milliseconds)
+        val motionEvent3 =
+            MotionEvent(
+                21,
+                ACTION_POINTER_UP,
+                2,
+                1,
+                arrayOf(PointerProperties(0), PointerProperties(1)),
+                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
+            )
+
+        // Act
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aDown, motionEvent = motionEvent1)
+        )
+        retVal = false
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
+        )
+        dispatchedMotionEvents.clear()
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
+        )
+
+        // Assert
+        assertThat(dispatchedMotionEvents).hasSize(1)
+        assertThat(dispatchedMotionEvents[0]).isSameInstanceAs(motionEvent3)
+    }
+
+    @Test
+    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenUp2_up2Dispatched() {
+        // Arrange
+
+        val aDown = down(1, 2.milliseconds, 3f, 4f)
+        val motionEvent1 =
+            MotionEvent(
+                2,
+                ACTION_DOWN,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(3f, 4f))
+            )
+
+        val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
+        val bDown = down(21, 11.milliseconds, 23f, 24f)
+        val motionEvent2 =
+            MotionEvent(
+                11,
+                ACTION_POINTER_DOWN,
+                2,
+                2,
+                arrayOf(PointerProperties(0), PointerProperties(1)),
+                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
+            )
+
+        val aUp = aMove1.up(31.milliseconds)
+        val bMove = bDown.moveTo(31.milliseconds)
+        val motionEvent3 =
+            MotionEvent(
+                31,
+                ACTION_POINTER_UP,
+                2,
+                0,
+                arrayOf(PointerProperties(0), PointerProperties(1)),
+                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
+            )
+
+        // Act
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aDown, motionEvent = motionEvent1)
+        )
+        retVal = false
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
+        )
+        dispatchedMotionEvents.clear()
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aUp, bMove, motionEvent = motionEvent3)
+        )
+
+        // Assert
+        assertThat(dispatchedMotionEvents).hasSize(1)
+        assertThat(dispatchedMotionEvents[0]).isSameInstanceAs(motionEvent3)
+    }
+
+    @Test
+    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenMoveThenUp1ThenUp2_allFollowingDispatched() {
         // Arrange
 
         val aDown = down(1, 2.milliseconds, 3f, 4f)
@@ -1641,7 +1854,10 @@ class PointerInteropFilterTest {
         )
 
         // Assert
-        assertThat(dispatchedMotionEvents).hasSize(0)
+        assertThat(dispatchedMotionEvents).hasSize(3)
+        assertThat(dispatchedMotionEvents[0]).isSameInstanceAs(motionEvent3)
+        assertThat(dispatchedMotionEvents[1]).isSameInstanceAs(motionEvent4)
+        assertThat(dispatchedMotionEvents[2]).isSameInstanceAs(motionEvent5)
     }
 
     @Test
@@ -1792,7 +2008,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_1PointerDownViewRetsFalse_nothingConsumed() {
-        val down = down(1, 2.milliseconds, 3f, 4f)
+        val change = down(1, 2.milliseconds, 3f, 4f)
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -1804,17 +2020,16 @@ class PointerInteropFilterTest {
             )
         retVal = false
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(down, motionEvent = motionEvent1)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(change, motionEvent = motionEvent1)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(down)
+        PointerInputChangeSubject.assertThat(change).nothingConsumed()
     }
 
     @Test
     fun onPointerEvent_1PointerDownViewRetsTrue_everythingConsumed() {
-        val down = down(1, 2.milliseconds, 3f, 4f)
+        val change = down(1, 2.milliseconds, 3f, 4f)
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -1826,18 +2041,16 @@ class PointerInteropFilterTest {
             )
 
         retVal = true
-        val expected = down.consumeAllChanges()
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(down, motionEvent = motionEvent1)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(change, motionEvent = motionEvent1)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(change).downConsumed()
     }
 
     @Test
-    fun onPointerEvent_1PointerUpViewRetsFalse_nothingConsumed() {
+    fun onPointerEvent_1PointerUpViewRetsFalse_everythingConsumed() {
         val down = down(1, 2.milliseconds, 3f, 4f)
         val motionEvent1 =
             MotionEvent(
@@ -1848,7 +2061,7 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val up = down.up(5.milliseconds)
+        val upActual = down.up(5.milliseconds)
         val motionEvent2 =
             MotionEvent(
                 5,
@@ -1864,11 +2077,12 @@ class PointerInteropFilterTest {
         )
 
         retVal = false
-        val actual = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(up, motionEvent = motionEvent2)
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(upActual, motionEvent = motionEvent2)
         )
 
-        assertThat(actual.changes.first()).isEqualTo(up)
+        PointerInputChangeSubject.assertThat(upActual).downConsumed()
+        PointerInputChangeSubject.assertThat(upActual).positionChangeNotConsumed()
     }
 
     @Test
@@ -1883,7 +2097,7 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val up = down.up(5.milliseconds)
+        val upActual = down.up(5.milliseconds)
         val motionEvent2 =
             MotionEvent(
                 5,
@@ -1894,22 +2108,20 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(3f, 4f))
             )
 
-        val expected = up.consumeAllChanges()
         retVal = true
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(down, motionEvent = motionEvent1)
         )
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(up, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(upActual, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(upActual).downConsumed()
     }
 
     @Test
-    fun onPointerEvent_2PointersDownViewRetsFalse_nothingConsumed() {
+    fun onPointerEvent_2PointersDownViewRetsFalse_everythingConsumed() {
 
         // Arrange
 
@@ -1938,8 +2150,6 @@ class PointerInteropFilterTest {
 
         retVal = true
 
-        val expected = listOf(aMove, bDown)
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -1947,14 +2157,16 @@ class PointerInteropFilterTest {
         // Act
 
         retVal = false
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove, bDown, motionEvent = motionEvent2)
-            )
+
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove, bDown, motionEvent = motionEvent2)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bDown).downConsumed()
+        PointerInputChangeSubject.assertThat(bDown).positionChangeNotConsumed()
     }
 
     @Test
@@ -1987,26 +2199,25 @@ class PointerInteropFilterTest {
 
         retVal = true
 
-        val expected = listOf(aMove.consumeAllChanges(), bDown.consumeAllChanges())
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
 
         // Act
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove, bDown, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove, bDown, motionEvent = motionEvent2)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bDown).downConsumed()
+        PointerInputChangeSubject.assertThat(bDown).positionChangeNotConsumed()
     }
 
     @Test
-    fun onPointerEvent_2Pointers1UpViewRetsFalse_nothingConsumed() {
+    fun onPointerEvent_2Pointers1UpViewRetsFalse_everythingConsumed() {
 
         // Arrange
 
@@ -2047,8 +2258,6 @@ class PointerInteropFilterTest {
 
         retVal = true
 
-        val expected = listOf(aMove2, bUp)
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -2059,14 +2268,15 @@ class PointerInteropFilterTest {
         // Act
 
         retVal = false
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bUp).downConsumed()
+        PointerInputChangeSubject.assertThat(bUp).positionChangeNotConsumed()
     }
 
     @Test
@@ -2111,8 +2321,6 @@ class PointerInteropFilterTest {
 
         retVal = true
 
-        val expected = listOf(aMove2.consumeAllChanges(), bUp.consumeAllChanges())
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -2122,18 +2330,19 @@ class PointerInteropFilterTest {
 
         // Act
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bUp).downConsumed()
+        PointerInputChangeSubject.assertThat(bUp).positionChangeNotConsumed()
     }
 
     @Test
-    fun onPointerEvent_1PointerMoveViewRetsFalse_nothingConsumed() {
+    fun onPointerEvent_1PointerMoveViewRetsFalse_everythingConsumed() {
         val down = down(1, 2.milliseconds, 3f, 4f)
         val motionEvent1 =
             MotionEvent(
@@ -2160,12 +2369,12 @@ class PointerInteropFilterTest {
         )
 
         retVal = false
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(move, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(move, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(move)
+        PointerInputChangeSubject.assertThat(move).downNotConsumed()
+        PointerInputChangeSubject.assertThat(move).positionChangeConsumed(Offset(5f, 5f))
     }
 
     @Test
@@ -2191,21 +2400,20 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(8f, 9f))
             )
         retVal = true
-        val expected = move.consumeAllChanges()
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(down, motionEvent = motionEvent1)
         )
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(move, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(move, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(move).downNotConsumed()
+        PointerInputChangeSubject.assertThat(move).positionChangeConsumed(Offset(5f, 5f))
     }
 
     @Test
-    fun onPointerEvent_2PointersMoveViewRetsFalse_nothingConsumed() {
+    fun onPointerEvent_2PointersMoveViewRetsFalse_everythingConsumed() {
 
         // Arrange
 
@@ -2258,8 +2466,6 @@ class PointerInteropFilterTest {
 
         retVal = true
 
-        val expected = listOf(aMove2, bMove1)
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -2270,14 +2476,16 @@ class PointerInteropFilterTest {
         // Act
 
         retVal = false
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMove1, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMove1, motionEvent = motionEvent3)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).downNotConsumed()
+        PointerInputChangeSubject.assertThat(aMove2).positionChangeConsumed(Offset(8f, 9f))
+        PointerInputChangeSubject.assertThat(bMove1).downNotConsumed()
+        PointerInputChangeSubject.assertThat(bMove1).positionChangeConsumed(Offset(18f, 19f))
     }
 
     @Test
@@ -2334,8 +2542,6 @@ class PointerInteropFilterTest {
 
         retVal = true
 
-        val expected = listOf(aMove2.consumeAllChanges(), bMove1.consumeAllChanges())
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -2345,14 +2551,16 @@ class PointerInteropFilterTest {
 
         // Act
 
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMove1, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMove1, motionEvent = motionEvent3)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).downNotConsumed()
+        PointerInputChangeSubject.assertThat(aMove2).positionChangeConsumed(Offset(8f, 9f))
+        PointerInputChangeSubject.assertThat(bMove1).downNotConsumed()
+        PointerInputChangeSubject.assertThat(bMove1).positionChangeConsumed(Offset(18f, 19f))
     }
 
     // Verification of no further consumption after initial consumption (because if something was
@@ -2361,7 +2569,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onPointerEvent_downConsumedThenMove_noAdditionalConsumption() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -2386,17 +2594,16 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDownConsumed, motionEvent = motionEvent1)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(aMove)
+        PointerInputChangeSubject.assertThat(aMove).nothingConsumed()
     }
 
     @Test
     fun onPointerEvent_downConsumedThenUp_noAdditionalConsumption() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -2426,17 +2633,16 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDownConsumed, motionEvent = motionEvent1)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aUp, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aUp, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(aUp)
+        PointerInputChangeSubject.assertThat(aUp).nothingConsumed()
     }
 
     @Test
     fun onPointerEvent_down1ConsumedThenDown2_noAdditionalConsumption() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -2458,22 +2664,20 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(3f, 4f), PointerCoords(13f, 14f))
             )
 
-        val expected = listOf(aMove1, bDown)
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDownConsumed, motionEvent = motionEvent1)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove1).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bDown).nothingConsumed()
     }
 
     @Test
     fun onPointerEvent_down1ConsumedThenDown2ThenMove_noAdditionalConsumption() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -2505,7 +2709,6 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0), PointerProperties(1)),
                 arrayOf(PointerCoords(6f, 7f), PointerCoords(22f, 23f))
             )
-        val expected = listOf(aMove2, bMove)
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDownConsumed, motionEvent = motionEvent1)
@@ -2513,12 +2716,12 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMove, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMove, motionEvent = motionEvent3)
+        )
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bMove).nothingConsumed()
     }
 
     @Test
@@ -2556,7 +2759,9 @@ class PointerInteropFilterTest {
             )
 
         val aMove2 = aMove1.moveTo(15.milliseconds, 8f, 9f)
-        val bMoveConsumed = bDown.moveTo(15.milliseconds, 18f, 19f).consume(1f, 0f)
+        val bMoveConsumed =
+            bDown.moveTo(15.milliseconds, 18f, 19f)
+                .apply { consumePositionChange(1f, 0f) }
         val motionEvent3 =
             MotionEvent(
                 7,
@@ -2573,8 +2778,6 @@ class PointerInteropFilterTest {
                 )
             )
 
-        val expected = listOf(aMove2, bMoveConsumed)
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -2583,15 +2786,14 @@ class PointerInteropFilterTest {
         )
 
         // Act
-
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMoveConsumed, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMoveConsumed, motionEvent = motionEvent3)
+        )
 
         // Assert
-
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bMoveConsumed).downNotConsumed()
+        PointerInputChangeSubject.assertThat(bMoveConsumed).positionChangeConsumed(Offset(1f, 0f))
     }
 
     @Test
@@ -2610,7 +2812,7 @@ class PointerInteropFilterTest {
             )
 
         val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
-        val bDownConsumed = down(21, 11.milliseconds, 23f, 24f).consumeDownChange()
+        val bDownConsumed = down(21, 11.milliseconds, 23f, 24f).apply { consumeDownChange() }
         val motionEvent2 =
             MotionEvent(
                 11,
@@ -2633,8 +2835,6 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(31f, 32f), PointerCoords(33f, 34f))
             )
 
-        val expected = listOf(aMove2, bMove)
-
         // Act
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
@@ -2642,20 +2842,20 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aMove1, bDownConsumed, motionEvent = motionEvent2)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMove, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMove, motionEvent = motionEvent3)
+        )
 
         // Assert
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bMove).nothingConsumed()
     }
 
     // Verifies resetting of consumption.
 
     @Test
     fun onPointerEvent_down1ConsumedThenUp1ThenDown2_finalDownConsumed() {
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -2689,7 +2889,6 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(13f, 14f))
             )
-        val expected = bDown.consumeAllChanges()
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDownConsumed, motionEvent = motionEvent1)
@@ -2697,12 +2896,12 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aUp, motionEvent = motionEvent2)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(bDown, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(bDown, motionEvent = motionEvent3)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(bDown).downConsumed()
+        PointerInputChangeSubject.assertThat(bDown).positionChangeNotConsumed()
     }
 
     @Test
@@ -2710,7 +2909,7 @@ class PointerInteropFilterTest {
 
         // Arrange
 
-        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val aDownConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -2767,8 +2966,6 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(53f, 54f))
             )
 
-        val expected = cDown.consumeAllChanges()
-
         // Act
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
@@ -2784,13 +2981,13 @@ class PointerInteropFilterTest {
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(bUp, motionEvent = motionEvent4)
         )
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(cDown, motionEvent = motionEvent5)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(cDown, motionEvent = motionEvent5)
+        )
 
         // Assert
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(cDown).downConsumed()
+        PointerInputChangeSubject.assertThat(cDown).positionChangeNotConsumed()
     }
 
     // Verification of consumption when the view rets false and then is set to return true.
@@ -2823,12 +3020,11 @@ class PointerInteropFilterTest {
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
         retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(aMove)
+        PointerInputChangeSubject.assertThat(aMove).nothingConsumed()
     }
 
     @Test
@@ -2853,19 +3049,17 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-
         retVal = false
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
         retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aUp, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aUp, motionEvent = motionEvent2)
+        )
 
-        assertThat(actual.changes.first()).isEqualTo(aUp)
+        PointerInputChangeSubject.assertThat(aUp).nothingConsumed()
     }
 
     @Test
@@ -2898,22 +3092,20 @@ class PointerInteropFilterTest {
 
         retVal = false
 
-        val expected = listOf(aMove1, bDown)
-
         // Act
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
         retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove1).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bDown).nothingConsumed()
     }
 
     @Test
@@ -2958,8 +3150,6 @@ class PointerInteropFilterTest {
 
         retVal = false
 
-        val expected = listOf(aMove2, bMove1)
-
         // Act
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
@@ -2969,14 +3159,14 @@ class PointerInteropFilterTest {
             pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
         )
         retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMove1, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bMove1, motionEvent = motionEvent3)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bMove1).nothingConsumed()
     }
 
     @Test
@@ -3021,8 +3211,6 @@ class PointerInteropFilterTest {
 
         retVal = false
 
-        val expected = listOf(aMove2, bUp)
-
         // Act
 
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
@@ -3032,18 +3220,18 @@ class PointerInteropFilterTest {
             pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
         )
         retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
-            )
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
+            pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
+        )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bUp).nothingConsumed()
     }
 
     @Test
-    fun onPointerEvent_down1ViewRetsFalseThenViewRestsTrueDown2ThenUp1ThenDown3_down3NotConsumed() {
+    fun onPointerEvent_down1ViewRetsFalseThenViewRetsTrueDown2ThenUp1ThenDown3_down3NotConsumed() {
         val aDown = down(1, 2.milliseconds, 3f, 4f)
         val motionEvent1 =
             MotionEvent(
@@ -3093,8 +3281,6 @@ class PointerInteropFilterTest {
 
         retVal = false
 
-        val expected = listOf(bMove2, cDown)
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -3105,227 +3291,12 @@ class PointerInteropFilterTest {
             pointerEventOf(aUp, bMove1, motionEvent = motionEvent3)
         )
         retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(bMove2, cDown, motionEvent = motionEvent4)
-            )
-
-        assertThat(actual.changes).isEqualTo(expected)
-    }
-
-    @Test
-    fun onPointerEvent_downThenMoveViewRetsFalseThenViewRetsTrueMove_moveNotConsumed() {
-        val down = down(1, 2.milliseconds, 3f, 4f)
-        val motionEvent1 =
-            MotionEvent(
-                2,
-                ACTION_DOWN,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(3f, 4f))
-            )
-        val move1 = down.moveTo(5.milliseconds, 6f, 7f)
-        val motionEvent2 =
-            MotionEvent(
-                5,
-                ACTION_MOVE,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(6f, 47f))
-            )
-        val move2 = move1.moveTo(10.milliseconds, 11f, 12f)
-        val motionEvent3 =
-            MotionEvent(
-                10,
-                ACTION_MOVE,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(11f, 12f))
-            )
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(down, motionEvent = motionEvent1)
-        )
-        retVal = false
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(move1, motionEvent = motionEvent2)
-        )
-        retVal = true
-        val actual = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(move2, motionEvent = motionEvent3)
+            pointerEventOf(bMove2, cDown, motionEvent = motionEvent4)
         )
 
-        assertThat(actual.changes.first()).isEqualTo(move2)
-    }
-
-    @Test
-    fun onPointerEvent_downThenMoveViewRetsFalseThenViewRetsTrueThenUp_UpNotConsumed() {
-        val down = down(1, 2.milliseconds, 3f, 4f)
-        val motionEvent1 =
-            MotionEvent(
-                2,
-                ACTION_DOWN,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(3f, 4f))
-            )
-        val move1 = down.moveTo(5.milliseconds, 6f, 7f)
-        val motionEvent2 =
-            MotionEvent(
-                5,
-                ACTION_MOVE,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(6f, 47f))
-            )
-        val up = move1.up(10.milliseconds)
-        val motionEvent3 =
-            MotionEvent(
-                10,
-                ACTION_UP,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(6f, 47f))
-            )
-
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(down, motionEvent = motionEvent1)
-        )
-        retVal = false
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(move1, motionEvent = motionEvent2)
-        )
-        retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(up, motionEvent = motionEvent3)
-            )
-
-        assertThat(actual.changes.first()).isEqualTo(up)
-    }
-
-    @Test
-    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenViewRetsTrueMove_moveNotConsumed() {
-        // Arrange
-
-        val aDown = down(1, 2.milliseconds, 3f, 4f)
-        val motionEvent1 =
-            MotionEvent(
-                2,
-                ACTION_DOWN,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(3f, 4f))
-            )
-
-        val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
-        val bDown = down(21, 11.milliseconds, 23f, 24f)
-        val motionEvent2 =
-            MotionEvent(
-                11,
-                ACTION_POINTER_DOWN,
-                2,
-                2,
-                arrayOf(PointerProperties(0), PointerProperties(1)),
-                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
-            )
-
-        val aMove2 = aMove1.moveTo(31.milliseconds, 31f, 32f)
-        val bMove = bDown.moveTo(31.milliseconds, 33f, 34f)
-        val motionEvent3 =
-            MotionEvent(
-                31,
-                ACTION_MOVE,
-                2,
-                0,
-                arrayOf(PointerProperties(0), PointerProperties(1)),
-                arrayOf(PointerCoords(31f, 32f), PointerCoords(33f, 34f))
-            )
-
-        val expected = listOf(aMove2, bMove)
-
-        // Act
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(aDown, motionEvent = motionEvent1)
-        )
-        retVal = false
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
-        )
-        retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bMove, motionEvent = motionEvent3)
-            )
-
-        // Assert
-        assertThat(actual.changes).isEqualTo(expected)
-    }
-
-    @Test
-    fun onPointerEvent_down1ThenDown2ViewRetsFalseThenViewRetsTrueUp2_moveNotConsumed() {
-        // Arrange
-
-        val aDown = down(1, 2.milliseconds, 3f, 4f)
-        val motionEvent1 =
-            MotionEvent(
-                2,
-                ACTION_DOWN,
-                1,
-                0,
-                arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(3f, 4f))
-            )
-
-        val aMove1 = aDown.moveTo(11.milliseconds, 3f, 4f)
-        val bDown = down(21, 11.milliseconds, 23f, 24f)
-        val motionEvent2 =
-            MotionEvent(
-                11,
-                ACTION_POINTER_DOWN,
-                2,
-                2,
-                arrayOf(PointerProperties(0), PointerProperties(1)),
-                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
-            )
-
-        val aMove2 = aMove1.moveTo(31.milliseconds, 31f, 32f)
-        val bUp = bDown.up(31.milliseconds)
-        val motionEvent3 =
-            MotionEvent(
-                31,
-                ACTION_POINTER_UP,
-                2,
-                2,
-                arrayOf(PointerProperties(0), PointerProperties(1)),
-                arrayOf(PointerCoords(3f, 4f), PointerCoords(23f, 24f))
-            )
-
-        val expected = listOf(aMove2, bUp)
-
-        // Act
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(aDown, motionEvent = motionEvent1)
-        )
-        retVal = false
-        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-            pointerEventOf(aMove1, bDown, motionEvent = motionEvent2)
-        )
-        retVal = true
-        val actual =
-            pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
-                pointerEventOf(aMove2, bUp, motionEvent = motionEvent3)
-            )
-
-        // Assert
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(bMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(cDown).nothingConsumed()
     }
 
     // Verification of correct passes being used
@@ -3696,7 +3667,7 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val upConsumed = down.up(5.milliseconds).consumeDownChange()
+        val upConsumed = down.up(5.milliseconds).apply { consumeDownChange() }
         val motionEvent2 =
             MotionEvent(
                 5,
@@ -3735,7 +3706,7 @@ class PointerInteropFilterTest {
             )
 
         val aMove = aDown.moveTo(7.milliseconds, 3f, 4f)
-        val bDownConsumed = down(8, 7.milliseconds, 10f, 11f).consumeDownChange()
+        val bDownConsumed = down(8, 7.milliseconds, 10f, 11f).apply { consumeDownChange() }
         val motionEvent2 =
             MotionEvent(
                 7,
@@ -3797,7 +3768,7 @@ class PointerInteropFilterTest {
             )
 
         val aMove2 = aMove1.moveTo(13.milliseconds, 3f, 4f)
-        val bUpConsumed = bDown.up(13.milliseconds).consumeDownChange()
+        val bUpConsumed = bDown.up(13.milliseconds).apply { consumeDownChange() }
         val motionEvent3 =
             MotionEvent(
                 13,
@@ -3839,7 +3810,9 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val moveConsumed = down.moveTo(7.milliseconds, 8f, 9f).consume(1f, 0f)
+        val moveConsumed =
+            down.moveTo(7.milliseconds, 8f, 9f)
+                .apply { consumePositionChange(1f, 0f) }
         val motionEvent2 =
             MotionEvent(
                 7,
@@ -3898,7 +3871,8 @@ class PointerInteropFilterTest {
             )
 
         val aMove2 = aMove1.moveTo(15.milliseconds, 8f, 9f)
-        val bMoveConsumed = bDown.moveTo(15.milliseconds, 18f, 19f).consume(1f, 0f)
+        val bMoveConsumed =
+            bDown.moveTo(15.milliseconds, 18f, 19f).apply { consumePositionChange(1f, 0f) }
         val motionEvent3 =
             MotionEvent(
                 7,
@@ -3952,14 +3926,14 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val expected = down.consumeAllChanges()
 
-        val actual = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
             pointerEventOf(down, motionEvent = motionEvent1),
             PointerEventPass.Initial
         )
 
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(down).downConsumed()
+        PointerInputChangeSubject.assertThat(down).positionChangeNotConsumed()
     }
 
     @Test
@@ -3984,17 +3958,17 @@ class PointerInteropFilterTest {
                 arrayOf(PointerProperties(0)),
                 arrayOf(PointerCoords(3f, 4f))
             )
-        val expected = up.consumeAllChanges()
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(down, motionEvent = motionEvent1)
         )
 
-        val actual = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
             pointerEventOf(up, motionEvent = motionEvent2),
             PointerEventPass.Initial
         )
 
-        assertThat(actual.changes.first()).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(up).downConsumed()
+        PointerInputChangeSubject.assertThat(up).positionChangeNotConsumed()
     }
 
     @Test
@@ -4025,22 +3999,22 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(3f, 4f), PointerCoords(10f, 11f))
             )
 
-        val expected = listOf(aMove, bDown).map { it.consumeAllChanges() }
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
 
         // Act
 
-        val actual = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
             pointerEventOf(aMove, bDown, motionEvent = motionEvent2),
             PointerEventPass.Initial
         )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bDown).downConsumed()
+        PointerInputChangeSubject.assertThat(bDown).positionChangeNotConsumed()
     }
 
     @Test
@@ -4083,8 +4057,6 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(3f, 4f), PointerCoords(10f, 11f))
             )
 
-        val expected = listOf(aMove2, bUp).map { it.consumeAllChanges() }
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(aDown, motionEvent = motionEvent1)
         )
@@ -4094,14 +4066,16 @@ class PointerInteropFilterTest {
 
         // Act
 
-        val actual = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
             pointerEventOf(aMove2, bUp, motionEvent = motionEvent3),
             PointerEventPass.Initial
         )
 
         // Assert
 
-        assertThat(actual.changes).isEqualTo(expected)
+        PointerInputChangeSubject.assertThat(aMove2).nothingConsumed()
+        PointerInputChangeSubject.assertThat(bUp).downConsumed()
+        PointerInputChangeSubject.assertThat(bUp).positionChangeNotConsumed()
     }
 
     @Test
@@ -4127,26 +4101,25 @@ class PointerInteropFilterTest {
                 arrayOf(PointerCoords(8f, 9f))
             )
 
-        val expected2 = move.consumeAllChanges()
-
         pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverAllPasses(
             pointerEventOf(down, motionEvent = motionEvent1)
         )
 
-        val actual1 = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPasses(
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPasses(
             pointerEventOf(move, motionEvent = motionEvent2),
             PointerEventPass.Initial,
             PointerEventPass.Main
         )
 
-        assertThat(actual1.changes.first()).isEqualTo(move)
+        PointerInputChangeSubject.assertThat(move).nothingConsumed()
 
-        val actual2 = pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
+        pointerInteropFilter.pointerInputFilter::onPointerEvent.invokeOverPass(
             pointerEventOf(move, motionEvent = motionEvent2),
             PointerEventPass.Final
         )
 
-        assertThat(actual2.changes.first()).isEqualTo(expected2)
+        PointerInputChangeSubject.assertThat(move).downNotConsumed()
+        PointerInputChangeSubject.assertThat(move).positionChangeConsumed(Offset(5f, 5f))
     }
 
     @Test
@@ -4193,7 +4166,7 @@ class PointerInteropFilterTest {
 
     @Test
     fun onCancel_downConsumedCancel_cancelNotDispatched() {
-        val downConsumed = down(1, 2.milliseconds, 3f, 4f).consumeDownChange()
+        val downConsumed = down(1, 2.milliseconds, 3f, 4f).apply { consumeDownChange() }
         val motionEvent1 =
             MotionEvent(
                 2,
@@ -4365,6 +4338,7 @@ class PointerInteropFilterTest {
             get() = null
         override val isAttached: Boolean
             get() = true
+
         override fun globalToLocal(global: Offset): Offset = Offset.Zero
 
         override fun localToGlobal(local: Offset): Offset = Offset.Zero
@@ -4407,45 +4381,39 @@ private fun MotionEvent(
     0
 )
 
-private typealias PointerEventHandler =
-    (PointerEvent, PointerEventPass, IntSize) -> List<PointerInputChange>
+internal typealias PointerEventHandler = (PointerEvent, PointerEventPass, IntSize) -> Unit
 
 private fun PointerEventHandler.invokeOverAllPasses(
     pointerEvent: PointerEvent,
     size: IntSize = IntSize(Int.MAX_VALUE, Int.MAX_VALUE)
-) = invokeOverPasses(
-    pointerEvent,
-    listOf(
-        PointerEventPass.Initial,
-        PointerEventPass.Main,
-        PointerEventPass.Final
-    ),
-    size = size
-)
+) {
+    invokeOverPasses(
+        pointerEvent,
+        listOf(
+            PointerEventPass.Initial,
+            PointerEventPass.Main,
+            PointerEventPass.Final
+        ),
+        size = size
+    )
+}
 
 private fun PointerEventHandler.invokeOverPasses(
     pointerEvent: PointerEvent,
     vararg pointerEventPasses: PointerEventPass,
     size: IntSize = IntSize(Int.MAX_VALUE, Int.MAX_VALUE)
-) = invokeOverPasses(pointerEvent, pointerEventPasses.toList(), size)
+) {
+    invokeOverPasses(pointerEvent, pointerEventPasses.toList(), size)
+}
 
 private fun PointerEventHandler.invokeOverPasses(
     pointerEvent: PointerEvent,
     pointerEventPasses: List<PointerEventPass>,
     size: IntSize = IntSize(Int.MAX_VALUE, Int.MAX_VALUE)
-): PointerEvent {
+) {
     require(pointerEvent.changes.isNotEmpty())
     require(pointerEventPasses.isNotEmpty())
-    var localPointerEvent = pointerEvent
     pointerEventPasses.forEach {
-        val changes = this.invoke(localPointerEvent, it, size)
-        localPointerEvent = localPointerEvent.copy(changes)
+        this.invoke(pointerEvent, it, size)
     }
-    return localPointerEvent
 }
-
-private fun pointerEventOf(vararg changes: PointerInputChange, motionEvent: MotionEvent? = null) =
-    PointerEvent(
-        changes.toList(),
-        motionEvent = motionEvent
-    )

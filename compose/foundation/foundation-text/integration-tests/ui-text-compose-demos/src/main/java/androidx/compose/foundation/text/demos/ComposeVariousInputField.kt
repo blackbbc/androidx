@@ -16,12 +16,12 @@
 
 package androidx.compose.foundation.text.demos
 
-import androidx.compose.foundation.BaseTextField
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollableColumn
 import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.savedinstancestate.savedInstanceState
 import androidx.compose.ui.Modifier
@@ -245,7 +245,8 @@ private fun VariousEditLine(
     visualTransformation: VisualTransformation
 ) {
     val state = savedInstanceState(saver = TextFieldValue.Saver) { TextFieldValue() }
-    BaseTextField(
+    BasicTextField(
+        modifier = demoTextFieldModifiers,
         value = state.value,
         keyboardType = keyboardType,
         imeAction = imeAction,
@@ -274,8 +275,8 @@ private fun TextRange.constrain(minimumValue: Int, maximumValue: Int): TextRange
 private fun HintEditText(hintText: @Composable () -> Unit) {
     val state = savedInstanceState(saver = TextFieldValue.Saver) { TextFieldValue() }
 
-    Box {
-        BaseTextField(
+    Box(demoTextFieldModifiers) {
+        BasicTextField(
             modifier = Modifier.fillMaxWidth(),
             value = state.value,
             onValueChange = { state.value = it },

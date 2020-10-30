@@ -1,0 +1,329 @@
+// Signature format: 4.0
+package androidx.wear.watchface {
+
+  public interface CanvasComplication {
+    method public android.support.wearable.complications.ComplicationData? getData();
+    method public boolean isHighlighted();
+    method @UiThread public void onAttach(androidx.wear.watchface.Complication complication);
+    method @UiThread public void onDetach();
+    method @UiThread public void render(android.graphics.Canvas canvas, android.graphics.Rect bounds, android.icu.util.Calendar calendar, androidx.wear.watchface.RenderParameters renderParameters);
+    method public void setData(android.support.wearable.complications.ComplicationData? p);
+    method public void setIsHighlighted(boolean p);
+    property public abstract android.support.wearable.complications.ComplicationData? data;
+    property public abstract boolean isHighlighted;
+  }
+
+  public class CanvasComplicationDrawable implements androidx.wear.watchface.CanvasComplication {
+    ctor public CanvasComplicationDrawable(androidx.wear.watchface.complications.rendering.ComplicationDrawable drawable, androidx.wear.watchface.WatchState watchState);
+    method public void drawHighlight(android.graphics.Canvas canvas, android.graphics.Rect bounds, android.icu.util.Calendar calendar);
+    method public android.support.wearable.complications.ComplicationData? getData();
+    method public final androidx.wear.watchface.complications.rendering.ComplicationDrawable getDrawable();
+    method @UiThread public boolean isHighlighted();
+    method public void onAttach(androidx.wear.watchface.Complication complication);
+    method public void onDetach();
+    method public void render(android.graphics.Canvas canvas, android.graphics.Rect bounds, android.icu.util.Calendar calendar, androidx.wear.watchface.RenderParameters renderParameters);
+    method @UiThread public void setData(android.support.wearable.complications.ComplicationData? value);
+    method public final void setDrawable(androidx.wear.watchface.complications.rendering.ComplicationDrawable value);
+    method @UiThread public void setIsHighlighted(boolean value);
+    property public android.support.wearable.complications.ComplicationData? data;
+    property public final androidx.wear.watchface.complications.rendering.ComplicationDrawable drawable;
+    property @UiThread public boolean isHighlighted;
+  }
+
+  public abstract class CanvasRenderer extends androidx.wear.watchface.Renderer {
+    ctor public CanvasRenderer(android.view.SurfaceHolder surfaceHolder, androidx.wear.watchface.style.UserStyleRepository userStyleRepository, androidx.wear.watchface.WatchState watchState, int canvasType);
+    method @UiThread public abstract void render(android.graphics.Canvas canvas, android.graphics.Rect bounds, android.icu.util.Calendar calendar);
+  }
+
+  public final class Complication {
+    method @UiThread public androidx.wear.complications.DefaultComplicationProviderPolicy getDefaultProviderPolicy();
+    method @UiThread public int getDefaultProviderType();
+    method @UiThread public androidx.wear.watchface.CanvasComplication getRenderer();
+    method @UiThread public int[] getSupportedTypes();
+    method @UiThread public android.graphics.RectF getUnitSquareBounds();
+    method public void invalidate();
+    method @UiThread public boolean isEnabled();
+    method @UiThread public void render(android.graphics.Canvas canvas, android.icu.util.Calendar calendar, androidx.wear.watchface.RenderParameters renderParameters);
+    method @UiThread public void setDefaultProviderPolicy(androidx.wear.complications.DefaultComplicationProviderPolicy value);
+    method @UiThread public void setDefaultProviderType(int value);
+    method @UiThread public void setEnabled(boolean value);
+    method @UiThread public void setRenderer(androidx.wear.watchface.CanvasComplication value);
+    method @UiThread public void setSupportedTypes(int[] value);
+    method @UiThread public void setUnitSquareBounds(android.graphics.RectF value);
+    property @UiThread public final androidx.wear.complications.DefaultComplicationProviderPolicy defaultProviderPolicy;
+    property @UiThread public final int defaultProviderType;
+    property @UiThread public final boolean enabled;
+    property @UiThread public final androidx.wear.watchface.CanvasComplication renderer;
+    property @UiThread public final int[] supportedTypes;
+    property @UiThread public final android.graphics.RectF unitSquareBounds;
+  }
+
+  public static final class Complication.Builder {
+    ctor public Complication.Builder(int id, androidx.wear.watchface.CanvasComplication renderer, int[] supportedTypes, androidx.wear.complications.DefaultComplicationProviderPolicy defaultProviderPolicy);
+    method public androidx.wear.watchface.Complication build();
+    method public androidx.wear.watchface.Complication.Builder setAsBackgroundComplication();
+    method public androidx.wear.watchface.Complication.Builder setDefaultProviderType(@android.support.wearable.complications.ComplicationData.ComplicationType int defaultProviderType);
+    method public androidx.wear.watchface.Complication.Builder setUnitSquareBounds(android.graphics.RectF unitSquareBounds);
+  }
+
+  public final class ComplicationOutlineRenderer {
+    ctor public ComplicationOutlineRenderer();
+    method public static void drawComplicationSelectOutline(android.graphics.Canvas canvas, android.graphics.Rect bounds);
+    field public static final androidx.wear.watchface.ComplicationOutlineRenderer.Companion Companion;
+  }
+
+  public static final class ComplicationOutlineRenderer.Companion {
+    method public void drawComplicationSelectOutline(android.graphics.Canvas canvas, android.graphics.Rect bounds);
+  }
+
+  public final class ComplicationsManager {
+    ctor public ComplicationsManager(java.util.Collection<androidx.wear.watchface.Complication> complicationCollection, androidx.wear.watchface.style.UserStyleRepository userStyleRepository);
+    method @UiThread public void addTapListener(androidx.wear.watchface.ComplicationsManager.TapListener tapListener);
+    method @UiThread public void bringAttentionToComplication(int complicationId);
+    method public operator androidx.wear.watchface.Complication? get(int id);
+    method public androidx.wear.watchface.Complication? getBackgroundComplication();
+    method public androidx.wear.watchface.Complication? getComplicationAt(int x, int y);
+    method public java.util.Map<java.lang.Integer,androidx.wear.watchface.Complication> getComplications();
+    method @UiThread public void removeTapListener(androidx.wear.watchface.ComplicationsManager.TapListener tapListener);
+    property public final java.util.Map<java.lang.Integer,androidx.wear.watchface.Complication> complications;
+  }
+
+  public static interface ComplicationsManager.TapListener {
+    method public default void onComplicationDoubleTapped(int complicationId);
+    method public default void onComplicationSingleTapped(int complicationId);
+  }
+
+  public final class ComplicationsManagerKt {
+  }
+
+  public enum DrawMode {
+    enum_constant public static final androidx.wear.watchface.DrawMode AMBIENT;
+    enum_constant public static final androidx.wear.watchface.DrawMode INTERACTIVE;
+    enum_constant public static final androidx.wear.watchface.DrawMode LOW_BATTERY_INTERACTIVE;
+    enum_constant public static final androidx.wear.watchface.DrawMode MUTE;
+  }
+
+  public abstract class GlesRenderer extends androidx.wear.watchface.Renderer {
+    ctor public GlesRenderer(android.view.SurfaceHolder surfaceHolder, androidx.wear.watchface.style.UserStyleRepository userStyleRepository, androidx.wear.watchface.WatchState watchState, int[] eglConfigAttribList, int[] eglSurfaceAttribList);
+    ctor public GlesRenderer(android.view.SurfaceHolder surfaceHolder, androidx.wear.watchface.style.UserStyleRepository userStyleRepository, androidx.wear.watchface.WatchState watchState, int[] eglConfigAttribList);
+    ctor public GlesRenderer(android.view.SurfaceHolder surfaceHolder, androidx.wear.watchface.style.UserStyleRepository userStyleRepository, androidx.wear.watchface.WatchState watchState);
+    method @UiThread public void onGlContextCreated();
+    method @UiThread public void onGlSurfaceCreated(int width, int height);
+    method @UiThread public abstract void render(android.icu.util.Calendar calendar);
+  }
+
+  public final class GlesRendererKt {
+  }
+
+  public final class GlesTextureComplication {
+    ctor public GlesTextureComplication(androidx.wear.watchface.CanvasComplication canvasComplication, @Px int textureWidth, @Px int textureHeight, int textureType);
+    method public void bind();
+    method public androidx.wear.watchface.CanvasComplication getCanvasComplication();
+    method public void renderToTexture(android.icu.util.Calendar calendar, androidx.wear.watchface.RenderParameters renderParameters);
+    property public final androidx.wear.watchface.CanvasComplication canvasComplication;
+  }
+
+  public enum LayerMode {
+    enum_constant public static final androidx.wear.watchface.LayerMode DRAW;
+    enum_constant public static final androidx.wear.watchface.LayerMode DRAW_HIGHLIGHTED;
+    enum_constant public static final androidx.wear.watchface.LayerMode HIDE;
+  }
+
+  public final class MutableObservableWatchData<T> extends androidx.wear.watchface.ObservableWatchData<T> {
+    ctor public MutableObservableWatchData(T? initialValue);
+    ctor public MutableObservableWatchData();
+    method @UiThread public void setValue(T v);
+    property @UiThread public T value;
+  }
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public final class MutableWatchState {
+    method public androidx.wear.watchface.WatchState asWatchState();
+    method public boolean getHasBurnInProtection();
+    method public boolean getHasLowBitAmbient();
+    method public androidx.wear.watchface.MutableObservableWatchData<java.lang.Integer> getInterruptionFilter();
+    method public int getScreenShape();
+    method public androidx.wear.watchface.MutableObservableWatchData<java.lang.Boolean> isAmbient();
+    method public androidx.wear.watchface.MutableObservableWatchData<java.lang.Boolean> isBatteryLowAndNotCharging();
+    method public androidx.wear.watchface.MutableObservableWatchData<java.lang.Boolean> isVisible();
+    method public void setHasBurnInProtection(boolean p);
+    method public void setHasLowBitAmbient(boolean p);
+    method public void setInterruptionFilter(androidx.wear.watchface.MutableObservableWatchData<java.lang.Integer> p);
+    method public void setScreenShape(int p);
+    property public final boolean hasBurnInProtection;
+    property public final boolean hasLowBitAmbient;
+    property public final androidx.wear.watchface.MutableObservableWatchData<java.lang.Integer> interruptionFilter;
+    property public final androidx.wear.watchface.MutableObservableWatchData<java.lang.Boolean> isAmbient;
+    property public final androidx.wear.watchface.MutableObservableWatchData<java.lang.Boolean> isBatteryLowAndNotCharging;
+    property public final androidx.wear.watchface.MutableObservableWatchData<java.lang.Boolean> isVisible;
+    property public final int screenShape;
+  }
+
+  public class ObservableWatchData<T> {
+    ctor protected ObservableWatchData(internal T? _value);
+    method @UiThread public final void addObserver(androidx.wear.watchface.Observer<T> observer);
+    method @UiThread public T getValue();
+    method public final T getValueOr(T p);
+    method public final boolean hasValue();
+    method @UiThread public final void removeObserver(androidx.wear.watchface.Observer<T> observer);
+    method @UiThread protected void setValue(T v);
+    property @UiThread public T value;
+  }
+
+  public interface Observer<T> {
+    method public void onChanged(T);
+  }
+
+  public final class RenderParameters {
+    ctor public RenderParameters(androidx.wear.watchface.DrawMode drawMode, java.util.Map<androidx.wear.watchface.style.Layer,? extends androidx.wear.watchface.LayerMode> layerParameters);
+    ctor @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public RenderParameters(androidx.wear.watchface.data.RenderParametersWireFormat wireFormat);
+    method public androidx.wear.watchface.DrawMode getDrawMode();
+    method public java.util.Map<androidx.wear.watchface.style.Layer,androidx.wear.watchface.LayerMode> getLayerParameters();
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public androidx.wear.watchface.data.RenderParametersWireFormat toWireFormat();
+    property public final androidx.wear.watchface.DrawMode drawMode;
+    property public final java.util.Map<androidx.wear.watchface.style.Layer,androidx.wear.watchface.LayerMode> layerParameters;
+    field public static final androidx.wear.watchface.RenderParameters.Companion Companion;
+    field public static final androidx.wear.watchface.RenderParameters DEFAULT_INTERACTIVE;
+    field public static final java.util.Map<androidx.wear.watchface.style.Layer,androidx.wear.watchface.LayerMode> DRAW_ALL_LAYERS;
+  }
+
+  public static final class RenderParameters.Companion {
+  }
+
+  public abstract class Renderer {
+    ctor public Renderer(android.view.SurfaceHolder surfaceHolder, internal androidx.wear.watchface.style.UserStyleRepository userStyleRepository, internal androidx.wear.watchface.WatchState watchState);
+    method public final float getCenterX();
+    method public final float getCenterY();
+    method @UiThread public android.graphics.Rect getMainClockElementBounds();
+    method public final androidx.wear.watchface.RenderParameters getRenderParameters();
+    method public final android.graphics.Rect getScreenBounds();
+    method public final android.view.SurfaceHolder getSurfaceHolder();
+    method @UiThread public void onDestroy();
+    method @UiThread protected void onRenderParametersChanged(androidx.wear.watchface.RenderParameters renderParameters);
+    method @UiThread public boolean shouldAnimate();
+    property public final float centerX;
+    property public final float centerY;
+    property public final androidx.wear.watchface.RenderParameters renderParameters;
+    property public final android.graphics.Rect screenBounds;
+    property public final android.view.SurfaceHolder surfaceHolder;
+  }
+
+  public final class WatchFace {
+    method @UiThread public void invalidate();
+    method public void postInvalidate();
+  }
+
+  public static final class WatchFace.Builder {
+    ctor public WatchFace.Builder(int watchFaceType, long interactiveUpdateRateMillis, internal androidx.wear.watchface.style.UserStyleRepository userStyleRepository, internal androidx.wear.watchface.ComplicationsManager complicationsManager, internal androidx.wear.watchface.Renderer renderer, androidx.wear.watchface.WatchFaceHost watchFaceHost, androidx.wear.watchface.WatchState watchState);
+    method public androidx.wear.watchface.WatchFace build();
+    method public androidx.wear.watchface.WatchFace.Builder setPreviewReferenceTimeMillis(long previewReferenceTimeMillis);
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public androidx.wear.watchface.WatchFace.Builder setSystemTimeProvider(androidx.wear.watchface.WatchFace.SystemTimeProvider systemTimeProvider);
+    method public androidx.wear.watchface.WatchFace.Builder setWear2AccentColor(@ColorInt int accentColor);
+    method public androidx.wear.watchface.WatchFace.Builder setWear2AcceptsTapEvents(boolean acceptsTapEvents);
+    method public androidx.wear.watchface.WatchFace.Builder setWear2StatusBarGravity(int statusBarGravity);
+    method public androidx.wear.watchface.WatchFace.Builder setWear2ViewProtectionMode(int viewProtectionMode);
+  }
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public static interface WatchFace.SystemTimeProvider {
+    method public long getSystemTimeMillis();
+  }
+
+  public final class WatchFaceHost {
+    ctor public WatchFaceHost();
+  }
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public interface WatchFaceHostApi {
+    method public android.content.Context getContext();
+    method public android.os.Handler getHandler();
+    method public androidx.wear.watchface.style.data.UserStyleWireFormat? getInitialUserStyle();
+    method @UiThread public void invalidate();
+    method public void setActiveComplications(int[] watchFaceComplicationIds);
+    method public void setComplicationDetails(int complicationId, android.graphics.Rect bounds, @androidx.wear.watchface.data.ComplicationBoundsType int boundsType, int[] types);
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public void setContentDescriptionLabels(android.support.wearable.watchface.accessibility.ContentDescriptionLabel![] labels);
+    method public void setCurrentUserStyle(androidx.wear.watchface.style.data.UserStyleWireFormat userStyle);
+    method public void setDefaultComplicationProviderWithFallbacks(int watchFaceComplicationId, java.util.List<android.content.ComponentName>? providers, @androidx.wear.complications.SystemProviders.ProviderId int fallbackSystemProvider, int type);
+  }
+
+  public final class WatchFaceKt {
+  }
+
+  public abstract class WatchFaceService extends android.service.wallpaper.WallpaperService {
+    ctor public WatchFaceService();
+    method protected abstract androidx.wear.watchface.WatchFace createWatchFace(android.view.SurfaceHolder surfaceHolder, androidx.wear.watchface.WatchFaceHost watchFaceHost, androidx.wear.watchface.WatchState watchState);
+    method public final android.service.wallpaper.WallpaperService.Engine onCreateEngine();
+  }
+
+  public final class WatchFaceServiceKt {
+  }
+
+  public final class WatchState {
+    ctor public WatchState(androidx.wear.watchface.ObservableWatchData<java.lang.Integer> interruptionFilter, androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isAmbient, androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isBatteryLowAndNotCharging, androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isVisible, boolean hasLowBitAmbient, boolean hasBurnInProtection, int screenShape);
+    method public boolean getHasBurnInProtection();
+    method public boolean getHasLowBitAmbient();
+    method public androidx.wear.watchface.ObservableWatchData<java.lang.Integer> getInterruptionFilter();
+    method public int getScreenShape();
+    method public androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isAmbient();
+    method public androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isVisible();
+    property public final boolean hasBurnInProtection;
+    property public final boolean hasLowBitAmbient;
+    property public final androidx.wear.watchface.ObservableWatchData<java.lang.Integer> interruptionFilter;
+    property public final androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isAmbient;
+    property public final androidx.wear.watchface.ObservableWatchData<java.lang.Boolean> isVisible;
+    property public final int screenShape;
+    field public static final androidx.wear.watchface.WatchState.Companion Companion;
+    field public static final int SCREEN_SHAPE_RECTANGULAR = 2; // 0x2
+    field public static final int SCREEN_SHAPE_ROUND = 1; // 0x1
+  }
+
+  public static final class WatchState.Companion {
+  }
+
+}
+
+package androidx.wear.watchface.control {
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public final class WatchFaceControlService extends android.app.Service {
+    method public android.os.IBinder? onBind(android.content.Intent? intent);
+    field public static final String ACTION_WATCHFACE_CONTROL_SERVICE = "com.google.android.wearable.action.WATCH_FACE_CONTROL";
+  }
+
+}
+
+package androidx.wear.watchface.ui {
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) internal final class ComplicationConfigFragment extends androidx.fragment.app.Fragment {
+  }
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) internal final class ConfigView extends androidx.wear.widget.SwipeDismissFrameLayout {
+    ctor public ConfigView(android.content.Context context, androidx.wear.watchface.ui.WatchFaceConfigActivity watchFaceConfigActivity);
+    method public androidx.wear.watchface.ui.WatchFaceConfigActivity getWatchFaceConfigActivity();
+    property public final androidx.wear.watchface.ui.WatchFaceConfigActivity watchFaceConfigActivity;
+  }
+
+  public static final class ConfigView.EventInfo {
+    ctor public ConfigView.EventInfo(int eventPositionX, int eventPositionY, int eventType);
+    method public int component1();
+    method public int component2();
+    method public int component3();
+    method public androidx.wear.watchface.ui.ConfigView.EventInfo copy(int eventPositionX, int eventPositionY, int eventType);
+    method public int getEventPositionX();
+    method public int getEventPositionY();
+    method public int getEventType();
+    method public void setEventPositionX(int p);
+    method public void setEventPositionY(int p);
+    method public void setEventType(int p);
+    property public final int eventPositionX;
+    property public final int eventPositionY;
+    property public final int eventType;
+  }
+
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public final class WatchFaceConfigActivity extends androidx.fragment.app.FragmentActivity {
+    method public static void unregisterWatchFace(android.content.ComponentName componentName);
+    field public static final androidx.wear.watchface.ui.WatchFaceConfigActivity.Companion Companion;
+  }
+
+  public static final class WatchFaceConfigActivity.Companion {
+    method public void unregisterWatchFace(android.content.ComponentName componentName);
+  }
+
+}
+

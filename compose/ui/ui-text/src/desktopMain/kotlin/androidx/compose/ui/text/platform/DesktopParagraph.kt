@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.DesktopPath
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.isSet
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toComposeRect
@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import org.jetbrains.skija.Paint
 import org.jetbrains.skija.paragraph.BaselineMode
 import org.jetbrains.skija.paragraph.LineMetrics
@@ -62,7 +63,7 @@ import org.jetbrains.skija.paragraph.DecorationLineStyle as SkDecorationLineStyl
 import org.jetbrains.skija.paragraph.DecorationStyle as SkDecorationStyle
 import org.jetbrains.skija.paragraph.Shadow as SkShadow
 
-val defaultFontSize = 16f
+private val DefaultFontSize = 16.sp
 
 internal actual fun ActualParagraph(
     text: String,
@@ -293,9 +294,8 @@ internal class DesktopParagraph(
     override fun getBoundingBox(offset: Int) =
         getBoxForwardByOffset(offset)!!.rect.toComposeRect()
 
-    override fun getWordBoundary(offset: Int): TextRange {
-        println("Paragraph.getWordBoundary $offset")
-        return TextRange(0, 0)
+    override fun getWordBoundary(offset: Int) = para.getWordBoundary(offset).let {
+        TextRange(it.start, it.end)
     }
 
     override fun paint(
@@ -308,7 +308,7 @@ internal class DesktopParagraph(
         var currentColor = paragraphIntrinsics.builder.textStyle.color
         var currentShadow = paragraphIntrinsics.builder.textStyle.shadow
         var currentTextDecoration = paragraphIntrinsics.builder.textStyle.textDecoration
-        if (color.isSet && color != currentColor) {
+        if (color.isSpecified && color != currentColor) {
             toRebuild = true
             currentColor = color
         }
@@ -434,16 +434,17 @@ internal class ParagraphBuilder(
     }
 
     private fun calcFontSize(units: TextUnit, currentStyle: SkTextStyle?): Float {
-        val size = when {
-            units.isSp -> units.value
-            units.isInherit -> currentStyle?.fontSize ?: defaultFontSize
-            units.isEm -> {
-                val currentFontSize: Float? = currentStyle?.fontSize
-                (currentFontSize ?: defaultFontSize) * units.value
+        with(density) {
+            return when {
+                units.isSp -> units.toPx()
+                units.isInherit -> currentStyle?.fontSize ?: DefaultFontSize.toPx()
+                units.isEm -> {
+                    val currentFontSize: Float? = currentStyle?.fontSize
+                    (currentFontSize ?: DefaultFontSize.toPx()) * units.value
+                }
+                else -> throw UnsupportedOperationException()
             }
-            else -> throw(UnsupportedOperationException())
         }
-        return size * density.fontScale
     }
 
     private sealed class Cut {
@@ -501,7 +502,7 @@ internal class ParagraphBuilder(
     }
 
     private fun applyStyles(from: SpanStyle, to: SkTextStyle) {
-        if (from.color != Color.Unset) {
+        if (from.color != Color.Unspecified) {
             to.setColor(from.color.toArgb())
         }
         from.fontFamily?.let {
@@ -514,7 +515,7 @@ internal class ParagraphBuilder(
         from.textDecoration?.let {
             to.decorationStyle = it.toSkDecorationStyle(from.color)
         }
-        if (from.background != Color.Unset) {
+        if (from.background != Color.Unspecified) {
             to.background = Paint().apply {
                 color = from.background.toArgb()
             }

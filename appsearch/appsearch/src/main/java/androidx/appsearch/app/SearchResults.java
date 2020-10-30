@@ -16,123 +16,37 @@
 
 package androidx.appsearch.app;
 
-import android.util.Log;
-
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.annotation.RestrictTo;
-import androidx.concurrent.futures.ResolvableFuture;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 
 /**
- * SearchResults are a returned object from a query API. It contains multiple pages of
- * {@link Result}.
- * <p>Each {@link Result} contains a document and may contain other fields like snippets based on
- * request.
+ * SearchResults are a returned object from a query API.
+ *
+ * <p>Each {@link SearchResult} contains a document and may contain other fields like snippets
+ * based on request.
+ *
  * <p>Should close this object after finish fetching results.
+ *
  * <p>This class is not thread safe.
  */
-public final class SearchResults implements Closeable {
-
-    private static final String TAG = "AppSearch-SearchResults";
-    private final ExecutorService mExecutorService;
-    private final AppSearchBackend.BackendSearchResults mBackendSearchResults;
-
-    /** @hide */
-    public SearchResults(@NonNull ExecutorService executorService,
-            @NonNull AppSearchBackend.BackendSearchResults backendSearchResults)  {
-        mExecutorService = executorService;
-        mBackendSearchResults = backendSearchResults;
-    }
-
+public interface SearchResults extends Closeable {
     /**
-     * Gets a whole page of {@link Result}.
-     * <p>Re-called this method to get next page of {@link Result}, until it return an empty list.
-     * <p>The page size is set by {@link SearchSpec.Builder#setNumPerPage(int)}.
+     * Gets a whole page of {@link SearchResult}s.
+     *
+     * <p>Re-call this method to get next page of {@link SearchResult}, until it returns an
+     * empty list.
+     *
+     * <p>The page size is set by {@link SearchSpec.Builder#setNumPerPage}.
+     *
      * @return The pending result of performing this operation.
      */
     @NonNull
-    public ListenableFuture<AppSearchResult<List<Result>>> getNextPage() {
-        ResolvableFuture<AppSearchResult<List<Result>>> future = ResolvableFuture.create();
-        mExecutorService.execute(() -> {
-            if (!future.isCancelled()) {
-                try {
-                    future.set(mBackendSearchResults.getNextPage());
-                } catch (Throwable t) {
-                    future.setException(t);
-                }
-            }
-        });
-        return future;
-    }
+    ListenableFuture<AppSearchResult<List<SearchResult>>> getNextPage();
 
     @Override
-    public void close() {
-        // Close the SearchResult in the backend thread. No future is needed here since the
-        // method is void.
-        mExecutorService.execute(() -> {
-            try {
-                mBackendSearchResults.close();
-            } catch (IOException e) {
-                Log.w(TAG, "Fail to close the SearchResults.", e);
-            }
-        });
-    }
-
-    /**
-     * This class represents the result obtained from the query. It will contain the document which
-     * which matched the specified query string and specifications.
-     */
-    public static final class Result {
-        @NonNull
-        private final GenericDocument mDocument;
-
-        /**
-         * Contains a list of Snippets that matched the request. Only populated when requested in
-         * both {@link SearchSpec.Builder#setSnippetCount(int)}
-         * and {@link SearchSpec.Builder#setSnippetCountPerProperty(int)}.
-         *
-         * @see #getMatches()
-         */
-        @Nullable
-        private final List<MatchInfo> mMatches;
-
-        /** @hide */
-        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-        public Result(@NonNull GenericDocument document, @Nullable List<MatchInfo> matches) {
-            mDocument = document;
-            mMatches = matches;
-        }
-
-        /**
-         * Contains the matching {@link GenericDocument}.
-         * @return Document object which matched the query.
-         */
-        @NonNull
-        public GenericDocument getDocument() {
-            return mDocument;
-        }
-
-        /**
-         * Contains a list of Snippets that matched the request. Only populated when requested in
-         * both {@link SearchSpec.Builder#setSnippetCount(int)}
-         * and {@link SearchSpec.Builder#setSnippetCountPerProperty(int)}.
-         *
-         * @return  List of matches based on {@link SearchSpec}, if snippeting is disabled and this
-         * method is called it will return {@code null}. Users can also restrict snippet population
-         * using {@link SearchSpec.Builder#setSnippetCount} and
-         * {@link SearchSpec.Builder#setSnippetCountPerProperty(int)}, for all results after that
-         * value this method will return {@code null}.
-         */
-        @Nullable
-        public List<MatchInfo> getMatches() {
-            return mMatches;
-        }
-    }
+    void close();
 }

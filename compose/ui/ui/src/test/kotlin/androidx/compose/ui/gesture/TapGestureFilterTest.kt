@@ -23,14 +23,13 @@ import androidx.compose.ui.gesture.customevents.DelayUpEvent
 import androidx.compose.ui.gesture.customevents.DelayUpMessage
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.consumeDownChange
+import androidx.compose.ui.input.pointer.consumePositionChange
 import androidx.compose.ui.input.pointer.down
 import androidx.compose.ui.input.pointer.invokeOverAllPasses
 import androidx.compose.ui.input.pointer.invokeOverPass
 import androidx.compose.ui.input.pointer.invokeOverPasses
 import androidx.compose.ui.input.pointer.moveTo
-import androidx.compose.ui.input.pointer.pointerEventOf
 import androidx.compose.ui.input.pointer.up
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.milliseconds
@@ -68,7 +67,7 @@ class TapGestureFilterTest {
 
     @Test
     fun onPointerEvent_downConsumedUp_onReleaseNotCalled() {
-        var pointer = down(0, 0.milliseconds).consumeDownChange()
+        var pointer = down(0, 0.milliseconds).apply { consumeDownChange() }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
         pointer = pointer.up(100.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
@@ -80,7 +79,7 @@ class TapGestureFilterTest {
     fun onPointerEvent_downMoveConsumedUp_onReleaseNotCalled() {
         var pointer = down(0, 0.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
-        pointer = pointer.moveTo(100.milliseconds, 5f).consume(5f)
+        pointer = pointer.moveTo(100.milliseconds, 5f).apply { consumePositionChange(5f, 0f) }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
         pointer = pointer.up(200.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
@@ -90,9 +89,9 @@ class TapGestureFilterTest {
 
     @Test
     fun onPointerEvent_downUpConsumed_onReleaseNotCalled() {
-        var pointer = down(0, 0.milliseconds).consumeDownChange()
+        var pointer = down(0, 0.milliseconds).apply { consumeDownChange() }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
-        pointer = pointer.up(100.milliseconds).consumeDownChange()
+        pointer = pointer.up(100.milliseconds).apply { consumeDownChange() }
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
 
         verify(filter.onTap, never()).invoke(any())
@@ -357,9 +356,9 @@ class TapGestureFilterTest {
 
     @Test
     fun onPointerEvent_down_downChangeNotConsumed() {
-        val pointerEventChange =
-            filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down(0, 0.milliseconds)))
-        assertThat(pointerEventChange.changes.first().consumed.downChange, `is`(false))
+        val down = down(0, 0.milliseconds)
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down))
+        assertThat(down.consumed.downChange, `is`(false))
     }
 
     // Verification for when the up change should not be consumed.
@@ -371,10 +370,9 @@ class TapGestureFilterTest {
         pointer = pointer.moveTo(50.milliseconds, -1f, 0f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
         pointer = pointer.up(100.milliseconds)
-        val result =
-            filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
 
-        assertThat(result.changes.first().consumed.downChange, `is`(false))
+        assertThat(pointer.consumed.downChange, `is`(false))
     }
 
     @Test
@@ -384,10 +382,9 @@ class TapGestureFilterTest {
         pointer = pointer.moveTo(50.milliseconds, 1f, 0f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
         pointer = pointer.up(100.milliseconds)
-        val result =
-            filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
 
-        assertThat(result.changes.first().consumed.downChange, `is`(false))
+        assertThat(pointer.consumed.downChange, `is`(false))
     }
 
     @Test
@@ -397,10 +394,9 @@ class TapGestureFilterTest {
         pointer = pointer.moveTo(50.milliseconds, 0f, -1f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
         pointer = pointer.up(100.milliseconds)
-        val result =
-            filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
 
-        assertThat(result.changes.first().consumed.downChange, `is`(false))
+        assertThat(pointer.consumed.downChange, `is`(false))
     }
 
     @Test
@@ -410,11 +406,9 @@ class TapGestureFilterTest {
         pointer = pointer.moveTo(50.milliseconds, 0f, 1f)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
         pointer = pointer.up(100.milliseconds)
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
 
-        val result =
-            filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer), IntSize(1, 1))
-
-        assertThat(result.changes.first().consumed.downChange, `is`(false))
+        assertThat(pointer.consumed.downChange, `is`(false))
     }
 
     @Test
@@ -423,8 +417,8 @@ class TapGestureFilterTest {
         var pointer = down(0, 0.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
         pointer = pointer.up(100.milliseconds)
-        val pointerEventChange = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
-        assertThat(pointerEventChange.changes.first().consumed.downChange, `is`(false))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
+        assertThat(pointer.consumed.downChange, `is`(false))
     }
 
     // Verification for when the up change should be consumed.
@@ -435,8 +429,8 @@ class TapGestureFilterTest {
         var pointer = down(0, 0.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
         pointer = pointer.up(100.milliseconds)
-        val pointerEventChange = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
-        assertThat(pointerEventChange.changes.first().consumed.downChange, `is`(true))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
+        assertThat(pointer.consumed.downChange, `is`(true))
     }
 
     @Test
@@ -444,8 +438,8 @@ class TapGestureFilterTest {
         var pointer = down(0, 0.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
         pointer = pointer.up(100.milliseconds)
-        val pointerEventChange = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
-        assertThat(pointerEventChange.changes.first().consumed.downChange, `is`(true))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
+        assertThat(pointer.consumed.downChange, `is`(true))
     }
 
     // Verification for during what pass the changes are consumed.
@@ -454,18 +448,18 @@ class TapGestureFilterTest {
     fun onPointerEvent_upChangeConsumedDuringMain() {
         val pointer = down(0, 0.milliseconds)
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(pointer))
-        var pointerEventChange = pointer.up(100.milliseconds)
-        pointerEventChange = filter::onPointerEvent.invokeOverPasses(
+        val pointerEventChange = pointer.up(100.milliseconds)
+        filter::onPointerEvent.invokeOverPasses(
             pointerEventOf(pointerEventChange),
             PointerEventPass.Initial
-        ).changes.first()
+        )
         assertThat(pointerEventChange.consumed.downChange, `is`(false))
 
-        pointerEventChange = filter::onPointerEvent.invokeOverPass(
+        filter::onPointerEvent.invokeOverPass(
             pointerEventOf(pointerEventChange),
             PointerEventPass.Main,
             IntSize(0, 0)
-        ).changes.first()
+        )
         assertThat(pointerEventChange.consumed.downChange, `is`(true))
     }
 
@@ -579,9 +573,9 @@ class TapGestureFilterTest {
         filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(down))
         filter::onCustomEvent.invokeOverAllPasses(delayUp)
 
-        val resultingChange = filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(up))
+        filter::onPointerEvent.invokeOverAllPasses(pointerEventOf(up))
 
-        assertThat(resultingChange.changes.first().consumed.downChange, `is`(false))
+        assertThat(up.consumed.downChange, `is`(false))
     }
 
     @Test

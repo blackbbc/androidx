@@ -16,7 +16,10 @@
 
 package androidx.compose.foundation.lazy
 
+import androidx.compose.animation.core.ExponentialDecay
+import androidx.compose.animation.core.ManualAnimationClock
 import androidx.compose.foundation.Text
+import androidx.compose.foundation.animation.FlingConfig
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -39,29 +42,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.gesture.TouchSlop
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEqualTo
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertPositionInRootIsEqualTo
+import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.center
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onChildren
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performGesture
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeWithVelocity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
-import androidx.ui.test.SemanticsNodeInteraction
-import androidx.ui.test.StateRestorationTester
-import androidx.ui.test.assertCountEquals
-import androidx.ui.test.assertHeightIsEqualTo
-import androidx.ui.test.assertIsDisplayed
-import androidx.ui.test.assertIsEqualTo
-import androidx.ui.test.assertIsNotDisplayed
-import androidx.ui.test.assertPositionInRootIsEqualTo
-import androidx.ui.test.assertTopPositionInRootIsEqualTo
-import androidx.ui.test.assertWidthIsEqualTo
-import androidx.ui.test.center
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.getUnclippedBoundsInRoot
-import androidx.ui.test.onChildren
-import androidx.ui.test.onNodeWithTag
-import androidx.ui.test.onNodeWithText
-import androidx.ui.test.performGesture
-import androidx.ui.test.swipeUp
-import androidx.ui.test.swipeWithVelocity
 import com.google.common.collect.Range
 import com.google.common.truth.IntegerSubject
 import com.google.common.truth.Truth.assertThat
@@ -70,11 +75,10 @@ import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import java.util.concurrent.CountDownLatch
 
 @LargeTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class LazyColumnForTest {
     private val LazyColumnForTag = "TestLazyColumnFor"
 
@@ -789,6 +793,47 @@ class LazyColumnForTest {
     }
 
     @Test
+    fun isAnimationRunningUpdate() {
+        val items by mutableStateOf((1..20).toList())
+        val clock = ManualAnimationClock(0L)
+        val state = LazyListState(
+            flingConfig = FlingConfig(ExponentialDecay()),
+            animationClock = clock
+        )
+        rule.setContent {
+            LazyColumnFor(
+                items = items,
+                modifier = Modifier.size(100.dp).testTag(LazyColumnForTag),
+                state = state
+            ) {
+                Spacer(Modifier.size(20.dp).testTag("$it"))
+            }
+        }
+
+        rule.runOnIdle {
+            assertThat(state.firstVisibleItemIndex).isEqualTo(0)
+            assertThat(state.isAnimationRunning).isEqualTo(false)
+        }
+
+        rule.onNodeWithTag(LazyColumnForTag)
+            .performGesture { swipeUp() }
+
+        rule.runOnIdle {
+            clock.clockTimeMillis += 100
+            assertThat(state.firstVisibleItemIndex).isNotEqualTo(0)
+            assertThat(state.isAnimationRunning).isEqualTo(true)
+        }
+
+        // TODO (jelle): this should be down, and not click to be 100% fair
+        rule.onNodeWithTag(LazyColumnForTag)
+            .performGesture { click() }
+
+        rule.runOnIdle {
+            assertThat(state.isAnimationRunning).isEqualTo(false)
+        }
+    }
+
+    @Test
     fun stateUpdatedAfterScrollWithinTheSameItem() {
         val items by mutableStateOf((1..20).toList())
         lateinit var state: LazyListState
@@ -873,6 +918,33 @@ class LazyColumnForTest {
             assertThat(state!!.firstVisibleItemIndex).isEqualTo(index)
             assertThat(state!!.firstVisibleItemScrollOffset).isEqualTo(scrollOffset)
         }
+    }
+
+    @Test
+    fun scroll_makeListSmaller_scroll() {
+        var items by mutableStateOf((1..100).toList())
+        rule.setContent {
+            LazyColumnFor(
+                items = items,
+                modifier = Modifier.size(100.dp).testTag(LazyColumnForTag)
+            ) {
+                Spacer(Modifier.size(10.dp).testTag("$it"))
+            }
+        }
+
+        rule.onNodeWithTag(LazyColumnForTag)
+            .scrollBy(y = 300.dp, density = rule.density)
+
+        rule.runOnIdle {
+            items = (1..11).toList()
+        }
+
+        // try to scroll after the data set has been updated. this was causing a crash previously
+        rule.onNodeWithTag(LazyColumnForTag)
+            .scrollBy(y = (-10).dp, density = rule.density)
+
+        rule.onNodeWithTag("1")
+            .assertIsDisplayed()
     }
 
     private fun SemanticsNodeInteraction.assertTopPositionIsAlmost(expected: Dp) {

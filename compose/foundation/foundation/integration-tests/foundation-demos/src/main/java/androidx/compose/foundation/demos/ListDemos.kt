@@ -19,12 +19,13 @@ package androidx.compose.foundation.demos
 import androidx.compose.foundation.Text
 import androidx.compose.foundation.AmbientContentColor
 import androidx.compose.foundation.AmbientTextStyle
+import androidx.compose.foundation.Interaction
+import androidx.compose.foundation.InteractionState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayout
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -56,7 +57,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.random.Random
-import androidx.compose.paging.demos.PagingDemos
+import androidx.paging.compose.demos.PagingDemos
 
 val LazyListDemos = listOf(
     ComposableDemo("Simple column") { LazyColumnDemo() },
@@ -111,14 +112,15 @@ private fun ListAddRemoveItemsDemo() {
 @OptIn(ExperimentalLayout::class)
 @Composable
 private fun ListHoistedStateDemo() {
-    val state = rememberLazyListState()
+    val interactionState = remember { InteractionState() }
+    val state = rememberLazyListState(interactionState = interactionState)
     Column {
-        FlowRow {
-            Text(
-                "First item: ${state.firstVisibleItemIndex}",
-                style = AmbientTextStyle.current.copy(fontSize = 30.sp)
-            )
-        }
+        Text(
+            "First item: ${state.firstVisibleItemIndex}",
+            fontSize = 30.sp
+        )
+        Text("Dragging: ${interactionState.contains(Interaction.Dragged)}", fontSize = 30.sp)
+        Text("Flinging: ${state.isAnimationRunning}", fontSize = 30.sp)
         LazyColumnFor(
             (0..1000).toList(),
             Modifier.fillMaxWidth(),
@@ -179,7 +181,8 @@ private fun RtlListDemo() {
     Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
         LazyRowForIndexed((0..100).toList(), Modifier.fillMaxWidth()) { index, item ->
             Text(
-                "$item", Modifier
+                "$item",
+                Modifier
                     .size(100.dp)
                     .background(if (index % 2 == 0) Color.LightGray else Color.Transparent)
                     .padding(16.dp)

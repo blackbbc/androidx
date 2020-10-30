@@ -18,13 +18,11 @@ package androidx.compose.desktop.examples.example1
 import androidx.compose.animation.animate
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.desktop.AppWindow
-import androidx.compose.desktop.Window
-import androidx.compose.foundation.Icon
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollableColumn
 import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,17 +34,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.ExperimentalLazyDsl
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material.BottomAppBar
 import androidx.compose.material.Button
+import androidx.compose.material.ButtonConstants
+import androidx.compose.material.Checkbox
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.ExtendedFloatingActionButton
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Scaffold
 import androidx.compose.material.Slider
 import androidx.compose.material.TextField
 import androidx.compose.material.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,6 +64,10 @@ import androidx.compose.ui.drawLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.input.key.ExperimentalKeyInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.plus
+import androidx.compose.ui.input.key.shortcuts
 import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.Placeholder
@@ -68,10 +77,10 @@ import androidx.compose.ui.text.annotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDecoration.Companion.Underline
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntSize
 
 private const val title = "Desktop Compose Elements"
 
@@ -96,8 +105,18 @@ fun main() {
                     }
                 )
             },
+            isFloatingActionButtonDocked = true,
+            bottomBar = {
+                BottomAppBar(cutoutShape = CircleShape) {
+                    IconButton(
+                        onClick = {}
+                    ) {
+                        Icon(Icons.Filled.Menu, Modifier.size(ButtonConstants.DefaultIconSize))
+                    }
+                }
+            },
             bodyContent = {
-                Row {
+                Row(Modifier.padding(bottom = 56.dp)) {
                     LeftColumn(Modifier.weight(1f))
                     RightColumn(Modifier.width(200.dp))
                 }
@@ -106,6 +125,7 @@ fun main() {
     }
 }
 
+@OptIn(ExperimentalKeyInput::class)
 @Composable
 private fun LeftColumn(modifier: Modifier) = Column(modifier) {
     val amount = remember { mutableStateOf(0) }
@@ -113,7 +133,7 @@ private fun LeftColumn(modifier: Modifier) = Column(modifier) {
     val text = remember {
         mutableStateOf("Hello \uD83E\uDDD1\uD83C\uDFFF\u200D\uD83E\uDDB0\nПривет")
     }
-    Column(Modifier.fillMaxSize(), Arrangement.SpaceEvenly) {
+    ScrollableColumn(Modifier.fillMaxSize()) {
         Text(
             text = "Привет! 你好! Desktop Compose ${amount.value}",
             color = Color.Black,
@@ -209,6 +229,9 @@ private fun LeftColumn(modifier: Modifier) = Column(modifier) {
             overflow = TextOverflow.Ellipsis
         )
 
+        var overText by remember { mutableStateOf("Move mouse over text:") }
+        Text(overText)
+
         Text(
             text = "fun <T : Comparable<T>> List<T>.quickSort(): List<T> = when {\n" +
                 "  size < 2 -> this\n" +
@@ -219,18 +242,16 @@ private fun LeftColumn(modifier: Modifier) = Column(modifier) {
                 "   }\n" +
                 "}",
             modifier = Modifier.padding(10.dp).pointerMoveFilter(
-                onMove = { position ->
-                    println("MOVE: $position")
+                onMove = {
+                    overText = "Move position: $it"
                     false
                 },
                 onEnter = {
-                    println("HOVER!")
-                    text.value = "HOVER ${amount.value}"
+                    overText = "Over enter"
                     false
                 },
                 onExit = {
-                    println("UNHOVER!")
-                    text.value = "UNHOVER ${amount.value}"
+                    overText = "Over exit"
                     false
                 }
             )
@@ -250,19 +271,24 @@ private fun LeftColumn(modifier: Modifier) = Column(modifier) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row {
-                Button(
-                    modifier = Modifier.padding(4.dp),
-                    onClick = {
-                        animation.value = !animation.value
-                    }
-                ) {
-                    Text("Toggle")
+                Row(modifier = Modifier.padding(4.dp)) {
+                    Checkbox(
+                        animation.value,
+                        onCheckedChange = {
+                            animation.value = it
+                        }
+                    )
+                    Text("Animation")
                 }
 
                 Button(
                     modifier = Modifier.padding(4.dp),
                     onClick = {
-                        Window(size = IntSize(400, 200)) {
+                        AppWindow(size = IntSize(400, 200)).also {
+                            it.keyboard.setShortcut(Key.Escape) {
+                                it.close()
+                            }
+                        }.show {
                             Animations(isCircularEnabled = animation.value)
                         }
                     }
@@ -283,13 +309,22 @@ private fun LeftColumn(modifier: Modifier) = Column(modifier) {
             onValueChange = { amount.value = it.toIntOrNull() ?: 42 },
             label = { Text(text = "Input1") }
         )
+
         TextField(
             value = text.value,
             onValueChange = { text.value = it },
-            label = { Text(text = "Input2") }
+            label = { Text(text = "Input2") },
+            modifier = Modifier.shortcuts {
+                on(Key.MetaLeft + Key.ShiftLeft + Key.Enter) {
+                    text.value = "Cleared with shift!"
+                }
+                on(Key.MetaLeft + Key.Enter) {
+                    text.value = "Cleared!"
+                }
+            }
         )
 
-        Image(imageResource("androidx/compose/desktop/example/circus.jpg"))
+        Image(imageResource("androidx/compose/desktop/example/circus.jpg"), Modifier.size(200.dp))
     }
 }
 

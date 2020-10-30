@@ -19,14 +19,16 @@ package androidx.compose.foundation.layout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Providers
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Layout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.onGloballyPositioned
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.platform.LayoutDirectionAmbient
+import androidx.compose.ui.platform.ValueElement
+import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
@@ -34,19 +36,31 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.filters.SmallTest
 import com.google.common.truth.Truth.assertThat
+import org.junit.After
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 @SmallTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class LayoutPaddingTest : LayoutTest() {
+
+    @Before
+    fun before() {
+        isDebugInspectorInfoEnabled = true
+    }
+
+    @After
+    fun after() {
+        isDebugInspectorInfoEnabled = false
+    }
 
     /**
      * Tests that negative start padding is not allowed.
@@ -361,16 +375,26 @@ class LayoutPaddingTest : LayoutTest() {
 
     @Test
     fun testInspectableParameter() {
-        val exclusions = listOf("nameFallback", "rtlAware")
         val modifier = Modifier.padding(10.dp, 20.dp, 30.dp, 40.dp) as InspectableValue
         assertThat(modifier.nameFallback).isEqualTo("padding")
         assertThat(modifier.valueOverride).isNull()
-        assertThat(modifier.inspectableElements.map { it.name }.toList())
-            .containsExactlyElementsIn(
-                modifier.javaClass.declaredFields
-                    .filter { !it.isSynthetic && !exclusions.contains(it.name) }
-                    .map { it.name }
-            )
+        assertThat(modifier.inspectableElements.toList()).containsExactly(
+            ValueElement("start", 10.dp),
+            ValueElement("top", 20.dp),
+            ValueElement("end", 30.dp),
+            ValueElement("bottom", 40.dp)
+        )
+    }
+
+    @Test
+    fun testInspectableParameterWith2Parameters() {
+        val modifier = Modifier.padding(10.dp, 20.dp) as InspectableValue
+        assertThat(modifier.nameFallback).isEqualTo("padding")
+        assertThat(modifier.valueOverride).isNull()
+        assertThat(modifier.inspectableElements.toList()).containsExactly(
+            ValueElement("horizontal", 10.dp),
+            ValueElement("vertical", 20.dp)
+        )
     }
 
     @Test
@@ -378,22 +402,20 @@ class LayoutPaddingTest : LayoutTest() {
         val modifier = Modifier.absolutePadding(10.dp, 20.dp, 30.dp, 40.dp) as InspectableValue
         assertThat(modifier.nameFallback).isEqualTo("absolutePadding")
         assertThat(modifier.valueOverride).isNull()
-        assertThat(modifier.inspectableElements.map { it.name }.toList())
-            .containsExactly("left", "top", "right", "bottom")
+        assertThat(modifier.inspectableElements.toList()).containsExactly(
+            ValueElement("left", 10.dp),
+            ValueElement("top", 20.dp),
+            ValueElement("right", 30.dp),
+            ValueElement("bottom", 40.dp)
+        )
     }
 
     @Test
     fun testInspectableParameterWithSameOverallValue() {
-        val exclusions = listOf("nameFallback", "rtlAware")
         val modifier = Modifier.padding(40.dp) as InspectableValue
         assertThat(modifier.nameFallback).isEqualTo("padding")
         assertThat(modifier.valueOverride).isEqualTo(40.dp)
-        assertThat(modifier.inspectableElements.map { it.name }.toList())
-            .containsExactlyElementsIn(
-                modifier.javaClass.declaredFields
-                    .filter { !it.isSynthetic && !exclusions.contains(it.name) }
-                    .map { it.name }
-            )
+        assertThat(modifier.inspectableElements.toList()).isEmpty()
     }
 
     private fun testPaddingIsAppliedImplementation(

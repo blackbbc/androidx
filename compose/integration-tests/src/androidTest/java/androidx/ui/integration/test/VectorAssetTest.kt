@@ -18,8 +18,6 @@ package androidx.ui.integration.test
 
 import android.os.Build
 import androidx.compose.foundation.Image
-import androidx.test.filters.LargeTest
-import androidx.test.filters.SdkSuppress
 import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,17 +25,19 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.vectorResource
-import androidx.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.LargeTest
+import androidx.test.filters.SdkSuppress
 import androidx.ui.integration.test.framework.ProgrammaticVectorTestCase
 import androidx.ui.integration.test.framework.XmlVectorTestCase
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import kotlin.math.roundToInt
 
 /**
@@ -46,10 +46,10 @@ import kotlin.math.roundToInt
  */
 @LargeTest
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class VectorAssetTest {
     @get:Rule
-    val rule = createComposeRule(disableTransitions = true)
+    val rule = createComposeRule()
 
     @Test
     fun testProgrammaticAndXmlVectorAssetsAreTheSame() {

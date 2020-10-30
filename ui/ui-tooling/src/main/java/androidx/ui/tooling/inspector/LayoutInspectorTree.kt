@@ -17,6 +17,7 @@
 package androidx.ui.tooling.inspector
 
 import android.view.View
+import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.SlotTable
 import androidx.compose.ui.node.ExperimentalLayoutNodeApi
 import androidx.compose.ui.node.LayoutNode
@@ -60,7 +61,7 @@ private fun packageNameHash(packageName: String) =
 @OptIn(ExperimentalLayoutNodeApi::class)
 class LayoutInspectorTree {
     private val inlineClassConverter = InlineClassConverter()
-    private val parameterFactory = ParameterFactory()
+    private val parameterFactory = ParameterFactory(inlineClassConverter)
     private val cache = ArrayDeque<MutableInspectorNode>()
     private var generatedId = -1L
     /** Map from [LayoutNode] to the nearest [InspectorNode] that contains it */
@@ -76,6 +77,7 @@ class LayoutInspectorTree {
     /**
      * Converts the [SlotTable] set held by [view] into a list of root nodes.
      */
+    @OptIn(InternalComposeApi::class)
     fun convert(view: View): List<InspectorNode> {
         parameterFactory.density = Density(view.context)
         @Suppress("UNCHECKED_CAST")
@@ -97,6 +99,7 @@ class LayoutInspectorTree {
         stitched.clear()
     }
 
+    @OptIn(InternalComposeApi::class)
     private fun convert(tables: Set<SlotTable>): List<InspectorNode> {
         val trees = tables.map { convert(it) }
         return when (trees.size) {
@@ -184,6 +187,7 @@ class LayoutInspectorTree {
         return buildAndRelease(newCopy)
     }
 
+    @OptIn(InternalComposeApi::class)
     private fun convert(table: SlotTable): MutableInspectorNode {
         val fakeParent = newNode()
         addToParent(fakeParent, listOf(convert(table.asTree())))
@@ -241,7 +245,7 @@ class LayoutInspectorTree {
             release(node)
         }
         val nodeId = id
-        parentNode.id = if (parentNode.id != 0L && nodeId != null) nodeId else parentNode.id
+        parentNode.id = if (parentNode.id == 0L && nodeId != null) nodeId else parentNode.id
     }
 
     private fun parse(group: Group): MutableInspectorNode {
@@ -260,7 +264,7 @@ class LayoutInspectorTree {
         node.left = box.left
         node.height = box.bottom - box.top
         node.width = box.right - box.left
-        if (node.height <= 0 || node.width <= 0) {
+        if (node.height <= 0 && node.width <= 0) {
             return markUnwanted(node)
         }
         addParameters(group.parameters, node)

@@ -30,6 +30,7 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.consumeDownChange
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastForEach
 
 /**
  * This gesture detector has callbacks for when a press gesture starts and ends for the purposes of
@@ -137,16 +138,13 @@ internal class PressIndicatorGestureFilter : PointerInputFilter() {
         pointerEvent: PointerEvent,
         pass: PointerEventPass,
         bounds: IntSize
-    ): List<PointerInputChange> {
-
-        var changes = pointerEvent.changes
+    ) {
+        val changes = pointerEvent.changes
 
         if (pass == PointerEventPass.Initial && state == State.Started) {
-            changes = changes.map {
+            changes.fastForEach {
                 if (it.changedToDown()) {
                     it.consumeDownChange()
-                } else {
-                    it
                 }
             }
         }
@@ -173,7 +171,9 @@ internal class PressIndicatorGestureFilter : PointerInputFilter() {
             }
 
             if (state == State.Started) {
-                changes = changes.map { it.consumeDownChange() }
+                changes.fastForEach {
+                    it.consumeDownChange()
+                }
             }
         }
 
@@ -187,8 +187,6 @@ internal class PressIndicatorGestureFilter : PointerInputFilter() {
             state = State.Idle
             onCancel?.invoke()
         }
-
-        return changes
     }
 
     override fun onCancel() {

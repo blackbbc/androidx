@@ -26,7 +26,7 @@ import android.util.Size;
 import android.view.Surface;
 
 import androidx.camera.core.SurfaceRequest;
-import androidx.test.filters.SmallTest;
+import androidx.test.annotation.UiThreadTest;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,15 +37,15 @@ import org.robolectric.annotation.internal.DoNotInstrument;
 /**
  * Unit test for {@link PreviewViewMeteringPointFactory}.
  */
-@SmallTest
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
-@Config(minSdk = Build.VERSION_CODES.LOLLIPOP, maxSdk = Build.VERSION_CODES.LOLLIPOP)
+@Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
 public class PreviewViewMeteringPointFactoryTest {
 
     private static final int WIDTH = 800;
     private static final int HEIGHT = 600;
 
+    @UiThreadTest
     @Test
     public void transformationInfoNotSet_createsInvalidMeteringPoint() {
         // Arrange.
@@ -60,6 +60,7 @@ public class PreviewViewMeteringPointFactoryTest {
         assertThat(meteringPoint).isEqualTo(PreviewViewMeteringPointFactory.INVALID_POINT);
     }
 
+    @UiThreadTest
     @Test
     public void previewViewSizeIs0_createsInvalidMeteringPoint() {
         // Arrange.
@@ -78,6 +79,7 @@ public class PreviewViewMeteringPointFactoryTest {
         assertThat(meteringPoint).isEqualTo(PreviewViewMeteringPointFactory.INVALID_POINT);
     }
 
+    @UiThreadTest
     @Test
     public void canCreateValidMeteringPoint() {
         // Arrange.

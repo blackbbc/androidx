@@ -20,14 +20,14 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.icu.util.Calendar
 import android.view.SurfaceHolder
-import androidx.annotation.CallSuper
+import androidx.annotation.Px
 import androidx.annotation.UiThread
 import androidx.wear.watchface.style.UserStyleRepository
 
 /** The base class for [CanvasRenderer] and [GlesRenderer]. */
-abstract class Renderer(
-    /** The [SurfaceHolder] that [onDraw] will draw into. */
-    _surfaceHolder: SurfaceHolder,
+public abstract class Renderer(
+    /** The [SurfaceHolder] that [renderInternal] will draw into. */
+    public val surfaceHolder: SurfaceHolder,
 
     /** The associated [UserStyleRepository]. */
     internal val userStyleRepository: UserStyleRepository,
@@ -35,41 +35,63 @@ abstract class Renderer(
     /** The associated [WatchState]. */
     internal val watchState: WatchState
 ) {
-    protected var surfaceHolder = _surfaceHolder
+    init {
+        surfaceHolder.addCallback(
+            object : SurfaceHolder.Callback {
+                override fun surfaceChanged(
+                    holder: SurfaceHolder,
+                    format: Int,
+                    width: Int,
+                    height: Int
+                ) {
+                    screenBounds = holder.surfaceFrame
+                    centerX = screenBounds.exactCenterX()
+                    centerY = screenBounds.exactCenterY()
+                }
+
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                }
+
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                }
+            }
+        )
+    }
+
+    /** The bounds of the [SurfaceHolder] this Renderer renders into. */
+    public var screenBounds: Rect = surfaceHolder.surfaceFrame
         private set
 
-    var screenBounds: Rect = surfaceHolder.surfaceFrame
+    /** The center x coordinate of the [SurfaceHolder] this Renderer renders into. */
+    @Px
+    public var centerX: Float = screenBounds.exactCenterX()
         private set
 
-    var centerX: Float = screenBounds.exactCenterX()
+    /** The center y coordinate of the [SurfaceHolder] this Renderer renders into. */
+    @Px
+    public var centerY: Float = screenBounds.exactCenterY()
         private set
 
-    var centerY: Float = screenBounds.exactCenterY()
-        private set
-
-    @DrawMode
-    private var _drawMode: Int? = null
-
-    /** The current DrawMode. Updated before every onDraw call. */
-    @DrawMode
-    var drawMode: Int
-        get() = _drawMode ?: DrawMode.INTERACTIVE
+    /** The current [RenderParameters]. Updated before every onDraw call. */
+    public var renderParameters: RenderParameters = RenderParameters.DEFAULT_INTERACTIVE
+        /** @hide */
         internal set(value) {
-            if (value != _drawMode) {
-                _drawMode = value
-                onDrawModeChanged(value)
+            if (value != field) {
+                field = value
+                onRenderParametersChanged(value)
             }
         }
 
+    /** Allows the renderer to finalize init after the child class's constructor has finished. */
+    internal open fun onPostCreate() {}
+
     /** Called when the Renderer is destroyed. */
     @UiThread
-    open fun onDestroy() {}
-
-    @UiThread
-    open fun onSurfaceDestroyed(holder: SurfaceHolder) {}
+    public open fun onDestroy() {
+    }
 
     /**
-     * Renders the watch face into the [surfaceHolder] using the current [drawMode]
+     * Renders the watch face into the [surfaceHolder] using the current [renderParameters]
      * with the user style specified by the [userStyleRepository].
      *
      * @param calendar The Calendar to use when rendering the watch face
@@ -83,13 +105,13 @@ abstract class Renderer(
      * [userStyleRepository].
      *
      * @param calendar The Calendar to use when rendering the watch face
-     * @param drawMode The [DrawMode] to use when rendering the watch face
+     * @param renderParameters The [RenderParameters] to use when rendering the watch face
      * @return A [Bitmap] containing a screenshot of the watch face
      */
     @UiThread
     internal abstract fun takeScreenshot(
         calendar: Calendar,
-        @DrawMode drawMode: Int
+        renderParameters: RenderParameters
     ): Bitmap
 
     /**
@@ -97,7 +119,8 @@ abstract class Renderer(
      * call to onDraw().
      */
     @UiThread
-    protected open fun onDrawModeChanged(@DrawMode drawMode: Int) {}
+    protected open fun onRenderParametersChanged(renderParameters: RenderParameters) {
+    }
 
     /**
      * This method is used for accessibility support to describe the portion of the screen
@@ -108,30 +131,13 @@ abstract class Renderer(
      * @return A [Rect] describing the bounds of the watch faces' main clock element
      */
     @UiThread
-    open fun getMainClockElementBounds(): Rect {
+    public open fun getMainClockElementBounds(): Rect {
         val quarterX = centerX / 2
         val quarterY = centerY / 2
         return Rect(
             (centerX - quarterX).toInt(), (centerY - quarterY).toInt(),
             (centerX + quarterX).toInt(), (centerY + quarterY).toInt()
         )
-    }
-
-    /**
-     * Convenience for [SurfaceHolder.Callback.surfaceChanged]. Called when the
-     * [SurfaceHolder] containing the display surface changes.
-     *
-     * @param holder The new [SurfaceHolder] containing the display surface
-     * @param format The new [android.graphics.PixelFormat] of the surface
-     * @param width The width of the new display surface
-     * @param height The height of the new display surface
-     */
-    @CallSuper
-    @UiThread
-    open fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        screenBounds = holder.surfaceFrame
-        centerX = screenBounds.exactCenterX()
-        centerY = screenBounds.exactCenterY()
     }
 
     /**
@@ -147,5 +153,6 @@ abstract class Renderer(
      * @return Whether we should schedule an onDraw call to maintain an interactive frame rate
      */
     @UiThread
-    open fun shouldAnimate() = watchState.isVisible.value && !watchState.isAmbient.value
+    public open fun shouldAnimate(): Boolean =
+        watchState.isVisible.value && !watchState.isAmbient.value
 }

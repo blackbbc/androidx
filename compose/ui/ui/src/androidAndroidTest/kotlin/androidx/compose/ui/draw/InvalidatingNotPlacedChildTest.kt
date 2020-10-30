@@ -16,6 +16,7 @@
 
 package androidx.compose.ui.draw
 
+import android.os.Build
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -24,32 +25,33 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.background
 import androidx.compose.ui.drawLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.assertCenterPixelColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
-import androidx.test.filters.SmallTest
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
-import androidx.ui.test.runOnIdle
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.MediumTest
+import androidx.test.filters.SdkSuppress
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
-@SmallTest
-@RunWith(JUnit4::class)
+@MediumTest
+@RunWith(AndroidJUnit4::class)
 class InvalidatingNotPlacedChildTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
 
     @Test
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     fun childIsDisplayedWhenItWasNotPlacedOriginallyButPlacedLater() {
         val shouldPlace = mutableStateOf(false)
         composeTestRule.setContent {
@@ -80,6 +82,7 @@ class InvalidatingNotPlacedChildTest {
     }
 
     @Test
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     fun grandChildIsDisplayedWhenItWasNotPlacedOriginallyButPlacedLater() {
         val shouldPlace = mutableStateOf(false)
         composeTestRule.setContent {
@@ -112,6 +115,7 @@ class InvalidatingNotPlacedChildTest {
     }
 
     @Test
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     fun grandChildIsDisplayedCorrectlyWhenTheColorWasChangedWhileNotPlaced() {
         val shouldPlace = mutableStateOf(false)
         var color by mutableStateOf(Color.Gray)

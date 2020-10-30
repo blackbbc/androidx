@@ -17,11 +17,11 @@
 package androidx.compose.material.textfield
 
 import android.os.Build
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.AmbientContentColor
 import androidx.compose.foundation.AmbientTextStyle
+import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.preferredSize
 import androidx.compose.foundation.layout.preferredWidth
@@ -39,29 +39,33 @@ import androidx.compose.ui.focusObserver
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.node.Ref
-import androidx.compose.ui.onGloballyPositioned
 import androidx.compose.ui.platform.TextInputServiceAmbient
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertShape
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performGesture
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.SoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TextInputService
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.LargeTest
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.ui.test.assertShape
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.click
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onNodeWithTag
-import androidx.ui.test.performClick
-import androidx.ui.test.performGesture
-import androidx.ui.test.performImeAction
 import com.google.common.truth.Truth.assertThat
 import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.atLeastOnce
@@ -71,11 +75,10 @@ import com.nhaarman.mockitokotlin2.verify
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import kotlin.math.roundToInt
 
 @MediumTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalFocus::class)
 class OutlinedTextFieldTest {
     private val ExpectedMinimumTextFieldHeight = 56.dp
@@ -584,6 +587,7 @@ class OutlinedTextFieldTest {
         }
     }
 
+    @OptIn(ExperimentalTextApi::class)
     @Test
     fun testOutlinedTextField_imeActionAndKeyboardTypePropagatedDownstream() {
         val textInputService = mock<TextInputService>()
@@ -608,8 +612,12 @@ class OutlinedTextFieldTest {
         rule.runOnIdle {
             verify(textInputService, atLeastOnce()).startInput(
                 value = any(),
-                keyboardType = eq(KeyboardType.Email),
-                imeAction = eq(ImeAction.Go),
+                keyboardOptions = eq(
+                    KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Go
+                    )
+                ),
                 onEditCommand = any(),
                 onImeActionPerformed = any()
             )
@@ -617,6 +625,7 @@ class OutlinedTextFieldTest {
     }
 
     @Test
+    @LargeTest
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     fun testOutlinedTextField_visualTransformationPropagated() {
         rule.setMaterialContent {

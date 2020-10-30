@@ -417,10 +417,10 @@ public final class ComplicationText implements Parcelable, TimeDependentText {
      * time.
      *
      * <p>If the text contains spans, some of them may not be rendered by
-     * {@link androidx.wear.complications.rendering.ComplicationDrawable}. Supported spans are
-     * {@link ForegroundColorSpan}, {@link LocaleSpan}, {@link SubscriptSpan},
-     * {@link SuperscriptSpan}, {@link StyleSpan}, {@link StrikethroughSpan},
-     * {@link TypefaceSpan} and {@link UnderlineSpan}.
+     * {@link androidx.wear.watchface.complications.rendering.ComplicationDrawable}. Supported spans
+     * are {@link ForegroundColorSpan}, {@link LocaleSpan}, {@link SubscriptSpan}, {@link
+     * SuperscriptSpan}, {@link StyleSpan}, {@link StrikethroughSpan}, {@link TypefaceSpan} and
+     * {@link UnderlineSpan}.
      *
      * @param text the text to be displayed
      */
@@ -469,7 +469,7 @@ public final class ComplicationText implements Parcelable, TimeDependentText {
          * @param referencePeriodStartMillis The start of the reference period (in milliseconds
          *     since the epoch) from which the time difference will be calculated.
          * @param referencePeriodEndMillis The end of the reference period (in milliseconds since
-         *     the epoch) from whichthe time difference will be calculated.
+         *     the epoch) from which the time difference will be calculated.
          */
         public TimeDifferenceBuilder(long referencePeriodStartMillis, long referencePeriodEndMillis) {
             mReferencePeriodStartMillis = referencePeriodStartMillis;
@@ -535,11 +535,11 @@ public final class ComplicationText implements Parcelable, TimeDependentText {
          *
          * <p>To use the {@code ^} character within the text, escape it as {@code ^^}.
          *
-         * <p>If the text contains spans, some of them may not be rendered by
-         * {@link androidx.wear.complications.rendering.ComplicationDrawable}. Supported spans
-         * are {@link ForegroundColorSpan}, {@link LocaleSpan}, {@link SubscriptSpan},
-         * {@link SuperscriptSpan}, {@link StyleSpan}, {@link StrikethroughSpan},
-         * {@link TypefaceSpan} and {@link UnderlineSpan}.
+         * <p>If the text contains spans, some of them may not be rendered by {@link
+         * androidx.wear.watchface.complications.rendering.ComplicationDrawable}. Supported spans
+         * are {@link ForegroundColorSpan}, {@link LocaleSpan}, {@link SubscriptSpan}, {@link
+         * SuperscriptSpan}, {@link StyleSpan}, {@link StrikethroughSpan}, {@link TypefaceSpan} and
+         * {@link UnderlineSpan}.
          *
          * @param surroundingText text within which the time difference value will be displayed,
          *                        with {@code ^1} in place of the time difference.
@@ -657,10 +657,10 @@ public final class ComplicationText implements Parcelable, TimeDependentText {
          * <p>To use the {@code ^} character within the text, escape it as {@code ^^}.
          *
          * <p>If the text contains spans, some of them may not be rendered by
-         * {@link androidx.wear.complications.rendering.ComplicationDrawable}. Supported spans are
-         * {@link ForegroundColorSpan}, {@link LocaleSpan}, {@link SubscriptSpan},
-         * {@link SuperscriptSpan}, {@link StyleSpan}, {@link StrikethroughSpan},
-         * {@link TypefaceSpan} and {@link UnderlineSpan}.
+         * {@link androidx.wear.watchface.complications.rendering.ComplicationDrawable}. Supported
+         * spans are {@link ForegroundColorSpan}, {@link LocaleSpan}, {@link SubscriptSpan}, {@link
+         * SuperscriptSpan}, {@link StyleSpan}, {@link StrikethroughSpan}, {@link TypefaceSpan} and
+         * {@link UnderlineSpan}.
          *
          * @param surroundingText string within which the time difference value will be displayed,
          *                        with {@code ^1} in place of the time difference.

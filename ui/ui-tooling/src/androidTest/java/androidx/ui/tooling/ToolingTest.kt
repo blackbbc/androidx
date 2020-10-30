@@ -18,13 +18,13 @@ package androidx.ui.tooling
 
 import android.os.Handler
 import android.os.Looper
-import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.onGloballyPositioned
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.SlotTable
 import androidx.compose.ui.R
 import androidx.compose.ui.platform.AndroidOwner
@@ -57,8 +57,10 @@ open class ToolingTest {
         positionedLatch = CountDownLatch(1)
         activityTestRule.onUiThread {
             activity.setContent {
-                Box(Modifier.onGloballyPositioned { positionedLatch.countDown() }
-                    .fillMaxSize()) {
+                Box(
+                    Modifier.onGloballyPositioned { positionedLatch.countDown() }
+                        .fillMaxSize()
+                ) {
                     composable()
                 }
             }
@@ -71,6 +73,7 @@ open class ToolingTest {
         activityTestRule.onUiThread { }
     }
 
+    @OptIn(InternalComposeApi::class)
     internal fun showAndRecord(content: @Composable () -> Unit): MutableSet<SlotTable>? {
 
         positionedLatch = CountDownLatch(1)
@@ -78,21 +81,15 @@ open class ToolingTest {
             WeakHashMap<SlotTable, Boolean>()
         )
         activityTestRule.onUiThread {
-            val activity = activity
-            val owner = AndroidOwner(activity, activity, activity).also {
-                activity.setContentView(
-                    it.view,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
+            AndroidOwner.onAndroidOwnerCreatedCallback = {
+                it.view.setTag(R.id.inspection_slot_table_set, map)
+                AndroidOwner.onAndroidOwnerCreatedCallback = null
             }
-
-            owner.view.setTag(R.id.inspection_slot_table_set, map)
             activity.setContent {
-                Box(Modifier.onGloballyPositioned { positionedLatch.countDown() }
-                    .fillMaxSize()) {
+                Box(
+                    Modifier.onGloballyPositioned { positionedLatch.countDown() }
+                        .fillMaxSize()
+                ) {
                     content()
                 }
             }

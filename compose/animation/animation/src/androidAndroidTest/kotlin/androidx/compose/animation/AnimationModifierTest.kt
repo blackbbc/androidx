@@ -23,25 +23,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.LayoutModifier
-import androidx.compose.ui.Measurable
-import androidx.compose.ui.MeasureScope
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.test.filters.MediumTest
-import androidx.ui.test.createComposeRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.LargeTest
 import junit.framework.TestCase.assertEquals
 import junit.framework.TestCase.assertNotNull
 import junit.framework.TestCase.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
-@RunWith(JUnit4::class)
-@MediumTest
+@RunWith(AndroidJUnit4::class)
+@LargeTest
 class AnimationModifierTest {
 
     @get:Rule
@@ -123,7 +124,7 @@ internal class TestModifier : LayoutModifier {
     override fun MeasureScope.measure(
         measurable: Measurable,
         constraints: Constraints
-    ): MeasureScope.MeasureResult {
+    ): MeasureResult {
         val placeable = measurable.measure(constraints)
         width = placeable.width
         height = placeable.height

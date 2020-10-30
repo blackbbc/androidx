@@ -18,14 +18,14 @@ package androidx.appsearch.app;
 
 import static androidx.appsearch.app.AppSearchTestUtils.checkIsBatchResultSuccess;
 import static androidx.appsearch.app.AppSearchTestUtils.checkIsResultSuccess;
-import static androidx.appsearch.app.AppSearchTestUtils.doQuery;
+import static androidx.appsearch.app.AppSearchTestUtils.convertSearchResultsToDocuments;
 
 import static com.google.common.truth.Truth.assertThat;
 
 import android.content.Context;
 
 import androidx.appsearch.annotation.AppSearchDocument;
-import androidx.appsearch.localbackend.LocalBackend;
+import androidx.appsearch.localstorage.LocalStorage;
 import androidx.test.core.app.ApplicationProvider;
 
 import org.junit.Before;
@@ -36,17 +36,18 @@ import java.util.Collection;
 import java.util.List;
 
 public class AnnotationProcessorTest {
-    private AppSearchManager mAppSearchManager;
+    private AppSearchSession mSession;
 
     @Before
     public void setUp() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
-        LocalBackend backend = LocalBackend.getInstance(context).getResultValue();
-        mAppSearchManager = checkIsResultSuccess(new AppSearchManager.Builder()
-                .setDatabaseName("testDb").setBackend(backend).build());
+        mSession = checkIsResultSuccess(LocalStorage.createSearchSession(
+                new LocalStorage.SearchContext.Builder(context)
+                        .setDatabaseName("testDb1").build()));
 
         // Remove all documents from any instances that may have been created in the tests.
-        backend.resetAllDatabases().getResultValue();
+        checkIsResultSuccess(
+                mSession.setSchema(new SetSchemaRequest.Builder().setForceOverride(true).build()));
     }
 
     @AppSearchDocument
@@ -158,7 +159,7 @@ public class AnnotationProcessorTest {
     public void testAnnotationProcessor() throws Exception {
         //TODO(b/156296904) add test for int, float, GenericDocument, and class with
         // @AppSearchDocument annotation
-        checkIsResultSuccess(mAppSearchManager.setSchema(
+        checkIsResultSuccess(mSession.setSchema(
                 new SetSchemaRequest.Builder().addDataClass(Gift.class).build()));
 
         // Create a Gift object and assign values.
@@ -209,17 +210,74 @@ public class AnnotationProcessorTest {
         inputDataClass.mGift = innerGift1;
 
         // Index the Gift document and query it.
-        checkIsBatchResultSuccess(mAppSearchManager.putDocuments(
+        checkIsBatchResultSuccess(mSession.putDocuments(
                 new PutDocumentsRequest.Builder().addDataClass(inputDataClass).build()));
-        List<GenericDocument> searchResults = doQuery(mAppSearchManager, "");
-        assertThat(searchResults).hasSize(1);
+        SearchResults searchResults = mSession.query("", new SearchSpec.Builder()
+                .setTermMatch(SearchSpec.TERM_MATCH_EXACT_ONLY)
+                .build());
+        List<GenericDocument> documents = convertSearchResultsToDocuments(searchResults);
+        assertThat(documents).hasSize(1);
 
         // Create DataClassFactory for Gift.
         DataClassFactoryRegistry registry = DataClassFactoryRegistry.getInstance();
         DataClassFactory<Gift> factory = registry.getOrCreateFactory(Gift.class);
 
         // Convert GenericDocument to Gift and check values.
-        Gift outputDataClass = factory.fromGenericDocument(searchResults.get((0)));
+        Gift outputDataClass = factory.fromGenericDocument(documents.get((0)));
         assertThat(outputDataClass).isEqualTo(inputDataClass);
+    }
+
+    @Test
+    public void testAnnotationProcessor_QueryByType() throws Exception {
+        checkIsResultSuccess(mSession.setSchema(
+                new SetSchemaRequest.Builder()
+                        .addDataClass(Gift.class)
+                        .addSchema(AppSearchEmail.SCHEMA).build()));
+
+        // Create documents and index them
+        Gift inputDataClass1 = new Gift();
+        inputDataClass1.mUri = "gift.uri1";
+        Gift inputDataClass2 = new Gift();
+        inputDataClass2.mUri = "gift.uri2";
+        AppSearchEmail email1 =
+                new AppSearchEmail.Builder("uri3")
+                        .setNamespace("namespace")
+                        .setFrom("from@example.com")
+                        .setTo("to1@example.com", "to2@example.com")
+                        .setSubject("testPut example")
+                        .setBody("This is the body of the testPut email")
+                        .build();
+        checkIsBatchResultSuccess(mSession.putDocuments(
+                new PutDocumentsRequest.Builder()
+                        .addDataClass(inputDataClass1, inputDataClass2)
+                        .addGenericDocument(email1).build()));
+
+        // Query the documents by it's schema type.
+        SearchResults searchResults = mSession.query("",
+                new SearchSpec.Builder()
+                        .setTermMatch(SearchSpec.TERM_MATCH_EXACT_ONLY)
+                        .addSchema("Gift", AppSearchEmail.SCHEMA_TYPE)
+                        .build());
+        List<GenericDocument> documents = convertSearchResultsToDocuments(searchResults);
+        assertThat(documents).hasSize(3);
+
+        // Query the documents by it's class.
+        searchResults = mSession.query("",
+                new SearchSpec.Builder()
+                        .setTermMatch(SearchSpec.TERM_MATCH_EXACT_ONLY)
+                        .addSchemaByDataClass(Gift.class)
+                        .build());
+        documents = convertSearchResultsToDocuments(searchResults);
+        assertThat(documents).hasSize(2);
+
+        // Query the documents by schema type and class mix.
+        searchResults = mSession.query("",
+                new SearchSpec.Builder()
+                        .setTermMatch(SearchSpec.TERM_MATCH_EXACT_ONLY)
+                        .addSchema(AppSearchEmail.SCHEMA_TYPE)
+                        .addSchemaByDataClass(Gift.class)
+                        .build());
+        documents = convertSearchResultsToDocuments(searchResults);
+        assertThat(documents).hasSize(3);
     }
 }

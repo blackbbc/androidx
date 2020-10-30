@@ -30,10 +30,6 @@ import androidx.compose.ui.AlignTopLeft
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AtLeastSize
 import androidx.compose.ui.FixedSize
-import androidx.compose.ui.Layout
-import androidx.compose.ui.LayoutModifier
-import androidx.compose.ui.Measurable
-import androidx.compose.ui.MeasureScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Padding
 import androidx.compose.ui.assertColorsEqual
@@ -54,34 +50,44 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.Path
 import androidx.compose.ui.graphics.vector.PathData
-import androidx.compose.ui.graphics.vector.VectorPainter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.platform.LayoutDirectionAmbient
+import androidx.compose.ui.platform.ValueElement
+import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.filters.SmallTest
-import androidx.ui.test.ComposeTestRule
-import androidx.ui.test.assertHeightIsEqualTo
-import androidx.ui.test.assertWidthIsEqualTo
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.onRoot
 import com.google.common.truth.Truth.assertThat
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-@SmallTest
-@RunWith(JUnit4::class)
+@MediumTest
+@RunWith(AndroidJUnit4::class)
 class PainterModifierTest {
 
     val containerWidth = 100.0f
@@ -89,6 +95,16 @@ class PainterModifierTest {
 
     @get:Rule
     val rule = createComposeRule()
+
+    @Before
+    fun before() {
+        isDebugInspectorInfoEnabled = true
+    }
+
+    @After
+    fun after() {
+        isDebugInspectorInfoEnabled = false
+    }
 
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
@@ -567,20 +583,21 @@ class PainterModifierTest {
                     .width((boxWidth / DensityAmbient.current.density).dp)
                     .height((boxHeight / DensityAmbient.current.density).dp)
                     .paint(
-                        VectorPainter(
+                        rememberVectorPainter(
                             defaultWidth = vectorWidthDp,
-                            defaultHeight = vectorHeightDp
-                        ) { viewportWidth, viewportHeight ->
-                            Path(
-                                fill = SolidColor(Color.Red),
-                                pathData = PathData {
-                                    horizontalLineToRelative(viewportWidth)
-                                    verticalLineToRelative(viewportHeight)
-                                    horizontalLineToRelative(-viewportWidth)
-                                    close()
-                                }
-                            )
-                        },
+                            defaultHeight = vectorHeightDp,
+                            children = { viewportWidth, viewportHeight ->
+                                Path(
+                                    fill = SolidColor(Color.Red),
+                                    pathData = PathData {
+                                        horizontalLineToRelative(viewportWidth)
+                                        verticalLineToRelative(viewportHeight)
+                                        horizontalLineToRelative(-viewportWidth)
+                                        close()
+                                    }
+                                )
+                            }
+                        ),
                         contentScale = ContentScale.FillHeight
                     )
             )
@@ -606,16 +623,20 @@ class PainterModifierTest {
     }
 
     @Test
+    @SmallTest
     fun testInspectable() {
-        val modifier = Modifier.paint(TestPainter(10f, 20f)) as InspectableValue
+        val painter = TestPainter(10f, 20f)
+        val modifier = Modifier.paint(painter) as InspectableValue
         assertThat(modifier.nameFallback).isEqualTo("paint")
         assertThat(modifier.valueOverride).isNull()
-        assertThat(modifier.inspectableElements.map { it.name }.toList())
-            .containsExactlyElementsIn(
-                modifier.javaClass.declaredFields
-                    .filter { !it.isSynthetic && it.name != "nameFallback" }
-                    .map { it.name }
-            )
+        assertThat(modifier.inspectableElements.asIterable()).containsExactly(
+            ValueElement("painter", painter),
+            ValueElement("sizeToIntrinsics", true),
+            ValueElement("alignment", Alignment.Center),
+            ValueElement("contentScale", ContentScale.Inside),
+            ValueElement("alpha", DefaultAlpha),
+            ValueElement("colorFilter", null)
+        )
     }
 
     @Composable
@@ -714,7 +735,7 @@ class FixedSizeModifier(val width: Int, val height: Int = width) : LayoutModifie
     override fun MeasureScope.measure(
         measurable: Measurable,
         constraints: Constraints
-    ): MeasureScope.MeasureResult {
+    ): MeasureResult {
         val placeable = measurable.measure(
             Constraints(
                 minWidth = width,

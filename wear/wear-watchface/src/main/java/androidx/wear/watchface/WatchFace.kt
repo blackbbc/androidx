@@ -23,14 +23,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
 import android.graphics.Point
 import android.graphics.Rect
 import android.icu.util.Calendar
 import android.icu.util.TimeZone
 import android.support.wearable.complications.ComplicationData
 import android.support.wearable.watchface.WatchFaceStyle
-import android.view.SurfaceHolder
 import android.view.ViewConfiguration
 import androidx.annotation.ColorInt
 import androidx.annotation.IntDef
@@ -39,13 +37,15 @@ import androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP
 import androidx.annotation.UiThread
 import androidx.annotation.VisibleForTesting
 import androidx.wear.complications.SystemProviders
-import androidx.wear.watchface.style.UserStyleRepository
+import androidx.wear.watchface.data.RenderParametersWireFormat
 import androidx.wear.watchface.style.UserStyle
+import androidx.wear.watchface.style.UserStyleRepository
 import androidx.wear.watchface.style.data.UserStyleWireFormat
 import androidx.wear.watchface.ui.WatchFaceConfigActivity
 import androidx.wear.watchface.ui.WatchFaceConfigDelegate
 import java.io.FileNotFoundException
 import java.io.InputStreamReader
+import java.security.InvalidParameterException
 import kotlin.math.max
 
 // Human reaction time is limited to ~100ms.
@@ -63,13 +63,13 @@ private const val MIN_PERCEPTABLE_DELAY_MILLIS = 100
         WatchFaceType.ANALOG
     ]
 )
-annotation class WatchFaceType {
-    companion object {
+public annotation class WatchFaceType {
+    public companion object {
         /* The WatchFace has an analog time display. */
-        const val ANALOG = 0
+        public const val ANALOG: Int = 0
 
         /* The WatchFace has a digital time display. */
-        const val DIGITAL = 1
+        public const val DIGITAL: Int = 1
     }
 }
 
@@ -91,7 +91,7 @@ private fun readPrefs(context: Context, fileName: String): UserStyleWireFormat {
 
 private fun writePrefs(context: Context, fileName: String, style: UserStyle) {
     val writer = context.openFileOutput(fileName, Context.MODE_PRIVATE).bufferedWriter()
-    for ((key, value) in style.options) {
+    for ((key, value) in style.selectedOptions) {
         writer.write(key.id)
         writer.newLine()
         writer.write(value.id)
@@ -105,8 +105,8 @@ private fun writePrefs(context: Context, fileName: String, style: UserStyle) {
  * styling, complications and state observers.
  */
 @SuppressLint("SyntheticAccessor")
-class WatchFace private constructor(
-    @WatchFaceType private val watchFaceType: Int,
+public class WatchFace private constructor(
+    internal val previewReferenceTimeMillis: Long,
     private var interactiveUpdateRateMillis: Long,
     internal val userStyleRepository: UserStyleRepository,
     internal var complicationsManager: ComplicationsManager,
@@ -123,9 +123,9 @@ class WatchFace private constructor(
      * @hide
      */
     @RestrictTo(LIBRARY_GROUP)
-    interface SystemTimeProvider {
+    public interface SystemTimeProvider {
         /** Returns the current system time in milliseconds. */
-        fun getSystemTimeMillis(): Long
+        public fun getSystemTimeMillis(): Long
     }
 
     /**
@@ -134,9 +134,12 @@ class WatchFace private constructor(
      * If unreadCountIndicator or notificationIndicator are hidden then the WatchState class will
      * receive updates necessary for the watch to draw its own indicators.
      */
-    class Builder(
-        /** The type of watch face, whether it's digital or analog. */
-        @WatchFaceType private val watchFaceType: Int,
+    public class Builder(
+        /**
+         * The type of watch face, whether it's digital or analog. Used to determine the
+         * default time for editor preview screenshots.
+         */
+        @WatchFaceType watchFaceType: Int,
 
         /**
          * The interval in milliseconds between frames in interactive mode. To render at 60hz pass in
@@ -165,23 +168,41 @@ class WatchFace private constructor(
     ) {
         private var viewProtectionMode: Int = 0
         private var statusBarGravity: Int = 0
+        private var previewReferenceTimeMillis: Long =
+            when (watchFaceType) {
+                WatchFaceType.ANALOG -> ANALOG_WATCHFACE_REFERENCE_TIME_MS
+                WatchFaceType.DIGITAL -> DIGITAL_WATCHFACE_REFERENCE_TIME_MS
+                else -> throw InvalidParameterException("Unrecognized watchFaceType")
+            }
 
         @ColorInt
         private var accentColor: Int = WatchFaceStyle.DEFAULT_ACCENT_COLOR
-        private var showUnreadCountIndicator: Boolean = false
-        private var hideNotificationIndicator: Boolean = false
         private var acceptsTapEvents: Boolean = true
         private var systemTimeProvider: SystemTimeProvider = object : SystemTimeProvider {
             override fun getSystemTimeMillis() = System.currentTimeMillis()
         }
 
         /**
+         * Overrides the reference time for editor preview images.
+         *
+         * @param previewReferenceTimeMillis The preview time in milliseconds since the epoch
+         */
+        public fun setPreviewReferenceTimeMillis(
+            previewReferenceTimeMillis: Long
+        ): Builder = apply {
+            this.previewReferenceTimeMillis = previewReferenceTimeMillis
+        }
+
+        /**
+         * Only has an impact on devices running Wear 2.x, on other devices this is a no-op and the
+         * functionality is replaced by... TODO(alexclarke): Design the replacement.
+         *
          * @param viewProtectionMode The view protection mode bit field, must be a combination of
          *     zero or more of [PROTECT_STATUS_BAR], [PROTECT_HOTWORD_INDICATOR],
          *     [PROTECT_WHOLE_SCREEN].
          * @throws IllegalArgumentException if viewProtectionMode has an unexpected value
          */
-        fun setViewProtectionMode(viewProtectionMode: Int) = apply {
+        public fun setWear2ViewProtectionMode(viewProtectionMode: Int): Builder = apply {
             if (viewProtectionMode < 0 ||
                 viewProtectionMode >
                 WatchFaceStyle.PROTECT_STATUS_BAR + WatchFaceStyle.PROTECT_HOTWORD_INDICATOR +
@@ -189,7 +210,7 @@ class WatchFace private constructor(
             ) {
                 throw IllegalArgumentException(
                     "View protection must be combination " +
-                            "PROTECT_STATUS_BAR, PROTECT_HOTWORD_INDICATOR or PROTECT_WHOLE_SCREEN"
+                        "PROTECT_STATUS_BAR, PROTECT_HOTWORD_INDICATOR or PROTECT_WHOLE_SCREEN"
                 )
             }
             this.viewProtectionMode = viewProtectionMode
@@ -198,49 +219,35 @@ class WatchFace private constructor(
         /**
          * Sets position of status icons (battery state, lack of connection) on the screen.
          *
+         * <p>Only has an impact on devices running Wear 2.x, on other devices this is a no-op and
+         * the functionality is replaced by... TODO(alexclarke): Design the replacement.
+         *
          * @param statusBarGravity This must be any combination of horizontal Gravity constant
          *     ([Gravity.LEFT], [Gravity.CENTER_HORIZONTAL], [Gravity.RIGHT])
          *     and vertical Gravity constants ([Gravity.TOP], [Gravity,CENTER_VERTICAL},
          *     [Gravity,BOTTOM]), e.g. {@code Gravity.LEFT | Gravity.BOTTOM}. On circular screens,
          *     only the vertical gravity is respected.
          */
-        fun setStatusBarGravity(statusBarGravity: Int) = apply {
+        public fun setWear2StatusBarGravity(statusBarGravity: Int): Builder = apply {
             this.statusBarGravity = statusBarGravity
         }
 
         /**
          * Sets the accent color which can be set by developers to customise watch face. It will be
          * used when drawing the unread notification indicator. Default color is white.
+         *
+         * <p>Only has an impact on devices running Wear 2.x, on other devices this is a no-op and
+         * the functionality is replaced by... TODO(alexclarke): Design the replacement.
          */
-        fun setAccentColor(@ColorInt accentColor: Int) = apply {
+        public fun setWear2AccentColor(@ColorInt accentColor: Int): Builder = apply {
             this.accentColor = accentColor
         }
 
         /**
-         * Sets whether to add an indicator of how many unread cards there are in the stream. The
-         * indicator will be displayed next to status icons (battery state, lack of connection).
-         *
-         * @param showUnreadCountIndicator if true an indicator will be shown
-         */
-        fun setShowUnreadCountIndicator(showUnreadCountIndicator: Boolean) = apply {
-            this.showUnreadCountIndicator = showUnreadCountIndicator
-        }
-
-        /**
-         * Sets whether to hide the dot indicator that is displayed at the bottom of the watch face
-         * if there are any unread notifications. The default value is false, but note that the
-         * dot will not be displayed if the numerical unread count indicator is being shown (i.e.
-         * if [getShowUnreadCountIndicator] is true).
-         *
-         * @param hideNotificationIndicator if true an indicator will be hidden
-         * @hide
-         */
-        fun setHideNotificationIndicator(hideNotificationIndicator: Boolean) = apply {
-            this.hideNotificationIndicator = hideNotificationIndicator
-        }
-
-        /**
          * Sets whether this watchface accepts tap events. The default is false.
+         *
+         * <p>Only has an impact on devices running Wear 2.x, on other devices this is a no-op and
+         * the functionality is replaced by... TODO(alexclarke): Design the replacement.
          *
          * <p>Watchfaces that set this {@code true} are indicating they are prepared to receive
          * [android.support.wearable.watchface.WatchFaceService.TAP_TYPE_TOUCH],
@@ -249,25 +256,25 @@ class WatchFace private constructor(
          *
          * @param acceptsTapEvents whether to receive touch events.
          */
-        fun setAcceptsTapEvents(acceptsTapEvents: Boolean) = apply {
+        public fun setWear2AcceptsTapEvents(acceptsTapEvents: Boolean): Builder = apply {
             this.acceptsTapEvents = acceptsTapEvents
         }
 
         /** @hide */
         @RestrictTo(LIBRARY_GROUP)
-        fun setSystemTimeProvider(systemTimeProvider: SystemTimeProvider) = apply {
+        public fun setSystemTimeProvider(systemTimeProvider: SystemTimeProvider): Builder = apply {
             this.systemTimeProvider = systemTimeProvider
         }
 
         /** Constructs the [WatchFace]. */
-        fun build(): WatchFace {
+        public fun build(): WatchFace {
             val componentName =
                 ComponentName(
                     watchFaceHost.api!!.getContext().packageName,
                     watchFaceHost.api!!.getContext().javaClass.typeName
                 )
             return WatchFace(
-                watchFaceType,
+                previewReferenceTimeMillis,
                 interactiveUpdateRateMillis,
                 userStyleRepository,
                 complicationsManager,
@@ -279,8 +286,8 @@ class WatchFace private constructor(
                     viewProtectionMode,
                     statusBarGravity,
                     accentColor,
-                    showUnreadCountIndicator,
-                    hideNotificationIndicator,
+                    false,
+                    false,
                     acceptsTapEvents
                 ),
                 componentName,
@@ -290,6 +297,14 @@ class WatchFace private constructor(
     }
 
     internal companion object {
+        // Reference time for editor screenshots for analog watch faces.
+        // 2020/10/10 at 09:30 Note the date doesn't matter, only the hour.
+        internal const val ANALOG_WATCHFACE_REFERENCE_TIME_MS = 1602318600000L
+
+        // Reference time for editor screenshots for digital watch faces.
+        // 2020/10/10 at 10:10 Note the date doesn't matter, only the hour.
+        internal const val DIGITAL_WATCHFACE_REFERENCE_TIME_MS = 1602321000000L
+
         internal const val NO_DEFAULT_PROVIDER = SystemProviders.NO_PROVIDER
         internal const val DEFAULT_PROVIDER_TYPE_NONE = -2
 
@@ -335,7 +350,7 @@ class WatchFace private constructor(
     /** @hide */
     @RestrictTo(LIBRARY_GROUP)
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    val calendar: Calendar = Calendar.getInstance()
+    public val calendar: Calendar = Calendar.getInstance()
 
     private val pendingSingleTap: CancellableUniqueTask =
         CancellableUniqueTask(watchFaceHostApi.getHandler())
@@ -359,14 +374,11 @@ class WatchFace private constructor(
         }
     }
 
-    /** @hide */
-    @RestrictTo(LIBRARY_GROUP)
-    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    val batteryLevelReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+    internal val batteryLevelReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         @SuppressWarnings("SyntheticAccessor")
         override fun onReceive(context: Context, intent: Intent) {
             val isBatteryLowAndNotCharging =
-                watchState.isBatteryLowAndNotCharging as MutableWatchData
+                watchState.isBatteryLowAndNotCharging as MutableObservableWatchData
             when (intent.action) {
                 Intent.ACTION_BATTERY_LOW -> isBatteryLowAndNotCharging.value = true
                 Intent.ACTION_BATTERY_OKAY -> isBatteryLowAndNotCharging.value = false
@@ -380,12 +392,8 @@ class WatchFace private constructor(
      * We listen for MOCK_TIME_INTENTs which we interpret as a request to modify time. E.g. speeding
      * up or slowing down time, and providing support for making time loop between two instants.
      * This is intended to help implement animations which may occur infrequently (e.g. hourly).
-     *
-     * @hide
      */
-    @RestrictTo(LIBRARY_GROUP)
-    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    val mockTimeReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+    internal val mockTimeReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         @SuppressWarnings("SyntheticAccessor")
         override fun onReceive(context: Context, intent: Intent) {
             mockTime.speed = intent.getFloatExtra(
@@ -408,10 +416,10 @@ class WatchFace private constructor(
     init {
         // If the system has a stored user style then Home/SysUI is in charge of style
         // persistence, otherwise we need to do our own.
-        val storedUserStyle = watchFaceHostApi.getStoredUserStyle()
+        val storedUserStyle = watchFaceHostApi.getInitialUserStyle()
         if (storedUserStyle != null) {
             userStyleRepository.userStyle =
-                UserStyle(storedUserStyle, userStyleRepository.userStyleCategories)
+                UserStyle(storedUserStyle, userStyleRepository.schema)
         } else {
             // The system doesn't support preference persistence we need to do it ourselves.
             val preferencesFile =
@@ -419,7 +427,7 @@ class WatchFace private constructor(
 
             userStyleRepository.userStyle = UserStyle(
                 readPrefs(watchFaceHostApi.getContext(), preferencesFile),
-                userStyleRepository.userStyleCategories
+                userStyleRepository.schema
             )
 
             userStyleRepository.addUserStyleListener(
@@ -433,23 +441,6 @@ class WatchFace private constructor(
     }
 
     private var inOnSetStyle = false
-
-    private inner class WfUserStyleListener : UserStyleRepository.UserStyleListener {
-        @SuppressWarnings("SyntheticAccessor")
-        override fun onUserStyleChanged(userStyle: UserStyle) {
-            // No need to echo the userStyle back.
-            if (!inOnSetStyle) {
-                sendCurrentUserStyle(userStyle)
-            }
-        }
-    }
-
-    private val styleListener = WfUserStyleListener()
-
-    private fun sendCurrentUserStyle(userStyle: UserStyle) {
-        // Sync the user style with the system.
-        watchFaceHostApi.setCurrentUserStyle(userStyle.toWireFormat())
-    }
 
     private val ambientObserver = Observer<Boolean> {
         scheduleDraw()
@@ -482,19 +473,18 @@ class WatchFace private constructor(
         // fully constructed and it will fail. It's also superfluous because we're going to render
         // anyway.
         var initFinished = false
-        complicationsManager.init(watchFaceHostApi, calendar, renderer,
-            object : CanvasComplicationRenderer.InvalidateCallback {
+        complicationsManager.init(
+            watchFaceHostApi, calendar, renderer,
+            object : Complication.InvalidateCallback {
                 @SuppressWarnings("SyntheticAccessor")
                 override fun onInvalidate() {
                     // Ensure we render a frame if the Complication needs rendering, e.g. because it
                     // loaded an image. However if we're animating there's no need to trigger an
                     // extra invalidation.
-                    if (renderer.shouldAnimate() &&
-                        computeDelayTillNextFrame(
+                    if (renderer.shouldAnimate() && computeDelayTillNextFrame(
                             nextDrawTimeMillis,
                             systemTimeProvider.getSystemTimeMillis()
-                        )
-                        < MIN_PERCEPTABLE_DELAY_MILLIS
+                        ) < MIN_PERCEPTABLE_DELAY_MILLIS
                     ) {
                         return
                     }
@@ -505,53 +495,43 @@ class WatchFace private constructor(
             }
         )
 
-        WatchFaceConfigActivity.registerWatchFace(componentName, object : WatchFaceConfigDelegate {
-            override fun getUserStyleSchema() = userStyleRepository.toSchemaWireFormat()
+        WatchFaceConfigActivity.registerWatchFace(
+            componentName,
+            object : WatchFaceConfigDelegate {
+                override fun getUserStyleSchema() = userStyleRepository.schema.toWireFormat()
 
-            override fun getUserStyle() = userStyleRepository.userStyle.toWireFormat()
+                override fun getUserStyle() = userStyleRepository.userStyle.toWireFormat()
 
-            override fun setUserStyle(userStyle: UserStyleWireFormat) {
-                userStyleRepository.userStyle =
-                    UserStyle(userStyle, userStyleRepository.userStyleCategories)
+                override fun setUserStyle(userStyle: UserStyleWireFormat) {
+                    userStyleRepository.userStyle =
+                        UserStyle(userStyle, userStyleRepository.schema)
+                }
+
+                override fun getBackgroundComplicationId() =
+                    complicationsManager.getBackgroundComplication()?.id
+
+                override fun getComplicationsMap() = complicationsManager.complications
+
+                override fun getCalendar() = calendar
+
+                override fun getComplicationIdAt(tapX: Int, tapY: Int) =
+                    complicationsManager.getComplicationAt(tapX, tapY)?.id
+
+                override fun brieflyHighlightComplicationId(complicationId: Int) {
+                    complicationsManager.bringAttentionToComplication(complicationId)
+                }
+
+                override fun takeScreenshot(
+                    drawRect: Rect,
+                    calendar: Calendar,
+                    renderParameters: RenderParametersWireFormat
+                ) = renderer.takeScreenshot(calendar, RenderParameters(renderParameters))
             }
+        )
 
-            override fun getBackgroundComplicationId() =
-                complicationsManager.getBackgroundComplication()?.id
-
-            override fun getComplicationsMap() = complicationsManager.complications
-
-            override fun getCalendar() = calendar
-
-            override fun getComplicationIdAt(tapX: Int, tapY: Int) =
-                complicationsManager.getComplicationAt(tapX, tapY)?.id
-
-            override fun brieflyHighlightComplicationId(complicationId: Int) {
-                complicationsManager.bringAttentionToComplication(complicationId)
-            }
-
-            override fun takeScreenshot(
-                drawRect: Rect,
-                calendar: Calendar,
-                drawMode: Int
-            ): Bitmap {
-                val oldDrawMode = renderer.drawMode
-                renderer.drawMode = drawMode
-                val bitmap = renderer.takeScreenshot(
-                    calendar,
-                    DrawMode.INTERACTIVE
-                )
-                renderer.drawMode = oldDrawMode
-                return bitmap
-            }
-        })
-
-        watchFaceHostApi.registerWatchFaceType(watchFaceType)
-        watchFaceHostApi.registerUserStyleSchema(userStyleRepository.toSchemaWireFormat())
         watchState.isAmbient.addObserver(ambientObserver)
         watchState.interruptionFilter.addObserver(interruptionFilterObserver)
         watchState.isVisible.addObserver(visibilityObserver)
-        userStyleRepository.addUserStyleListener(styleListener)
-        sendCurrentUserStyle(userStyleRepository.userStyle)
 
         initFinished = true
     }
@@ -574,7 +554,6 @@ class WatchFace private constructor(
         watchState.isAmbient.removeObserver(ambientObserver)
         watchState.interruptionFilter.removeObserver(interruptionFilterObserver)
         watchState.isVisible.removeObserver(visibilityObserver)
-        userStyleRepository.removeUserStyleListener(styleListener)
         WatchFaceConfigActivity.unregisterWatchFace(componentName)
     }
 
@@ -628,20 +607,6 @@ class WatchFace private constructor(
     }
 
     /**
-     * Convenience for [SurfaceHolder.Callback.surfaceChanged]. Called when the
-     * [SurfaceHolder] containing the display surface changes.
-     *
-     * @param holder The new [SurfaceHolder] containing the display surface
-     * @param format The new [android.graphics.PixelFormat] of the surface
-     * @param width The width of the new display surface
-     * @param height The height of the new display surface
-     */
-    internal fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        renderer.onSurfaceChanged(holder, format, width, height)
-        invalidate()
-    }
-
-    /**
      * Sets the calendar's time in milliseconds adjusted by the mock time controls.
      */
     private fun setCalendarTime(timeMillis: Long) {
@@ -672,7 +637,8 @@ class WatchFace private constructor(
         } else if (muteMode) {
             newDrawMode = DrawMode.MUTE
         }
-        renderer.drawMode = newDrawMode
+        renderer.renderParameters =
+            RenderParameters(newDrawMode, RenderParameters.DRAW_ALL_LAYERS)
     }
 
     /** @hide */
@@ -699,8 +665,10 @@ class WatchFace private constructor(
 
     /** @hide */
     @UiThread
-    internal fun computeDelayTillNextFrame(beginFrameTimeMillis: Long, currentTimeMillis: Long):
-            Long {
+    internal fun computeDelayTillNextFrame(
+        beginFrameTimeMillis: Long,
+        currentTimeMillis: Long
+    ): Long {
         // Limit update rate to conserve power when the battery is low and not charging.
         val updateRateMillis =
             if (watchState.isBatteryLowAndNotCharging.getValueOr(false)) {
@@ -717,7 +685,8 @@ class WatchFace private constructor(
             // Compute the next runtime after currentTimeMillis with the same phase as
             //  beginFrameTimeMillis to keep the animation smooth.
             val phaseAdjust =
-                updateRateMillis + ((nextFrameTimeMillis - currentTimeMillis) % updateRateMillis)
+                updateRateMillis +
+                    ((nextFrameTimeMillis - currentTimeMillis) % updateRateMillis)
             nextFrameTimeMillis = currentTimeMillis + phaseAdjust
         }
         return nextFrameTimeMillis - currentTimeMillis
@@ -835,7 +804,7 @@ class WatchFace private constructor(
 
     /** Schedules a call to [onDraw] to draw the next frame. */
     @UiThread
-    fun invalidate() {
+    public fun invalidate() {
         watchFaceHostApi.invalidate()
     }
 
@@ -843,7 +812,7 @@ class WatchFace private constructor(
      * Posts a message to schedule a call to [onDraw] to draw the next frame. Unlike
      * [invalidate], this method is thread-safe and may be called on any thread.
      */
-    fun postInvalidate() {
+    public fun postInvalidate() {
         watchFaceHostApi.getHandler().post { watchFaceHostApi.invalidate() }
     }
 }

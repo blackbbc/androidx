@@ -30,9 +30,9 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Providers
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Layout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.WithConstraints
+import androidx.compose.ui.layout.WithConstraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LayoutDirectionAmbient
 import androidx.compose.ui.unit.IntOffset
@@ -137,13 +137,13 @@ private fun testText() {
 private fun testSiblings() {
     Column {
         Box(
-            boxSize.background(color = Color.Red).alignWithSiblings { p -> p.width }
+            boxSize.background(color = Color.Red).alignBy { p -> p.width }
         ) {}
         Box(
-            boxSize.background(color = Color.Green).alignWithSiblings { p -> p.width / 2 }
+            boxSize.background(color = Color.Green).alignBy { p -> p.width / 2 }
         ) {}
         Box(
-            boxSize.background(color = Color.Blue).alignWithSiblings { p -> p.width / 4 }
+            boxSize.background(color = Color.Blue).alignBy { p -> p.width / 4 }
         ) {}
     }
 }

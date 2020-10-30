@@ -36,7 +36,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.test.filters.SmallTest
 import com.google.common.truth.Truth.assertThat
 import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.isNull
@@ -52,7 +51,6 @@ import org.junit.runners.JUnit4
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 
-@SmallTest
 @RunWith(JUnit4::class)
 @OptIn(InternalTextApi::class)
 class TextFieldSelectionManagerTest {
@@ -390,6 +388,30 @@ class TextFieldSelectionManagerTest {
     }
 
     @Test
+    fun selectAll() {
+        manager.value = TextFieldValue(
+            text = text,
+            selection = TextRange(0)
+        )
+
+        manager.selectAll()
+
+        assertThat(value.selection).isEqualTo(TextRange(0, text.length))
+    }
+
+    @Test
+    fun selectAll_whenPartiallySelected() {
+        manager.value = TextFieldValue(
+            text = text,
+            selection = TextRange(0, 5)
+        )
+
+        manager.selectAll()
+
+        assertThat(value.selection).isEqualTo(TextRange(0, text.length))
+    }
+
+    @Test
     fun showSelectionToolbar_trigger_textToolbar_showMenu_Clipboard_empty_not_show_paste() {
         manager.value = TextFieldValue(
             text = text + text,
@@ -398,7 +420,7 @@ class TextFieldSelectionManagerTest {
 
         manager.showSelectionToolbar()
 
-        verify(textToolbar, times(1)).showMenu(any(), any(), isNull(), any())
+        verify(textToolbar, times(1)).showMenu(any(), any(), isNull(), any(), any())
     }
 
     @Test
@@ -411,7 +433,27 @@ class TextFieldSelectionManagerTest {
 
         manager.showSelectionToolbar()
 
-        verify(textToolbar, times(1)).showMenu(any(), isNull(), any(), isNull())
+        verify(textToolbar, times(1)).showMenu(any(), isNull(), any(), isNull(), any())
+    }
+
+    @Test
+    fun showSelectionToolbar_trigger_textToolbar_showMenu_no_text_show_paste_only() {
+        whenever(clipboardManager.getText()).thenReturn(AnnotatedString(text))
+        manager.value = TextFieldValue()
+
+        manager.showSelectionToolbar()
+
+        verify(textToolbar, times(1)).showMenu(any(), isNull(), any(), isNull(), isNull())
+    }
+
+    @Test
+    fun showSelectionToolbar_trigger_textToolbar_no_menu() {
+        whenever(clipboardManager.getText()).thenReturn(null)
+        manager.value = TextFieldValue()
+
+        manager.showSelectionToolbar()
+
+        verify(textToolbar, times(1)).showMenu(any(), isNull(), isNull(), isNull(), isNull())
     }
 
     @Test

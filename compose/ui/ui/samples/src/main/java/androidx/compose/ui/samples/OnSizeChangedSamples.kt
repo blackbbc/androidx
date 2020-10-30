@@ -20,14 +20,17 @@ import androidx.annotation.Sampled
 import androidx.compose.foundation.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.onSizeChanged
+import androidx.compose.ui.layout.onSizeChanged
 
 @Sampled
 @Composable
 fun OnSizeChangedSample(name: String) {
     // Use onSizeChanged() for diagnostics. Use Layout or SubcomposeLayout if you want
     // to use the size of one component to affect the size of another component.
-    Text("Hello $name", Modifier.onSizeChanged { size ->
-        println("The size of the Text in pixels is $size")
-    })
+    Text(
+        "Hello $name",
+        Modifier.onSizeChanged { size ->
+            println("The size of the Text in pixels is $size")
+        }
+    )
 }

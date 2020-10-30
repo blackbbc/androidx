@@ -426,8 +426,16 @@ public final class ImageCapture extends UseCase {
     @RestrictTo(Scope.LIBRARY_GROUP)
     @Override
     @Nullable
-    public UseCaseConfig<?> getDefaultConfig(@NonNull UseCaseConfigFactory factory) {
-        return factory.getConfig(ImageCaptureConfig.class);
+    public UseCaseConfig<?> getDefaultConfig(boolean applyDefaultConfig,
+            @NonNull UseCaseConfigFactory factory) {
+        Config captureConfig = factory.getConfig(UseCaseConfigFactory.CaptureType.IMAGE_CAPTURE);
+
+        if (applyDefaultConfig) {
+            captureConfig = Config.mergeConfigs(captureConfig, DEFAULT_CONFIG.getConfig());
+        }
+
+        return captureConfig == null ? null :
+                getUseCaseConfigBuilder(captureConfig).getUseCaseConfig();
     }
 
     /**
@@ -475,18 +483,6 @@ public final class ImageCapture extends UseCase {
                         >= 1,
                 "Maximum outstanding image count must be at least 1");
         return builder.getUseCaseConfig();
-    }
-
-    /**
-     * {@inheritDoc}
-     *
-     * @hide
-     */
-    @NonNull
-    @RestrictTo(Scope.LIBRARY_GROUP)
-    @Override
-    public UseCaseConfig.Builder<?, ?, ?> getUseCaseConfigBuilder() {
-        return Builder.fromConfig((ImageCaptureConfig) getCurrentConfig());
     }
 
     /**
@@ -1619,12 +1615,13 @@ public final class ImageCapture extends UseCase {
     public static final class Defaults
             implements ConfigProvider<ImageCaptureConfig> {
         private static final int DEFAULT_SURFACE_OCCUPANCY_PRIORITY = 4;
+        private static final int DEFAULT_ASPECT_RATIO = AspectRatio.RATIO_4_3;
 
         private static final ImageCaptureConfig DEFAULT_CONFIG;
 
         static {
             Builder builder = new Builder().setSurfaceOccupancyPriority(
-                    DEFAULT_SURFACE_OCCUPANCY_PRIORITY);
+                    DEFAULT_SURFACE_OCCUPANCY_PRIORITY).setTargetAspectRatio(DEFAULT_ASPECT_RATIO);
 
             DEFAULT_CONFIG = builder.getUseCaseConfig();
         }
@@ -1842,6 +1839,11 @@ public final class ImageCapture extends UseCase {
         private boolean mIsReversedHorizontal;
 
         /**
+         * Whether the mIsReversedHorizontal has been set by the app explicitly.
+         */
+        private boolean mIsReversedHorizontalSet = false;
+
+        /**
          * Indicates an upside down mirroring, equivalent to a horizontal mirroring (reflection)
          * followed by a 180 degree rotation.
          *
@@ -1864,12 +1866,26 @@ public final class ImageCapture extends UseCase {
         }
 
         /**
+         * Returns true if {@link #setReversedHorizontal} has been called.
+         *
+         * <p> CameraController's default behavior is mirroring the picture when front camera is
+         * used. This method is used to check if reverseHorizontal is set explicitly by the app.
+         *
+         * @hide
+         */
+        @RestrictTo(Scope.LIBRARY_GROUP)
+        public boolean isReversedHorizontalSet() {
+            return mIsReversedHorizontalSet;
+        }
+
+        /**
          * Sets left-right mirroring of the capture.
          *
          * @param isReversedHorizontal true if the capture is left-right mirrored.
          */
         public void setReversedHorizontal(boolean isReversedHorizontal) {
             mIsReversedHorizontal = isReversedHorizontal;
+            mIsReversedHorizontalSet = true;
         }
 
         /**

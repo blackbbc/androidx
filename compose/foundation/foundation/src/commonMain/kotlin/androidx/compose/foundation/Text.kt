@@ -62,8 +62,8 @@ import androidx.compose.ui.unit.TextUnit
  *
  * @param text The text to be displayed.
  * @param modifier [Modifier] to apply to this layout node.
- * @param color [Color] to apply to the text. If [Color.Unset], and [style] has no color set, this
- * will be [AmbientContentColor].
+ * @param color [Color] to apply to the text. If [Color.Unspecified], and [style] has no color set,
+ * this will be [AmbientContentColor].
  * @param fontSize The size of glyphs to use when painting the text. See [TextStyle.fontSize].
  * @param fontStyle The typeface variant to use when drawing the letters (e.g., italic).
  * See [TextStyle.fontStyle].
@@ -91,7 +91,7 @@ import androidx.compose.ui.unit.TextUnit
 fun Text(
     text: String,
     modifier: Modifier = Modifier,
-    color: Color = Color.Unset,
+    color: Color = Color.Unspecified,
     fontSize: TextUnit = TextUnit.Inherit,
     fontStyle: FontStyle? = null,
     fontWeight: FontWeight? = null,
@@ -148,8 +148,8 @@ fun Text(
  *
  * @param text The text to be displayed.
  * @param modifier [Modifier] to apply to this layout node.
- * @param color [Color] to apply to the text. If [Color.Unset], and [style] has no color set, this
- * will be [AmbientContentColor].
+ * @param color [Color] to apply to the text. If [Color.Unspecified], and [style] has no color set,
+ * this will be [AmbientContentColor].
  * @param fontSize The size of glyphs to use when painting the text. See [TextStyle.fontSize].
  * @param fontStyle The typeface variant to use when drawing the letters (e.g., italic).
  * See [TextStyle.fontStyle].
@@ -179,7 +179,7 @@ fun Text(
 fun Text(
     text: AnnotatedString,
     modifier: Modifier = Modifier,
-    color: Color = Color.Unset,
+    color: Color = Color.Unspecified,
     fontSize: TextUnit = TextUnit.Inherit,
     fontStyle: FontStyle? = null,
     fontWeight: FontWeight? = null,
@@ -253,10 +253,10 @@ fun ProvideTextStyle(value: TextStyle, children: @Composable () -> Unit) {
  * styled explicitly.
  */
 @Deprecated(
-    message = "Use ThemeTextStyle.current explicitly",
+    message = "Use AmbientTextStyle.current explicitly",
     replaceWith = ReplaceWith(
-        "ThemeTextStyle.current",
-        "androidx.compose.foundation.ThemeTextStyle"
+        "AmbientTextStyle.current",
+        "androidx.compose.foundation.AmbientTextStyle"
     )
 )
 @Composable

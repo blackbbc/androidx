@@ -28,9 +28,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.node.Owner
-import androidx.compose.ui.onGloballyPositioned
-import androidx.compose.ui.selection.SimpleContainer
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -40,8 +40,8 @@ import androidx.test.espresso.Root
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.BoundedMatcher
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import androidx.ui.test.createComposeRule
 import com.google.common.truth.Truth.assertThat
 import org.hamcrest.CoreMatchers.instanceOf
 import org.hamcrest.Description
@@ -49,16 +49,15 @@ import org.hamcrest.TypeSafeMatcher
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 @MediumTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class PopupTest {
 
     @get:Rule
-    val rule = createComposeRule(disableTransitions = true)
+    val rule = createComposeRule()
 
     private val testTag = "testedPopup"
     private val offset = IntOffset(10, 10)

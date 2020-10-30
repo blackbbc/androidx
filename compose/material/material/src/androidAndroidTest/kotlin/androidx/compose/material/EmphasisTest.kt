@@ -18,8 +18,8 @@ package androidx.compose.material
 
 import androidx.compose.foundation.AmbientContentColor
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.filters.MediumTest
-import androidx.ui.test.createComposeRule
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
 import org.junit.Test
@@ -48,7 +48,7 @@ class EmphasisTest(private val colors: Colors, private val debugParameterName: S
     }
 
     @get:Rule
-    val rule = createComposeRule(disableTransitions = true)
+    val rule = createComposeRule()
 
     @Test
     fun noEmphasisSpecified_contentColorUnmodified_surface() {

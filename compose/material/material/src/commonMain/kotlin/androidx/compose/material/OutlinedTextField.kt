@@ -29,9 +29,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Layout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Placeable
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.drawBehind
 import androidx.compose.ui.focus.ExperimentalFocus
 import androidx.compose.ui.graphics.Color
@@ -171,7 +171,7 @@ fun OutlinedTextField(
         activeColor = activeColor,
         inactiveColor = inactiveColor,
         errorColor = errorColor,
-        backgroundColor = Color.Unset,
+        backgroundColor = Color.Unspecified,
         shape = RectangleShape
     )
 }
@@ -274,7 +274,7 @@ fun OutlinedTextField(
         activeColor = activeColor,
         inactiveColor = inactiveColor,
         errorColor = errorColor,
-        backgroundColor = Color.Unset,
+        backgroundColor = Color.Unspecified,
         shape = RectangleShape
     )
 }

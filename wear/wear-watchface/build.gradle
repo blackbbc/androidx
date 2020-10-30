@@ -30,7 +30,7 @@ plugins {
 dependencies {
     api("androidx.annotation:annotation:1.1.0")
     api(project(":wear:wear-complications-data"))
-    api(project(":wear:wear-complications-rendering"))
+    api(project(":wear:wear-watchface-complications-rendering"))
     api(project(":wear:wear-watchface-data"))
     api(project(":wear:wear-watchface-style"))
     api(KOTLIN_STDLIB)
@@ -75,7 +75,6 @@ android {
 androidx {
     name = "Android Wear Watchface"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    runApiTasks = new RunApiTasks.No("Temporary policy violation, see b/162936364")
     mavenGroup = LibraryGroups.WEAR
     mavenVersion = LibraryVersions.WEAR_WATCHFACE
     inceptionYear = "2020"

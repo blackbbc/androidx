@@ -23,32 +23,46 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.InspectableValue
+import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsInMutuallyExclusiveGroup
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.center
+import androidx.compose.ui.test.down
+import androidx.compose.ui.test.isInMutuallyExclusiveGroup
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performGesture
+import androidx.compose.ui.test.up
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import androidx.ui.test.assertCountEquals
-import androidx.ui.test.assertIsInMutuallyExclusiveGroup
-import androidx.ui.test.assertIsNotSelected
-import androidx.ui.test.assertIsSelected
-import androidx.ui.test.center
-import androidx.ui.test.createComposeRule
-import androidx.ui.test.down
-import androidx.ui.test.isInMutuallyExclusiveGroup
-import androidx.ui.test.onFirst
-import androidx.ui.test.onNodeWithText
-import androidx.ui.test.performClick
-import androidx.ui.test.performGesture
-import androidx.ui.test.up
-import com.google.common.truth.Truth
+import com.google.common.truth.Truth.assertThat
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 
 @MediumTest
-@RunWith(JUnit4::class)
+@RunWith(AndroidJUnit4::class)
 class SelectableTest {
 
     @get:Rule
     val rule = createComposeRule()
+
+    @Before
+    fun before() {
+        isDebugInspectorInfoEnabled = true
+    }
+
+    @After
+    fun after() {
+        isDebugInspectorInfoEnabled = false
+    }
 
     @Test
     fun selectable_defaultSemantics() {
@@ -95,7 +109,8 @@ class SelectableTest {
                 "Text in item",
                 modifier = Modifier.selectable(
                     selected = selected,
-                    onClick = {})
+                    onClick = {}
+                )
             )
         }
 
@@ -111,32 +126,34 @@ class SelectableTest {
 
         rule.setContent {
             Box {
-                Box(Modifier.selectable(
-                    selected = true,
-                    interactionState = interactionState,
-                    onClick = {}
-                )) {
+                Box(
+                    Modifier.selectable(
+                        selected = true,
+                        interactionState = interactionState,
+                        onClick = {}
+                    )
+                ) {
                     Text("SelectableText")
                 }
             }
         }
 
         rule.runOnIdle {
-            Truth.assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
         }
 
         rule.onNodeWithText("SelectableText")
             .performGesture { down(center) }
 
         rule.runOnIdle {
-            Truth.assertThat(interactionState.value).contains(Interaction.Pressed)
+            assertThat(interactionState.value).contains(Interaction.Pressed)
         }
 
         rule.onNodeWithText("SelectableText")
             .performGesture { up() }
 
         rule.runOnIdle {
-            Truth.assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
         }
     }
 
@@ -148,11 +165,13 @@ class SelectableTest {
         rule.setContent {
             Box {
                 if (emitSelectableText) {
-                    Box(Modifier.selectable(
-                        selected = true,
-                        interactionState = interactionState,
-                        onClick = {}
-                    )) {
+                    Box(
+                        Modifier.selectable(
+                            selected = true,
+                            interactionState = interactionState,
+                            onClick = {}
+                        )
+                    ) {
                         Text("SelectableText")
                     }
                 }
@@ -160,14 +179,14 @@ class SelectableTest {
         }
 
         rule.runOnIdle {
-            Truth.assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
         }
 
         rule.onNodeWithText("SelectableText")
             .performGesture { down(center) }
 
         rule.runOnIdle {
-            Truth.assertThat(interactionState.value).contains(Interaction.Pressed)
+            assertThat(interactionState.value).contains(Interaction.Pressed)
         }
 
         // Dispose selectable
@@ -176,7 +195,24 @@ class SelectableTest {
         }
 
         rule.runOnIdle {
-            Truth.assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+        }
+    }
+
+    @Test
+    fun testInspectorValue() {
+        rule.setContent {
+            val modifier = Modifier.selectable(false) {} as InspectableValue
+            assertThat(modifier.nameFallback).isEqualTo("selectable")
+            assertThat(modifier.valueOverride).isNull()
+            assertThat(modifier.inspectableElements.map { it.name }.asIterable()).containsExactly(
+                "selected",
+                "enabled",
+                "inMutuallyExclusiveGroup",
+                "interactionState",
+                "indication",
+                "onClick"
+            )
         }
     }
 }

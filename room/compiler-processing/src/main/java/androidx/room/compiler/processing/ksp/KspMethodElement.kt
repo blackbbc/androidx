@@ -17,14 +17,18 @@
 package androidx.room.compiler.processing.ksp
 
 import androidx.room.compiler.processing.XDeclaredType
+import androidx.room.compiler.processing.XExecutableParameterElement
 import androidx.room.compiler.processing.XMethodElement
 import androidx.room.compiler.processing.XMethodType
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
-import org.jetbrains.kotlin.ksp.symbol.KSFunctionDeclaration
-import org.jetbrains.kotlin.ksp.symbol.Modifier
+import androidx.room.compiler.processing.ksp.synthetic.KspSyntheticContinuationParameterElement
+import com.google.devtools.ksp.symbol.ClassKind
+import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.KSFunctionDeclaration
+import com.google.devtools.ksp.symbol.Modifier
 
-internal class KspMethodElement(
+internal sealed class KspMethodElement(
     env: KspProcessingEnv,
     containing: KspTypeElement,
     declaration: KSFunctionDeclaration
@@ -32,50 +36,105 @@ internal class KspMethodElement(
     env = env,
     containing = containing,
     declaration = declaration
-), XMethodElement {
+),
+    XMethodElement {
 
     override val name: String by lazy {
         declaration.simpleName.asString()
     }
 
-    override val returnType: XType
-        get() = TODO(
-            """
-            Implement return type.
-            Need to handle suspend functions where their signature is different as long as we
-            generate java code.
-        """.trimIndent()
+    override val executableType: XMethodType by lazy {
+        KspMethodType.create(
+            env = env,
+            origin = this,
+            containing = this.containing.type
         )
-
-    override val executableType: XMethodType
-        get() = TODO("Not yet implemented")
+    }
 
     override fun isJavaDefault(): Boolean {
         return declaration.modifiers.contains(Modifier.JAVA_DEFAULT) || declaration.isJvmDefault()
     }
 
     override fun asMemberOf(other: XDeclaredType): XMethodType {
-        TODO("Not yet implemented")
+        check(other is KspDeclaredType)
+        return KspMethodType.create(
+            env = env,
+            origin = this,
+            containing = other
+        )
     }
 
     override fun hasKotlinDefaultImpl(): Boolean {
-        TODO("Not yet implemented")
-    }
-
-    override fun isSuspendFunction(): Boolean {
-        return declaration.modifiers.contains(Modifier.SUSPEND)
+        // see https://github.com/google/ksp/issues/32
+        val parentDeclaration = declaration.parentDeclaration
+        // if parent declaration is an interface and we are not marked as an abstract method,
+        // we should have a default implementation
+        return parentDeclaration is KSClassDeclaration &&
+            parentDeclaration.classKind == ClassKind.INTERFACE &&
+            !declaration.isAbstract
     }
 
     override fun overrides(other: XMethodElement, owner: XTypeElement): Boolean {
-        return other is KspMethodElement && declaration.overrides(other.declaration)
+        return env.resolver.overrides(this, other)
     }
 
-    override fun copyTo(newContainer: XTypeElement): XMethodElement {
+    override fun copyTo(newContainer: XTypeElement): KspMethodElement {
         check(newContainer is KspTypeElement)
-        return KspMethodElement(
+        return create(
             env = env,
             containing = newContainer,
             declaration = declaration
         )
+    }
+
+    private class KspNormalMethodElement(
+        env: KspProcessingEnv,
+        containing: KspTypeElement,
+        declaration: KSFunctionDeclaration
+    ) : KspMethodElement(
+        env, containing, declaration
+    ) {
+        override val returnType: XType by lazy {
+            env.wrap(
+                checkNotNull(declaration.returnType) {
+                    "return type on a method declaration cannot be null"
+                }
+            )
+        }
+        override fun isSuspendFunction() = false
+    }
+
+    private class KspSuspendMethodElement(
+        env: KspProcessingEnv,
+        containing: KspTypeElement,
+        declaration: KSFunctionDeclaration
+    ) : KspMethodElement(
+        env, containing, declaration
+    ) {
+        override fun isSuspendFunction() = true
+
+        override val returnType: XType by lazy {
+            env.wrap(env.resolver.builtIns.anyType.makeNullable())
+        }
+
+        override val parameters: List<XExecutableParameterElement>
+            get() = super.parameters + KspSyntheticContinuationParameterElement(
+                env = env,
+                containing = this
+            )
+    }
+
+    companion object {
+        fun create(
+            env: KspProcessingEnv,
+            containing: KspTypeElement,
+            declaration: KSFunctionDeclaration
+        ): KspMethodElement {
+            return if (declaration.modifiers.contains(Modifier.SUSPEND)) {
+                KspSuspendMethodElement(env, containing, declaration)
+            } else {
+                KspNormalMethodElement(env, containing, declaration)
+            }
+        }
     }
 }

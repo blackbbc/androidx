@@ -30,23 +30,25 @@ import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.VectorAsset
-import androidx.compose.ui.graphics.vector.VectorPainter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.ContextAmbient
 import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.setContent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.matchers.MSSIMMatcher
-import androidx.ui.test.createAndroidComposeRule
-import androidx.ui.test.captureToBitmap
-import androidx.ui.test.onNodeWithTag
 import com.google.common.truth.Truth
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
+import kotlin.math.ceil
+import kotlin.math.roundToInt
 import kotlin.reflect.KProperty0
 import kotlin.reflect.jvm.javaGetter
 
@@ -81,7 +83,8 @@ class IconComparisonTest(
         @Parameterized.Parameters(name = "{1}")
         fun initIconSublist(): Array<Array<Any>> {
             val numberOfChunks = 4
-            val subLists = AllIcons.chunked(AllIcons.size / numberOfChunks)
+            val listSize = ceil(AllIcons.size / numberOfChunks.toFloat()).roundToInt()
+            val subLists = AllIcons.chunked(listSize)
             return subLists.mapIndexed { index, list ->
                 arrayOf(list, "${index + 1}of$numberOfChunks")
             }.toTypedArray()
@@ -110,6 +113,11 @@ class IconComparisonTest(
             rule.waitForIdle()
 
             val iconName = property.javaGetter!!.declaringClass.canonicalName!!
+
+            // The XML inflated VectorAsset doesn't have a name, and we set a name in the
+            // programmatic VectorAsset. This doesn't affect how the VectorAsset is drawn, so we
+            // make sure the names match so the comparison does not fail.
+            xmlVector = xmlVector!!.copy(name = programmaticVector.name)
 
             assertVectorAssetsAreEqual(xmlVector!!, programmaticVector, iconName)
 
@@ -212,13 +220,13 @@ private fun DrawVectors(programmaticVector: VectorAsset, xmlVector: VectorAsset)
         Row(Modifier.align(Alignment.Center)) {
             Box(
                 modifier = layoutSize.paint(
-                    VectorPainter(programmaticVector),
+                    rememberVectorPainter(programmaticVector),
                     colorFilter = ColorFilter.tint(Color.Red)
                 ).testTag(ProgrammaticTestTag)
             )
             Box(
                 modifier = layoutSize.paint(
-                    VectorPainter(xmlVector),
+                    rememberVectorPainter(xmlVector),
                     colorFilter = ColorFilter.tint(Color.Red)
                 ).testTag(XmlTestTag)
             )
