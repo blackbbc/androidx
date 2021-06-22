@@ -14,74 +14,39 @@
  * limitations under the License.
  */
 
-// TODO(b/160821157): Replace FocusDetailedState with FocusState2 DEPRECATION
-@file:Suppress("DEPRECATION")
-
 package androidx.compose.material
 
-import androidx.compose.animation.ColorPropKey
-import androidx.compose.animation.DpPropKey
-import androidx.compose.animation.core.FloatPropKey
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.TransitionSpec
-import androidx.compose.animation.core.transitionDefinition
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.transition
-import androidx.compose.foundation.AmbientContentColor
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.InteractionState
-import androidx.compose.foundation.ProvideTextStyle
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.rememberScrollableController
-import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.defaultMinSizeConstraints
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.preferredSizeIn
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.Strings.Companion.DefaultErrorMessage
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Providers
-import androidx.compose.runtime.Stable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.savedinstancestate.Saver
-import androidx.compose.runtime.savedinstancestate.rememberSavedInstanceState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawOpacity
-import androidx.compose.ui.focus.ExperimentalFocus
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.isFocused
-import androidx.compose.ui.focusObserver
-import androidx.compose.ui.focusRequester
-import androidx.compose.ui.gesture.scrollorientationlocking.Orientation
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.LayoutModifier
-import androidx.compose.ui.layout.Measurable
-import androidx.compose.ui.layout.MeasureResult
-import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.layout.Placeable
-import androidx.compose.ui.node.Ref
-import androidx.compose.ui.text.SoftwareKeyboardController
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.lerp
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.offset
-import androidx.compose.ui.util.annotation.VisibleForTesting
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 internal enum class TextFieldType {
     Filled, Outlined
@@ -91,189 +56,146 @@ internal enum class TextFieldType {
  * Implementation of the [TextField] and [OutlinedTextField]
  */
 @Composable
-@OptIn(
-    ExperimentalFocus::class,
-    ExperimentalFoundationApi::class
-)
 internal fun TextFieldImpl(
     type: TextFieldType,
+    enabled: Boolean,
+    readOnly: Boolean,
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
     modifier: Modifier,
+    singleLine: Boolean,
     textStyle: TextStyle,
     label: @Composable (() -> Unit)?,
     placeholder: @Composable (() -> Unit)?,
     leading: @Composable (() -> Unit)?,
     trailing: @Composable (() -> Unit)?,
-    isErrorValue: Boolean,
+    isError: Boolean,
     visualTransformation: VisualTransformation,
-    keyboardType: KeyboardType,
-    imeAction: ImeAction,
-    onImeActionPerformed: (ImeAction, SoftwareKeyboardController?) -> Unit,
-    onTextInputStarted: (SoftwareKeyboardController) -> Unit,
-    interactionState: InteractionState,
-    activeColor: Color,
-    inactiveColor: Color,
-    errorColor: Color,
-    backgroundColor: Color,
-    shape: Shape
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions,
+    maxLines: Int = Int.MAX_VALUE,
+    interactionSource: MutableInteractionSource,
+    shape: Shape,
+    colors: TextFieldColors
 ) {
-    val keyboardController: Ref<SoftwareKeyboardController> = remember { Ref() }
+    // If color is not provided via the text style, use content color as a default
+    val textColor = textStyle.color.takeOrElse {
+        colors.textColor(enabled).value
+    }
+    val mergedTextStyle = textStyle.merge(TextStyle(color = textColor))
 
-    var isFocused by remember { mutableStateOf(false) }
+    val isFocused = interactionSource.collectIsFocusedAsState().value
+    val transformedText = remember(value.annotatedString, visualTransformation) {
+        visualTransformation.filter(value.annotatedString)
+    }.text
     val inputState = when {
         isFocused -> InputPhase.Focused
-        value.text.isEmpty() -> InputPhase.UnfocusedEmpty
+        transformedText.isEmpty() -> InputPhase.UnfocusedEmpty
         else -> InputPhase.UnfocusedNotEmpty
     }
 
-    val decoratedTextField = @Composable { tagModifier: Modifier ->
-        Decoration(
-            contentColor = inactiveColor,
-            typography = MaterialTheme.typography.subtitle1,
-            emphasis = AmbientEmphasisLevels.current.high
-        ) {
-            TextFieldScroller(
-                scrollerPosition = rememberSavedInstanceState(
-                    saver = TextFieldScrollerPosition.Saver
-                ) {
-                    TextFieldScrollerPosition()
-                },
-                modifier = tagModifier
-            ) {
-                BasicTextField(
-                    value = value,
-                    modifier = Modifier.defaultMinSizeConstraints(minWidth = TextFieldMinWidth),
-                    textStyle = textStyle,
-                    onValueChange = onValueChange,
-                    cursorColor = if (isErrorValue) errorColor else activeColor,
-                    visualTransformation = visualTransformation,
-                    keyboardType = keyboardType,
-                    imeAction = imeAction,
-                    onImeActionPerformed = {
-                        onImeActionPerformed(it, keyboardController.value)
-                    },
-                    onTextInputStarted = {
-                        keyboardController.value = it
-                        onTextInputStarted(it)
-                    }
-                )
-            }
-        }
-    }
-
-    val focusRequester = FocusRequester()
-    val textFieldModifier = modifier
-        .focusRequester(focusRequester)
-        .focusObserver { isFocused = it.isFocused }
-        .clickable(interactionState = interactionState, indication = null) {
-            focusRequester.requestFocus()
-            // TODO(b/163109449): Showing and hiding keyboard should be handled by BaseTextField.
-            //  The requestFocus() call here should be enough to trigger the software keyboard.
-            //  Investiate why this is needed here. If it is really needed, instead of doing
-            //  this in the onClick callback, we should move this logic to the focusObserver
-            //  so that it can show or hide the keyboard based on the focus state.
-            keyboardController.value?.showSoftwareKeyboard()
-        }
-
-    val emphasisLevels = AmbientEmphasisLevels.current
-
-    TextFieldTransitionScope.transition(
-        inputState = inputState,
-        showLabel = label != null,
-        activeColor = if (isErrorValue) {
-            errorColor
-        } else {
-            emphasisLevels.high.applyEmphasis(activeColor)
-        },
-        labelInactiveColor = if (isErrorValue) {
-            errorColor
-        } else {
-            emphasisLevels.medium.applyEmphasis(inactiveColor)
-        },
-        indicatorInactiveColor = when {
-            isErrorValue -> errorColor
-            type == TextFieldType.Filled -> inactiveColor.applyAlpha(alpha = IndicatorInactiveAlpha)
-            else -> emphasisLevels.disabled.applyEmphasis(inactiveColor)
-        }
-
-    ) { labelProgress, animatedLabelColor, indicatorWidth, indicatorColor, placeholderOpacity ->
-
-        val leadingColor = inactiveColor.applyAlpha(alpha = TrailingLeadingAlpha)
-        val trailingColor = if (isErrorValue) errorColor else leadingColor
+    TextFieldTransitionScope.Transition(
+        inputState = inputState, showLabel = label != null
+    ) { labelProgress, indicatorWidth, placeholderAlphaProgress ->
 
         val decoratedLabel: @Composable (() -> Unit)? =
             if (label != null) {
-                {
+                @Composable {
                     val labelAnimatedStyle = lerp(
                         MaterialTheme.typography.subtitle1,
                         MaterialTheme.typography.caption,
                         labelProgress
                     )
                     Decoration(
-                        contentColor = animatedLabelColor,
+                        contentColor = colors
+                            .labelColor(
+                                enabled,
+                                // if label is used as a placeholder (aka not as a small header
+                                // at the top), we don't use an error color
+                                if (inputState == InputPhase.UnfocusedEmpty) false else isError,
+                                interactionSource
+                            ).value,
                         typography = labelAnimatedStyle,
-                        children = label
+                        content = label
                     )
                 }
             } else null
 
         val decoratedPlaceholder: @Composable ((Modifier) -> Unit)? =
-            if (placeholder != null && value.text.isEmpty()) {
-                { modifier ->
-                    Box(modifier.drawOpacity(placeholderOpacity)) {
+            if (placeholder != null && transformedText.isEmpty()) {
+                @Composable { modifier ->
+                    Box(modifier.alpha(placeholderAlphaProgress)) {
                         Decoration(
-                            contentColor = inactiveColor,
+                            contentColor = colors.placeholderColor(enabled).value,
                             typography = MaterialTheme.typography.subtitle1,
-                            emphasis = AmbientEmphasisLevels.current.medium,
-                            children = placeholder
+                            content = placeholder
                         )
                     }
                 }
             } else null
 
+        // Developers need to handle invalid input manually. But since we don't provide error
+        // message slot API, we can set the default error message in case developers forget about
+        // it.
+        val defaultErrorMessage = getString(DefaultErrorMessage)
+        val textFieldModifier = modifier.semantics { if (isError) error(defaultErrorMessage) }
         when (type) {
             TextFieldType.Filled -> {
                 TextFieldLayout(
-                    modifier = Modifier
-                        .preferredSizeIn(
-                            minWidth = TextFieldMinWidth,
-                            minHeight = TextFieldMinHeight
-                        )
-                        .then(textFieldModifier),
-                    decoratedTextField = decoratedTextField,
+                    modifier = textFieldModifier,
+                    value = value,
+                    onValueChange = onValueChange,
+                    enabled = enabled,
+                    readOnly = readOnly,
+                    keyboardOptions = keyboardOptions,
+                    keyboardActions = keyboardActions,
+                    textStyle = mergedTextStyle,
+                    singleLine = singleLine,
+                    maxLines = maxLines,
+                    visualTransformation = visualTransformation,
+                    interactionSource = interactionSource,
                     decoratedPlaceholder = decoratedPlaceholder,
                     decoratedLabel = decoratedLabel,
                     leading = leading,
                     trailing = trailing,
-                    leadingColor = leadingColor,
-                    trailingColor = trailingColor,
+                    leadingColor = colors.leadingIconColor(enabled, isError).value,
+                    trailingColor = colors.trailingIconColor(enabled, isError).value,
                     labelProgress = labelProgress,
                     indicatorWidth = indicatorWidth,
-                    indicatorColor = indicatorColor,
-                    backgroundColor = backgroundColor,
+                    indicatorColor =
+                        colors.indicatorColor(enabled, isError, interactionSource).value,
+                    backgroundColor = colors.backgroundColor(enabled).value,
+                    cursorColor = colors.cursorColor(isError).value,
                     shape = shape
                 )
             }
             TextFieldType.Outlined -> {
                 OutlinedTextFieldLayout(
-                    modifier = Modifier
-                        .preferredSizeIn(
-                            minWidth = TextFieldMinWidth,
-                            minHeight = TextFieldMinHeight + OutlinedTextFieldTopPadding
-                        )
-                        .then(textFieldModifier)
-                        .padding(top = OutlinedTextFieldTopPadding),
-                    decoratedTextField = decoratedTextField,
+                    modifier = textFieldModifier,
+                    value = value,
+                    onValueChange = onValueChange,
+                    enabled = enabled,
+                    readOnly = readOnly,
+                    keyboardOptions = keyboardOptions,
+                    keyboardActions = keyboardActions,
+                    textStyle = mergedTextStyle,
+                    singleLine = singleLine,
+                    maxLines = maxLines,
+                    visualTransformation = visualTransformation,
+                    interactionSource = interactionSource,
                     decoratedPlaceholder = decoratedPlaceholder,
                     decoratedLabel = decoratedLabel,
                     leading = leading,
                     trailing = trailing,
-                    leadingColor = leadingColor,
-                    trailingColor = trailingColor,
+                    leadingColor = colors.leadingIconColor(enabled, isError).value,
+                    trailingColor = colors.trailingIconColor(enabled, isError).value,
                     labelProgress = labelProgress,
                     indicatorWidth = indicatorWidth,
-                    indicatorColor = indicatorColor
+                    indicatorColor =
+                        colors.indicatorColor(enabled, isError, interactionSource).value,
+                    shape = shape,
+                    backgroundColor = colors.backgroundColor(enabled).value,
+                    cursorColor = colors.cursorColor(isError).value
                 )
             }
         }
@@ -281,92 +203,28 @@ internal fun TextFieldImpl(
 }
 
 /**
- * Similar to [androidx.compose.foundation.ScrollableColumn] but does not lose the minWidth constraints.
- */
-@VisibleForTesting
-@Composable
-internal fun TextFieldScroller(
-    scrollerPosition: TextFieldScrollerPosition,
-    modifier: Modifier = Modifier,
-    textField: @Composable () -> Unit
-) {
-    Layout(
-        modifier = modifier
-            .clipToBounds()
-            .scrollable(
-                orientation = Orientation.Vertical,
-                canScroll = { scrollerPosition.maximum != 0f },
-                controller = rememberScrollableController { delta ->
-                    val newPosition = scrollerPosition.current + delta
-                    val consumedDelta = when {
-                        newPosition > scrollerPosition.maximum ->
-                            scrollerPosition.maximum - scrollerPosition.current // too much down
-                        newPosition < 0f -> -scrollerPosition.current // scrolled too much up
-                        else -> delta
-                    }
-                    scrollerPosition.current += consumedDelta
-                    consumedDelta
-                }
-            ),
-        children = textField,
-        measureBlock = { measurables, constraints ->
-            val childConstraints = constraints.copy(maxHeight = Constraints.Infinity)
-            val placeable = measurables.first().measure(childConstraints)
-            val height = min(placeable.height, constraints.maxHeight)
-            val diff = placeable.height.toFloat() - height.toFloat()
-            layout(placeable.width, height) {
-                // update current and maximum positions to correctly calculate delta in scrollable
-                scrollerPosition.maximum = diff
-                if (scrollerPosition.current > diff) scrollerPosition.current = diff
-
-                val yOffset = scrollerPosition.current - diff
-                placeable.placeRelative(0, yOffset.roundToInt())
-            }
-        }
-    )
-}
-
-@VisibleForTesting
-@Stable
-internal class TextFieldScrollerPosition(private val initial: Float = 0f) {
-    var current by mutableStateOf(initial, structuralEqualityPolicy())
-    var maximum by mutableStateOf(Float.POSITIVE_INFINITY, structuralEqualityPolicy())
-
-    companion object {
-        val Saver = Saver<TextFieldScrollerPosition, Float>(
-            save = { it.current },
-            restore = { restored ->
-                TextFieldScrollerPosition(
-                    initial = restored
-                )
-            }
-        )
-    }
-}
-
-/**
- * Set alpha if the color is not translucent
- */
-internal fun Color.applyAlpha(alpha: Float): Color {
-    return if (this.alpha != 1f) this else this.copy(alpha = alpha)
-}
-
-/**
- * Set content color, typography and emphasis for [children] composable
+ * Set content color, typography and emphasis for [content] composable
  */
 @Composable
 internal fun Decoration(
     contentColor: Color,
     typography: TextStyle? = null,
-    emphasis: Emphasis? = null,
-    children: @Composable () -> Unit
+    contentAlpha: Float? = null,
+    content: @Composable () -> Unit
 ) {
-    val colorAndEmphasis = @Composable {
-        Providers(AmbientContentColor provides contentColor) {
-            if (emphasis != null) ProvideEmphasis(
-                emphasis,
-                children
-            ) else children()
+    val colorAndEmphasis: @Composable () -> Unit = @Composable {
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            if (contentAlpha != null) {
+                CompositionLocalProvider(
+                    LocalContentAlpha provides contentAlpha,
+                    content = content
+                )
+            } else {
+                CompositionLocalProvider(
+                    LocalContentAlpha provides contentColor.alpha,
+                    content = content
+                )
+            }
         }
     }
     if (typography != null) ProvideTextStyle(typography, colorAndEmphasis) else colorAndEmphasis()
@@ -376,150 +234,73 @@ private val Placeable.nonZero: Boolean get() = this.width != 0 || this.height !=
 internal fun widthOrZero(placeable: Placeable?) = placeable?.width ?: 0
 internal fun heightOrZero(placeable: Placeable?) = placeable?.height ?: 0
 
-/**
- * A modifier that applies padding only if the size of the element is not zero
- */
-internal fun Modifier.iconPadding(start: Dp = 0.dp, end: Dp = 0.dp) =
-    this.then(object : LayoutModifier {
-        override fun MeasureScope.measure(
-            measurable: Measurable,
-            constraints: Constraints
-        ): MeasureResult {
-            val horizontal = start.toIntPx() + end.toIntPx()
-            val placeable = measurable.measure(constraints.offset(-horizontal))
-            val width = if (placeable.nonZero) {
-                constraints.constrainWidth(placeable.width + horizontal)
-            } else {
-                0
-            }
-            return layout(width, placeable.height) {
-                placeable.placeRelative(start.toIntPx(), 0)
-            }
-        }
-    })
-
 private object TextFieldTransitionScope {
-    private val LabelColorProp = ColorPropKey()
-    private val LabelProgressProp = FloatPropKey()
-    private val IndicatorColorProp = ColorPropKey()
-    private val IndicatorWidthProp = DpPropKey()
-    private val PlaceholderOpacityProp = FloatPropKey()
-
     @Composable
-    fun transition(
+    fun Transition(
         inputState: InputPhase,
         showLabel: Boolean,
-        activeColor: Color,
-        labelInactiveColor: Color,
-        indicatorInactiveColor: Color,
-        children: @Composable (
+        content: @Composable (
             labelProgress: Float,
-            labelColor: Color,
             indicatorWidth: Dp,
-            indicatorColor: Color,
             placeholderOpacity: Float
         ) -> Unit
     ) {
-        val definition = remember(
-            showLabel,
-            activeColor,
-            labelInactiveColor,
-            indicatorInactiveColor
+        // Transitions from/to InputPhase.Focused are the most critical in the transition below.
+        // UnfocusedEmpty <-> UnfocusedNotEmpty are needed when a single state is used to control
+        // multiple text fields.
+        val transition = updateTransition(inputState)
+
+        val labelProgress by transition.animateFloat(
+            transitionSpec = { tween(durationMillis = AnimationDuration) }
         ) {
-            generateLabelTransitionDefinition(
-                showLabel,
-                activeColor,
-                labelInactiveColor,
-                indicatorInactiveColor
-            )
-        }
-        val state = transition(definition = definition, toState = inputState)
-        children(
-            state[LabelProgressProp],
-            state[LabelColorProp],
-            state[IndicatorWidthProp],
-            state[IndicatorColorProp],
-            state[PlaceholderOpacityProp]
-        )
-    }
-
-    private fun generateLabelTransitionDefinition(
-        showLabel: Boolean,
-        activeColor: Color,
-        labelInactiveColor: Color,
-        indicatorInactiveColor: Color
-    ) = transitionDefinition<InputPhase> {
-        state(InputPhase.Focused) {
-            this[LabelColorProp] = activeColor
-            this[IndicatorColorProp] = activeColor
-            this[LabelProgressProp] = 1f
-            this[IndicatorWidthProp] = IndicatorFocusedWidth
-            this[PlaceholderOpacityProp] = 1f
-        }
-        state(InputPhase.UnfocusedEmpty) {
-            this[LabelColorProp] = labelInactiveColor
-            this[IndicatorColorProp] = indicatorInactiveColor
-            this[LabelProgressProp] = 0f
-            this[IndicatorWidthProp] = IndicatorUnfocusedWidth
-            this[PlaceholderOpacityProp] = if (showLabel) 0f else 1f
-        }
-        state(InputPhase.UnfocusedNotEmpty) {
-            this[LabelColorProp] = labelInactiveColor
-            this[IndicatorColorProp] = indicatorInactiveColor
-            this[LabelProgressProp] = 1f
-            this[IndicatorWidthProp] = 1.dp
-            this[PlaceholderOpacityProp] = 0f
+            when (it) {
+                InputPhase.Focused -> 1f
+                InputPhase.UnfocusedEmpty -> 0f
+                InputPhase.UnfocusedNotEmpty -> 1f
+            }
         }
 
-        transition(fromState = InputPhase.Focused, toState = InputPhase.UnfocusedEmpty) {
-            labelTransition()
-            indicatorTransition()
-            placeholderDisappearTransition()
+        val indicatorWidth by transition.animateDp(
+            transitionSpec = { tween(durationMillis = AnimationDuration) }
+        ) {
+            when (it) {
+                InputPhase.Focused -> IndicatorFocusedWidth
+                InputPhase.UnfocusedEmpty -> IndicatorUnfocusedWidth
+                InputPhase.UnfocusedNotEmpty -> IndicatorUnfocusedWidth
+            }
         }
-        transition(fromState = InputPhase.Focused, toState = InputPhase.UnfocusedNotEmpty) {
-            indicatorTransition()
-        }
-        transition(fromState = InputPhase.UnfocusedNotEmpty, toState = InputPhase.Focused) {
-            indicatorTransition()
-        }
-        transition(fromState = InputPhase.UnfocusedEmpty, toState = InputPhase.Focused) {
-            labelTransition()
-            indicatorTransition()
-            placeholderAppearTransition()
-        }
-        // below states are needed to support case when a single state is used to control multiple
-        // text fields.
-        transition(fromState = InputPhase.UnfocusedNotEmpty, toState = InputPhase.UnfocusedEmpty) {
-            labelTransition()
-            placeholderAppearTransition()
-        }
-        transition(fromState = InputPhase.UnfocusedEmpty, toState = InputPhase.UnfocusedNotEmpty) {
-            labelTransition()
-        }
-    }
 
-    private fun TransitionSpec<InputPhase>.indicatorTransition() {
-        IndicatorColorProp using tween(durationMillis = AnimationDuration)
-        IndicatorWidthProp using tween(durationMillis = AnimationDuration)
-    }
+        val placeholderOpacity by transition.animateFloat(
+            transitionSpec = {
+                if (InputPhase.Focused isTransitioningTo InputPhase.UnfocusedEmpty) {
+                    tween(
+                        durationMillis = PlaceholderAnimationDelayOrDuration,
+                        easing = LinearEasing
+                    )
+                } else if (InputPhase.UnfocusedEmpty isTransitioningTo InputPhase.Focused ||
+                    InputPhase.UnfocusedNotEmpty isTransitioningTo InputPhase.UnfocusedEmpty
+                ) {
+                    tween(
+                        durationMillis = PlaceholderAnimationDuration,
+                        delayMillis = PlaceholderAnimationDelayOrDuration,
+                        easing = LinearEasing
+                    )
+                } else {
+                    spring()
+                }
+            }
+        ) {
+            when (it) {
+                InputPhase.Focused -> 1f
+                InputPhase.UnfocusedEmpty -> if (showLabel) 0f else 1f
+                InputPhase.UnfocusedNotEmpty -> 0f
+            }
+        }
 
-    private fun TransitionSpec<InputPhase>.labelTransition() {
-        LabelColorProp using tween(durationMillis = AnimationDuration)
-        LabelProgressProp using tween(durationMillis = AnimationDuration)
-    }
-
-    private fun TransitionSpec<InputPhase>.placeholderAppearTransition() {
-        PlaceholderOpacityProp using tween(
-            durationMillis = PlaceholderAnimationDuration,
-            delayMillis = PlaceholderAnimationDelayOrDuration,
-            easing = LinearEasing
-        )
-    }
-
-    private fun TransitionSpec<InputPhase>.placeholderDisappearTransition() {
-        PlaceholderOpacityProp using tween(
-            durationMillis = PlaceholderAnimationDelayOrDuration,
-            easing = LinearEasing
+        content(
+            labelProgress,
+            indicatorWidth,
+            placeholderOpacity
         )
     }
 }
@@ -541,25 +322,16 @@ private enum class InputPhase {
 internal const val TextFieldId = "TextField"
 internal const val PlaceholderId = "Hint"
 internal const val LabelId = "Label"
+internal const val LeadingId = "Leading"
+internal const val TrailingId = "Trailing"
 
-private const val AnimationDuration = 150
+internal const val AnimationDuration = 150
 private const val PlaceholderAnimationDuration = 83
 private const val PlaceholderAnimationDelayOrDuration = 67
 
 private val IndicatorUnfocusedWidth = 1.dp
 private val IndicatorFocusedWidth = 2.dp
-private const val TrailingLeadingAlpha = 0.54f
-private val TextFieldMinHeight = 56.dp
-private val TextFieldMinWidth = 280.dp
 internal val TextFieldPadding = 16.dp
 internal val HorizontalIconPadding = 12.dp
 
-// Filled text field uses 42% opacity to meet the contrast requirements for accessibility reasons
-private const val IndicatorInactiveAlpha = 0.42f
-
-/*
-This padding is used to allow label not overlap with the content above it. This 8.dp will work
-for default cases when developers do not override the label's font size. If they do, they will
-need to add additional padding themselves
-*/
-private val OutlinedTextFieldTopPadding = 8.dp
+internal val IconDefaultSizeModifier = Modifier.defaultMinSize(48.dp, 48.dp)

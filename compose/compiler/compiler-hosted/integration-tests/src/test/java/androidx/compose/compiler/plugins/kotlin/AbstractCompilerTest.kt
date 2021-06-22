@@ -98,6 +98,7 @@ abstract class AbstractCompilerTest : TestCase() {
         val configuration = newConfiguration()
         configuration.addJvmClasspathRoots(classPath)
 
+        System.setProperty("idea.ignore.disabled.plugins", "true")
         return KotlinCoreEnvironment.createForTests(
             myTestRootDisposable,
             configuration,
@@ -226,21 +227,31 @@ abstract class AbstractCompilerTest : TestCase() {
     }
 
     companion object {
-        val homeDir by lazy { File(computeHomeDirectory()).absolutePath }
-        val projectRoot by lazy { File(homeDir, "../../../../../..").absolutePath }
+
+        private fun File.applyExistenceCheck(): File = this.apply {
+            if (!exists()) throw NoSuchFileException(this)
+        }
+
+        val homeDir by lazy { File(computeHomeDirectory()).applyExistenceCheck().absolutePath }
+        val projectRoot by lazy {
+            File(homeDir, "../../../../../..").applyExistenceCheck().absolutePath
+        }
         val kotlinHome by lazy {
             File(projectRoot, "prebuilts/androidx/external/org/jetbrains/kotlin/")
+                .applyExistenceCheck()
         }
         val outDir by lazy {
             File(System.getenv("OUT_DIR") ?: File(projectRoot, "out").absolutePath)
+                .applyExistenceCheck()
         }
         val composePluginJar by lazy {
-            File(outDir, "androidx/compose/compiler/compiler/build/jarjar/compiler.jar")
+            File(outDir, "androidx/compose/compiler/compiler/build/repackaged/embedded.jar")
+                .applyExistenceCheck()
         }
 
         fun kotlinRuntimeJar(module: String) = File(
             kotlinHome, "$module/$KOTLIN_RUNTIME_VERSION/$module-$KOTLIN_RUNTIME_VERSION.jar"
-        )
+        ).applyExistenceCheck()
 
         init {
             System.setProperty(

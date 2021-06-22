@@ -27,14 +27,21 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+
     <application
+        android:name="androidx.multidex.MultiDexApplication"
         android:supportsRtl="true"
         android:theme="@style/TestActivityTheme">
         <activity android:name="androidx.core.widget.ListViewTestActivity"/>
 
         <activity android:name="androidx.core.widget.TextViewTestActivity"/>
 
-        <activity android:name="androidx.core.widget.RichContentReceiverTestActivity"/>
+        <activity android:name="androidx.core.widget.ReceiveContentTestActivity"/>
 
         <activity android:name="androidx.core.widget.TestContentViewActivity"/>
 
@@ -63,7 +70,13 @@
         </activity-alias>
 
         <activity android:name="androidx.core.app.TestActivity"
-                  android:icon="@drawable/test_drawable_blue"/>
+                  android:icon="@drawable/test_drawable_blue">
+            <intent-filter>
+                <action android:name="androidx.core.content.pm.SHORTCUT_LISTENER"/>
+            </intent-filter>
+            <meta-data android:name="androidx.core.content.pm.shortcut_listener_impl"
+                android:value="androidx.core.content.pm.TestShortcutInfoChangeListener"/>
+        </activity>
 
         <activity android:name="androidx.core.app.TestComponentActivity"/>
         <activity android:name="androidx.core.app.TestActivityWithLifecycle"/>

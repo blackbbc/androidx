@@ -25,7 +25,6 @@ import androidx.build.checkapi.getRequiredCompatibilityApiLocation
 import androidx.build.dependencyTracker.AffectedModuleDetector
 import androidx.build.java.JavaCompileInputs
 import androidx.build.uptodatedness.cacheEvenIfNoOutputs
-import com.android.build.gradle.api.LibraryVariant
 import com.android.build.gradle.tasks.ProcessLibraryManifest
 import org.gradle.api.Project
 import org.gradle.api.tasks.TaskProvider
@@ -48,7 +47,7 @@ object MetalavaTasks {
         builtApiLocation: ApiLocation,
         outputApiLocations: List<ApiLocation>
     ) {
-        val metalavaConfiguration = project.getMetalavaConfiguration()
+        val metalavaClasspath = project.getMetalavaClasspath()
 
         // Policy: If the artifact belongs to an atomic (e.g. same-version) group, we don't enforce
         // binary compatibility for APIs annotated with @RestrictTo(LIBRARY_GROUP). This is
@@ -60,15 +59,18 @@ object MetalavaTasks {
             task.group = "API"
             task.description = "Generates API files from source"
             task.apiLocation.set(builtApiLocation)
-            task.configuration = metalavaConfiguration
+            task.metalavaClasspath.from(metalavaClasspath)
             task.generateRestrictToLibraryGroupAPIs = generateRestrictToLibraryGroupAPIs
             task.baselines.set(baselinesApiLocation)
-            task.dependsOn(metalavaConfiguration)
+            task.targetsJavaConsumers = extension.targetsJavaConsumers
             processManifest?.let {
                 task.manifestPath.set(processManifest.manifestOutputFile)
             }
             applyInputs(javaCompileInputs, task)
             AffectedModuleDetector.configureTaskGuard(task)
+            // If we will be updating the api lint baselines, then we should do that before
+            // using it to validate the generated api
+            task.mustRunAfter("updateApiLintBaseline")
         }
 
         // Policy: If the artifact has previously been released, e.g. has a beta or later API file
@@ -81,10 +83,9 @@ object MetalavaTasks {
                 "checkApiRelease",
                 CheckApiCompatibilityTask::class.java
             ) { task ->
-                task.configuration = metalavaConfiguration
+                task.metalavaClasspath.from(metalavaClasspath)
                 task.referenceApi.set(lastReleasedApiFile)
                 task.baselines.set(baselinesApiLocation)
-                task.dependsOn(metalavaConfiguration)
                 task.api.set(builtApiLocation)
                 task.dependencyClasspath = javaCompileInputs.dependencyClasspath
                 task.bootClasspath = javaCompileInputs.bootClasspath
@@ -97,7 +98,7 @@ object MetalavaTasks {
                 "ignoreApiChanges",
                 IgnoreApiChangesTask::class.java
             ) { task ->
-                task.configuration = metalavaConfiguration
+                task.metalavaClasspath.from(metalavaClasspath)
                 task.referenceApi.set(checkApiRelease!!.flatMap { it.referenceApi })
                 task.baselines.set(checkApiRelease!!.flatMap { it.baselines })
                 task.api.set(builtApiLocation)
@@ -111,15 +112,13 @@ object MetalavaTasks {
             "updateApiLintBaseline",
             UpdateApiLintBaselineTask::class.java
         ) { task ->
-            task.configuration = metalavaConfiguration
+            task.metalavaClasspath.from(metalavaClasspath)
             task.baselines.set(baselinesApiLocation)
+            task.targetsJavaConsumers.set(extension.targetsJavaConsumers)
             processManifest?.let {
                 task.manifestPath.set(processManifest.manifestOutputFile)
             }
             applyInputs(javaCompileInputs, task)
-            // If we will be updating the api lint baselines, then we should do that before
-            // using it to validate the generated api
-            generateApi.get().mustRunAfter(task)
         }
 
         // Policy: All changes to API surfaces for which compatibility is enforced must be
@@ -163,6 +162,7 @@ object MetalavaTasks {
             task.description = "Updates the checked in API files to match source code API"
             task.inputApiLocation.set(generateApi.flatMap { it.apiLocation })
             task.outputApiLocations.set(checkApi.flatMap { it.checkedInApis })
+            task.forceUpdate = project.hasProperty("force")
             task.dependsOn(generateApi)
 
             // If a developer (accidentally) makes a non-backwards compatible change to an API,
@@ -191,17 +191,17 @@ object MetalavaTasks {
     }
 
     private fun applyInputs(inputs: JavaCompileInputs, task: MetalavaTask) {
-        task.sourcePaths = inputs.sourcePaths.files
+        task.sourcePaths = inputs.sourcePaths
         task.dependsOn(inputs.sourcePaths)
         task.dependencyClasspath = inputs.dependencyClasspath
         task.bootClasspath = inputs.bootClasspath
     }
 
-    @Suppress("unused")
+    @Suppress("unused", "DEPRECATION") // deprecation for LibraryVariant
     private fun setupStubs(
         project: Project,
         javaCompileInputs: JavaCompileInputs,
-        variant: LibraryVariant
+        variant: com.android.build.gradle.api.LibraryVariant
     ) {
         if (hasKotlinCode(project, variant)) return
 
@@ -213,7 +213,7 @@ object MetalavaTasks {
         ) { task ->
             task.apiStubsDirectory.set(apiStubsDirectory)
             task.docStubsDirectory.set(docsStubsDirectory)
-            task.configuration = project.getMetalavaConfiguration()
+            task.metalavaClasspath.from(project.getMetalavaClasspath())
             applyInputs(javaCompileInputs, task)
         }
 
@@ -224,7 +224,7 @@ object MetalavaTasks {
         ) { task ->
             @Suppress("DEPRECATION") val compileTask = variant.javaCompile
             task.source = project.files(apiStubsDirectory).asFileTree
-            task.destinationDir = apiStubClassesDirectory
+            task.destinationDirectory.set(apiStubClassesDirectory)
 
             task.classpath = compileTask.classpath
             task.options.compilerArgs = compileTask.options.compilerArgs
@@ -255,7 +255,11 @@ object MetalavaTasks {
          */
     }
 
-    private fun hasKotlinCode(project: Project, variant: LibraryVariant): Boolean {
+    @Suppress("DEPRECATION") // LibraryVariant
+    private fun hasKotlinCode(
+        project: Project,
+        variant: com.android.build.gradle.api.LibraryVariant
+    ): Boolean {
         return project.files(variant.sourceSets.flatMap { it.javaDirectories })
             .asFileTree
             .files

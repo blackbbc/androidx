@@ -20,14 +20,14 @@ import android.annotation.SuppressLint;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.versionedparcelable.ParcelField;
 import androidx.versionedparcelable.ParcelUtils;
 import androidx.versionedparcelable.VersionedParcelable;
 import androidx.versionedparcelable.VersionedParcelize;
-
-import java.util.List;
 
 /**
  * Wire format for {@link androidx.wear.watchface.RenderParameters}.
@@ -38,39 +38,138 @@ import java.util.List;
 @VersionedParcelize
 @SuppressLint("BanParcelableUsage") // TODO(b/169214666): Remove Parcelable
 public class RenderParametersWireFormat implements VersionedParcelable, Parcelable {
+    /** Used when {@link androidx.wear.watchface.RenderParameters#getHighlightLayer} is `null`. */
+    public static int ELEMENT_TYPE_NONE = 0;
+
+    /**
+     * Used when {@link androidx.wear.watchface.RenderParameters#getHighlightLayer} is
+     * {@link androidx.wear.watchface.HighlightedElement.AllComplications}.
+     */
+    public static int ELEMENT_TYPE_ALL_COMPLICATIONS = 1;
+
+    /**
+     * Used when {@link androidx.wear.watchface.RenderParameters#getHighlightLayer} is
+     * {@link androidx.wear.watchface.HighlightedElement.Complication}.
+     */
+    public static int ELEMENT_TYPE_COMPLICATION = 2;
+
+    /**
+     * Used when {@link androidx.wear.watchface.RenderParameters#getHighlightLayer} is
+     * {@link androidx.wear.watchface.HighlightedElement.UserStyle}.
+     */
+    public static int ELEMENT_TYPE_USER_STYLE = 3;
+
     /** Wire format for {@link androidx.wear.watchface.DrawMode}. */
     @ParcelField(1)
     int mDrawMode;
 
     /**
-     * Wire format for Map<{@link androidx.wear.watchface.style.Layer},
-     * {@link androidx.wear.watchface.LayerMode}>.
-     *
-     * This list needs to go last because VersionedParcelable has a design flaw, if the format
-     * changes the reader can't determine the correct size of the list and data afterwards would get
-     * corrupted. We try to avoid this by putting the list last.
+     * A bitfield where each bit represents one layer in the set of
+     * {@link androidx.wear.watchface.style.WatchFaceLayer}s.
      */
-    @NonNull
-    @ParcelField(100)
-    List<LayerParameterWireFormat> mLayerParameters;
+    @ParcelField(2)
+    int mWatchFaceLayerSetBitfield;
+
+    /**
+     * One of {@link #ELEMENT_TYPE_NONE}, {@link #ELEMENT_TYPE_ALL_COMPLICATIONS},
+     * {@link #ELEMENT_TYPE_COMPLICATION} or {@link #ELEMENT_TYPE_USER_STYLE}.
+     */
+    @ParcelField(3)
+    int mElementType;
+
+    /**
+     * Optional ID of a single complication slot to render highlighted, only used with
+     * {@link #ELEMENT_TYPE_COMPLICATION}.
+     */
+    @ParcelField(4)
+    int mElementComplicationSlotId;
+
+    /**
+     * Optional UserStyleSetting to render highlighted, only non-null with
+     * {@link #ELEMENT_TYPE_USER_STYLE}.
+     */
+    @ParcelField(5)
+    @Nullable
+    String mElementUserStyleSettingId;
+
+    /**
+     * Specifies the tint for the highlighted element. Only used when {@link #mElementType} isn't
+     * {@link #ELEMENT_TYPE_NONE}.
+     */
+    @ParcelField(6)
+    @ColorInt
+    int mHighlightTint;
+
+    /**
+     * Specifies the tint for everything else. Only used when {@link #mElementType} isn't
+     * {@link #ELEMENT_TYPE_NONE}.
+     */
+    @ParcelField(7)
+    @ColorInt
+    int mBackgroundTint;
 
     RenderParametersWireFormat() {
     }
 
     public RenderParametersWireFormat(
             int drawMode,
-            @NonNull List<LayerParameterWireFormat> layerParameters) {
+            int watchFaceLayerSetBitfield,
+            int elementType,
+            int complicationSlotId,
+            @Nullable String elementUserStyleSettingId,
+            @ColorInt int highlightTint,
+            @ColorInt int backgroundTint) {
         mDrawMode = drawMode;
-        mLayerParameters = layerParameters;
+        mWatchFaceLayerSetBitfield = watchFaceLayerSetBitfield;
+        mElementType = elementType;
+        mElementComplicationSlotId = complicationSlotId;
+        mElementUserStyleSettingId = elementUserStyleSettingId;
+        mHighlightTint = highlightTint;
+        mBackgroundTint = backgroundTint;
+        if (elementType == ELEMENT_TYPE_USER_STYLE) {
+            if (elementUserStyleSettingId == null) {
+                throw new IllegalArgumentException(
+                        "selectedUserStyleSettingId must be non-null when elementType is "
+                                + "ELEMENT_TYPE_USER_STYLE");
+            }
+        } else {
+            if (elementUserStyleSettingId != null) {
+                throw new IllegalArgumentException(
+                        "selectedUserStyleSettingId must be null when elementType isn't "
+                                + "ELEMENT_TYPE_USER_STYLE");
+            }
+        }
     }
 
     public int getDrawMode() {
         return mDrawMode;
     }
 
-    @NonNull
-    public List<LayerParameterWireFormat> getLayerParameters() {
-        return mLayerParameters;
+    public int getWatchFaceLayerSetBitfield() {
+        return mWatchFaceLayerSetBitfield;
+    }
+
+    public int getElementType() {
+        return mElementType;
+    }
+
+    public int getElementComplicationSlotId() {
+        return mElementComplicationSlotId;
+    }
+
+    @Nullable
+    public String getElementUserStyleSettingId() {
+        return mElementUserStyleSettingId;
+    }
+
+    @ColorInt
+    public int getHighlightTint() {
+        return mHighlightTint;
+    }
+
+    @ColorInt
+    public int getBackgroundTint() {
+        return mBackgroundTint;
     }
 
     /** Serializes this IndicatorState to the specified {@link Parcel}. */
@@ -99,66 +198,4 @@ public class RenderParametersWireFormat implements VersionedParcelable, Parcelab
                 }
             };
 
-    /**
-     * Wire format for Map<{@link androidx.wear.watchface.style.Layer},
-     * {@link androidx.wear.watchface.LayerMode}>
-     *
-     * Unfortunately we can't ever add new members to this because we use it in lists and
-     * VersionedParcelable isn't fully backwards compatible when new members are added to lists.
-     *
-     * @hide
-     */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-    @VersionedParcelize
-    @SuppressLint("BanParcelableUsage") // TODO(b/169214666): Remove Parcelable
-    public static class LayerParameterWireFormat implements VersionedParcelable, Parcelable {
-        /** Wire format for Map<{@link androidx.wear.watchface.style.Layer> */
-        @ParcelField(1)
-        int mLayer;
-
-        /** Wire format for Map<{@link androidx.wear.watchface.LayerMode> */
-        @ParcelField(2)
-        int mLayerMode;
-
-        LayerParameterWireFormat() {
-        }
-
-        public LayerParameterWireFormat(int layer, int layerMode) {
-            mLayer = layer;
-            mLayerMode = layerMode;
-        }
-
-        public int getLayer() {
-            return mLayer;
-        }
-
-        public int getLayerMode() {
-            return mLayerMode;
-        }
-
-        /** Serializes this IndicatorState to the specified {@link Parcel}. */
-        @Override
-        public void writeToParcel(@NonNull Parcel parcel, int flags) {
-            parcel.writeParcelable(ParcelUtils.toParcelable(this), flags);
-        }
-
-        @Override
-        public int describeContents() {
-            return 0;
-        }
-
-        public static final Creator<LayerParameterWireFormat> CREATOR =
-                new Creator<LayerParameterWireFormat>() {
-                    @Override
-                    public LayerParameterWireFormat createFromParcel(Parcel source) {
-                        return ParcelUtils.fromParcelable(
-                                source.readParcelable(getClass().getClassLoader()));
-                    }
-
-                    @Override
-                    public LayerParameterWireFormat[] newArray(int size) {
-                        return new LayerParameterWireFormat[size];
-                    }
-                };
-    }
 }

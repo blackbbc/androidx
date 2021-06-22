@@ -26,6 +26,7 @@ import android.view.Surface;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.camera.camera2.internal.compat.ApiCompat;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,6 +43,7 @@ import java.util.Map;
 class CameraBurstCaptureCallback extends CameraCaptureSession.CaptureCallback {
 
     final Map<CaptureRequest, List<CameraCaptureSession.CaptureCallback>> mCallbackMap;
+    CaptureSequenceCallback mCaptureSequenceCallback = null;
 
     CameraBurstCaptureCallback() {
         mCallbackMap = new HashMap<>();
@@ -54,7 +56,7 @@ class CameraBurstCaptureCallback extends CameraCaptureSession.CaptureCallback {
             @NonNull CameraCaptureSession session, @NonNull CaptureRequest request,
             @NonNull Surface surface, long frame) {
         for (CameraCaptureSession.CaptureCallback callback : getCallbacks(request)) {
-            callback.onCaptureBufferLost(session, request, surface, frame);
+            ApiCompat.Api24Impl.onCaptureBufferLost(callback, session, request, surface, frame);
         }
     }
 
@@ -98,13 +100,18 @@ class CameraBurstCaptureCallback extends CameraCaptureSession.CaptureCallback {
     @Override
     public void onCaptureSequenceAborted(
             @NonNull CameraCaptureSession session, int sequenceId) {
-        // No-op.
+        if (mCaptureSequenceCallback != null) {
+            mCaptureSequenceCallback.onCaptureSequenceCompletedOrAborted(session, sequenceId, true);
+        }
     }
 
     @Override
     public void onCaptureSequenceCompleted(
             @NonNull CameraCaptureSession session, int sequenceId, long frameNumber) {
-        // No-op.
+        if (mCaptureSequenceCallback != null) {
+            mCaptureSequenceCallback.onCaptureSequenceCompletedOrAborted(session, sequenceId,
+                    false);
+        }
     }
 
     private List<CameraCaptureSession.CaptureCallback> getCallbacks(CaptureRequest request) {
@@ -131,4 +138,20 @@ class CameraBurstCaptureCallback extends CameraCaptureSession.CaptureCallback {
         }
     }
 
+    /**
+     * Sets the callback to receive the notification when the capture sequence is completed or
+     * aborted.
+     */
+    public void setCaptureSequenceCallback(@NonNull CaptureSequenceCallback callback) {
+        mCaptureSequenceCallback = callback;
+    }
+
+    /**
+     * A interface to receive the notification of onCaptureSequenceCompleted or
+     * onCaptureSequenceAborted.
+     */
+    interface CaptureSequenceCallback {
+        void onCaptureSequenceCompletedOrAborted(
+                @NonNull CameraCaptureSession session, int sequenceId, boolean isAborted);
+    }
 }

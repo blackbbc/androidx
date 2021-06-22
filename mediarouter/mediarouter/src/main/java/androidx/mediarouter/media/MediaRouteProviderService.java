@@ -56,7 +56,6 @@ import static androidx.mediarouter.media.MediaRouteProviderProtocol.SERVICE_VERS
 import static androidx.mediarouter.media.MediaRouteProviderProtocol.isValidRemoteMessenger;
 import static androidx.mediarouter.media.MediaRouter.UNSELECT_REASON_UNKNOWN;
 
-import android.annotation.SuppressLint;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -75,6 +74,7 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
 import androidx.collection.ArrayMap;
@@ -179,8 +179,6 @@ public abstract class MediaRouteProviderService extends Service {
     /**
      * Creates a media route provider service.
      */
-    //TODO: Remove SuppressLint when R version is finalized.
-    @SuppressLint("NewApi")
     public MediaRouteProviderService() {
         mReceiveHandler = new ReceiveHandler(this);
         mReceiveMessenger = new Messenger(mReceiveHandler);
@@ -200,10 +198,12 @@ public abstract class MediaRouteProviderService extends Service {
      * @return The media route provider offered by this service, or null if
      * this service has decided not to offer a media route provider.
      */
+    @Nullable
     public abstract MediaRouteProvider onCreateMediaRouteProvider();
 
     @Override
-    public IBinder onBind(Intent intent) {
+    @Nullable
+    public IBinder onBind(@NonNull Intent intent) {
         return mImpl.onBind(intent);
     }
 
@@ -221,6 +221,7 @@ public abstract class MediaRouteProviderService extends Service {
      *
      * @see #onCreateMediaRouteProvider()
      */
+    @Nullable
     public MediaRouteProvider getMediaRouteProvider() {
         return mProvider;
     }

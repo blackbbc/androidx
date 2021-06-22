@@ -17,16 +17,14 @@
 package androidx.compose.ui.test
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.selection.ToggleableState
-import androidx.compose.foundation.semantics.inMutuallyExclusiveGroup
-import androidx.compose.foundation.semantics.selected
-import androidx.compose.foundation.semantics.toggleableState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
-import androidx.compose.ui.semantics.hidden
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.junit4.createComposeRule
 import org.junit.Rule
 import org.junit.Test
@@ -35,46 +33,6 @@ class AssertsTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    @Test
-    fun assertIsNotHidden_forVisibleElement_isOk() {
-        rule.setContent {
-            BoundaryNode { testTag = "test" }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsNotHidden()
-    }
-
-    @Test(expected = AssertionError::class)
-    fun assertIsNotHidden_forHiddenElement_throwsError() {
-        rule.setContent {
-            BoundaryNode { testTag = "test"; hidden() }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsNotHidden()
-    }
-
-    @Test
-    fun assertIsHidden_forHiddenElement_isOk() {
-        rule.setContent {
-            BoundaryNode { testTag = "test"; hidden() }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsHidden()
-    }
-
-    @Test(expected = AssertionError::class)
-    fun assertIsHidden_forNotHiddenElement_throwsError() {
-        rule.setContent {
-            BoundaryNode { testTag = "test" }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsHidden()
-    }
 
     @Test
     fun assertIsOn_forCheckedElement_isOk() {
@@ -194,35 +152,6 @@ class AssertsTest {
 
         rule.onNodeWithTag("test")
             .assertIsNotSelected()
-    }
-    @Test(expected = AssertionError::class)
-    fun assertItemInExclusiveGroup_forItemNotInGroup_throwsError() {
-        rule.setContent {
-            BoundaryNode { testTag = "test"; inMutuallyExclusiveGroup = false }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsInMutuallyExclusiveGroup()
-    }
-
-    @Test(expected = AssertionError::class)
-    fun assertItemInExclusiveGroup_forItemWithoutProperty_throwsError() {
-        rule.setContent {
-            BoundaryNode { testTag = "test" }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsInMutuallyExclusiveGroup()
-    }
-
-    @Test
-    fun assertItemInExclusiveGroup_forItemInGroup_isOk() {
-        rule.setContent {
-            BoundaryNode { testTag = "test"; inMutuallyExclusiveGroup = true }
-        }
-
-        rule.onNodeWithTag("test")
-            .assertIsInMutuallyExclusiveGroup()
     }
 
     @Composable

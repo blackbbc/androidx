@@ -17,13 +17,13 @@
 package androidx.compose.foundation.layout.samples
 
 import androidx.annotation.Sampled
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.paddingFrom
 import androidx.compose.foundation.layout.paddingFromBaseline
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.FirstBaseline
-import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -34,7 +34,7 @@ fun PaddingFromSample() {
     // first line of text.
     val distanceToBaseline = 30.sp
     // We convert the 30.sp value to dps, which is required for the paddingFrom API.
-    val distanceToBaselineDp = with(DensityAmbient.current) { distanceToBaseline.toDp() }
+    val distanceToBaselineDp = with(LocalDensity.current) { distanceToBaseline.toDp() }
     // The result will be a layout with 30.sp distance from the top of the layout box to the
     // baseline of the first line of text.
     Text(

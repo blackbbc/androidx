@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.preferredHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,7 +28,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * A divider is a thin line that groups content in lists and layouts
+ * <a href="https://material.io/components/dividers" class="external" target="_blank">Material Design divider</a>.
+ *
+ * A divider is a thin line that groups content in lists and layouts.
+ *
+ * ![Dividers image](https://developer.android.com/images/reference/androidx/compose/material/dividers.png)
  *
  * @param color color of the divider line
  * @param thickness thickness of the divider line, 1 dp is used by default
@@ -49,7 +53,7 @@ fun Divider(
     Box(
         modifier.then(indentMod)
             .fillMaxWidth()
-            .preferredHeight(thickness)
+            .height(thickness)
             .background(color = color)
     )
 }

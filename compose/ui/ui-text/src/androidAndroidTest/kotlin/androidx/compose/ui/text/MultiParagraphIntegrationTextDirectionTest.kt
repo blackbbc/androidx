@@ -16,7 +16,7 @@
 
 package androidx.compose.ui.text
 
-import androidx.compose.ui.text.font.asFontFamily
+import androidx.compose.ui.text.font.toFontFamily
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextDirection
@@ -40,7 +40,7 @@ class MultiParagraphIntegrationTextDirectionTest {
     private lateinit var defaultLocale: Locale
     private val context = InstrumentationRegistry.getInstrumentation().context
     private val defaultDensity = Density(density = 1f)
-    private val fontFamilyMeasureFont = FontTestData.BASIC_MEASURE_FONT.asFontFamily()
+    private val fontFamilyMeasureFont = FontTestData.BASIC_MEASURE_FONT.toFontFamily()
     private val ltrLocaleList = LocaleList("en")
     private val rtlLocaleList = LocaleList("ar")
     private val ltrLocale = Locale.ENGLISH
@@ -242,7 +242,7 @@ class MultiParagraphIntegrationTextDirectionTest {
      * Helper function which creates an AnnotatedString where each input string becomes a paragraph.
      */
     private fun createAnnotatedString(paragraphs: List<String>): AnnotatedString {
-        return annotatedString {
+        return buildAnnotatedString {
             for (paragraph in paragraphs) {
                 pushStyle(ParagraphStyle())
                 append(paragraph)
@@ -253,7 +253,7 @@ class MultiParagraphIntegrationTextDirectionTest {
 
     private fun multiParagraphIntrinsics(
         text: AnnotatedString,
-        fontSize: TextUnit = TextUnit.Inherit,
+        fontSize: TextUnit = TextUnit.Unspecified,
         placeholders: List<AnnotatedString.Range<Placeholder>> = listOf()
     ): MultiParagraphIntrinsics {
         return MultiParagraphIntrinsics(
@@ -272,7 +272,7 @@ class MultiParagraphIntegrationTextDirectionTest {
         text: AnnotatedString,
         localeList: LocaleList? = null,
         textDirection: TextDirection? = null,
-        fontSize: TextUnit = TextUnit.Inherit,
+        fontSize: TextUnit = TextUnit.Unspecified,
         width: Float = Float.MAX_VALUE
     ): MultiParagraph {
         return MultiParagraph(

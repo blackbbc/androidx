@@ -17,13 +17,15 @@
 package androidx.compose.runtime.mock
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.emit
+import androidx.compose.runtime.ComposeNode
+import androidx.compose.runtime.ReusableComposeNode
+import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.key
 
 @Composable
-fun <T : Any> MockComposeScope.repeat(
+fun <T : Any> Repeated(
     of: Iterable<T>,
-    block: @Composable MockComposeScope.(value: T) -> Unit
+    block: @Composable (value: T) -> Unit
 ) {
     for (value in of) {
         key(value) {
@@ -33,40 +35,61 @@ fun <T : Any> MockComposeScope.repeat(
 }
 
 @Composable
-fun MockComposeScope.linear(block: @Composable MockComposeScope.() -> Unit) {
-    emit<View, ViewApplier>(
-        ctor = { View().also { it.name = "linear" } },
+fun Linear(content: @Composable () -> Unit) {
+    ReusableComposeNode<View, ViewApplier>(
+        factory = { View().also { it.name = "linear" } },
         update = { }
     ) {
-        block()
+        content()
     }
 }
 
 @Composable
-fun MockComposeScope.text(value: String) {
-    emit<View, ViewApplier>(
-        ctor = { View().also { it.name = "text" } },
+fun NonReusableLinear(content: @Composable () -> Unit) {
+    ComposeNode<View, ViewApplier>(
+        factory = { View().also { it.name = "linear" } },
+        update = { }
+    ) {
+        content()
+    }
+}
+
+@Composable @NonRestartableComposable
+fun Text(value: String) {
+    ReusableComposeNode<View, ViewApplier>(
+        factory = { View().also { it.name = "text" } },
         update = { set(value) { text = it } }
     )
 }
 
 @Composable
-fun MockComposeScope.edit(value: String) {
-    emit<View, ViewApplier>(
-        ctor = { View().also { it.name = "edit" } },
+fun NonReusableText(value: String) {
+    ComposeNode<View, ViewApplier>(
+        factory = { View().also { it.name = "text" } },
+        update = { set(value) { text = it } }
+    )
+}
+
+@Composable
+fun Edit(value: String) {
+    ReusableComposeNode<View, ViewApplier>(
+        factory = { View().also { it.name = "edit" } },
         update = { set(value) { this.value = it } }
     )
 }
 
 @Composable
-fun MockComposeScope.selectBox(selected: Boolean, block: @Composable MockComposeScope.() -> Unit) {
+fun SelectBox(
+    selected: Boolean,
+    content: @Composable () -> Unit
+) {
     if (selected) {
-        emit<View, ViewApplier>(
-            ctor = { View().also { it.name = "box" } },
+        ReusableComposeNode<View, ViewApplier>(
+            factory = { View().also { it.name = "box" } },
             update = { },
-            children = { block() }
+            content = { content() }
         )
     } else {
-        block()
+        content()
     }
 }

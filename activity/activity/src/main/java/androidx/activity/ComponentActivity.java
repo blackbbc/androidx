@@ -29,6 +29,7 @@ import static androidx.activity.result.contract.ActivityResultContracts.StartInt
 import static androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult.EXTRA_INTENT_SENDER_REQUEST;
 import static androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult.EXTRA_SEND_INTENT_EXCEPTION;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
@@ -60,8 +61,10 @@ import androidx.annotation.LayoutRes;
 import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.ActivityOptionsCompat;
+import androidx.core.content.ContextCompat;
 import androidx.lifecycle.HasDefaultViewModelProviderFactory;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleEventObserver;
@@ -78,9 +81,8 @@ import androidx.savedstate.SavedStateRegistry;
 import androidx.savedstate.SavedStateRegistryController;
 import androidx.savedstate.SavedStateRegistryOwner;
 import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
+import androidx.tracing.Trace;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -138,7 +140,7 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
 
     private final AtomicInteger mNextLocalRequestCode = new AtomicInteger();
 
-    private ActivityResultRegistry mActivityResultRegistry = new ActivityResultRegistry() {
+    private final ActivityResultRegistry mActivityResultRegistry = new ActivityResultRegistry() {
 
         @Override
         public <I, O> void onLaunch(
@@ -164,6 +166,10 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
             // Start activity path
             Intent intent = contract.createIntent(activity, input);
             Bundle optionsBundle = null;
+            // If there are any extras, we should defensively set the classLoader
+            if (intent.getExtras() != null && intent.getExtras().getClassLoader() == null) {
+                intent.setExtrasClassLoader(activity.getClassLoader());
+            }
             if (intent.hasExtra(EXTRA_ACTIVITY_OPTIONS_BUNDLE)) {
                 optionsBundle = intent.getBundleExtra(EXTRA_ACTIVITY_OPTIONS_BUNDLE);
                 intent.removeExtra(EXTRA_ACTIVITY_OPTIONS_BUNDLE);
@@ -176,22 +182,10 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
                 String[] permissions = intent.getStringArrayExtra(EXTRA_PERMISSIONS);
 
                 if (permissions == null) {
-                    return;
+                    permissions = new String[0];
                 }
 
-                List<String> nonGrantedPermissions = new ArrayList<>();
-                for (String permission : permissions) {
-                    if (checkPermission(permission,
-                            android.os.Process.myPid(), android.os.Process.myUid())
-                            != PackageManager.PERMISSION_GRANTED) {
-                        nonGrantedPermissions.add(permission);
-                    }
-                }
-
-                if (!nonGrantedPermissions.isEmpty()) {
-                    ActivityCompat.requestPermissions(activity,
-                            nonGrantedPermissions.toArray(new String[0]), requestCode);
-                }
+                ActivityCompat.requestPermissions(activity, permissions, requestCode);
             } else if (ACTION_INTENT_SENDER_REQUEST.equals(intent.getAction())) {
                 IntentSenderRequest request =
                         intent.getParcelableExtra(EXTRA_INTENT_SENDER_REQUEST);
@@ -240,7 +234,7 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
                         Window window = getWindow();
                         final View decor = window != null ? window.peekDecorView() : null;
                         if (decor != null) {
-                            decor.cancelPendingInputEvents();
+                            Api19Impl.cancelPendingInputEvents(decor);
                         }
                     }
                 }
@@ -258,6 +252,14 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
                         getViewModelStore().clear();
                     }
                 }
+            }
+        });
+        getLifecycle().addObserver(new LifecycleEventObserver() {
+            @Override
+            public void onStateChanged(@NonNull LifecycleOwner source,
+                    @NonNull Lifecycle.Event event) {
+                ensureViewModelStore();
+                getLifecycle().removeObserver(this);
             }
         });
 
@@ -472,6 +474,12 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
             throw new IllegalStateException("Your activity is not yet attached to the "
                     + "Application instance. You can't request ViewModel before onCreate call.");
         }
+        ensureViewModelStore();
+        return mViewModelStore;
+    }
+
+    @SuppressWarnings("WeakerAccess") /* synthetic access */
+    void ensureViewModelStore() {
         if (mViewModelStore == null) {
             NonConfigurationInstances nc =
                     (NonConfigurationInstances) getLastNonConfigurationInstance();
@@ -483,7 +491,6 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
                 mViewModelStore = new ViewModelStore();
             }
         }
-        return mViewModelStore;
     }
 
     /**
@@ -671,5 +678,40 @@ public class ComponentActivity extends androidx.core.app.ComponentActivity imple
     @Override
     public final ActivityResultRegistry getActivityResultRegistry() {
         return mActivityResultRegistry;
+    }
+
+    @Override
+    public void reportFullyDrawn() {
+        try {
+            if (Trace.isEnabled()) {
+                // TODO: Ideally we'd include getComponentName() (as later versions of platform
+                //  do), but b/175345114 needs to be addressed.
+                Trace.beginSection("reportFullyDrawn() for ComponentActivity");
+            }
+
+            if (Build.VERSION.SDK_INT > 19) {
+                super.reportFullyDrawn();
+            } else if (Build.VERSION.SDK_INT == 19 && ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.UPDATE_DEVICE_STATS) == PackageManager.PERMISSION_GRANTED) {
+                // On API 19, the Activity.reportFullyDrawn() method requires the
+                // UPDATE_DEVICE_STATS permission, otherwise it throws an exception. Instead of
+                // throwing, we fall back to a no-op call.
+                super.reportFullyDrawn();
+            }
+            // The Activity.reportFullyDrawn() got added in API 19, fall back to a no-op call if
+            // this method gets called on devices with an earlier version.
+        } finally {
+            Trace.endSection();
+        }
+    }
+
+    @RequiresApi(19)
+    static class Api19Impl {
+        private Api19Impl() { }
+
+        static void cancelPendingInputEvents(View view) {
+            view.cancelPendingInputEvents();
+        }
+
     }
 }

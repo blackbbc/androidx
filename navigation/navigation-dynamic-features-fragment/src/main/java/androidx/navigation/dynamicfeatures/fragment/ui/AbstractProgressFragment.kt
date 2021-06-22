@@ -17,10 +17,12 @@
 package androidx.navigation.dynamicfeatures.fragment.ui
 
 import android.app.Activity
-import android.content.Intent
 import android.content.IntentSender
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RestrictTo
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -65,6 +67,14 @@ public abstract class AbstractProgressFragment : Fragment {
 
     public constructor(contentLayoutId: Int) : super(contentLayoutId)
 
+    private val intentSenderLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_CANCELED) {
+            onCancelled()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState != null) {
@@ -72,24 +82,22 @@ public abstract class AbstractProgressFragment : Fragment {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         if (navigated) {
             findNavController().popBackStack()
             return
         }
         var monitor = installViewModel.installMonitor
         if (monitor == null) {
-            Log.i(TAG, "onResume: monitor is null, navigating")
+            Log.i(TAG, "onViewCreated: monitor is null, navigating")
             navigate()
             monitor = installViewModel.installMonitor
         }
         if (monitor != null) {
-            Log.i(TAG, "onResume: monitor is now not null, observing")
-            monitor.status.observe(this, StateObserver(monitor))
+            Log.i(TAG, "onViewCreated: monitor is now not null, observing")
+            monitor.status.observe(viewLifecycleOwner, StateObserver(monitor))
         }
     }
-
     /**
      * Navigates to an installed dynamic feature module or kicks off installation.
      *
@@ -138,20 +146,17 @@ public abstract class AbstractProgressFragment : Fragment {
                             splitInstallManager.startConfirmationDialogForResult(
                                 sessionState,
                                 IntentSenderForResultStarter { intent,
-                                    requestCode,
+                                    _,
                                     fillInIntent,
                                     flagsMask,
                                     flagsValues,
-                                    extraFlags,
-                                    options ->
-                                    startIntentSenderForResult(
-                                        intent,
-                                        requestCode,
-                                        fillInIntent,
-                                        flagsMask,
-                                        flagsValues,
-                                        extraFlags,
-                                        options
+                                    _,
+                                    _ ->
+                                    intentSenderLauncher.launch(
+                                        IntentSenderRequest.Builder(intent)
+                                            .setFillInIntent(fillInIntent)
+                                            .setFlags(flagsValues, flagsMask)
+                                            .build()
                                     )
                                 },
                                 INSTALL_REQUEST_CODE
@@ -175,15 +180,6 @@ public abstract class AbstractProgressFragment : Fragment {
                         )
                     }
                 }
-            }
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == INSTALL_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_CANCELED) {
-                onCancelled()
             }
         }
     }

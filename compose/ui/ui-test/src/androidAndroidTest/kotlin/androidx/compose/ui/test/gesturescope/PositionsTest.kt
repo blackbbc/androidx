@@ -16,12 +16,15 @@
 
 package androidx.compose.ui.test.gesturescope
 
-import androidx.compose.foundation.ScrollableColumn
-import androidx.compose.foundation.ScrollableRow
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.bottom
 import androidx.compose.ui.test.bottomCenter
@@ -32,12 +35,10 @@ import androidx.compose.ui.test.centerLeft
 import androidx.compose.ui.test.centerRight
 import androidx.compose.ui.test.centerX
 import androidx.compose.ui.test.centerY
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.height
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.left
-import androidx.compose.ui.test.localToGlobal
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.percentOffset
 import androidx.compose.ui.test.performGesture
 import androidx.compose.ui.test.right
@@ -45,10 +46,10 @@ import androidx.compose.ui.test.top
 import androidx.compose.ui.test.topCenter
 import androidx.compose.ui.test.topLeft
 import androidx.compose.ui.test.topRight
-import androidx.compose.ui.test.width
-import androidx.test.filters.MediumTest
 import androidx.compose.ui.test.util.ClickableTestBox
 import androidx.compose.ui.test.util.ClickableTestBox.defaultTag
+import androidx.compose.ui.test.width
+import androidx.test.filters.MediumTest
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
 import org.junit.Test
@@ -122,19 +123,27 @@ class PositionsTest {
 
     private fun testPositionsInViewport(isVertical: Boolean, reverseScrollDirection: Boolean) {
         rule.setContent {
-            with(DensityAmbient.current) {
+            with(LocalDensity.current) {
                 if (isVertical) {
-                    ScrollableColumn(
-                        Modifier.size(100.toDp(), 100.toDp()).testTag("viewport"),
-                        reverseScrollDirection = reverseScrollDirection
+                    Column(
+                        Modifier.requiredSize(100.toDp())
+                            .testTag("viewport")
+                            .verticalScroll(
+                                rememberScrollState(),
+                                reverseScrolling = reverseScrollDirection
+                            )
                     ) {
                         ClickableTestBox(width = 200f, height = 200f)
                         ClickableTestBox(width = 200f, height = 200f)
                     }
                 } else {
-                    ScrollableRow(
-                        Modifier.size(100.toDp(), 100.toDp()).testTag("viewport"),
-                        reverseScrollDirection = reverseScrollDirection
+                    Row(
+                        Modifier.requiredSize(100.toDp())
+                            .testTag("viewport")
+                            .horizontalScroll(
+                                rememberScrollState(),
+                                reverseScrolling = reverseScrollDirection
+                            )
                     ) {
                         ClickableTestBox(width = 200f, height = 200f)
                         ClickableTestBox(width = 200f, height = 200f)
@@ -143,12 +152,11 @@ class PositionsTest {
             }
         }
 
-        val globalRoot = rule.onRoot().fetchSemanticsNode("Failed to get root").globalPosition
         rule.onNodeWithTag("viewport").performGesture {
             assertThat(width).isEqualTo(100)
             assertThat(height).isEqualTo(100)
             assertThat(center).isEqualTo(Offset(50f, 50f))
-            assertThat(localToGlobal(topLeft)).isEqualTo(globalRoot)
+            assertThat(topLeft).isEqualTo(Offset.Zero)
         }
     }
 }

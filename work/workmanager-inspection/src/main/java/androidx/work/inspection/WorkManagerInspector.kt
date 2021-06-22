@@ -42,6 +42,7 @@ import androidx.work.inspection.WorkManagerInspectorProtocol.WorkAddedEvent
 import androidx.work.inspection.WorkManagerInspectorProtocol.WorkRemovedEvent
 import androidx.work.inspection.WorkManagerInspectorProtocol.WorkUpdatedEvent
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 
 /**
@@ -163,10 +164,12 @@ class WorkManagerInspector(
         return this
     }
 
-    private fun createWorkInfoProto(id: String): WorkManagerInspectorProtocol.WorkInfo {
-        val workInfoBuilder = WorkManagerInspectorProtocol.WorkInfo.newBuilder()
-        val workSpec = workManager.workDatabase.workSpecDao().getWorkSpec(id)
+    private fun createWorkInfoProto(id: String): WorkManagerInspectorProtocol.WorkInfo? {
+        // work can be removed by the time we try to access it, so if null was return let's just
+        // skip it
+        val workSpec = workManager.workDatabase.workSpecDao().getWorkSpec(id) ?: return null
 
+        val workInfoBuilder = WorkManagerInspectorProtocol.WorkInfo.newBuilder()
         workInfoBuilder.id = id
         workInfoBuilder.state = workSpec.state.toProto()
         workInfoBuilder.workerClassName = workSpec.workerClassName
@@ -257,7 +260,8 @@ class WorkManagerInspector(
             connection.sendEvent(event.toByteArray())
         }
         for (addedId in newWorkIds.minus(oldWorkIds)) {
-            val addEvent = WorkAddedEvent.newBuilder().setWork(createWorkInfoProto(addedId))
+            val workInfoProto = createWorkInfoProto(addedId) ?: continue
+            val addEvent = WorkAddedEvent.newBuilder().setWork(workInfoProto)
                 .build()
             val event = Event.newBuilder().setWorkAdded(addEvent).build()
             connection.sendEvent(event.toByteArray())
@@ -267,9 +271,14 @@ class WorkManagerInspector(
 
     override fun onDispose() {
         super.onDispose()
+        val latch = CountDownLatch(1)
         mainHandler.post {
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+            latch.countDown()
         }
+        // await to make sure that all observers that registered by inspector are gone
+        // otherwise they can post message to "disposed" inspector
+        latch.await()
     }
 
     override fun getLifecycle(): Lifecycle {

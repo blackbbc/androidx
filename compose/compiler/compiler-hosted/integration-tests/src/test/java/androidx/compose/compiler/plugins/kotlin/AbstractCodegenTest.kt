@@ -22,6 +22,7 @@ import com.intellij.openapi.vfs.CharsetToolkit
 import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.impl.PsiFileFactoryImpl
 import com.intellij.testFramework.LightVirtualFile
+import org.intellij.lang.annotations.Language
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
@@ -67,6 +68,7 @@ abstract class AbstractCodegenTest : AbstractCompilerTest() {
     }
 
     protected fun validateBytecode(
+        @Language("kotlin")
         src: String,
         dumpClasses: Boolean = false,
         validate: (String) -> Unit
@@ -77,15 +79,15 @@ abstract class AbstractCodegenTest : AbstractCompilerTest() {
         val loader = classLoader(
             """
            @file:OptIn(
-             ExperimentalComposeApi::class,
              InternalComposeApi::class,
-             ComposeCompilerApi::class
            )
            package test
 
            import androidx.compose.runtime.*
 
            $src
+
+            fun used(x: Any?) {}
         """,
             fileName, dumpClasses
         )
@@ -101,6 +103,7 @@ abstract class AbstractCodegenTest : AbstractCompilerTest() {
     }
 
     protected fun classLoader(
+        @Language("kotlin")
         source: String,
         fileName: String,
         dumpClasses: Boolean = false
@@ -159,7 +162,6 @@ abstract class AbstractCodegenTest : AbstractCompilerTest() {
         import android.view.Gravity
         import android.widget.LinearLayout
         import androidx.compose.runtime.Composable
-        import androidx.compose.ui.viewinterop.emitView
     """.trimIndent()
 
     protected val COMPOSE_VIEW_STUBS = """
@@ -200,7 +202,7 @@ abstract class AbstractCodegenTest : AbstractCompilerTest() {
             id: Int = 0,
             orientation: Int = LinearLayout.VERTICAL,
             onClickListener: View.OnClickListener? = null,
-            children: @Composable () -> Unit
+            content: @Composable () -> Unit
         ) {
             emitView(
                 ::LinearLayout,
@@ -209,7 +211,7 @@ abstract class AbstractCodegenTest : AbstractCompilerTest() {
                     if (onClickListener != null) it.setOnClickListener(onClickListener)
                     it.orientation = orientation
                 },
-                children
+                content
             )
         }
     """.trimIndent()

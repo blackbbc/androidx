@@ -16,18 +16,17 @@
 
 package androidx.compose.ui.semantics
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.node.DelegatingLayoutNodeWrapper
-import androidx.compose.ui.node.ExperimentalLayoutNodeApi
 import androidx.compose.ui.node.LayoutNodeWrapper
 
-@OptIn(ExperimentalLayoutNodeApi::class)
 internal class SemanticsWrapper(
     wrapped: LayoutNodeWrapper,
     semanticsModifier: SemanticsModifier
 ) : DelegatingLayoutNodeWrapper<SemanticsModifier>(wrapped, semanticsModifier) {
     fun collapsedSemanticsConfiguration(): SemanticsConfiguration {
-        val nextSemantics = wrapped.nearestSemantics
-        if (nextSemantics == null) {
+        val nextSemantics = wrapped.nearestSemantics { true }
+        if (nextSemantics == null || modifier.semanticsConfiguration.isClearingSemantics) {
             return modifier.semanticsConfiguration
         }
 
@@ -42,10 +41,23 @@ internal class SemanticsWrapper(
     }
 
     override fun onModifierChanged() {
+        super.onModifierChanged()
         layoutNode.owner?.onSemanticsChange()
     }
 
     override fun toString(): String {
         return "${super.toString()} id: ${modifier.id} config: ${modifier.semanticsConfiguration}"
+    }
+
+    override fun hitTestSemantics(
+        pointerPosition: Offset,
+        hitSemanticsWrappers: MutableList<SemanticsWrapper>
+    ) {
+        if (isPointerInBounds(pointerPosition) && withinLayerBounds(pointerPosition)) {
+            hitSemanticsWrappers.add(this)
+
+            val positionInWrapped = wrapped.fromParentPosition(pointerPosition)
+            wrapped.hitTestSemantics(positionInWrapped, hitSemanticsWrappers)
+        }
     }
 }

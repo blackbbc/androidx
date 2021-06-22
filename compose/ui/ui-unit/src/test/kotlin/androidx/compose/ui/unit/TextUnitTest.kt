@@ -17,17 +17,20 @@
 package androidx.compose.ui.unit
 
 import com.google.common.truth.Truth.assertThat
+import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
+
+@Suppress("Deprecation")
 
 @RunWith(JUnit4::class)
 class TextUnitTest {
     @Test
     fun construct_sp_from_float() {
-        TextUnit.Sp(5f).also {
+        5f.sp.also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(5f)
@@ -36,9 +39,9 @@ class TextUnitTest {
 
     @Test
     fun construct_sp_from_int() {
-        TextUnit.Sp(5).also {
+        5.sp.also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(5f)
@@ -47,9 +50,9 @@ class TextUnitTest {
 
     @Test
     fun construct_sp_from_double() {
-        TextUnit.Sp(5.0).also {
+        5.0.sp.also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(5f)
@@ -60,7 +63,7 @@ class TextUnitTest {
     fun construct_sp_from_float_extension() {
         5f.sp.also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(5f)
@@ -71,7 +74,7 @@ class TextUnitTest {
     fun construct_sp_from_int_extension() {
         5.sp.also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(5f)
@@ -82,7 +85,7 @@ class TextUnitTest {
     fun construct_sp_from_double_extension() {
         5.0.sp.also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(5f)
@@ -91,9 +94,9 @@ class TextUnitTest {
 
     @Test
     fun construct_em_from_float() {
-        TextUnit.Em(5f).also {
+        5f.em.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(5f)
@@ -102,9 +105,9 @@ class TextUnitTest {
 
     @Test
     fun construct_em_from_int() {
-        TextUnit.Em(5).also {
+        5.em.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(5f)
@@ -113,9 +116,9 @@ class TextUnitTest {
 
     @Test
     fun construct_em_from_double() {
-        TextUnit.Em(5.0).also {
+        5.0.em.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(5f)
@@ -126,7 +129,7 @@ class TextUnitTest {
     fun construct_em_from_float_extension() {
         5f.em.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(5f)
@@ -137,7 +140,7 @@ class TextUnitTest {
     fun construct_em_from_int_extension() {
         5.em.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(5f)
@@ -148,7 +151,7 @@ class TextUnitTest {
     fun construct_em_from_double_extension() {
         5.0.em.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(5f)
@@ -156,109 +159,13 @@ class TextUnitTest {
     }
 
     @Test
-    fun inherit_type_check() {
-        TextUnit.Inherit.also {
+    fun unspecified_type_check() {
+        TextUnit.Unspecified.also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isTrue()
+            assertThat(it.isUnspecified).isTrue()
             assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Inherit)
+            assertThat(it.type).isEqualTo(TextUnitType.Unspecified)
         }
-    }
-
-    // Additions
-    @Test
-    fun add_sp_sp() {
-        (1.sp + 2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(3f)
-        }
-    }
-
-    @Test
-    fun add_em_em() {
-        (1.em + 2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(3f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun add_sp_em() {
-        1.sp + 2.em
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun add_sp_inherit() {
-        1.sp + TextUnit.Inherit
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun add_em_sp() {
-        1.em + 2.sp
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun add_em_inherit() {
-        1.em + TextUnit.Inherit
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun add_inherit_inherit() {
-        TextUnit.Inherit + TextUnit.Inherit
-    }
-
-    // Subtractions
-    @Test
-    fun sub_sp_sp() {
-        (1.sp - 2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(-1f)
-        }
-    }
-
-    @Test
-    fun sub_em_em() {
-        (1.em - 2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(-1f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun sub_sp_em() {
-        1.sp - 2.em
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun sub_sp_inherit() {
-        1.sp - TextUnit.Inherit
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun sub_em_sp() {
-        1.em - 2.sp
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun sub_em_inherit() {
-        1.em - TextUnit.Inherit
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun sub_inherit_inherit() {
-        TextUnit.Inherit - TextUnit.Inherit
     }
 
     // Unary minuses
@@ -266,7 +173,7 @@ class TextUnitTest {
     fun minus_em() {
         -(1.em).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(1f)
@@ -277,7 +184,7 @@ class TextUnitTest {
     fun minus_sp() {
         -(1.sp).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(1f)
@@ -285,8 +192,8 @@ class TextUnitTest {
     }
 
     @Test(expected = RuntimeException::class)
-    fun minus_inherit() {
-        -TextUnit.Inherit
+    fun minus_unspecified() {
+        -TextUnit.Unspecified
     }
 
     // Multiplications
@@ -294,7 +201,7 @@ class TextUnitTest {
     fun multiply_sp_float() {
         (2.sp * 3f).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(6f)
@@ -305,7 +212,7 @@ class TextUnitTest {
     fun multiply_sp_double() {
         (2.sp * 3.0).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(6f)
@@ -316,7 +223,7 @@ class TextUnitTest {
     fun multiply_sp_int() {
         (2.sp * 3).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(6f)
@@ -327,7 +234,7 @@ class TextUnitTest {
     fun multiply_float_sp() {
         (2f * 3.sp).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(6f)
@@ -338,7 +245,7 @@ class TextUnitTest {
     fun multiply_double_sp() {
         (2.0 * 3.sp).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(6f)
@@ -349,7 +256,7 @@ class TextUnitTest {
     fun multiply_int_sp() {
         (2 * 3.sp).also {
             assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isFalse()
             assertThat(it.type).isEqualTo(TextUnitType.Sp)
             assertThat(it.value).isEqualTo(6f)
@@ -360,7 +267,7 @@ class TextUnitTest {
     fun multiply_float_em() {
         (2f * 3.em).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(6f)
@@ -371,7 +278,7 @@ class TextUnitTest {
     fun multiply_double_em() {
         (2.0 * 3.em).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(6f)
@@ -382,7 +289,7 @@ class TextUnitTest {
     fun multiply_int_em() {
         (2 * 3.em).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(6f)
@@ -393,7 +300,7 @@ class TextUnitTest {
     fun multiply_em_float() {
         (2.em * 3f).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(6f)
@@ -404,7 +311,7 @@ class TextUnitTest {
     fun multiply_em_double() {
         (2.em * 3.0).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(6f)
@@ -415,7 +322,7 @@ class TextUnitTest {
     fun multiply_em_int() {
         (2.em * 3).also {
             assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
+            assertThat(it.isUnspecified).isFalse()
             assertThat(it.isEm).isTrue()
             assertThat(it.type).isEqualTo(TextUnitType.Em)
             assertThat(it.value).isEqualTo(6f)
@@ -423,160 +330,33 @@ class TextUnitTest {
     }
 
     @Test(expected = RuntimeException::class)
-    fun multiply_inherit_float() {
-        TextUnit.Inherit * 3f
+    fun multiply_unspecified_float() {
+        TextUnit.Unspecified * 3f
     }
 
     @Test(expected = RuntimeException::class)
-    fun multiply_inherit_double() {
-        TextUnit.Inherit * 3.0
+    fun multiply_unspecified_double() {
+        TextUnit.Unspecified * 3.0
     }
 
     @Test(expected = RuntimeException::class)
-    fun multiply_inherit_int() {
-        TextUnit.Inherit * 3
+    fun multiply_unspecified_int() {
+        TextUnit.Unspecified * 3
     }
 
     @Test(expected = RuntimeException::class)
-    fun multiply_float_inherit() {
-        3f * TextUnit.Inherit
+    fun multiply_float_unspecified() {
+        3f * TextUnit.Unspecified
     }
 
     @Test(expected = RuntimeException::class)
-    fun multiply_double_inherit() {
-        3.0f * TextUnit.Inherit
+    fun multiply_double_unspecified() {
+        3.0f * TextUnit.Unspecified
     }
 
     @Test(expected = RuntimeException::class)
-    fun multiply_int_inherit() {
-        3 * TextUnit.Inherit
-    }
-
-    // Divisions
-    @Test
-    fun divide_sp_float() {
-        (1.sp / 2f).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(0.5f)
-        }
-    }
-
-    @Test
-    fun divide_sp_double() {
-        (1.sp / 2.0).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(0.5f)
-        }
-    }
-
-    @Test
-    fun divide_sp_int() {
-        (1.sp / 2).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(0.5f)
-        }
-    }
-
-    @Test
-    fun divide_em_float() {
-        (1.em / 2f).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(0.5f)
-        }
-    }
-
-    @Test
-    fun divide_em_double() {
-        (1.em / 2.0).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(0.5f)
-        }
-    }
-
-    @Test
-    fun divide_em_int() {
-        (1.em / 2).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(0.5f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_inherit_float() {
-        TextUnit.Inherit / 2f
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_inherit_double() {
-        TextUnit.Inherit / 2.0
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_inherit_int() {
-        TextUnit.Inherit / 2
-    }
-
-    @Test
-    fun divide_sp_sp() {
-        assertThat(1.sp / 2.sp).isEqualTo(0.5f)
-    }
-
-    @Test
-    fun divide_em_em() {
-        assertThat(1.em / 2.em).isEqualTo(0.5f)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_sp_em() {
-        1.sp / 2.em
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_em_sp() {
-        1.em / 2.sp
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_inherit_sp() {
-        TextUnit.Inherit / 2.sp
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_inherit_em() {
-        TextUnit.Inherit / 2.em
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_sp_inherit() {
-        1.sp / TextUnit.Inherit
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_em_inherit() {
-        1.em / TextUnit.Inherit
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun divide_inherit_inherit() {
-        TextUnit.Inherit / TextUnit.Inherit
+    fun multiply_int_unspecified() {
+        3 * TextUnit.Unspecified
     }
 
     // Comparisons
@@ -633,28 +413,28 @@ class TextUnitTest {
     }
 
     @Test(expected = RuntimeException::class)
-    fun compare_inherit_sp() {
-        TextUnit.Inherit > 2.sp
+    fun compare_unspecified_sp() {
+        TextUnit.Unspecified > 2.sp
     }
 
     @Test(expected = RuntimeException::class)
-    fun compare_sp_inherit() {
-        1.sp > TextUnit.Inherit
+    fun compare_sp_unspecified() {
+        1.sp > TextUnit.Unspecified
     }
 
     @Test(expected = RuntimeException::class)
-    fun compare_inherit_em() {
-        TextUnit.Inherit > 2.em
+    fun compare_unspecified_em() {
+        TextUnit.Unspecified > 2.em
     }
 
     @Test(expected = RuntimeException::class)
-    fun compare_em_inherit() {
-        1.em > TextUnit.Inherit
+    fun compare_em_unspecified() {
+        1.em > TextUnit.Unspecified
     }
 
     @Test(expected = RuntimeException::class)
-    fun compare_inherit_inherit() {
-        TextUnit.Inherit > TextUnit.Inherit
+    fun compare_unspecified_unspecified() {
+        TextUnit.Unspecified > TextUnit.Unspecified
     }
 
     // Equalities
@@ -671,8 +451,8 @@ class TextUnitTest {
     }
 
     @Test
-    fun equals_inherit_inherit() {
-        assertThat(TextUnit.Inherit == TextUnit.Inherit).isTrue()
+    fun equals_unspecified_unspecified() {
+        assertThat(TextUnit.Unspecified == TextUnit.Unspecified).isTrue()
     }
 
     @Test
@@ -688,361 +468,49 @@ class TextUnitTest {
     }
 
     @Test
-    fun equals_sp_inherit() {
-        assertThat(2.sp == TextUnit.Inherit).isFalse()
+    fun equals_sp_unspecified() {
+        assertThat(2.sp == TextUnit.Unspecified).isFalse()
     }
 
     @Test
-    fun equals_inherit_sp() {
-        assertThat(TextUnit.Inherit == 2.sp).isFalse()
+    fun equals_unspecified_sp() {
+        assertThat(TextUnit.Unspecified == 2.sp).isFalse()
     }
 
     @Test
-    fun equals_em_inherit() {
-        assertThat(2.em == TextUnit.Inherit).isFalse()
+    fun equals_em_unspecified() {
+        assertThat(2.em == TextUnit.Unspecified).isFalse()
     }
 
     @Test
-    fun equals_inherit_em() {
-        assertThat(TextUnit.Inherit == 2.em).isFalse()
-    }
-
-    // Mins
-    @Test
-    fun min_sp_sp() {
-        min(1.sp, 2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(1f)
-        }
+    fun equals_unspecified_em() {
+        assertThat(TextUnit.Unspecified == 2.em).isFalse()
     }
 
     @Test
-    fun min_em_em() {
-        min(1.em, 2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(1f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun min_sp_em() {
-        min(1.sp, 2.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun min_sp_inherit() {
-        min(1.sp, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun min_em_sp() {
-        min(1.em, 2.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun min_em_inherit() {
-        min(1.em, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun min_inherit_inherit() {
-        min(TextUnit.Inherit, TextUnit.Inherit)
-    }
-
-    // Maxes
-    @Test
-    fun max_sp_sp() {
-        max(1.sp, 2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(2f)
-        }
+    fun unspecified_value_equals_nan() {
+        assertThat(TextUnit.Unspecified.value).isEqualTo(Float.NaN)
     }
 
     @Test
-    fun max_em_em() {
-        max(1.em, 2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(2f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun max_sp_em() {
-        max(1.sp, 2.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun max_sp_inherit() {
-        max(1.sp, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun max_em_sp() {
-        max(1.em, 2.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun max_em_inherit() {
-        max(1.em, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun max_inherit_inherit() {
-        max(TextUnit.Inherit, TextUnit.Inherit)
-    }
-
-    // coerceIns
-    @Test
-    fun coerceIn_sp_sp_sp() {
-        3.sp.coerceIn(1.sp, 2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(2f)
-        }
-
-        0.sp.coerceIn(1.sp, 2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(1f)
-        }
+    fun testIsSpecified() {
+        Assert.assertFalse(TextUnit.Unspecified.isSpecified)
+        Assert.assertTrue(1.sp.isSpecified)
     }
 
     @Test
-    fun coerceIn_em_em_em() {
-        3.em.coerceIn(1.em, 2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(2f)
-        }
-
-        0.em.coerceIn(1.em, 2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(1f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_sp_sp_em() {
-        1.sp.coerceIn(1.sp, 1.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_sp_sp_inherit() {
-        1.sp.coerceIn(1.sp, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_sp_em_sp() {
-        1.sp.coerceIn(1.em, 1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_sp_em_em() {
-        1.sp.coerceIn(1.em, 1.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_sp_em_inherit() {
-        1.sp.coerceIn(1.em, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_em_sp_sp() {
-        1.em.coerceIn(1.sp, 1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_em_sp_em() {
-        1.em.coerceIn(1.sp, 1.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_em_sp_inherit() {
-        1.em.coerceIn(1.sp, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_em_em_sp() {
-        1.em.coerceIn(1.em, 1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_em_em_inherit() {
-        1.em.coerceIn(1.em, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_inherit_sp_sp() {
-        TextUnit.Inherit.coerceIn(1.sp, 1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_inherit_sp_em() {
-        TextUnit.Inherit.coerceIn(1.sp, 1.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_inherit_sp_inherit() {
-        TextUnit.Inherit.coerceIn(1.sp, TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_inherit_em_sp() {
-        TextUnit.Inherit.coerceIn(1.em, 1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_inherit_em_em() {
-        TextUnit.Inherit.coerceIn(1.em, 1.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceIn_inherit_em_inherit() {
-        TextUnit.Inherit.coerceIn(TextUnit.Inherit, TextUnit.Inherit)
-    }
-
-    // coerceAtLeasts
-    @Test
-    fun coerceAtLeast_sp_sp() {
-        1.sp.coerceAtLeast(2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(2f)
-        }
-        3.sp.coerceAtLeast(2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(3f)
-        }
+    fun testIsUnspecified() {
+        Assert.assertTrue(TextUnit.Unspecified.isUnspecified)
+        Assert.assertFalse(1.sp.isUnspecified)
     }
 
     @Test
-    fun coerceAtLeast_em_em() {
-        1.em.coerceAtLeast(2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(2f)
-        }
-        3.em.coerceAtLeast(2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(3f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtLeast_sp_em() {
-        1.sp.coerceAtLeast(2.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtLeast_sp_inherit() {
-        1.sp.coerceAtLeast(TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtLeast_em_sp() {
-        1.em.coerceAtLeast(1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtLeast_em_inherit() {
-        1.em.coerceAtLeast(TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtLeast_inherit_inherit() {
-        TextUnit.Inherit.coerceAtLeast(TextUnit.Inherit)
-    }
-
-    // coerceAtMosts
-    @Test
-    fun coerceAtMost_sp_sp() {
-        1.sp.coerceAtMost(2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(1f)
-        }
-        3.sp.coerceAtMost(2.sp).also {
-            assertThat(it.isSp).isTrue()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isFalse()
-            assertThat(it.type).isEqualTo(TextUnitType.Sp)
-            assertThat(it.value).isEqualTo(2f)
-        }
+    fun testTakeOrElseTrue() {
+        Assert.assertTrue(1.sp.takeOrElse { TextUnit.Unspecified }.isSpecified)
     }
 
     @Test
-    fun coerceAtMost_em_em() {
-        1.em.coerceAtMost(2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(1f)
-        }
-        3.em.coerceAtMost(2.em).also {
-            assertThat(it.isSp).isFalse()
-            assertThat(it.isInherit).isFalse()
-            assertThat(it.isEm).isTrue()
-            assertThat(it.type).isEqualTo(TextUnitType.Em)
-            assertThat(it.value).isEqualTo(2f)
-        }
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtMost_sp_em() {
-        1.sp.coerceAtMost(2.em)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtMost_sp_inherit() {
-        1.sp.coerceAtMost(TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtMost_em_sp() {
-        1.em.coerceAtMost(1.sp)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtMost_em_inherit() {
-        1.em.coerceAtMost(TextUnit.Inherit)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun coerceAtMost_inherit_inherit() {
-        TextUnit.Inherit.coerceAtMost(TextUnit.Inherit)
+    fun testTakeOrElseFalse() {
+        Assert.assertTrue(TextUnit.Unspecified.takeOrElse { 1.sp }.isSpecified)
     }
 }

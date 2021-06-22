@@ -20,17 +20,19 @@ import androidx.annotation.CheckResult
 import androidx.annotation.VisibleForTesting
 import androidx.paging.ActiveFlowTracker.FlowType.PAGED_DATA_FLOW
 import androidx.paging.ActiveFlowTracker.FlowType.PAGE_EVENT_FLOW
-import androidx.paging.multicast.Multicaster
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.shareIn
 
-@OptIn(ExperimentalCoroutinesApi::class)
+/**
+ * A PagingData wrapper that makes it "efficiently" share-able between multiple downstreams.
+ * It flattens all previous pages such that a new subscriber will get all of them at once (and
+ * also not deal with dropped pages, intermediate loading state changes etc).
+ */
 private class MulticastedPagingData<T : Any>(
     val scope: CoroutineScope,
     val parent: PagingData<T>,
@@ -79,38 +81,35 @@ private class MulticastedPagingData<T : Any>(
  * @param scope The coroutine scope where this page cache will be kept alive.
  */
 @CheckResult
-fun <T : Any> Flow<PagingData<T>>.cachedIn(
+public fun <T : Any> Flow<PagingData<T>>.cachedIn(
     scope: CoroutineScope
-) = cachedIn(scope, null)
+): Flow<PagingData<T>> = cachedIn(scope, null)
 
-@OptIn(ExperimentalCoroutinesApi::class)
 internal fun <T : Any> Flow<PagingData<T>>.cachedIn(
     scope: CoroutineScope,
     // used in tests
     tracker: ActiveFlowTracker? = null
 ): Flow<PagingData<T>> {
-    val multicastedFlow = this.map {
+    return this.simpleMapLatest {
         MulticastedPagingData(
             scope = scope,
             parent = it
         )
-    }.scan(null as MulticastedPagingData<T>?) { prev, next ->
-        prev?.close()
+    }.simpleRunningReduce { prev, next ->
+        prev.close()
         next
-    }.mapNotNull {
-        it?.asPagingData()
+    }.map {
+        it.asPagingData()
     }.onStart {
         tracker?.onStart(PAGED_DATA_FLOW)
     }.onCompletion {
         tracker?.onComplete(PAGED_DATA_FLOW)
-    }
-    return Multicaster(
+    }.shareIn(
         scope = scope,
-        bufferSize = 1,
-        source = multicastedFlow,
-        onEach = {},
-        keepUpstreamAlive = true
-    ).flow
+        started = SharingStarted.Lazily,
+        // replay latest multicasted paging data since it is re-connectable.
+        replay = 1
+    )
 }
 
 /**

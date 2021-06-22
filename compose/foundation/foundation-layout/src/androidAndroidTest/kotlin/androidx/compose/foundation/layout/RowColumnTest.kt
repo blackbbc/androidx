@@ -16,25 +16,27 @@
 
 package androidx.compose.foundation.layout
 
-import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Providers
-import androidx.compose.runtime.emptyContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.layout.HorizontalAlignmentLine
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.VerticalAlignmentLine
-import androidx.compose.ui.layout.WithConstraints
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.HorizontalAlignmentLine
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.VerticalAlignmentLine
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.node.Ref
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.InspectableValue
-import androidx.compose.ui.platform.LayoutDirectionAmbient
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.ValueElement
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.unit.Constraints
@@ -42,17 +44,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
+import com.google.common.truth.Truth
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.google.common.truth.Truth
-import org.junit.After
-import org.junit.Before
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
@@ -76,7 +78,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOf(IntSize(-1, -1), IntSize(-1, -1))
@@ -89,7 +91,7 @@ class RowColumnTest : LayoutTest() {
                         height = sizeDp,
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
@@ -100,7 +102,7 @@ class RowColumnTest : LayoutTest() {
                         height = (sizeDp * 2),
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
@@ -110,7 +112,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(IntSize(size, size), childSize[0])
@@ -126,7 +128,7 @@ class RowColumnTest : LayoutTest() {
     fun testRow_withChildrenWithWeight() = with(density) {
         val width = 50.toDp()
         val height = 80.toDp()
-        val childrenHeight = height.toIntPx()
+        val childrenHeight = height.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOfNulls<IntSize>(2)
@@ -138,7 +140,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(1f)
                             .onGloballyPositioned { coordinates ->
                                 childSize[0] = coordinates.size
-                                childPosition[0] = coordinates.positionInRoot
+                                childPosition[0] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -150,7 +152,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(2f)
                             .onGloballyPositioned { coordinates ->
                                 childSize[1] = coordinates.size
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -162,7 +164,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootWidth = root.width
 
@@ -181,9 +183,9 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withChildrenWithWeightNonFilling() = with(density) {
         val width = 50.toDp()
-        val childrenWidth = width.toIntPx()
+        val childrenWidth = width.roundToPx()
         val height = 80.toDp()
-        val childrenHeight = height.toIntPx()
+        val childrenHeight = height.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOfNulls<IntSize>(2)
@@ -195,7 +197,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(1f, fill = false)
                             .onGloballyPositioned { coordinates ->
                                 childSize[0] = coordinates.size
-                                childPosition[0] = coordinates.positionInRoot
+                                childPosition[0] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -207,7 +209,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(2f, fill = false)
                             .onGloballyPositioned { coordinates ->
                                 childSize[1] = coordinates.size
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -219,7 +221,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(IntSize(childrenWidth, childrenHeight), childSize[0])
@@ -231,7 +233,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOf(IntSize(-1, -1), IntSize(-1, -1))
@@ -244,7 +246,7 @@ class RowColumnTest : LayoutTest() {
                         height = sizeDp,
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
@@ -254,7 +256,7 @@ class RowColumnTest : LayoutTest() {
                         height = (sizeDp * 2),
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
@@ -264,7 +266,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(IntSize(size, size), childSize[0])
@@ -279,7 +281,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withChildrenWithWeight() = with(density) {
         val width = 80.toDp()
-        val childrenWidth = width.toIntPx()
+        val childrenWidth = width.roundToPx()
         val height = 50.toDp()
 
         val drawLatch = CountDownLatch(2)
@@ -292,7 +294,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(1f)
                             .onGloballyPositioned { coordinates ->
                                 childSize[0] = coordinates.size
-                                childPosition[0] = coordinates.positionInRoot
+                                childPosition[0] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -304,7 +306,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(2f)
                             .onGloballyPositioned { coordinates ->
                                 childSize[1] = coordinates.size
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -316,7 +318,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootHeight = root.height
 
@@ -333,9 +335,9 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withChildrenWithWeightNonFilling() = with(density) {
         val width = 80.toDp()
-        val childrenWidth = width.toIntPx()
+        val childrenWidth = width.roundToPx()
         val height = 50.toDp()
-        val childrenHeight = height.toIntPx()
+        val childrenHeight = height.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOfNulls<IntSize>(2)
@@ -347,7 +349,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(1f, fill = false)
                             .onGloballyPositioned { coordinates ->
                                 childSize[0] = coordinates.size
-                                childPosition[0] = coordinates.positionInRoot
+                                childPosition[0] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -358,7 +360,7 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(2f, fill = false)
                             .onGloballyPositioned { coordinates ->
                                 childSize[1] = coordinates.size
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             },
                         width = width,
@@ -370,7 +372,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(IntSize(childrenWidth, childrenHeight), childSize[0])
@@ -393,7 +395,7 @@ class RowColumnTest : LayoutTest() {
             Row(
                 Modifier.wrapContentSize(Alignment.TopStart)
                     .padding(start = leftPadding.toDp())
-                    .preferredWidthIn(max = expectedRowWidth.toDp())
+                    .widthIn(max = expectedRowWidth.toDp())
                     .onGloballyPositioned { coordinates ->
                         rowWidth = coordinates.size.width.toFloat()
                     }
@@ -402,7 +404,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             width[0] = coordinates.size.width.toFloat()
-                            x[0] = coordinates.positionInRoot.x
+                            x[0] = coordinates.positionInRoot().x
                             latch.countDown()
                         }
                 ) {
@@ -411,7 +413,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             width[1] = coordinates.size.width.toFloat()
-                            x[1] = coordinates.positionInRoot.x
+                            x[1] = coordinates.positionInRoot().x
                             latch.countDown()
                         }
                 ) {
@@ -439,7 +441,7 @@ class RowColumnTest : LayoutTest() {
             Row(
                 Modifier.wrapContentSize(Alignment.TopStart)
                     .padding(start = leftPadding.toDp())
-                    .preferredWidthIn(max = expectedRowWidth.toDp())
+                    .widthIn(max = expectedRowWidth.toDp())
                     .onGloballyPositioned { coordinates ->
                         rowWidth = coordinates.size.width.toFloat()
                     }
@@ -448,7 +450,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(2f)
                         .onGloballyPositioned { coordinates ->
                             width[0] = coordinates.size.width.toFloat()
-                            x[0] = coordinates.positionInRoot.x
+                            x[0] = coordinates.positionInRoot().x
                             latch.countDown()
                         }
                 ) {
@@ -457,7 +459,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(2f)
                         .onGloballyPositioned { coordinates ->
                             width[1] = coordinates.size.width.toFloat()
-                            x[1] = coordinates.positionInRoot.x
+                            x[1] = coordinates.positionInRoot().x
                             latch.countDown()
                         }
                 ) {
@@ -466,7 +468,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(3f)
                         .onGloballyPositioned { coordinates ->
                             width[2] = coordinates.size.width.toFloat()
-                            x[2] = coordinates.positionInRoot.x
+                            x[2] = coordinates.positionInRoot().x
                             latch.countDown()
                         }
                 ) {
@@ -495,7 +497,7 @@ class RowColumnTest : LayoutTest() {
             Column(
                 Modifier.wrapContentSize(Alignment.TopStart)
                     .padding(top = topPadding.toDp())
-                    .preferredHeightIn(max = expectedColumnHeight.toDp())
+                    .heightIn(max = expectedColumnHeight.toDp())
                     .onGloballyPositioned { coordinates ->
                         columnHeight = coordinates.size.height.toFloat()
                     }
@@ -504,7 +506,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             height[0] = coordinates.size.height.toFloat()
-                            y[0] = coordinates.positionInRoot.y
+                            y[0] = coordinates.positionInRoot().y
                             latch.countDown()
                         }
                 ) {
@@ -513,7 +515,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             height[1] = coordinates.size.height.toFloat()
-                            y[1] = coordinates.positionInRoot.y
+                            y[1] = coordinates.positionInRoot().y
                             latch.countDown()
                         }
                 ) {
@@ -522,7 +524,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             height[2] = coordinates.size.height.toFloat()
-                            y[2] = coordinates.positionInRoot.y
+                            y[2] = coordinates.positionInRoot().y
                             latch.countDown()
                         }
                 ) {
@@ -551,7 +553,7 @@ class RowColumnTest : LayoutTest() {
             Column(
                 Modifier.wrapContentSize(Alignment.TopStart)
                     .padding(top = topPadding.toDp())
-                    .preferredHeightIn(max = expectedColumnHeight.toDp())
+                    .heightIn(max = expectedColumnHeight.toDp())
                     .onGloballyPositioned { coordinates ->
                         columnHeight = coordinates.size.height.toFloat()
                     }
@@ -560,7 +562,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             height[0] = coordinates.size.height.toFloat()
-                            y[0] = coordinates.positionInRoot.y
+                            y[0] = coordinates.positionInRoot().y
                             latch.countDown()
                         }
                 ) {
@@ -569,7 +571,7 @@ class RowColumnTest : LayoutTest() {
                     Modifier.weight(1f)
                         .onGloballyPositioned { coordinates ->
                             height[1] = coordinates.size.height.toFloat()
-                            y[1] = coordinates.positionInRoot.y
+                            y[1] = coordinates.positionInRoot().y
                             latch.countDown()
                         }
                 ) {
@@ -591,7 +593,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withStretchCrossAxisAlignment() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOf(IntSize(-1, -1), IntSize(-1, -1))
@@ -604,7 +606,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.fillMaxHeight()
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -616,7 +618,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.fillMaxHeight()
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -625,7 +627,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(IntSize(size, root.height), childSize[0])
@@ -640,7 +642,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withGravityModifier_andGravityParameter() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(3)
         val childSize = arrayOfNulls<IntSize>(3)
@@ -653,7 +655,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.Top)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -663,7 +665,7 @@ class RowColumnTest : LayoutTest() {
                     height = sizeDp,
                     modifier = Modifier.onGloballyPositioned { coordinates ->
                         childSize[1] = coordinates.size
-                        childPosition[1] = coordinates.positionInRoot
+                        childPosition[1] = coordinates.positionInRoot()
                         drawLatch.countDown()
                     }
                 ) {
@@ -674,7 +676,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.Bottom)
                         .onGloballyPositioned { coordinates ->
                             childSize[2] = coordinates.size
-                            childPosition[2] = coordinates.positionInRoot
+                            childPosition[2] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -683,7 +685,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootHeight = root.height
 
@@ -712,7 +714,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withGravityModifier() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(3)
         val childSize = arrayOfNulls<IntSize>(3)
@@ -725,7 +727,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.Top)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -736,7 +738,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.CenterVertically)
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -747,7 +749,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.Bottom)
                         .onGloballyPositioned { coordinates ->
                             childSize[2] = coordinates.size
-                            childPosition[2] = coordinates.positionInRoot
+                            childPosition[2] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -756,7 +758,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootHeight = root.height
 
@@ -782,13 +784,13 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withAlignByModifier() = with(density) {
         val baseline1Dp = 30.toDp()
-        val baseline1 = baseline1Dp.toIntPx()
+        val baseline1 = baseline1Dp.roundToPx()
         val baseline2Dp = 25.toDp()
-        val baseline2 = baseline2Dp.toIntPx()
+        val baseline2 = baseline2Dp.roundToPx()
         val baseline3Dp = 20.toDp()
-        val baseline3 = baseline3Dp.toIntPx()
+        val baseline3 = baseline3Dp.roundToPx()
         val sizeDp = 40.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(5)
         val childSize = arrayOfNulls<IntSize>(5)
@@ -802,7 +804,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy(TestHorizontalLine)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -810,10 +812,10 @@ class RowColumnTest : LayoutTest() {
                 Container(
                     width = sizeDp,
                     height = sizeDp,
-                    modifier = Modifier.alignBy { it.height / 2 }
+                    modifier = Modifier.alignBy { it.measuredHeight / 2 }
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -825,7 +827,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy(TestHorizontalLine)
                         .onGloballyPositioned { coordinates ->
                             childSize[2] = coordinates.size
-                            childPosition[2] = coordinates.positionInRoot
+                            childPosition[2] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -833,10 +835,10 @@ class RowColumnTest : LayoutTest() {
                 Container(
                     width = sizeDp,
                     height = sizeDp,
-                    modifier = Modifier.alignBy { it.height * 3 / 4 }
+                    modifier = Modifier.alignBy { it.measuredHeight * 3 / 4 }
                         .onGloballyPositioned { coordinates ->
                             childSize[3] = coordinates.size
-                            childPosition[3] = coordinates.positionInRoot
+                            childPosition[3] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -849,7 +851,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignByBaseline()
                         .onGloballyPositioned { coordinates ->
                             childSize[4] = coordinates.size
-                            childPosition[4] = coordinates.positionInRoot
+                            childPosition[4] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -892,9 +894,9 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withAlignByModifier_andWeight() = with(density) {
         val baselineDp = 30.toDp()
-        val baseline = baselineDp.toIntPx()
+        val baseline = baselineDp.roundToPx()
         val sizeDp = 40.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOfNulls<IntSize>(2)
@@ -908,18 +910,18 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy(TestHorizontalLine)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
                 }
                 Container(
                     height = sizeDp,
-                    modifier = Modifier.alignBy { it.height / 2 }
+                    modifier = Modifier.alignBy { it.measuredHeight / 2 }
                         .weight(1f)
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -943,7 +945,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withStretchCrossAxisAlignment() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOf(IntSize(-1, -1), IntSize(-1, -1))
@@ -956,7 +958,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.fillMaxWidth()
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -968,7 +970,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.fillMaxWidth()
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -977,12 +979,12 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(IntSize(root.width, size), childSize[0])
         assertEquals(
-            IntSize(root.width, (sizeDp * 2).toIntPx()),
+            IntSize(root.width, (sizeDp * 2).roundToPx()),
             childSize[1]
         )
         assertEquals(Offset(0f, 0f), childPosition[0])
@@ -992,7 +994,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withGravityModifier() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(3)
         val childSize = arrayOfNulls<IntSize>(3)
@@ -1005,7 +1007,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.Start)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1016,7 +1018,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1027,7 +1029,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.End)
                         .onGloballyPositioned { coordinates ->
                             childSize[2] = coordinates.size
-                            childPosition[2] = coordinates.positionInRoot
+                            childPosition[2] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1036,7 +1038,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootWidth = root.width
 
@@ -1062,7 +1064,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withGravityModifier_andGravityParameter() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(3)
         val childSize = arrayOfNulls<IntSize>(3)
@@ -1075,7 +1077,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.Start)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1085,7 +1087,7 @@ class RowColumnTest : LayoutTest() {
                     height = sizeDp,
                     modifier = Modifier.onGloballyPositioned { coordinates ->
                         childSize[1] = coordinates.size
-                        childPosition[1] = coordinates.positionInRoot
+                        childPosition[1] = coordinates.positionInRoot()
                         drawLatch.countDown()
                     }
                 ) {
@@ -1096,7 +1098,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.align(Alignment.End)
                         .onGloballyPositioned { coordinates ->
                             childSize[2] = coordinates.size
-                            childPosition[2] = coordinates.positionInRoot
+                            childPosition[2] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1105,7 +1107,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootWidth = root.width
 
@@ -1131,7 +1133,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withAlignByModifier() = with(density) {
         val sizeDp = 40.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
         val firstBaseline1Dp = 20.toDp()
         val firstBaseline2Dp = 30.toDp()
 
@@ -1143,10 +1145,10 @@ class RowColumnTest : LayoutTest() {
                 Container(
                     width = sizeDp,
                     height = sizeDp,
-                    modifier = Modifier.alignBy { it.width }
+                    modifier = Modifier.alignBy { it.measuredWidth }
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1157,7 +1159,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy { 0 }
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1169,7 +1171,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy(TestVerticalLine)
                         .onGloballyPositioned { coordinates ->
                             childSize[2] = coordinates.size
-                            childPosition[2] = coordinates.positionInRoot
+                            childPosition[2] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1181,7 +1183,7 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy(TestVerticalLine)
                         .onGloballyPositioned { coordinates ->
                             childSize[3] = coordinates.size
-                            childPosition[3] = coordinates.positionInRoot
+                            childPosition[3] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1199,7 +1201,7 @@ class RowColumnTest : LayoutTest() {
         assertEquals(IntSize(size, size), childSize[2])
         assertEquals(
             Offset(
-                (size - firstBaseline1Dp.toIntPx()).toFloat(),
+                (size - firstBaseline1Dp.roundToPx()).toFloat(),
                 size.toFloat() * 2
             ),
             childPosition[2]
@@ -1208,7 +1210,7 @@ class RowColumnTest : LayoutTest() {
         assertEquals(IntSize(size, size), childSize[3])
         assertEquals(
             Offset(
-                (size - firstBaseline2Dp.toIntPx()).toFloat(),
+                (size - firstBaseline2Dp.roundToPx()).toFloat(),
                 size.toFloat() * 3
             ),
             childPosition[3]
@@ -1218,9 +1220,9 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withAlignByModifier_andWeight() = with(density) {
         val baselineDp = 30.toDp()
-        val baseline = baselineDp.toIntPx()
+        val baseline = baselineDp.roundToPx()
         val sizeDp = 40.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childSize = arrayOfNulls<IntSize>(2)
@@ -1234,18 +1236,18 @@ class RowColumnTest : LayoutTest() {
                     modifier = Modifier.alignBy(TestVerticalLine)
                         .onGloballyPositioned { coordinates ->
                             childSize[0] = coordinates.size
-                            childPosition[0] = coordinates.positionInRoot
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
                 }
                 Container(
                     width = sizeDp,
-                    modifier = Modifier.alignBy { it.width / 2 }
+                    modifier = Modifier.alignBy { it.measuredWidth / 2 }
                         .weight(1f)
                         .onGloballyPositioned { coordinates ->
                             childSize[1] = coordinates.size
-                            childPosition[1] = coordinates.positionInRoot
+                            childPosition[1] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                 ) {
@@ -1280,14 +1282,14 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1310,18 +1312,18 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            (sizeDp * 3).toIntPx(),
+            (sizeDp * 3).roundToPx(),
             rowSize.width
         )
     }
@@ -1344,19 +1346,19 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(1f),
                         width = sizeDp,
                         height = sizeDp,
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(
                         width = (sizeDp * 2),
                         height = (sizeDp * 2),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1379,14 +1381,14 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1409,18 +1411,18 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            (sizeDp * 2).toIntPx(),
+            (sizeDp * 2).roundToPx(),
             rowSize.height
         )
     }
@@ -1441,19 +1443,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            min(root.width, rowWidthDp.toIntPx()),
+            min(root.width, rowWidthDp.roundToPx()),
             rowSize.width
         )
     }
@@ -1478,12 +1480,12 @@ class RowColumnTest : LayoutTest() {
                             Modifier.weight(1f),
                             width = sizeDp,
                             height = sizeDp,
-                            children = emptyContent()
+                            content = {}
                         )
                         Container(
                             width = sizeDp * 2,
                             height = sizeDp * 2,
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -1491,11 +1493,11 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            min(root.width, rowWidthDp.toIntPx()),
+            min(root.width, rowWidthDp.roundToPx()),
             rowSize.width
         )
     }
@@ -1516,19 +1518,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            rowWidthDp.toIntPx(),
+            rowWidthDp.roundToPx(),
             rowSize.width
         )
     }
@@ -1549,19 +1551,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            min(root.height, rowHeightDp.toIntPx()),
+            min(root.height, rowHeightDp.roundToPx()),
             rowSize.height
         )
     }
@@ -1582,19 +1584,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            rowHeightDp.toIntPx(),
+            rowHeightDp.roundToPx(),
             rowSize.height
         )
     }
@@ -1606,9 +1608,9 @@ class RowColumnTest : LayoutTest() {
     )
     fun testRow_withMinMainAxisSize() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
         val rowWidthDp = 250.toDp()
-        val rowWidth = rowWidthDp.toIntPx()
+        val rowWidth = rowWidthDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         var rowSize: IntSize = IntSize.Zero
@@ -1639,7 +1641,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1661,21 +1663,21 @@ class RowColumnTest : LayoutTest() {
             WithInfiniteConstraints {
                 ConstrainedBox(DpConstraints(minWidth = rowMinWidth)) {
                     Row {
-                        WithConstraints {
+                        BoxWithConstraints {
                             assertEquals(Constraints(), constraints)
-                            FixedSizeLayout(noWeightChildWidth.toIntPx(), 0, mapOf())
+                            FixedSizeLayout(noWeightChildWidth.roundToPx(), 0, mapOf())
                         }
-                        WithConstraints {
+                        BoxWithConstraints {
                             assertEquals(Constraints(), constraints)
-                            FixedSizeLayout(noWeightChildWidth.toIntPx(), 0, mapOf())
+                            FixedSizeLayout(noWeightChildWidth.roundToPx(), 0, mapOf())
                         }
                         Layout({}, Modifier.weight(1f)) { _, constraints ->
                             assertEquals(
-                                rowMinWidth.toIntPx() - noWeightChildWidth.toIntPx() * 2,
+                                rowMinWidth.roundToPx() - noWeightChildWidth.roundToPx() * 2,
                                 constraints.minWidth
                             )
                             assertEquals(
-                                rowMinWidth.toIntPx() - noWeightChildWidth.toIntPx() * 2,
+                                rowMinWidth.roundToPx() - noWeightChildWidth.roundToPx() * 2,
                                 constraints.maxWidth
                             )
                             latch.countDown()
@@ -1706,29 +1708,85 @@ class RowColumnTest : LayoutTest() {
                     )
                 ) {
                     Row {
-                        WithConstraints {
+                        BoxWithConstraints {
                             assertEquals(
                                 Constraints(
-                                    maxWidth = availableWidth.toIntPx(),
-                                    maxHeight = availableHeight.toIntPx()
+                                    maxWidth = availableWidth.roundToPx(),
+                                    maxHeight = availableHeight.roundToPx()
                                 ),
                                 constraints
                             )
-                            FixedSizeLayout(childWidth.toIntPx(), childHeight.toIntPx(), mapOf())
+                            FixedSizeLayout(
+                                childWidth.roundToPx(),
+                                childHeight.roundToPx(),
+                                mapOf()
+                            )
                         }
-                        WithConstraints {
+                        BoxWithConstraints {
                             assertEquals(
                                 Constraints(
-                                    maxWidth = availableWidth.toIntPx() - childWidth.toIntPx(),
-                                    maxHeight = availableHeight.toIntPx()
+                                    maxWidth = availableWidth.roundToPx() - childWidth.roundToPx(),
+                                    maxHeight = availableHeight.roundToPx()
                                 ),
                                 constraints
                             )
-                            FixedSizeLayout(childWidth.toIntPx(), childHeight.toIntPx(), mapOf())
+                            FixedSizeLayout(
+                                childWidth.roundToPx(),
+                                childHeight.roundToPx(),
+                                mapOf()
+                            )
                             latch.countDown()
                         }
                     }
                 }
+            }
+        }
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun testRow_doesNotExpand_whenWeightChildrenDoNotFill() = with(density) {
+        val size = 10
+        var rowWidth = 0
+        val latch = CountDownLatch(1)
+        show {
+            Row(
+                Modifier.onGloballyPositioned {
+                    rowWidth = it.size.width
+                    latch.countDown()
+                }
+            ) {
+                Box(Modifier.weight(1f, false).size(size.toDp()))
+            }
+        }
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+        assertEquals(size, rowWidth)
+    }
+
+    @Test
+    fun testRow_includesSpacing_withWeightChildren() = with(density) {
+        val rowWidth = 40
+        val space = 8
+        val latch = CountDownLatch(2)
+        show {
+            Row(
+                modifier = Modifier.widthIn(max = rowWidth.toDp()),
+                horizontalArrangement = Arrangement.spacedBy(space.toDp())
+            ) {
+                Box(
+                    Modifier.weight(1f).onGloballyPositioned {
+                        assertEquals((rowWidth - space) / 2, it.size.width)
+                        assertEquals(0, it.positionInRoot().x.toInt())
+                        latch.countDown()
+                    }
+                )
+                Box(
+                    Modifier.weight(1f).onGloballyPositioned {
+                        assertEquals((rowWidth - space) / 2, it.size.width)
+                        assertEquals((rowWidth - space) / 2 + space, it.positionInRoot().x.toInt())
+                        latch.countDown()
+                    }
+                )
             }
         }
         assertTrue(latch.await(1, TimeUnit.SECONDS))
@@ -1750,14 +1808,14 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1780,18 +1838,18 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            (sizeDp * 3).toIntPx(),
+            (sizeDp * 3).roundToPx(),
             columnSize.height
         )
     }
@@ -1814,19 +1872,19 @@ class RowColumnTest : LayoutTest() {
                         Modifier.weight(1f),
                         width = sizeDp,
                         height = sizeDp,
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(
                         width = (sizeDp * 2),
                         height = (sizeDp * 2),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1849,14 +1907,14 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -1879,18 +1937,18 @@ class RowColumnTest : LayoutTest() {
                         drawLatch.countDown()
                     }
                 ) {
-                    Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                    Spacer(Modifier.preferredSize(width = (sizeDp * 2), height = (sizeDp * 2)))
+                    Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                    Spacer(Modifier.size(width = (sizeDp * 2), height = (sizeDp * 2)))
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            (sizeDp * 2).toIntPx(),
+            (sizeDp * 2).roundToPx(),
             columnSize.width
         )
     }
@@ -1911,19 +1969,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            min(root.height, columnHeightDp.toIntPx()),
+            min(root.height, columnHeightDp.roundToPx()),
             columnSize.height
         )
     }
@@ -1948,12 +2006,12 @@ class RowColumnTest : LayoutTest() {
                             Modifier.weight(1f),
                             width = sizeDp,
                             height = sizeDp,
-                            children = emptyContent()
+                            content = {}
                         )
                         Container(
                             width = sizeDp * 2,
                             height = sizeDp * 2,
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -1961,11 +2019,11 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            min(root.height, columnHeightDp.toIntPx()),
+            min(root.height, columnHeightDp.roundToPx()),
             columnSize.height
         )
     }
@@ -1986,19 +2044,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            columnHeightDp.toIntPx(),
+            columnHeightDp.roundToPx(),
             columnSize.height
         )
     }
@@ -2019,19 +2077,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            min(root.width, columnWidthDp.toIntPx()),
+            min(root.width, columnWidthDp.roundToPx()),
             columnSize.width
         )
     }
@@ -2052,19 +2110,19 @@ class RowColumnTest : LayoutTest() {
                             drawLatch.countDown()
                         }
                     ) {
-                        Spacer(Modifier.preferredSize(width = sizeDp, height = sizeDp))
-                        Spacer(Modifier.preferredSize(width = sizeDp * 2, height = sizeDp * 2))
+                        Spacer(Modifier.size(width = sizeDp, height = sizeDp))
+                        Spacer(Modifier.size(width = sizeDp * 2, height = sizeDp * 2))
                     }
                 }
             }
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
-            columnWidthDp.toIntPx(),
+            columnWidthDp.roundToPx(),
             columnSize.width
         )
     }
@@ -2076,9 +2134,9 @@ class RowColumnTest : LayoutTest() {
     )
     fun testColumn_withMinMainAxisSize() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
         val columnHeightDp = 250.toDp()
-        val columnHeight = columnHeightDp.toIntPx()
+        val columnHeight = columnHeightDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         var columnSize: IntSize = IntSize.Zero
@@ -2088,7 +2146,7 @@ class RowColumnTest : LayoutTest() {
                 ConstrainedBox(constraints = DpConstraints(minHeight = columnHeightDp)) {
                     // TODO: add maxHeight(Constraints.Infinity) modifier
                     Column(
-                        Modifier.preferredHeightIn(max = Dp.Infinity)
+                        Modifier.heightIn(max = Dp.Infinity)
                             .onGloballyPositioned { coordinates: LayoutCoordinates ->
                                 columnSize = coordinates.size
                                 drawLatch.countDown()
@@ -2110,7 +2168,7 @@ class RowColumnTest : LayoutTest() {
         }
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -2133,21 +2191,31 @@ class RowColumnTest : LayoutTest() {
                 WithInfiniteConstraints {
                     ConstrainedBox(DpConstraints(minHeight = columnMinHeight)) {
                         Column {
-                            WithConstraints {
+                            BoxWithConstraints {
                                 assertEquals(Constraints(), constraints)
-                                FixedSizeLayout(0, noWeightChildHeight.toIntPx(), mapOf())
+                                FixedSizeLayout(
+                                    0,
+                                    noWeightChildHeight.roundToPx(),
+                                    mapOf()
+                                )
                             }
-                            WithConstraints {
+                            BoxWithConstraints {
                                 assertEquals(Constraints(), constraints)
-                                FixedSizeLayout(0, noWeightChildHeight.toIntPx(), mapOf())
+                                FixedSizeLayout(
+                                    0,
+                                    noWeightChildHeight.roundToPx(),
+                                    mapOf()
+                                )
                             }
-                            Layout(emptyContent(), Modifier.weight(1f)) { _, constraints ->
+                            Layout({}, Modifier.weight(1f)) { _, constraints ->
                                 assertEquals(
-                                    columnMinHeight.toIntPx() - noWeightChildHeight.toIntPx() * 2,
+                                    columnMinHeight.roundToPx() -
+                                        noWeightChildHeight.roundToPx() * 2,
                                     constraints.minHeight
                                 )
                                 assertEquals(
-                                    columnMinHeight.toIntPx() - noWeightChildHeight.toIntPx() * 2,
+                                    columnMinHeight.roundToPx() -
+                                        noWeightChildHeight.roundToPx() * 2,
                                     constraints.maxHeight
                                 )
                                 latch.countDown()
@@ -2177,29 +2245,89 @@ class RowColumnTest : LayoutTest() {
                     )
                 ) {
                     Column {
-                        WithConstraints {
+                        BoxWithConstraints {
                             assertEquals(
                                 Constraints(
-                                    maxWidth = availableWidth.toIntPx(),
-                                    maxHeight = availableHeight.toIntPx()
+                                    maxWidth = availableWidth.roundToPx(),
+                                    maxHeight = availableHeight.roundToPx()
                                 ),
                                 constraints
                             )
-                            FixedSizeLayout(childWidth.toIntPx(), childHeight.toIntPx(), mapOf())
+                            FixedSizeLayout(
+                                childWidth.roundToPx(),
+                                childHeight.roundToPx(),
+                                mapOf()
+                            )
                         }
-                        WithConstraints {
+                        BoxWithConstraints {
                             assertEquals(
                                 Constraints(
-                                    maxWidth = availableWidth.toIntPx(),
-                                    maxHeight = availableHeight.toIntPx() - childHeight.toIntPx()
+                                    maxWidth = availableWidth.roundToPx(),
+                                    maxHeight = availableHeight.roundToPx() -
+                                        childHeight.roundToPx()
                                 ),
                                 constraints
                             )
-                            FixedSizeLayout(childWidth.toIntPx(), childHeight.toIntPx(), mapOf())
+                            FixedSizeLayout(
+                                childWidth.roundToPx(),
+                                childHeight.roundToPx(),
+                                mapOf()
+                            )
                             latch.countDown()
                         }
                     }
                 }
+            }
+        }
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun testColumn_doesNotExpand_whenWeightChildrenDoNotFill() = with(density) {
+        val size = 10
+        var columnHeight = 0
+        val latch = CountDownLatch(1)
+        show {
+            Column(
+                Modifier.onGloballyPositioned {
+                    columnHeight = it.size.height
+                    latch.countDown()
+                }
+            ) {
+                Box(Modifier.weight(1f, false).size(size.toDp()))
+            }
+        }
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+        assertEquals(size, columnHeight)
+    }
+
+    @Test
+    fun testColumn_includesSpacing_withWeightChildren() = with(density) {
+        val columnHeight = 40
+        val space = 8
+        val latch = CountDownLatch(2)
+        show {
+            Column(
+                modifier = Modifier.height(columnHeight.toDp()),
+                verticalArrangement = Arrangement.spacedBy(space.toDp())
+            ) {
+                Box(
+                    Modifier.weight(1f).onGloballyPositioned {
+                        assertEquals((columnHeight - space) / 2, it.size.height)
+                        assertEquals(0, it.positionInRoot().y.toInt())
+                        latch.countDown()
+                    }
+                )
+                Box(
+                    Modifier.weight(1f).onGloballyPositioned {
+                        assertEquals((columnHeight - space) / 2, it.size.height)
+                        assertEquals(
+                            (columnHeight - space) / 2 + space,
+                            it.positionInRoot().y.toInt()
+                        )
+                        latch.countDown()
+                    }
+                )
             }
         }
         assertTrue(latch.await(1, TimeUnit.SECONDS))
@@ -2210,7 +2338,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withStartArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2245,7 +2373,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(Offset(0f, 0f), childPosition[0])
@@ -2256,7 +2384,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withEndArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2291,7 +2419,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(Offset((root.width - size.toFloat() * 3), 0f), childPosition[0])
@@ -2302,7 +2430,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withCenterArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2337,7 +2465,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val extraSpace = root.width - size * 3
@@ -2358,7 +2486,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withSpaceEvenlyArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2393,7 +2521,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width - size.toFloat() * 3f) / 4f
@@ -2413,7 +2541,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withSpaceBetweenArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2448,7 +2576,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width - size.toFloat() * 3) / 2
@@ -2466,7 +2594,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_withSpaceAroundArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2501,7 +2629,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width.toFloat() - size * 3) / 3
@@ -2533,14 +2661,14 @@ class RowColumnTest : LayoutTest() {
                     }
                 ) {
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(0f, it.positionInParent.x)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(0f, it.positionInParent().x)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(sizePx + spacePx, it.positionInParent.x)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(sizePx + spacePx, it.positionInParent().x)
                             latch.countDown()
                         }
                     )
@@ -2563,20 +2691,20 @@ class RowColumnTest : LayoutTest() {
             Column {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(space, Alignment.End),
-                    modifier = Modifier.size(rowSize).onGloballyPositioned {
+                    modifier = Modifier.requiredSize(rowSize).onGloballyPositioned {
                         assertEquals(rowSizePx, it.size.width)
                         latch.countDown()
                     }
                 ) {
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(rowSizePx - spacePx - sizePx * 2, it.positionInParent.x)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(rowSizePx - spacePx - sizePx * 2, it.positionInParent().x)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(rowSizePx - sizePx, it.positionInParent.x)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(rowSizePx - sizePx, it.positionInParent().x)
                             latch.countDown()
                         }
                     )
@@ -2599,28 +2727,28 @@ class RowColumnTest : LayoutTest() {
             Column {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(space),
-                    modifier = Modifier.size(rowSize).onGloballyPositioned {
+                    modifier = Modifier.requiredSize(rowSize).onGloballyPositioned {
                         assertEquals(rowSizePx.roundToInt(), it.size.width)
                         latch.countDown()
                     }
                 ) {
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(0f, it.positionInParent.x)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(0f, it.positionInParent().x)
                             assertEquals(sizePx.roundToInt(), it.size.width)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(sizePx + spacePx, it.positionInParent.x)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(sizePx + spacePx, it.positionInParent().x)
                             assertEquals((rowSizePx - spacePx - sizePx).roundToInt(), it.size.width)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(rowSizePx, it.positionInParent.x)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(rowSizePx, it.positionInParent().x)
                             assertEquals(0, it.size.width)
                             latch.countDown()
                         }
@@ -2642,21 +2770,21 @@ class RowColumnTest : LayoutTest() {
             Column {
                 Row(
                     horizontalArrangement = Arrangement.aligned(Alignment.End),
-                    modifier = Modifier.size(rowSize).onGloballyPositioned {
+                    modifier = Modifier.requiredSize(rowSize).onGloballyPositioned {
                         assertEquals(rowSizePx.roundToInt(), it.size.width)
                         latch.countDown()
                     }
                 ) {
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(rowSizePx - sizePx * 2, it.positionInParent.x)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(rowSizePx - sizePx * 2, it.positionInParent().x)
                             assertEquals(sizePx.roundToInt(), it.size.width)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(rowSizePx - sizePx, it.positionInParent.x)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(rowSizePx - sizePx, it.positionInParent().x)
                             assertEquals(sizePx.roundToInt(), it.size.width)
                             latch.countDown()
                         }
@@ -2672,7 +2800,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withTopArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2706,7 +2834,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(Offset(0f, 0f), childPosition[0])
@@ -2717,7 +2845,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withBottomArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2752,7 +2880,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(Offset(0f, (root.height - size.toFloat() * 3)), childPosition[0])
@@ -2763,7 +2891,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withCenterArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2798,7 +2926,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val extraSpace = root.height - size * 3f
@@ -2822,7 +2950,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withSpaceEvenlyArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2857,7 +2985,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.height - size.toFloat() * 3) / 4
@@ -2879,14 +3007,14 @@ class RowColumnTest : LayoutTest() {
     ) {
         for (i in childPosition.indices) {
             childPosition[i] = parentLayoutCoordinates!!
-                .childToLocal(childLayoutCoordinates[i]!!, Offset(0f, 0f))
+                .localPositionOf(childLayoutCoordinates[i]!!, Offset(0f, 0f))
         }
     }
 
     @Test
     fun testColumn_withSpaceBetweenArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2921,7 +3049,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.height - size.toFloat() * 3f) / 2f
@@ -2939,7 +3067,7 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_withSpaceAroundArrangement() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(4)
         val childPosition = arrayOf(
@@ -2974,7 +3102,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.height - size.toFloat() * 3f) / 3f
@@ -3006,14 +3134,14 @@ class RowColumnTest : LayoutTest() {
                     }
                 ) {
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(0f, it.positionInParent.x)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(0f, it.positionInParent().x)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(sizePx + spacePx, it.positionInParent.y)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(sizePx + spacePx, it.positionInParent().y)
                             latch.countDown()
                         }
                     )
@@ -3036,20 +3164,22 @@ class RowColumnTest : LayoutTest() {
             Row {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(space, Alignment.Bottom),
-                    modifier = Modifier.size(columnSize).onGloballyPositioned {
+                    modifier = Modifier.requiredSize(columnSize).onGloballyPositioned {
                         assertEquals(columnSizePx, it.size.height)
                         latch.countDown()
                     }
                 ) {
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(columnSizePx - spacePx - sizePx * 2, it.positionInParent.y)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(
+                                columnSizePx - spacePx - sizePx * 2, it.positionInParent().y
+                            )
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(columnSizePx - sizePx, it.positionInParent.y)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(columnSizePx - sizePx, it.positionInParent().y)
                             latch.countDown()
                         }
                     )
@@ -3072,21 +3202,21 @@ class RowColumnTest : LayoutTest() {
             Row {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(space),
-                    modifier = Modifier.size(columnSize).onGloballyPositioned {
+                    modifier = Modifier.requiredSize(columnSize).onGloballyPositioned {
                         assertEquals(columnSizePx.roundToInt(), it.size.height)
                         latch.countDown()
                     }
                 ) {
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(0f, it.positionInParent.y)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(0f, it.positionInParent().y)
                             assertEquals(sizePx.roundToInt(), it.size.height)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(sizePx + spacePx, it.positionInParent.y)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(sizePx + spacePx, it.positionInParent().y)
                             assertEquals(
                                 (columnSizePx - spacePx - sizePx).roundToInt(), it.size.height
                             )
@@ -3094,8 +3224,8 @@ class RowColumnTest : LayoutTest() {
                         }
                     )
                     Box(
-                        Modifier.preferredSize(size).onGloballyPositioned {
-                            assertEquals(columnSizePx, it.positionInParent.y)
+                        Modifier.size(size).onGloballyPositioned {
+                            assertEquals(columnSizePx, it.positionInParent().y)
                             assertEquals(0, it.size.height)
                             latch.countDown()
                         }
@@ -3117,20 +3247,20 @@ class RowColumnTest : LayoutTest() {
             Row {
                 Column(
                     verticalArrangement = Arrangement.aligned(Alignment.Bottom),
-                    modifier = Modifier.size(columnSize).onGloballyPositioned {
+                    modifier = Modifier.requiredSize(columnSize).onGloballyPositioned {
                         assertEquals(columnSizePx, it.size.height)
                         latch.countDown()
                     }
                 ) {
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(columnSizePx - sizePx * 2, it.positionInParent.y)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(columnSizePx - sizePx * 2, it.positionInParent().y)
                             latch.countDown()
                         }
                     )
                     Box(
-                        Modifier.size(size).onGloballyPositioned {
-                            assertEquals(columnSizePx - sizePx, it.positionInParent.y)
+                        Modifier.requiredSize(size).onGloballyPositioned {
+                            assertEquals(columnSizePx - sizePx, it.positionInParent().y)
                             latch.countDown()
                         }
                     )
@@ -3144,7 +3274,7 @@ class RowColumnTest : LayoutTest() {
     fun testRow_doesNotUseMinConstraintsOnChildren() = with(density) {
         val sizeDp = 50.toDp()
         val childSizeDp = 30.toDp()
-        val childSize = childSizeDp.toIntPx()
+        val childSize = childSizeDp.roundToPx()
 
         val layoutLatch = CountDownLatch(1)
         val containerSize = Ref<IntSize>()
@@ -3155,7 +3285,7 @@ class RowColumnTest : LayoutTest() {
                 ) {
                     Row {
                         Spacer(
-                            Modifier.preferredSize(width = childSizeDp, height = childSizeDp)
+                            Modifier.size(width = childSizeDp, height = childSizeDp)
                                 .onGloballyPositioned { coordinates ->
                                     containerSize.value = coordinates.size
                                     layoutLatch.countDown()
@@ -3174,7 +3304,7 @@ class RowColumnTest : LayoutTest() {
     fun testColumn_doesNotUseMinConstraintsOnChildren() = with(density) {
         val sizeDp = 50.toDp()
         val childSizeDp = 30.toDp()
-        val childSize = childSizeDp.toIntPx()
+        val childSize = childSizeDp.roundToPx()
 
         val layoutLatch = CountDownLatch(1)
         val containerSize = Ref<IntSize>()
@@ -3185,7 +3315,7 @@ class RowColumnTest : LayoutTest() {
                 ) {
                     Column {
                         Spacer(
-                            Modifier.preferredSize(width = childSizeDp, height = childSizeDp).then(
+                            Modifier.size(width = childSizeDp, height = childSizeDp).then(
                                 Modifier.onGloballyPositioned { coordinates ->
                                     containerSize.value = coordinates.size
                                     layoutLatch.countDown()
@@ -3208,19 +3338,19 @@ class RowColumnTest : LayoutTest() {
         testIntrinsics(
             @Composable {
                 Row {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Row(Modifier.fillMaxWidth()) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3229,12 +3359,12 @@ class RowColumnTest : LayoutTest() {
                     Container(
                         Modifier.aspectRatio(2f)
                             .align(Alignment.Top),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3242,21 +3372,21 @@ class RowColumnTest : LayoutTest() {
                 Row {
                     Container(
                         Modifier.aspectRatio(2f).alignBy(FirstBaseline),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        Modifier.alignBy { it.width },
-                        children = emptyContent()
+                        Modifier.alignBy { it.measuredWidth },
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3264,12 +3394,12 @@ class RowColumnTest : LayoutTest() {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     Container(
                         Modifier.align(Alignment.CenterVertically).aspectRatio(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3277,66 +3407,66 @@ class RowColumnTest : LayoutTest() {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     Container(
                         Modifier.align(Alignment.Bottom).aspectRatio(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.align(Alignment.Bottom),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                    Container(Modifier.fillMaxHeight().aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.fillMaxHeight().aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.fillMaxHeight(),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
         ) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
             // Min width.
-            assertEquals(50.toDp().toIntPx(), minIntrinsicWidth(0.toDp().toIntPx()))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicWidth(0.toDp().roundToPx()))
             assertEquals(
-                25.toDp().toIntPx() * 2 + 50.toDp().toIntPx(),
-                minIntrinsicWidth(25.toDp().toIntPx())
+                25.toDp().roundToPx() * 2 + 50.toDp().roundToPx(),
+                minIntrinsicWidth(25.toDp().roundToPx())
             )
-            assertEquals(50.toDp().toIntPx(), minIntrinsicWidth(Constraints.Infinity))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicWidth(Constraints.Infinity))
             // Min height.
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(0.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(70.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(0.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(70.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(Constraints.Infinity))
             // Max width.
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicWidth(0.toDp().toIntPx()))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicWidth(0.toDp().roundToPx()))
             assertEquals(
-                25.toDp().toIntPx() * 2 + 50.toDp().toIntPx(),
-                maxIntrinsicWidth(25.toDp().toIntPx())
+                25.toDp().roundToPx() * 2 + 50.toDp().roundToPx(),
+                maxIntrinsicWidth(25.toDp().roundToPx())
             )
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicWidth(Constraints.Infinity))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicWidth(Constraints.Infinity))
             // Max height.
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(0.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(70.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(0.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(70.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(Constraints.Infinity))
         }
     }
 
@@ -3348,17 +3478,17 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
                         Modifier.weight(3f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 40.toDp()),
                         Modifier.weight(2f),
-                        children = emptyContent()
+                        content = {}
                     )
-                    Container(Modifier.aspectRatio(2f).weight(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f).weight(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3367,18 +3497,18 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
                         Modifier.weight(3f).align(Alignment.Top),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 40.toDp()),
                         Modifier.weight(2f).align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
-                    Container(Modifier.aspectRatio(2f).weight(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f).weight(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
                         Modifier.align(Alignment.Bottom),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3387,17 +3517,17 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
                         Modifier.weight(3f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 40.toDp()),
                         Modifier.weight(2f),
-                        children = emptyContent()
+                        content = {}
                     )
-                    Container(Modifier.aspectRatio(2f).weight(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f).weight(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3406,21 +3536,21 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(20.toDp(), 30.toDp()),
                         modifier = Modifier.weight(3f).align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(30.toDp(), 40.toDp()),
                         modifier = Modifier.weight(2f).align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(
                         Modifier.aspectRatio(2f).weight(2f).align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(20.toDp(), 30.toDp()),
                         modifier = Modifier.align(Alignment.CenterVertically),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3429,21 +3559,21 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(20.toDp(), 30.toDp()),
                         modifier = Modifier.weight(3f).align(Alignment.Bottom),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(30.toDp(), 40.toDp()),
                         modifier = Modifier.weight(2f).align(Alignment.Bottom),
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(
                         Modifier.aspectRatio(2f).weight(2f).align(Alignment.Bottom),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(20.toDp(), 30.toDp()),
                         modifier = Modifier.align(Alignment.Bottom),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3452,21 +3582,21 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(20.toDp(), 30.toDp()),
                         modifier = Modifier.weight(3f).fillMaxHeight(),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(30.toDp(), 40.toDp()),
                         modifier = Modifier.weight(2f).fillMaxHeight(),
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(
                         Modifier.aspectRatio(2f).weight(2f).fillMaxHeight(),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         constraints = DpConstraints.fixed(20.toDp(), 30.toDp()),
                         modifier = Modifier.fillMaxHeight(),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3475,17 +3605,17 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
                         Modifier.weight(3f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 40.toDp()),
                         Modifier.weight(2f),
-                        children = emptyContent()
+                        content = {}
                     )
-                    Container(Modifier.aspectRatio(2f).weight(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f).weight(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3494,65 +3624,83 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
                         Modifier.weight(3f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 40.toDp()),
                         Modifier.weight(2f),
-                        children = emptyContent()
+                        content = {}
                     )
-                    Container(Modifier.aspectRatio(2f).weight(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f).weight(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(20.toDp(), 30.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
         ) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
             // Min width.
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 minIntrinsicWidth(0)
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
-                minIntrinsicWidth(10.toDp().toIntPx())
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
+                minIntrinsicWidth(10.toDp().roundToPx())
             )
             assertEquals(
-                25.toDp().toIntPx() * 2 / 2 * 7 + 20.toDp().toIntPx(),
-                minIntrinsicWidth(25.toDp().toIntPx())
+                25.toDp().roundToPx() * 2 / 2 * 7 + 20.toDp().roundToPx(),
+                minIntrinsicWidth(25.toDp().roundToPx())
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 minIntrinsicWidth(Constraints.Infinity)
             )
             // Min height.
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(0.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(125.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), minIntrinsicHeight(370.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(0.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(125.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicHeight(370.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(Constraints.Infinity))
             // Max width.
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 maxIntrinsicWidth(0)
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
-                maxIntrinsicWidth(10.toDp().toIntPx())
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
+                maxIntrinsicWidth(10.toDp().roundToPx())
             )
             assertEquals(
-                25.toDp().toIntPx() * 2 / 2 * 7 + 20.toDp().toIntPx(),
-                maxIntrinsicWidth(25.toDp().toIntPx())
+                25.toDp().roundToPx() * 2 / 2 * 7 + 20.toDp().roundToPx(),
+                maxIntrinsicWidth(25.toDp().roundToPx())
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 maxIntrinsicWidth(Constraints.Infinity)
             )
             // Max height.
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(0.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(125.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicHeight(370.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(0.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(125.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicHeight(370.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(Constraints.Infinity))
+        }
+    }
+
+    @Test
+    fun testRow_withArrangementSpacing() = with(density) {
+        val spacing = 5
+        val childSize = 10
+        testIntrinsics(
+            @Composable {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.toDp())) {
+                    Box(Modifier.size(childSize.toDp()))
+                    Box(Modifier.size(childSize.toDp()))
+                    Box(Modifier.size(childSize.toDp()))
+                }
+            }
+        ) { minIntrinsicWidth, _, maxIntrinsicWidth, _ ->
+            assertEquals(childSize * 3 + 2 * spacing, minIntrinsicWidth(Constraints.Infinity))
+            assertEquals(childSize * 3 + 2 * spacing, maxIntrinsicWidth(Constraints.Infinity))
         }
     }
 
@@ -3561,10 +3709,10 @@ class RowColumnTest : LayoutTest() {
         testIntrinsics(
             @Composable {
                 Column {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3572,12 +3720,12 @@ class RowColumnTest : LayoutTest() {
                 Column {
                     Container(
                         Modifier.aspectRatio(2f).align(Alignment.Start),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.align(Alignment.End),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3585,30 +3733,30 @@ class RowColumnTest : LayoutTest() {
                 Column {
                     Container(
                         Modifier.aspectRatio(2f).alignBy { 0 },
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.alignBy(TestVerticalLine),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Column(Modifier.fillMaxHeight()) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.Top) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3616,11 +3764,11 @@ class RowColumnTest : LayoutTest() {
                 Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.Center) {
                     Container(
                         Modifier.align(Alignment.CenterHorizontally).aspectRatio(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3628,31 +3776,31 @@ class RowColumnTest : LayoutTest() {
                 Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.Bottom) {
                     Container(
                         Modifier.align(Alignment.End).aspectRatio(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.align(Alignment.End),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceAround) {
-                    Container(Modifier.fillMaxWidth().aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.fillMaxWidth().aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
                         Modifier.fillMaxWidth(),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
             @Composable {
                 Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
-                    Container(Modifier.aspectRatio(2f), children = emptyContent())
+                    Container(Modifier.aspectRatio(2f), content = {})
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3660,37 +3808,37 @@ class RowColumnTest : LayoutTest() {
                 Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) {
                     Container(
                         Modifier.aspectRatio(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(50.toDp(), 40.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
         ) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
             // Min width.
-            assertEquals(50.toDp().toIntPx(), minIntrinsicWidth(0.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), minIntrinsicWidth(25.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), minIntrinsicWidth(Constraints.Infinity))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicWidth(0.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicWidth(25.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicWidth(Constraints.Infinity))
             // Min height.
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(0.toDp().toIntPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(0.toDp().roundToPx()))
             assertEquals(
-                50.toDp().toIntPx() / 2 + 40.toDp().toIntPx(),
-                minIntrinsicHeight(50.toDp().toIntPx())
+                50.toDp().roundToPx() / 2 + 40.toDp().roundToPx(),
+                minIntrinsicHeight(50.toDp().roundToPx())
             )
-            assertEquals(40.toDp().toIntPx(), minIntrinsicHeight(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicHeight(Constraints.Infinity))
             // Max width.
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicWidth(0.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicWidth(25.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicWidth(Constraints.Infinity))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicWidth(0.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicWidth(25.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicWidth(Constraints.Infinity))
             // Max height.
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(0.toDp().toIntPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(0.toDp().roundToPx()))
             assertEquals(
-                50.toDp().toIntPx() / 2 + 40.toDp().toIntPx(),
-                maxIntrinsicHeight(50.toDp().toIntPx())
+                50.toDp().roundToPx() / 2 + 40.toDp().roundToPx(),
+                maxIntrinsicHeight(50.toDp().roundToPx())
             )
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicHeight(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicHeight(Constraints.Infinity))
         }
     }
 
@@ -3702,20 +3850,20 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 20.toDp()),
                         Modifier.weight(3f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(40.toDp(), 30.toDp()),
                         Modifier.weight(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(
                         Modifier.aspectRatio(0.5f).weight(2f),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 20.toDp()),
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             },
@@ -3724,12 +3872,12 @@ class RowColumnTest : LayoutTest() {
                     ConstrainedBox(
                         DpConstraints.fixed(30.toDp(), 20.toDp()),
                         Modifier.weight(3f).align(Alignment.Start),
-                        children = emptyContent()
+                        content = {}
                     )
                     ConstrainedBox(
                         DpConstraints.fixed(40.toDp(), 30.toDp()),
                         Modifier.weight(2f).align(Alignment.CenterHorizontally),
-                        children = emptyContent()
+                        content = {}
                     )
                     Container(Modifier.aspectRatio(0.5f).weight(2f)) { }
                     ConstrainedBox(
@@ -3839,49 +3987,67 @@ class RowColumnTest : LayoutTest() {
             }
         ) { minIntrinsicWidth, minIntrinsicHeight, maxIntrinsicWidth, maxIntrinsicHeight ->
             // Min width.
-            assertEquals(40.toDp().toIntPx(), minIntrinsicWidth(0.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), minIntrinsicWidth(125.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), minIntrinsicWidth(370.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), minIntrinsicWidth(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicWidth(0.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicWidth(125.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), minIntrinsicWidth(370.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), minIntrinsicWidth(Constraints.Infinity))
             // Min height.
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 minIntrinsicHeight(0)
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
-                minIntrinsicHeight(10.toDp().toIntPx())
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
+                minIntrinsicHeight(10.toDp().roundToPx())
             )
             assertEquals(
-                25.toDp().toIntPx() * 2 / 2 * 7 + 20.toDp().toIntPx(),
-                minIntrinsicHeight(25.toDp().toIntPx())
+                25.toDp().roundToPx() * 2 / 2 * 7 + 20.toDp().roundToPx(),
+                minIntrinsicHeight(25.toDp().roundToPx())
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 minIntrinsicHeight(Constraints.Infinity)
             )
             // Max width.
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicWidth(0.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicWidth(125.toDp().toIntPx()))
-            assertEquals(50.toDp().toIntPx(), maxIntrinsicWidth(370.toDp().toIntPx()))
-            assertEquals(40.toDp().toIntPx(), maxIntrinsicWidth(Constraints.Infinity))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicWidth(0.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicWidth(125.toDp().roundToPx()))
+            assertEquals(50.toDp().roundToPx(), maxIntrinsicWidth(370.toDp().roundToPx()))
+            assertEquals(40.toDp().roundToPx(), maxIntrinsicWidth(Constraints.Infinity))
             // Max height.
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 maxIntrinsicHeight(0)
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
-                maxIntrinsicHeight(10.toDp().toIntPx())
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
+                maxIntrinsicHeight(10.toDp().roundToPx())
             )
             assertEquals(
-                25.toDp().toIntPx() * 2 / 2 * 7 + 20.toDp().toIntPx(),
-                maxIntrinsicHeight(25.toDp().toIntPx())
+                25.toDp().roundToPx() * 2 / 2 * 7 + 20.toDp().roundToPx(),
+                maxIntrinsicHeight(25.toDp().roundToPx())
             )
             assertEquals(
-                30.toDp().toIntPx() / 2 * 7 + 20.toDp().toIntPx(),
+                30.toDp().roundToPx() / 2 * 7 + 20.toDp().roundToPx(),
                 maxIntrinsicHeight(Constraints.Infinity)
             )
+        }
+    }
+
+    @Test
+    fun testColumn_withArrangementSpacing() = with(density) {
+        val spacing = 5
+        val childSize = 10
+        testIntrinsics(
+            @Composable {
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.toDp())) {
+                    Box(Modifier.size(childSize.toDp()))
+                    Box(Modifier.size(childSize.toDp()))
+                    Box(Modifier.size(childSize.toDp()))
+                }
+            }
+        ) { _, minIntrinsicHeight, _, maxIntrinsicHeight ->
+            assertEquals(childSize * 3 + 2 * spacing, minIntrinsicHeight(Constraints.Infinity))
+            assertEquals(childSize * 3 + 2 * spacing, maxIntrinsicHeight(Constraints.Infinity))
         }
     }
 
@@ -3892,24 +4058,46 @@ class RowColumnTest : LayoutTest() {
 
         val positionedLatch = CountDownLatch(1)
         show {
-            @OptIn(ExperimentalLayout::class)
-            Row(Modifier.width(rowWidth).preferredHeight(IntrinsicSize.Min)) {
+            Row(Modifier.requiredWidth(rowWidth).height(IntrinsicSize.Min)) {
                 Container(
-                    Modifier.width(dividerWidth).fillMaxHeight().onGloballyPositioned {
+                    Modifier.requiredWidth(dividerWidth).fillMaxHeight().onGloballyPositioned {
                         assertEquals(
                             it.size.height,
-                            (rowWidth.toIntPx() - dividerWidth.toIntPx()) / 2
+                            (rowWidth.roundToPx() - dividerWidth.roundToPx()) / 2
                         )
                         positionedLatch.countDown()
                     }
                 ) {}
+                val measurePolicy = object : MeasurePolicy {
+                    override fun MeasureScope.measure(
+                        measurables: List<Measurable>,
+                        constraints: Constraints
+                    ) = layout(constraints.maxWidth, constraints.maxWidth / 2) {}
+
+                    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+                        measurables: List<IntrinsicMeasurable>,
+                        height: Int
+                    ) = rowWidth.roundToPx() / 10
+
+                    override fun IntrinsicMeasureScope.minIntrinsicHeight(
+                        measurables: List<IntrinsicMeasurable>,
+                        width: Int
+                    ) = width / 2
+
+                    override fun IntrinsicMeasureScope.maxIntrinsicWidth(
+                        measurables: List<IntrinsicMeasurable>,
+                        height: Int
+                    ) = rowWidth.roundToPx() * 2
+
+                    override fun IntrinsicMeasureScope.maxIntrinsicHeight(
+                        measurables: List<IntrinsicMeasurable>,
+                        width: Int
+                    ) = width / 2
+                }
                 Layout(
-                    children = {},
-                    minIntrinsicWidthMeasureBlock = { _, _ -> rowWidth.toIntPx() / 10 },
-                    maxIntrinsicWidthMeasureBlock = { _, _ -> rowWidth.toIntPx() * 2 },
-                    minIntrinsicHeightMeasureBlock = { _, w -> w / 2 },
-                    maxIntrinsicHeightMeasureBlock = { _, w -> w / 2 }
-                ) { _, constraints -> layout(constraints.maxWidth, constraints.maxWidth / 2) {} }
+                    content = {},
+                    measurePolicy = measurePolicy
+                )
             }
         }
 
@@ -3923,24 +4111,46 @@ class RowColumnTest : LayoutTest() {
 
         val positionedLatch = CountDownLatch(1)
         show {
-            @OptIn(ExperimentalLayout::class)
-            Column(Modifier.height(columnHeight).preferredWidth(IntrinsicSize.Min)) {
+            Column(Modifier.requiredHeight(columnHeight).width(IntrinsicSize.Min)) {
                 Container(
-                    Modifier.height(dividerHeight).fillMaxWidth().onGloballyPositioned {
+                    Modifier.requiredHeight(dividerHeight).fillMaxWidth().onGloballyPositioned {
                         assertEquals(
                             it.size.width,
-                            (columnHeight.toIntPx() - dividerHeight.toIntPx()) / 2
+                            (columnHeight.roundToPx() - dividerHeight.roundToPx()) / 2
                         )
                         positionedLatch.countDown()
                     }
                 ) {}
+                val measurePolicy = object : MeasurePolicy {
+                    override fun MeasureScope.measure(
+                        measurables: List<Measurable>,
+                        constraints: Constraints
+                    ) = layout(constraints.maxHeight / 2, constraints.maxHeight) {}
+
+                    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+                        measurables: List<IntrinsicMeasurable>,
+                        height: Int
+                    ) = height / 2
+
+                    override fun IntrinsicMeasureScope.minIntrinsicHeight(
+                        measurables: List<IntrinsicMeasurable>,
+                        width: Int
+                    ) = columnHeight.roundToPx() / 10
+
+                    override fun IntrinsicMeasureScope.maxIntrinsicWidth(
+                        measurables: List<IntrinsicMeasurable>,
+                        height: Int
+                    ) = height / 2
+
+                    override fun IntrinsicMeasureScope.maxIntrinsicHeight(
+                        measurables: List<IntrinsicMeasurable>,
+                        width: Int
+                    ) = columnHeight.roundToPx() * 2
+                }
                 Layout(
-                    children = {},
-                    minIntrinsicWidthMeasureBlock = { _, h -> h / 2 },
-                    maxIntrinsicWidthMeasureBlock = { _, h -> h / 2 },
-                    minIntrinsicHeightMeasureBlock = { _, _ -> columnHeight.toIntPx() / 10 },
-                    maxIntrinsicHeightMeasureBlock = { _, _ -> columnHeight.toIntPx() * 2 }
-                ) { _, constraints -> layout(constraints.maxHeight / 2, constraints.maxHeight) {} }
+                    content = {},
+                    measurePolicy = measurePolicy
+                )
             }
         }
 
@@ -3958,7 +4168,7 @@ class RowColumnTest : LayoutTest() {
 
         show {
             Box {
-                Column(Modifier.preferredHeight(columnHeight.toDp())) {
+                Column(Modifier.height(columnHeight.toDp())) {
                     Container(
                         Modifier.weight(2f)
                             .weight(1f)
@@ -3966,9 +4176,9 @@ class RowColumnTest : LayoutTest() {
                                 containerHeight.value = coordinates.size.height
                                 positionedLatch.countDown()
                             },
-                        children = emptyContent()
+                        content = {}
                     )
-                    Container(Modifier.weight(1f), children = emptyContent())
+                    Container(Modifier.weight(1f), content = {})
                 }
             }
         }
@@ -3989,22 +4199,22 @@ class RowColumnTest : LayoutTest() {
         show {
             Row {
                 Container(
-                    modifier = Modifier.alignBy { it.height },
+                    modifier = Modifier.alignBy { it.measuredHeight },
                     width = size,
                     height = size,
-                    children = emptyContent()
+                    content = {}
                 )
                 Container(
                     modifier = Modifier.alignBy { 0 }
-                        .alignBy { it.height / 2 }
+                        .alignBy { it.measuredHeight / 2 }
                         .onGloballyPositioned { coordinates ->
                             containerSize.value = coordinates.size
-                            containerPosition.value = coordinates.positionInRoot
+                            containerPosition.value = coordinates.positionInRoot()
                             positionedLatch.countDown()
                         },
                     width = size,
                     height = size,
-                    children = emptyContent()
+                    content = {}
                 )
             }
         }
@@ -4020,25 +4230,25 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testRow_Rtl_arrangementStart() = with(density) {
         val sizeDp = 35.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childPosition = arrayOf(Offset.Zero, Offset.Zero)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(Modifier.fillMaxWidth()) {
                     Container(
-                        Modifier.preferredSize(sizeDp).onGloballyPositioned { coordinates ->
-                            childPosition[0] = coordinates.positionInRoot
+                        Modifier.size(sizeDp).onGloballyPositioned { coordinates ->
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
                     }
 
                     Container(
-                        Modifier.preferredSize(sizeDp * 2)
+                        Modifier.size(sizeDp * 2)
                             .onGloballyPositioned { coordinates ->
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
@@ -4048,7 +4258,7 @@ class RowColumnTest : LayoutTest() {
         }
 
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootWidth = root.width
 
@@ -4069,7 +4279,7 @@ class RowColumnTest : LayoutTest() {
         val childLayoutCoordinates = arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4087,7 +4297,7 @@ class RowColumnTest : LayoutTest() {
                                 childLayoutCoordinates[i] = coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4097,7 +4307,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val extraSpace = root.width - size * 3
@@ -4125,7 +4335,7 @@ class RowColumnTest : LayoutTest() {
         val childLayoutCoordinates = arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4143,7 +4353,7 @@ class RowColumnTest : LayoutTest() {
                                 childLayoutCoordinates[i] = coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4153,7 +4363,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width - size.toFloat() * 3f) / 4f
@@ -4180,7 +4390,7 @@ class RowColumnTest : LayoutTest() {
         val childLayoutCoordinates = arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4198,7 +4408,7 @@ class RowColumnTest : LayoutTest() {
                                 childLayoutCoordinates[i] = coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4208,7 +4418,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width - size.toFloat() * 3) / 2
@@ -4233,7 +4443,7 @@ class RowColumnTest : LayoutTest() {
         val childLayoutCoordinates = arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4251,7 +4461,7 @@ class RowColumnTest : LayoutTest() {
                                 childLayoutCoordinates[i] = coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4261,7 +4471,7 @@ class RowColumnTest : LayoutTest() {
 
         calculateChildPositions(childPosition, parentLayoutCoordinates, childLayoutCoordinates)
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width.toFloat() - size * 3) / 3
@@ -4283,23 +4493,23 @@ class RowColumnTest : LayoutTest() {
         val drawLatch = CountDownLatch(2)
         val childPosition = arrayOf(Offset.Zero, Offset.Zero)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
                     Container(
-                        Modifier.preferredSize(sizeDp).onGloballyPositioned { coordinates ->
-                            childPosition[0] = coordinates.positionInRoot
+                        Modifier.size(sizeDp).onGloballyPositioned { coordinates ->
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
                     }
 
                     Container(
-                        Modifier.preferredSize(sizeDp * 2)
+                        Modifier.size(sizeDp * 2)
                             .onGloballyPositioned { coordinates ->
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
@@ -4330,24 +4540,24 @@ class RowColumnTest : LayoutTest() {
         val rowSize = rowSizePx.toDp()
         val latch = CountDownLatch(3)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Column {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(space, Alignment.End),
-                        modifier = Modifier.size(rowSize).onGloballyPositioned {
+                        modifier = Modifier.requiredSize(rowSize).onGloballyPositioned {
                             assertEquals(rowSizePx, it.size.width)
                             latch.countDown()
                         }
                     ) {
                         Box(
-                            Modifier.size(size).onGloballyPositioned {
-                                assertEquals(sizePx + spacePx, it.positionInParent.x)
+                            Modifier.requiredSize(size).onGloballyPositioned {
+                                assertEquals(sizePx + spacePx, it.positionInParent().x)
                                 latch.countDown()
                             }
                         )
                         Box(
-                            Modifier.size(size).onGloballyPositioned {
-                                assertEquals(0f, it.positionInParent.x)
+                            Modifier.requiredSize(size).onGloballyPositioned {
+                                assertEquals(0f, it.positionInParent().x)
                                 latch.countDown()
                             }
                         )
@@ -4361,25 +4571,25 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_Rtl_gravityStart() = with(density) {
         val sizeDp = 35.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childPosition = arrayOf(Offset.Zero, Offset.Zero)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Column(Modifier.fillMaxWidth()) {
                     Container(
-                        Modifier.preferredSize(sizeDp).onGloballyPositioned { coordinates ->
-                            childPosition[0] = coordinates.positionInRoot
+                        Modifier.size(sizeDp).onGloballyPositioned { coordinates ->
+                            childPosition[0] = coordinates.positionInRoot()
                             drawLatch.countDown()
                         }
                     ) {
                     }
 
                     Container(
-                        Modifier.preferredSize(sizeDp * 2)
+                        Modifier.size(sizeDp * 2)
                             .onGloballyPositioned { coordinates ->
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
@@ -4389,7 +4599,7 @@ class RowColumnTest : LayoutTest() {
         }
 
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootWidth = root.width
 
@@ -4406,28 +4616,28 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_Rtl_gravityEnd() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childPosition = arrayOf(Offset.Zero, Offset.Zero)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Column(Modifier.fillMaxWidth()) {
                     Container(
-                        Modifier.preferredSize(sizeDp)
+                        Modifier.size(sizeDp)
                             .align(Alignment.End)
                             .onGloballyPositioned { coordinates ->
-                                childPosition[0] = coordinates.positionInRoot
+                                childPosition[0] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
                     }
 
                     Container(
-                        Modifier.preferredSize(sizeDp * 2)
+                        Modifier.size(sizeDp * 2)
                             .align(Alignment.End)
                             .onGloballyPositioned { coordinates ->
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
@@ -4445,28 +4655,28 @@ class RowColumnTest : LayoutTest() {
     @Test
     fun testColumn_Rtl_gravityAlignBy() = with(density) {
         val sizeDp = 50.toDp()
-        val size = sizeDp.toIntPx()
+        val size = sizeDp.roundToPx()
 
         val drawLatch = CountDownLatch(2)
         val childPosition = arrayOf(Offset.Zero, Offset.Zero)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Column(Modifier.fillMaxWidth()) {
                     Container(
-                        Modifier.preferredSize(sizeDp)
-                            .alignBy { it.width }
+                        Modifier.size(sizeDp)
+                            .alignBy { it.measuredWidth }
                             .onGloballyPositioned { coordinates ->
-                                childPosition[0] = coordinates.positionInRoot
+                                childPosition[0] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
                     }
 
                     Container(
-                        Modifier.preferredSize(sizeDp)
-                            .alignBy { it.width / 2 }
+                        Modifier.size(sizeDp)
+                            .alignBy { it.measuredHeight / 2 }
                             .onGloballyPositioned { coordinates ->
-                                childPosition[1] = coordinates.positionInRoot
+                                childPosition[1] = coordinates.positionInRoot()
                                 drawLatch.countDown()
                             }
                     ) {
@@ -4476,7 +4686,7 @@ class RowColumnTest : LayoutTest() {
         }
 
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
         val rootWidth = root.width
 
@@ -4513,7 +4723,7 @@ class RowColumnTest : LayoutTest() {
                         parentLayoutCoordinates = coordinates
                         drawLatch.countDown()
                     },
-                horizontalArrangement = AbsoluteArrangement.Left
+                horizontalArrangement = Arrangement.Absolute.Left
             ) {
                 for (i in childPosition.indices) {
                     Container(
@@ -4523,7 +4733,7 @@ class RowColumnTest : LayoutTest() {
                             childLayoutCoordinates[i] = coordinates
                             drawLatch.countDown()
                         },
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
@@ -4536,7 +4746,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(Offset(0f, 0f), childPosition[0])
@@ -4558,7 +4768,7 @@ class RowColumnTest : LayoutTest() {
             arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -4566,7 +4776,7 @@ class RowColumnTest : LayoutTest() {
                             parentLayoutCoordinates = coordinates
                             drawLatch.countDown()
                         },
-                    horizontalArrangement = AbsoluteArrangement.Left
+                    horizontalArrangement = Arrangement.Absolute.Left
                 ) {
                     for (i in childPosition.indices) {
                         Container(
@@ -4577,7 +4787,7 @@ class RowColumnTest : LayoutTest() {
                                     coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4591,7 +4801,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(Offset(0f, 0f), childPosition[0])
@@ -4620,7 +4830,7 @@ class RowColumnTest : LayoutTest() {
                         parentLayoutCoordinates = coordinates
                         drawLatch.countDown()
                     },
-                horizontalArrangement = AbsoluteArrangement.Right
+                horizontalArrangement = Arrangement.Absolute.Right
             ) {
                 for (i in childPosition.indices) {
                     Container(
@@ -4630,7 +4840,7 @@ class RowColumnTest : LayoutTest() {
                             childLayoutCoordinates[i] = coordinates
                             drawLatch.countDown()
                         },
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
@@ -4643,7 +4853,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -4671,7 +4881,7 @@ class RowColumnTest : LayoutTest() {
             arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4679,7 +4889,7 @@ class RowColumnTest : LayoutTest() {
                             parentLayoutCoordinates = coordinates
                             drawLatch.countDown()
                         },
-                    horizontalArrangement = AbsoluteArrangement.Right
+                    horizontalArrangement = Arrangement.Absolute.Right
                 ) {
                     for (i in childPosition.indices) {
                         Container(
@@ -4690,7 +4900,7 @@ class RowColumnTest : LayoutTest() {
                                     coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4704,7 +4914,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         assertEquals(
@@ -4739,7 +4949,7 @@ class RowColumnTest : LayoutTest() {
                         parentLayoutCoordinates = coordinates
                         drawLatch.countDown()
                     },
-                horizontalArrangement = AbsoluteArrangement.Center
+                horizontalArrangement = Arrangement.Absolute.Center
             ) {
                 for (i in 0 until childPosition.size) {
                     Container(
@@ -4749,7 +4959,7 @@ class RowColumnTest : LayoutTest() {
                             childLayoutCoordinates[i] = coordinates
                             drawLatch.countDown()
                         },
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
@@ -4762,7 +4972,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val extraSpace = root.width - size * 3
@@ -4800,7 +5010,7 @@ class RowColumnTest : LayoutTest() {
             arrayOfNulls<LayoutCoordinates?>(childPosition.size)
         var parentLayoutCoordinates: LayoutCoordinates? = null
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4808,7 +5018,7 @@ class RowColumnTest : LayoutTest() {
                             parentLayoutCoordinates = coordinates
                             drawLatch.countDown()
                         },
-                    horizontalArrangement = AbsoluteArrangement.Center
+                    horizontalArrangement = Arrangement.Absolute.Center
                 ) {
                     for (i in 0 until childPosition.size) {
                         Container(
@@ -4819,7 +5029,7 @@ class RowColumnTest : LayoutTest() {
                                     coordinates
                                 drawLatch.countDown()
                             },
-                            children = emptyContent()
+                            content = {}
                         )
                     }
                 }
@@ -4833,7 +5043,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val extraSpace = root.width - size * 3
@@ -4878,7 +5088,7 @@ class RowColumnTest : LayoutTest() {
                         parentLayoutCoordinates = coordinates
                         drawLatch.countDown()
                     },
-                horizontalArrangement = AbsoluteArrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.Absolute.SpaceEvenly
             ) {
                 for (i in childPosition.indices) {
                     Container(
@@ -4888,7 +5098,7 @@ class RowColumnTest : LayoutTest() {
                             childLayoutCoordinates[i] = coordinates
                             drawLatch.countDown()
                         },
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
@@ -4901,7 +5111,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width - size.toFloat() * 3f) / 4f
@@ -4936,7 +5146,7 @@ class RowColumnTest : LayoutTest() {
                 arrayOfNulls<LayoutCoordinates?>(childPosition.size)
             var parentLayoutCoordinates: LayoutCoordinates? = null
             show {
-                Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -4945,7 +5155,7 @@ class RowColumnTest : LayoutTest() {
                                     coordinates
                                 drawLatch.countDown()
                             },
-                        horizontalArrangement = AbsoluteArrangement.SpaceEvenly
+                        horizontalArrangement = Arrangement.Absolute.SpaceEvenly
                     ) {
                         for (i in childPosition.indices) {
                             Container(
@@ -4956,7 +5166,7 @@ class RowColumnTest : LayoutTest() {
                                         coordinates
                                     drawLatch.countDown()
                                 },
-                                children = emptyContent()
+                                content = {}
                             )
                         }
                     }
@@ -4970,7 +5180,7 @@ class RowColumnTest : LayoutTest() {
                 childLayoutCoordinates
             )
 
-            val root = findOwnerView()
+            val root = findComposeView()
             waitForDraw(root)
 
             val gap = (root.width - size.toFloat() * 3f) / 4f
@@ -5012,7 +5222,7 @@ class RowColumnTest : LayoutTest() {
                         parentLayoutCoordinates = coordinates
                         drawLatch.countDown()
                     },
-                horizontalArrangement = AbsoluteArrangement.SpaceBetween
+                horizontalArrangement = Arrangement.Absolute.SpaceBetween
             ) {
                 for (i in childPosition.indices) {
                     Container(
@@ -5022,7 +5232,7 @@ class RowColumnTest : LayoutTest() {
                             childLayoutCoordinates[i] = coordinates
                             drawLatch.countDown()
                         },
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
@@ -5035,7 +5245,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width - size.toFloat() * 3) / 2
@@ -5068,7 +5278,7 @@ class RowColumnTest : LayoutTest() {
                 arrayOfNulls<LayoutCoordinates?>(childPosition.size)
             var parentLayoutCoordinates: LayoutCoordinates? = null
             show {
-                Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5077,7 +5287,7 @@ class RowColumnTest : LayoutTest() {
                                     coordinates
                                 drawLatch.countDown()
                             },
-                        horizontalArrangement = AbsoluteArrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.Absolute.SpaceBetween
                     ) {
                         for (i in childPosition.indices) {
                             Container(
@@ -5088,7 +5298,7 @@ class RowColumnTest : LayoutTest() {
                                         coordinates
                                     drawLatch.countDown()
                                 },
-                                children = emptyContent()
+                                content = {}
                             )
                         }
                     }
@@ -5102,7 +5312,7 @@ class RowColumnTest : LayoutTest() {
                 childLayoutCoordinates
             )
 
-            val root = findOwnerView()
+            val root = findComposeView()
             waitForDraw(root)
 
             val gap = (root.width - size.toFloat() * 3) / 2
@@ -5141,7 +5351,7 @@ class RowColumnTest : LayoutTest() {
                         parentLayoutCoordinates = coordinates
                         drawLatch.countDown()
                     },
-                horizontalArrangement = AbsoluteArrangement.SpaceAround
+                horizontalArrangement = Arrangement.Absolute.SpaceAround
             ) {
                 for (i in 0 until childPosition.size) {
                     Container(
@@ -5151,7 +5361,7 @@ class RowColumnTest : LayoutTest() {
                             childLayoutCoordinates[i] = coordinates
                             drawLatch.countDown()
                         },
-                        children = emptyContent()
+                        content = {}
                     )
                 }
             }
@@ -5164,7 +5374,7 @@ class RowColumnTest : LayoutTest() {
             childLayoutCoordinates
         )
 
-        val root = findOwnerView()
+        val root = findComposeView()
         waitForDraw(root)
 
         val gap = (root.width.toFloat() - size * 3) / 3
@@ -5200,7 +5410,7 @@ class RowColumnTest : LayoutTest() {
                 arrayOfNulls<LayoutCoordinates?>(childPosition.size)
             var parentLayoutCoordinates: LayoutCoordinates? = null
             show {
-                Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5209,7 +5419,7 @@ class RowColumnTest : LayoutTest() {
                                     coordinates
                                 drawLatch.countDown()
                             },
-                        horizontalArrangement = AbsoluteArrangement.SpaceAround
+                        horizontalArrangement = Arrangement.Absolute.SpaceAround
                     ) {
                         for (i in 0 until childPosition.size) {
                             Container(
@@ -5220,7 +5430,7 @@ class RowColumnTest : LayoutTest() {
                                         coordinates
                                     drawLatch.countDown()
                                 },
-                                children = emptyContent()
+                                content = {}
                             )
                         }
                     }
@@ -5234,7 +5444,7 @@ class RowColumnTest : LayoutTest() {
                 childLayoutCoordinates
             )
 
-            val root = findOwnerView()
+            val root = findComposeView()
             waitForDraw(root)
 
             val gap = (root.width.toFloat() - size * 3) / 3
@@ -5271,24 +5481,24 @@ class RowColumnTest : LayoutTest() {
         val rowSize = rowSizePx.toDp()
         val latch = CountDownLatch(3)
         show {
-            Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 Column {
                     Row(
-                        horizontalArrangement = AbsoluteArrangement.spacedBy(space, Alignment.End),
-                        modifier = Modifier.size(rowSize).onGloballyPositioned {
+                        horizontalArrangement = Arrangement.Absolute.spacedBy(space, Alignment.End),
+                        modifier = Modifier.requiredSize(rowSize).onGloballyPositioned {
                             assertEquals(rowSizePx, it.size.width)
                             latch.countDown()
                         }
                     ) {
                         Box(
-                            Modifier.size(size).onGloballyPositioned {
-                                assertEquals(0f, it.positionInParent.x)
+                            Modifier.requiredSize(size).onGloballyPositioned {
+                                assertEquals(0f, it.positionInParent().x)
                                 latch.countDown()
                             }
                         )
                         Box(
-                            Modifier.size(size).onGloballyPositioned {
-                                assertEquals(sizePx + spacePx, it.positionInParent.x)
+                            Modifier.requiredSize(size).onGloballyPositioned {
+                                assertEquals(sizePx + spacePx, it.positionInParent().x)
                                 latch.countDown()
                             }
                         )
@@ -5303,7 +5513,7 @@ class RowColumnTest : LayoutTest() {
     // region InspectableValue tests for Row and Column
     @Test
     fun testRow_AlignInspectableValue() {
-        val modifier = with(object : RowScope {}) { Modifier.align(Alignment.Bottom) }
+        val modifier = with(RowScopeInstance) { Modifier.align(Alignment.Bottom) }
             as InspectableValue
         Truth.assertThat(modifier.nameFallback).isEqualTo("align")
         Truth.assertThat(modifier.valueOverride).isEqualTo(Alignment.Bottom)
@@ -5312,7 +5522,7 @@ class RowColumnTest : LayoutTest() {
 
     @Test
     fun testRow_AlignByInspectableValue() {
-        val modifier = with(object : RowScope {}) { Modifier.alignBy(FirstBaseline) }
+        val modifier = with(RowScopeInstance) { Modifier.alignBy(FirstBaseline) }
             as InspectableValue
         Truth.assertThat(modifier.nameFallback).isEqualTo("alignBy")
         Truth.assertThat(modifier.valueOverride).isEqualTo(FirstBaseline)
@@ -5321,7 +5531,7 @@ class RowColumnTest : LayoutTest() {
 
     @Test
     fun testRow_WeightInspectableValue() {
-        val modifier = with(object : RowScope {}) { Modifier.weight(2.0f, false) }
+        val modifier = with(RowScopeInstance) { Modifier.weight(2.0f, false) }
             as InspectableValue
         Truth.assertThat(modifier.nameFallback).isEqualTo("weight")
         Truth.assertThat(modifier.valueOverride).isEqualTo(2.0f)
@@ -5332,7 +5542,7 @@ class RowColumnTest : LayoutTest() {
     }
     @Test
     fun testColumn_AlignInspectableValue() {
-        val modifier = with(object : ColumnScope {}) { Modifier.align(Alignment.Start) }
+        val modifier = with(ColumnScopeInstance) { Modifier.align(Alignment.Start) }
             as InspectableValue
         Truth.assertThat(modifier.nameFallback).isEqualTo("align")
         Truth.assertThat(modifier.valueOverride).isEqualTo(Alignment.Start)
@@ -5341,7 +5551,7 @@ class RowColumnTest : LayoutTest() {
 
     @Test
     fun testColumn_AlignByInspectableValue() {
-        val modifier = with(object : ColumnScope {}) { Modifier.alignBy(TestVerticalLine) }
+        val modifier = with(ColumnScopeInstance) { Modifier.alignBy(TestVerticalLine) }
             as InspectableValue
         Truth.assertThat(modifier.nameFallback).isEqualTo("alignBy")
         Truth.assertThat(modifier.valueOverride).isEqualTo(TestVerticalLine)
@@ -5350,7 +5560,7 @@ class RowColumnTest : LayoutTest() {
 
     @Test
     fun testColumn_WeightInspectableValue() {
-        val modifier = with(object : ColumnScope {}) { Modifier.weight(2.0f, false) }
+        val modifier = with(ColumnScopeInstance) { Modifier.weight(2.0f, false) }
             as InspectableValue
         Truth.assertThat(modifier.nameFallback).isEqualTo("weight")
         Truth.assertThat(modifier.valueOverride).isEqualTo(2.0f)
@@ -5372,20 +5582,19 @@ private fun BaselineTestLayout(
     baseline: Dp,
     modifier: Modifier,
     horizontalLine: HorizontalAlignmentLine = TestHorizontalLine,
-    children: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
     Layout(
-        children = children,
+        content = content,
         modifier = modifier,
-        measureBlock = { _, constraints ->
-            val widthPx = max(width.toIntPx(), constraints.minWidth)
-            val heightPx =
-                max(height.toIntPx(), constraints.minHeight)
+        measurePolicy = { _, constraints ->
+            val widthPx = max(width.roundToPx(), constraints.minWidth)
+            val heightPx = max(height.roundToPx(), constraints.minHeight)
             layout(
                 widthPx, heightPx,
                 mapOf(
-                    horizontalLine to baseline.toIntPx(),
-                    TestVerticalLine to baseline.toIntPx()
+                    horizontalLine to baseline.roundToPx(),
+                    TestVerticalLine to baseline.roundToPx()
                 )
             ) {}
         }
@@ -5394,8 +5603,8 @@ private fun BaselineTestLayout(
 
 // Center composable function is deprected whereas FlexTest tests heavily depend on it.
 @Composable
-private fun Center(children: @Composable () -> Unit) {
-    Layout(children) { measurables, constraints ->
+private fun Center(content: @Composable () -> Unit) {
+    Layout(content) { measurables, constraints ->
         val measurable = measurables.firstOrNull()
         // The child cannot be larger than our max constraints, but we ignore min constraints.
         val placeable = measurable?.measure(
@@ -5421,10 +5630,9 @@ private fun Center(children: @Composable () -> Unit) {
         layout(layoutWidth, layoutHeight) {
             if (placeable != null) {
                 val position = Alignment.Center.align(
-                    IntSize(
-                        layoutWidth - placeable.width,
-                        layoutHeight - placeable.height
-                    )
+                    IntSize(placeable.width, placeable.height),
+                    IntSize(layoutWidth, layoutHeight),
+                    layoutDirection
                 )
                 placeable.placeRelative(position.x, position.y)
             }

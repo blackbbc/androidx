@@ -17,26 +17,26 @@
 package androidx.compose.ui.input.pointer
 
 import android.os.Build
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.preferredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.emptyContent
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.TransformOrigin
-import androidx.compose.ui.drawBehind
-import androidx.compose.ui.drawLayer
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.gesture.pressIndicatorGestureFilter
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.down
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -87,31 +87,39 @@ class LayerTouchTransformTest {
 
             val latchDrawModifier = Modifier.drawBehind { latch?.countDown() }
 
-            val containerDp = (200.0f / DensityAmbient.current.density).dp
-            val boxDp = (50.0f / DensityAmbient.current.density).dp
+            val containerDp = (200.0f / LocalDensity.current.density).dp
+            val boxDp = (50.0f / LocalDensity.current.density).dp
 
-            val offsetX = (270.0f / DensityAmbient.current.density).dp
-            val offsetY = (120.0f / DensityAmbient.current.density).dp
+            val offsetX = (270.0f / LocalDensity.current.density).dp
+            val offsetY = (120.0f / LocalDensity.current.density).dp
             Box(Modifier.testTag(testTag)) {
                 SimpleLayout(
                     modifier = Modifier.fillMaxSize().offset(offsetX, offsetY)
                 ) {
-                    SimpleLayout(modifier = background.then(Modifier.preferredSize(containerDp))) {
+                    SimpleLayout(modifier = background.then(Modifier.size(containerDp))) {
                         SimpleLayout(
                             modifier = Modifier
-                                .drawLayer(
+                                .graphicsLayer(
+                                    scaleX = 2.0f,
+                                    scaleY = 0.5f,
                                     translationX = 50.0f,
                                     translationY = 30.0f,
                                     rotationZ = 45.0f,
-                                    scaleX = 2.0f,
-                                    scaleY = 0.5f,
                                     transformOrigin = TransformOrigin(1.0f, 1.0f)
                                 ).drawBehind {
                                     drawRect(color)
                                 }
                                 .then(latchDrawModifier)
-                                .preferredSize(boxDp)
-                                .pressIndicatorGestureFilter(onStart, onStop, onStop)
+                                .size(boxDp)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onPress = {
+                                            onStart.invoke(it)
+                                            val success = tryAwaitRelease()
+                                            if (success) onStop.invoke() else onStop.invoke()
+                                        }
+                                    )
+                                }
                         )
                     }
                 }
@@ -129,7 +137,7 @@ class LayerTouchTransformTest {
             await(5, TimeUnit.SECONDS)
         }
 
-        node.captureToBitmap().apply {
+        node.captureToImage().asAndroidBitmap().apply {
             Assert.assertEquals(
                 Color.Red.toArgb(),
                 getPixel(
@@ -142,9 +150,9 @@ class LayerTouchTransformTest {
 }
 
 @Composable
-fun SimpleLayout(modifier: Modifier, children: @Composable () -> Unit = emptyContent()) {
+fun SimpleLayout(modifier: Modifier, content: @Composable () -> Unit = {}) {
     Layout(
-        children,
+        content,
         modifier
     ) { measurables, constraints ->
         val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)

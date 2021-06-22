@@ -39,16 +39,18 @@ private const val WORK_MANAGER_INSPECTOR_ID = "androidx.work.inspection"
 class WorkManagerInspectorTestEnvironment : ExternalResource() {
     private lateinit var inspectorTester: InspectorTester
     private lateinit var artTooling: FakeArtTooling
+    private lateinit var application: InspectorApp
     private val job = Job()
     lateinit var workManager: WorkManager
         private set
 
     override fun before() {
         artTooling = FakeArtTooling()
-        val application = InstrumentationRegistry
+        application = InstrumentationRegistry
             .getInstrumentation()
-            .targetContext
-            .applicationContext as Application
+            .context
+            .applicationContext as InspectorApp
+
         workManager = WorkManager.getInstance(application)
 
         registerApplication(application)
@@ -65,11 +67,15 @@ class WorkManagerInspectorTestEnvironment : ExternalResource() {
 
     override fun after() {
         runBlocking {
+            // first let's stop inspector
+            application.executor.runAllCommands()
+            inspectorTester.dispose()
+            job.cancelAndJoin()
+            // then clear workmanager. Reverse order
+            // will trigger unnecessary events and work in inspector
             workManager.cancelAllWork().await()
             workManager.pruneWork().await()
-            job.cancelAndJoin()
         }
-        inspectorTester.dispose()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

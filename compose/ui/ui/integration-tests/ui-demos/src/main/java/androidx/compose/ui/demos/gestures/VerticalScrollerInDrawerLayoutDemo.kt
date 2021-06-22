@@ -16,42 +16,40 @@
 
 package androidx.compose.ui.demos.gestures
 
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offsetPx
-import androidx.compose.foundation.layout.preferredHeight
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ContentDrawScope
-import androidx.compose.ui.DrawModifier
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.gesture.Direction
-import androidx.compose.ui.gesture.ScrollCallback
-import androidx.compose.ui.gesture.doubleTapGestureFilter
-import androidx.compose.ui.gesture.longPressGestureFilter
-import androidx.compose.ui.gesture.pressIndicatorGestureFilter
-import androidx.compose.ui.gesture.scrollGestureFilter
-import androidx.compose.ui.gesture.scrollorientationlocking.Orientation
-import androidx.compose.ui.gesture.tapGestureFilter
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -79,43 +77,33 @@ fun VerticalScrollerInDrawerDemo() {
 }
 
 @Composable
-private fun DrawerLayout(drawerWidth: Dp, children: @Composable ColumnScope.() -> Unit) {
+private fun DrawerLayout(drawerWidth: Dp, content: @Composable ColumnScope.() -> Unit) {
 
     val minOffset =
-        with(DensityAmbient.current) {
+        with(LocalDensity.current) {
             -drawerWidth.toPx()
         }
 
     val currentOffset = remember { mutableStateOf(minOffset) }
     val maxOffset = 0f
 
-    val scrollObserver = object : ScrollCallback {
-        override fun onScroll(scrollDistance: Float): Float {
-            val originalOffset = currentOffset.value
-            currentOffset.value =
-                (currentOffset.value + scrollDistance).coerceIn(minOffset, maxOffset)
-            return currentOffset.value - originalOffset
-        }
-    }
-
-    val canDrag: (Direction) -> Boolean =
-        { direction ->
-            when (direction) {
-                Direction.LEFT -> currentOffset.value > minOffset
-                Direction.RIGHT -> currentOffset.value < 0
-                else -> false
+    Box(
+        Modifier.scrollable(
+            orientation = Orientation.Horizontal,
+            state = rememberScrollableState { scrollDistance ->
+                val originalOffset = currentOffset.value
+                currentOffset.value =
+                    (currentOffset.value + scrollDistance).coerceIn(minOffset, maxOffset)
+                currentOffset.value - originalOffset
             }
-        }
-
-    Box(Modifier.scrollGestureFilter(scrollObserver, Orientation.Horizontal, canDrag)) {
-        Column {
-            children()
-        }
+        )
+    ) {
+        Column(content = content)
         Box(
             Modifier
                 .fillMaxHeight()
-                .width(drawerWidth)
-                .offsetPx(x = currentOffset)
+                .requiredWidth(drawerWidth)
+                .offset { IntOffset(currentOffset.value.roundToInt(), 0) }
                 .background(color = DefaultBackgroundColor)
         ) {
             Text(
@@ -132,47 +120,34 @@ private fun DrawerLayout(drawerWidth: Dp, children: @Composable ColumnScope.() -
  * A very simple ScrollView like implementation that allows for vertical scrolling.
  */
 @Composable
-private fun Scrollable(orientation: Orientation, children: @Composable () -> Unit) {
+private fun Scrollable(orientation: Orientation, content: @Composable () -> Unit) {
     val maxOffset = 0f
     val offset = remember { mutableStateOf(maxOffset) }
     val minOffset = remember { mutableStateOf(0f) }
 
-    val scrollObserver = object : ScrollCallback {
-        override fun onScroll(scrollDistance: Float): Float {
-            val resultingOffset = offset.value + scrollDistance
-            val toConsume =
-                when {
-                    resultingOffset > maxOffset -> {
-                        maxOffset - offset.value
-                    }
-                    resultingOffset < minOffset.value -> {
-                        minOffset.value - offset.value
-                    }
-                    else -> {
-                        scrollDistance
-                    }
-                }
-            offset.value = offset.value + toConsume
-            return toConsume
-        }
-    }
-
-    val canDrag: (Direction) -> Boolean = { direction ->
-        when {
-            direction == Direction.LEFT && offset.value > minOffset.value -> true
-            direction == Direction.UP && offset.value > minOffset.value -> true
-            direction == Direction.RIGHT && offset.value < maxOffset -> true
-            direction == Direction.DOWN && offset.value < maxOffset -> true
-            else -> false
-        }
-    }
-
     Layout(
-        children = children,
-        modifier = Modifier.scrollGestureFilter(scrollObserver, orientation, canDrag).then(
-            ClipModifier
-        ),
-        measureBlock = { measurables, constraints ->
+        content = content,
+        modifier = Modifier.scrollable(
+            orientation = orientation,
+            state = rememberScrollableState { scrollDistance ->
+                val resultingOffset = offset.value + scrollDistance
+                val toConsume =
+                    when {
+                        resultingOffset > maxOffset -> {
+                            maxOffset - offset.value
+                        }
+                        resultingOffset < minOffset.value -> {
+                            minOffset.value - offset.value
+                        }
+                        else -> {
+                            scrollDistance
+                        }
+                    }
+                offset.value = offset.value + toConsume
+                toConsume
+            }
+        ).then(ClipModifier),
+        measurePolicy = { measurables, constraints ->
             val placeable =
                 when (orientation) {
                     Orientation.Horizontal -> measurables.first().measure(
@@ -262,10 +237,22 @@ private fun Pressable(
 
     val gestureDetectors =
         Modifier
-            .pressIndicatorGestureFilter(onPress, onRelease, onRelease)
-            .tapGestureFilter(onTap)
-            .doubleTapGestureFilter(onDoubleTap)
-            .longPressGestureFilter(onLongPress)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        onPress.invoke(it)
+                        val success = tryAwaitRelease()
+                        if (success) onRelease.invoke() else onRelease.invoke()
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = onTap,
+                    onDoubleTap = onDoubleTap,
+                    onLongPress = onLongPress
+                )
+            }
 
     val pressOverlay =
         if (showPressed.value) Modifier.background(color = pressedColor) else Modifier
@@ -273,7 +260,7 @@ private fun Pressable(
     Box(
         Modifier
             .fillMaxWidth()
-            .preferredHeight(height)
+            .height(height)
             .border(1.dp, Color.Black)
             .background(color = color.value)
             .then(pressOverlay).then(gestureDetectors)
@@ -286,10 +273,10 @@ private fun Pressable(
  */
 @Suppress("SameParameterValue")
 @Composable
-private fun RepeatingColumn(repetitions: Int, children: @Composable () -> Unit) {
+private fun RepeatingColumn(repetitions: Int, content: @Composable () -> Unit) {
     Column {
         for (i in 1..repetitions) {
-            children()
+            content()
         }
     }
 }
@@ -300,10 +287,10 @@ private fun RepeatingColumn(repetitions: Int, children: @Composable () -> Unit) 
  */
 @Suppress("SameParameterValue")
 @Composable
-private fun RepeatingRow(repetitions: Int, children: @Composable () -> Unit) {
+private fun RepeatingRow(repetitions: Int, content: @Composable () -> Unit) {
     Row {
         for (i in 1..repetitions) {
-            children()
+            content()
         }
     }
 }

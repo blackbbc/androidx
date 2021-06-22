@@ -16,7 +16,7 @@
 
 package androidx.compose.ui.text
 
-import androidx.compose.ui.text.font.asFontFamily
+import androidx.compose.ui.text.font.toFontFamily
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
@@ -26,7 +26,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class ParagraphPlaceholderIntegrationTest {
-    private val fontFamilyMeasureFont = FontTestData.BASIC_MEASURE_FONT.asFontFamily()
+    private val fontFamilyMeasureFont = FontTestData.BASIC_MEASURE_FONT.toFontFamily()
     private val defaultDensity = Density(density = 1f, fontScale = 1f)
     private val context = InstrumentationRegistry.getInstrumentation().context
 
@@ -504,7 +504,7 @@ class ParagraphPlaceholderIntegrationTest {
 
     private fun simpleParagraph(
         text: String = "",
-        fontSize: TextUnit = TextUnit.Inherit,
+        fontSize: TextUnit = TextUnit.Unspecified,
         spanStyles: List<AnnotatedString.Range<SpanStyle>> = listOf(),
         placeholders: List<AnnotatedString.Range<Placeholder>> = listOf(),
         width: Float = Float.MAX_VALUE,

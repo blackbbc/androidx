@@ -22,7 +22,6 @@ import static androidx.camera.testing.fakes.FakeCameraDeviceSurfaceManager.MAX_O
 import android.graphics.Rect;
 
 import androidx.annotation.NonNull;
-import androidx.camera.core.ExperimentalExposureCompensation;
 import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.FocusMeteringResult;
 import androidx.camera.core.ImageCapture;
@@ -32,6 +31,8 @@ import androidx.camera.core.impl.CameraCaptureFailure;
 import androidx.camera.core.impl.CameraCaptureResult;
 import androidx.camera.core.impl.CameraControlInternal;
 import androidx.camera.core.impl.CaptureConfig;
+import androidx.camera.core.impl.Config;
+import androidx.camera.core.impl.MutableOptionsBundle;
 import androidx.camera.core.impl.SessionConfig;
 import androidx.camera.core.impl.utils.futures.Futures;
 
@@ -52,10 +53,10 @@ public final class FakeCameraControl implements CameraControlInternal {
     private int mFlashMode = FLASH_MODE_OFF;
     private ArrayList<CaptureConfig> mSubmittedCaptureRequests = new ArrayList<>();
     private OnNewCaptureRequestListener mOnNewCaptureRequestListener;
+    private MutableOptionsBundle mInteropConfig = MutableOptionsBundle.create();
 
     public FakeCameraControl(@NonNull ControlUpdateCallback controlUpdateCallback) {
         mControlUpdateCallback = controlUpdateCallback;
-        updateSessionConfig();
     }
 
     /** Notifies all submitted requests onCaptureCancelled */
@@ -134,7 +135,6 @@ public final class FakeCameraControl implements CameraControlInternal {
 
     @NonNull
     @Override
-    @ExperimentalExposureCompensation
     public ListenableFuture<Integer> setExposureCompensationIndex(int exposure) {
         return Futures.immediateFuture(null);
     }
@@ -150,12 +150,14 @@ public final class FakeCameraControl implements CameraControlInternal {
 
     @NonNull
     @Override
-    public Rect getSensorRect() {
-        return new Rect(0, 0, MAX_OUTPUT_SIZE.getWidth(), MAX_OUTPUT_SIZE.getHeight());
+    public SessionConfig getSessionConfig() {
+        return mSessionConfigBuilder.build();
     }
 
-    private void updateSessionConfig() {
-        mControlUpdateCallback.onCameraControlUpdateSessionConfig(mSessionConfigBuilder.build());
+    @NonNull
+    @Override
+    public Rect getSensorRect() {
+        return new Rect(0, 0, MAX_OUTPUT_SIZE.getWidth(), MAX_OUTPUT_SIZE.getHeight());
     }
 
     @NonNull
@@ -186,6 +188,26 @@ public final class FakeCameraControl implements CameraControlInternal {
     @Override
     public ListenableFuture<Void> setLinearZoom(float linearZoom) {
         return Futures.immediateFuture(null);
+    }
+
+    @Override
+    public void addInteropConfig(@NonNull Config config) {
+        for (Config.Option<?> option : config.listOptions()) {
+            @SuppressWarnings("unchecked")
+            Config.Option<Object> objectOpt = (Config.Option<Object>) option;
+            mInteropConfig.insertOption(objectOpt, config.retrieveOption(objectOpt));
+        }
+    }
+
+    @Override
+    public void clearInteropConfig() {
+        mInteropConfig = MutableOptionsBundle.create();
+    }
+
+    @NonNull
+    @Override
+    public Config getInteropConfig() {
+        return mInteropConfig;
     }
 
     /** A listener which are used to notify when there are new submitted capture requests */

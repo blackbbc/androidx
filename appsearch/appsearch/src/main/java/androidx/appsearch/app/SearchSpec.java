@@ -20,10 +20,12 @@ import android.annotation.SuppressLint;
 import android.os.Bundle;
 
 import androidx.annotation.IntDef;
+import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import androidx.annotation.RestrictTo;
 import androidx.appsearch.exceptions.AppSearchException;
 import androidx.appsearch.exceptions.IllegalSearchSpecException;
+import androidx.collection.ArrayMap;
 import androidx.core.util.Preconditions;
 
 import java.lang.annotation.Retention;
@@ -33,6 +35,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * This class represents the specification logic for AppSearch. It can be used to set the type of
@@ -40,6 +44,13 @@ import java.util.List;
  */
 // TODO(sidchhabra) : AddResultSpec fields for Snippets etc.
 public final class SearchSpec {
+    /**
+     * Schema type to be used in {@link SearchSpec.Builder#addProjection} to apply
+     * property paths to all results, excepting any types that have had their own, specific
+     * property paths set.
+     */
+    public static final String PROJECTION_SCHEMA_TYPE_WILDCARD = "*";
+
     static final String TERM_MATCH_TYPE_FIELD = "termMatchType";
     static final String SCHEMA_TYPE_FIELD = "schemaType";
     static final String NAMESPACE_FIELD = "namespace";
@@ -49,12 +60,14 @@ public final class SearchSpec {
     static final String SNIPPET_COUNT_FIELD = "snippetCount";
     static final String SNIPPET_COUNT_PER_PROPERTY_FIELD = "snippetCountPerProperty";
     static final String MAX_SNIPPET_FIELD = "maxSnippet";
+    static final String PROJECTION_TYPE_PROPERTY_PATHS_FIELD = "projectionTypeFieldMasks";
 
     /** @hide */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     public static final int DEFAULT_NUM_PER_PAGE = 10;
 
-    // TODO(b/170371356): In framework, we may want these limits might be flag controlled.
+    // TODO(b/170371356): In framework, we may want these limits to be flag controlled.
+    //  If that happens, the @IntRange() directives in this class may have to change.
     private static final int MAX_NUM_PER_PAGE = 10_000;
     private static final int MAX_SNIPPET_COUNT = 10_000;
     private static final int MAX_SNIPPET_PER_PROPERTY_COUNT = 10_000;
@@ -93,7 +106,8 @@ public final class SearchSpec {
     @IntDef(value = {
             RANKING_STRATEGY_NONE,
             RANKING_STRATEGY_DOCUMENT_SCORE,
-            RANKING_STRATEGY_CREATION_TIMESTAMP
+            RANKING_STRATEGY_CREATION_TIMESTAMP,
+            RANKING_STRATEGY_RELEVANCE_SCORE
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface RankingStrategy {}
@@ -104,6 +118,8 @@ public final class SearchSpec {
     public static final int RANKING_STRATEGY_DOCUMENT_SCORE = 1;
     /** Ranked by document creation timestamps. */
     public static final int RANKING_STRATEGY_CREATION_TIMESTAMP = 2;
+    /** Ranked by document relevance score. */
+    public static final int RANKING_STRATEGY_RELEVANCE_SCORE = 3;
 
     /**
      * Order for query result.
@@ -153,12 +169,12 @@ public final class SearchSpec {
      * <p>If empty, the query will search over all schema types.
      */
     @NonNull
-    public List<String> getSchemas() {
-        List<String> schemas = mBundle.getStringArrayList(SCHEMA_TYPE_FIELD);
-        if (schemas == null) {
+    public List<String> getSchemaTypes() {
+        List<String> schemaTypes = mBundle.getStringArrayList(SCHEMA_TYPE_FIELD);
+        if (schemaTypes == null) {
             return Collections.emptyList();
         }
-        return Collections.unmodifiableList(schemas);
+        return Collections.unmodifiableList(schemaTypes);
     }
 
     /**
@@ -175,8 +191,8 @@ public final class SearchSpec {
         return Collections.unmodifiableList(namespaces);
     }
 
-    /** Returns the number of results per page in the returned object. */
-    public int getNumPerPage() {
+    /** Returns the number of results per page in the result set. */
+    public int getResultCountPerPage() {
         return mBundle.getInt(NUM_PER_PAGE_FIELD, DEFAULT_NUM_PER_PAGE);
     }
 
@@ -207,12 +223,34 @@ public final class SearchSpec {
         return mBundle.getInt(MAX_SNIPPET_FIELD);
     }
 
+    /**
+     * Returns a map from schema type to property paths to be used for projection.
+     *
+     * <p>If the map is empty, then all properties will be retrieved for all results.
+     *
+     * <p>Calling this function repeatedly is inefficient. Prefer to retain the Map returned
+     * by this function, rather than calling it multiple times.
+     */
+    @NonNull
+    public Map<String, List<String>> getProjections() {
+        Bundle typePropertyPathsBundle =
+                mBundle.getBundle(PROJECTION_TYPE_PROPERTY_PATHS_FIELD);
+        Set<String> schemaTypes = typePropertyPathsBundle.keySet();
+        Map<String, List<String>> typePropertyPathsMap = new ArrayMap<>(schemaTypes.size());
+        for (String schemaType : schemaTypes) {
+            typePropertyPathsMap.put(schemaType,
+                    typePropertyPathsBundle.getStringArrayList(schemaType));
+        }
+        return typePropertyPathsMap;
+    }
+
     /** Builder for {@link SearchSpec objects}. */
     public static final class Builder {
 
         private final Bundle mBundle;
         private final ArrayList<String> mSchemaTypes = new ArrayList<>();
         private final ArrayList<String> mNamespaces = new ArrayList<>();
+        private final Bundle mProjectionTypePropertyMasks = new Bundle();
         private boolean mBuilt = false;
 
         /** Creates a new {@link SearchSpec.Builder}. */
@@ -240,10 +278,10 @@ public final class SearchSpec {
          * <p>If unset, the query will search over all schema types.
          */
         @NonNull
-        public Builder addSchema(@NonNull String... schemaTypes) {
+        public Builder addSchemaType(@NonNull String... schemaTypes) {
             Preconditions.checkNotNull(schemaTypes);
             Preconditions.checkState(!mBuilt, "Builder has already been used");
-            return addSchema(Arrays.asList(schemaTypes));
+            return addSchemaType(Arrays.asList(schemaTypes));
         }
 
         /**
@@ -253,13 +291,14 @@ public final class SearchSpec {
          * <p>If unset, the query will search over all schema types.
          */
         @NonNull
-        public Builder addSchema(@NonNull Collection<String> schemaTypes) {
+        public Builder addSchemaType(@NonNull Collection<String> schemaTypes) {
             Preconditions.checkNotNull(schemaTypes);
             Preconditions.checkState(!mBuilt, "Builder has already been used");
             mSchemaTypes.addAll(schemaTypes);
             return this;
         }
 
+// @exportToFramework:startStrip()
         /**
          * Adds the Schema type of given data classes to the Schema type filter of
          * {@link SearchSpec} Entry. Only search for documents that have the specified schema types.
@@ -269,9 +308,9 @@ public final class SearchSpec {
          * @param dataClasses classes annotated with
          *                    {@link androidx.appsearch.annotation.AppSearchDocument}.
          */
-        @SuppressLint("MissingGetterMatchingBuilder")  // Merged list available from getSchemas()
+        @SuppressLint("MissingGetterMatchingBuilder")  // Merged list available from getSchemaTypes
         @NonNull
-        public Builder addSchemaByDataClass(@NonNull Collection<Class<?>> dataClasses)
+        public Builder addSchemaByDataClass(@NonNull Collection<? extends Class<?>> dataClasses)
                 throws AppSearchException {
             Preconditions.checkNotNull(dataClasses);
             Preconditions.checkState(!mBuilt, "Builder has already been used");
@@ -281,10 +320,12 @@ public final class SearchSpec {
                 DataClassFactory<?> factory = registry.getOrCreateFactory(dataClass);
                 schemaTypes.add(factory.getSchemaType());
             }
-            addSchema(schemaTypes);
+            addSchemaType(schemaTypes);
             return this;
         }
+// @exportToFramework:endStrip()
 
+// @exportToFramework:startStrip()
         /**
          * Adds the Schema type of given data classes to the Schema type filter of
          * {@link SearchSpec} Entry. Only search for documents that have the specified schema types.
@@ -301,6 +342,7 @@ public final class SearchSpec {
             Preconditions.checkNotNull(dataClasses);
             return addSchemaByDataClass(Arrays.asList(dataClasses));
         }
+// @exportToFramework:endStrip()
 
         /**
          * Adds a namespace filter to {@link SearchSpec} Entry. Only search for documents that
@@ -329,10 +371,12 @@ public final class SearchSpec {
 
         /**
          * Sets the number of results per page in the returned object.
-         * <p> The default number of results per page is 10. And should be set in range [0, 10k].
+         *
+         * <p>The default number of results per page is 10.
          */
         @NonNull
-        public SearchSpec.Builder setNumPerPage(int numPerPage) {
+        public SearchSpec.Builder setResultCountPerPage(
+                @IntRange(from = 0, to = MAX_NUM_PER_PAGE) int numPerPage) {
             Preconditions.checkState(!mBuilt, "Builder has already been used");
             Preconditions.checkArgumentInRange(numPerPage, 0, MAX_NUM_PER_PAGE, "NumPerPage");
             mBundle.putInt(NUM_PER_PAGE_FIELD, numPerPage);
@@ -344,14 +388,15 @@ public final class SearchSpec {
         public Builder setRankingStrategy(@RankingStrategy int rankingStrategy) {
             Preconditions.checkState(!mBuilt, "Builder has already been used");
             Preconditions.checkArgumentInRange(rankingStrategy, RANKING_STRATEGY_NONE,
-                    RANKING_STRATEGY_CREATION_TIMESTAMP, "Result ranking strategy");
+                    RANKING_STRATEGY_RELEVANCE_SCORE, "Result ranking strategy");
             mBundle.putInt(RANKING_STRATEGY_FIELD, rankingStrategy);
             return this;
         }
 
         /**
-         * Indicates the order of returned search results, the default is DESC, meaning that results
-         * with higher scores come first.
+         * Indicates the order of returned search results, the default is
+         * {@link #ORDER_DESCENDING}, meaning that results with higher scores come first.
+         *
          * <p>This order field will be ignored if RankingStrategy = {@code RANKING_STRATEGY_NONE}.
          */
         @NonNull
@@ -369,11 +414,10 @@ public final class SearchSpec {
          *
          * <p>If set to 0 (default), snippeting is disabled and {@link SearchResult#getMatches} will
          * return {@code null} for that result.
-         *
-         * <p>The value should be set in range[0, 10k].
          */
         @NonNull
-        public SearchSpec.Builder setSnippetCount(int snippetCount) {
+        public SearchSpec.Builder setSnippetCount(
+                @IntRange(from = 0, to = MAX_SNIPPET_COUNT) int snippetCount) {
             Preconditions.checkState(!mBuilt, "Builder has already been used");
             Preconditions.checkArgumentInRange(snippetCount, 0, MAX_SNIPPET_COUNT, "snippetCount");
             mBundle.putInt(SNIPPET_COUNT_FIELD, snippetCount);
@@ -382,16 +426,15 @@ public final class SearchSpec {
 
         /**
          * Sets {@code snippetCountPerProperty}. Only the first {@code snippetCountPerProperty}
-         * snippets for a every property of {@link GenericDocument} will contain snippet
-         * information.
+         * snippets for each property of {@link GenericDocument} will contain snippet information.
          *
          * <p>If set to 0, snippeting is disabled and {@link SearchResult#getMatches}
          * will return {@code null} for that result.
-         *
-         * <p>The value should be set in range[0, 10k].
          */
         @NonNull
-        public SearchSpec.Builder setSnippetCountPerProperty(int snippetCountPerProperty) {
+        public SearchSpec.Builder setSnippetCountPerProperty(
+                @IntRange(from = 0, to = MAX_SNIPPET_PER_PROPERTY_COUNT)
+                        int snippetCountPerProperty) {
             Preconditions.checkState(!mBuilt, "Builder has already been used");
             Preconditions.checkArgumentInRange(snippetCountPerProperty,
                     0, MAX_SNIPPET_PER_PROPERTY_COUNT, "snippetCountPerProperty");
@@ -410,15 +453,112 @@ public final class SearchSpec {
          *
          * <p>Ex. {@code maxSnippetSize} = 16. "foo bar baz bat rat" with a query of "baz" will
          * return a window of "bar baz bat" which is only 11 bytes long.
-         *
-         * <p>The value should be in range[0, 10k].
          */
         @NonNull
-        public SearchSpec.Builder setMaxSnippetSize(int maxSnippetSize) {
+        public SearchSpec.Builder setMaxSnippetSize(
+                @IntRange(from = 0, to = MAX_SNIPPET_SIZE_LIMIT) int maxSnippetSize) {
             Preconditions.checkState(!mBuilt, "Builder has already been used");
             Preconditions.checkArgumentInRange(
                     maxSnippetSize, 0, MAX_SNIPPET_SIZE_LIMIT, "maxSnippetSize");
             mBundle.putInt(MAX_SNIPPET_FIELD, maxSnippetSize);
+            return this;
+        }
+
+       /**
+         * Adds property paths for the specified type to be used for projection. If property
+         * paths are added for a type, then only the properties referred to will be retrieved for
+         * results of that type. If a property path that is specified isn't present in a result,
+         * it will be ignored for that result. Property paths cannot be null.
+         *
+         * <p>If no property paths are added for a particular type, then all properties of
+         * results of that type will be retrieved.
+         *
+         * <p>If property path is added for the
+         * {@link SearchSpec#PROJECTION_SCHEMA_TYPE_WILDCARD}, then those property paths will
+         * apply to all results, excepting any types that have their own, specific property paths
+         * set.
+         *
+         * <p>Suppose the following document is in the index.
+         * <pre>{@code
+         * Email: Document {
+         *   sender: Document {
+         *     name: "Mr. Person"
+         *     email: "mrperson123@google.com"
+         *   }
+         *   recipients: [
+         *     Document {
+         *       name: "John Doe"
+         *       email: "johndoe123@google.com"
+         *     }
+         *     Document {
+         *       name: "Jane Doe"
+         *       email: "janedoe123@google.com"
+         *     }
+         *   ]
+         *   subject: "IMPORTANT"
+         *   body: "Limited time offer!"
+         * }
+         * }</pre>
+         *
+         * <p>Then, suppose that a query for "important" is issued with the following projection
+         * type property paths:
+         * <pre>{@code
+         * {schemaType: "Email", ["subject", "sender.name", "recipients.name"]}
+         * }</pre>
+         *
+         * <p>The above document will be returned as:
+         * <pre>{@code
+         * Email: Document {
+         *   sender: Document {
+         *     name: "Mr. Body"
+         *   }
+         *   recipients: [
+         *     Document {
+         *       name: "John Doe"
+         *     }
+         *     Document {
+         *       name: "Jane Doe"
+         *     }
+         *   ]
+         *   subject: "IMPORTANT"
+         * }
+         * }</pre>
+         */
+        @NonNull
+        public SearchSpec.Builder addProjection(
+                @NonNull String schemaType, @NonNull String... propertyPaths) {
+            Preconditions.checkNotNull(propertyPaths);
+            return addProjection(schemaType, Arrays.asList(propertyPaths));
+        }
+
+        /**
+         * Adds property paths for the specified type to be used for projection. If property
+         * paths are added for a type, then only the properties referred to will be retrieved for
+         * results of that type. If a property path that is specified isn't present in a result,
+         * it will be ignored for that result. Property paths cannot be null.
+         *
+         * <p>If no property paths are added for a particular type, then all properties of
+         * results of that type will be retrieved.
+         *
+         * <p>If property path is added for the
+         * {@link SearchSpec#PROJECTION_SCHEMA_TYPE_WILDCARD}, then those property paths will
+         * apply to all results, excepting any types that have their own, specific property paths
+         * set.
+         *
+         * {@see SearchSpec.Builder#addProjection(String, String...)}
+         */
+        @NonNull
+        public SearchSpec.Builder addProjection(
+                @NonNull String schemaType, @NonNull Collection<String> propertyPaths) {
+            Preconditions.checkState(!mBuilt, "Builder has already been used");
+            Preconditions.checkNotNull(schemaType);
+            Preconditions.checkNotNull(propertyPaths);
+            ArrayList<String> propertyPathsArrayList = new ArrayList<>(propertyPaths.size());
+            for (String propertyPath : propertyPaths) {
+                Preconditions.checkNotNull(propertyPath);
+                propertyPathsArrayList.add(propertyPath);
+            }
+            mProjectionTypePropertyMasks.putStringArrayList(schemaType, propertyPathsArrayList);
             return this;
         }
 
@@ -435,6 +575,7 @@ public final class SearchSpec {
             }
             mBundle.putStringArrayList(NAMESPACE_FIELD, mNamespaces);
             mBundle.putStringArrayList(SCHEMA_TYPE_FIELD, mSchemaTypes);
+            mBundle.putBundle(PROJECTION_TYPE_PROPERTY_PATHS_FIELD, mProjectionTypePropertyMasks);
             mBuilt = true;
             return new SearchSpec(mBundle);
         }

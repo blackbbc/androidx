@@ -19,15 +19,22 @@ package androidx.compose.ui.graphics.drawscope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageAsset
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.LinearGradientShader
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.PointMode
+import androidx.compose.ui.graphics.RadialGradientShader
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.SweepGradientShader
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.unit.Density
@@ -49,8 +56,8 @@ class DrawScopeTest {
     private val height: Int = 100
     private val dstSize = Size(width.toFloat(), height.toFloat())
 
-    private fun createTestDstImage(): ImageAsset {
-        val dst = ImageAsset(width, height)
+    private fun createTestDstImage(): ImageBitmap {
+        val dst = ImageBitmap(width, height)
         val dstCanvas = Canvas(dst)
         val dstPaint = Paint().apply {
             this.color = Color.White
@@ -94,6 +101,69 @@ class DrawScopeTest {
                 assertEquals(Color.Red, pixelMap[i, j])
             }
         }
+    }
+
+    @Test
+    fun testDrawOvalBrush() {
+        val width = 200
+        val height = 200
+
+        // Test that colors are rendered with the correct stroke parameters
+        testDrawScopeAndCanvasAreEquivalent(
+            width,
+            height,
+            {
+                drawOval(
+                    brush = Brush.linearGradient(listOf(Color.Red, Color.Blue)),
+                    topLeft = Offset(10f, 10f),
+                    size = Size(width - 20f, height - 20f)
+                )
+            },
+            { canvas ->
+                canvas.drawOval(
+                    10f,
+                    10f,
+                    width - 10f,
+                    height - 10f,
+                    Paint().apply {
+                        shader =
+                            LinearGradientShader(
+                                Offset.Zero,
+                                Offset(width.toFloat(), height.toFloat()),
+                                listOf(Color.Red, Color.Blue)
+                            )
+                    }
+                )
+            }
+        )
+    }
+
+    @Test
+    fun testDrawOvalColor() {
+        val width = 200
+        val height = 200
+
+        // Test that colors are rendered with the correct stroke parameters
+        testDrawScopeAndCanvasAreEquivalent(
+            width,
+            height,
+            {
+                drawOval(
+                    color = Color.Cyan,
+                    topLeft = Offset(10f, 10f),
+                    size = Size(width - 20f, height - 20f)
+                )
+            },
+            { canvas ->
+                canvas.drawOval(
+                    10f,
+                    10f,
+                    width - 10f,
+                    height - 10f,
+                    Paint().apply { color = Color.Cyan }
+                )
+            }
+        )
     }
 
     @Test
@@ -398,16 +468,16 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
-        canvasScope.draw(Canvas(imageAsset), size) {
+        canvasScope.draw(Canvas(imageBitmap), size) {
             drawRect(color = Color.Red)
             scale(0.5f, pivot = Offset.Zero) {
                 drawRect(color = Color.Blue)
             }
         }
 
-        val pixelMap = imageAsset.toPixelMap()
+        val pixelMap = imageBitmap.toPixelMap()
         assertEquals(Color.Blue, pixelMap[0, 0])
         assertEquals(Color.Blue, pixelMap[99, 0])
         assertEquals(Color.Blue, pixelMap[0, 99])
@@ -427,16 +497,16 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
-        canvasScope.draw(Canvas(imageAsset), size) {
+        canvasScope.draw(Canvas(imageBitmap), size) {
             drawRect(color = Color.Red)
             scale(0.5f) {
                 drawRect(color = Color.Blue)
             }
         }
 
-        val pixelMap = imageAsset.toPixelMap()
+        val pixelMap = imageBitmap.toPixelMap()
         val left = width / 2 - 50
         val top = height / 2 - 50
         val right = width / 2 + 50 - 1
@@ -470,10 +540,10 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
         try {
-            canvasScope.draw(Canvas(imageAsset), size) {
+            canvasScope.draw(Canvas(imageBitmap), size) {
                 inset(100.0f, 0.0f, 101.0f, 0.0f) {
                     drawRect(color = Color.Red)
                 }
@@ -491,10 +561,10 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
         try {
-            canvasScope.draw(Canvas(imageAsset), size) {
+            canvasScope.draw(Canvas(imageBitmap), size) {
                 inset(0.0f, 100.0f, 0.0f, 101.0f) {
                     drawRect(color = Color.Red)
                 }
@@ -517,10 +587,10 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
         try {
-            canvasScope.draw(Canvas(imageAsset), size) {
+            canvasScope.draw(Canvas(imageBitmap), size) {
                 inset(0.0f, 100.0f, 0.0f, 100.0f) {
                     drawRect(color = Color.Red)
                 }
@@ -542,10 +612,10 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
         try {
-            canvasScope.draw(Canvas(imageAsset), size) {
+            canvasScope.draw(Canvas(imageBitmap), size) {
                 inset(100.0f, 0.0f, 100.0f, 0.0f) {
                     drawRect(color = Color.Red)
                 }
@@ -562,16 +632,16 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
+        val imageBitmap = ImageBitmap(width, height)
 
-        canvasScope.draw(Canvas(imageAsset), size) {
+        canvasScope.draw(Canvas(imageBitmap), size) {
             drawRect(color = Color.Red)
             scale(0.5f, 0.5f, Offset(width.toFloat(), height.toFloat())) {
                 drawRect(color = Color.Blue)
             }
         }
 
-        val pixelMap = imageAsset.toPixelMap()
+        val pixelMap = imageBitmap.toPixelMap()
 
         val left = width - 100
         val top = height - 100
@@ -595,8 +665,8 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
-        CanvasDrawScope().draw(Canvas(imageAsset), size) {
+        val imageBitmap = ImageBitmap(width, height)
+        CanvasDrawScope().draw(Canvas(imageBitmap), size) {
             drawRect(color = Color.Red)
             rotate(180.0f) {
                 drawRect(
@@ -607,7 +677,7 @@ class DrawScopeTest {
             }
         }
 
-        val pixelMap = imageAsset.toPixelMap()
+        val pixelMap = imageBitmap.toPixelMap()
         assertEquals(Color.Blue, pixelMap[0, 0])
         assertEquals(Color.Blue, pixelMap[99, 0])
         assertEquals(Color.Blue, pixelMap[0, 99])
@@ -625,8 +695,8 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
-        CanvasDrawScope().draw(Canvas(imageAsset), size) {
+        val imageBitmap = ImageBitmap(width, height)
+        CanvasDrawScope().draw(Canvas(imageBitmap), size) {
             drawRect(color = Color.Red)
             rotateRad(kotlin.math.PI.toFloat()) {
                 drawRect(
@@ -637,7 +707,7 @@ class DrawScopeTest {
             }
         }
 
-        val pixelMap = imageAsset.toPixelMap()
+        val pixelMap = imageBitmap.toPixelMap()
         assertEquals(Color.Blue, pixelMap[0, 0])
         assertEquals(Color.Blue, pixelMap[99, 0])
         assertEquals(Color.Blue, pixelMap[0, 99])
@@ -655,8 +725,8 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset = ImageAsset(width, height)
-        CanvasDrawScope().draw(Canvas(imageAsset), size) {
+        val imageBitmap = ImageBitmap(width, height)
+        CanvasDrawScope().draw(Canvas(imageBitmap), size) {
             drawRect(color = Color.Red)
             rotate(-45.0f, Offset.Zero) {
                 drawRect(
@@ -666,7 +736,7 @@ class DrawScopeTest {
             }
         }
 
-        val pixelMap = imageAsset.toPixelMap()
+        val pixelMap = imageBitmap.toPixelMap()
         assertEquals(Color.Blue, pixelMap[2, 0])
         assertEquals(Color.Blue, pixelMap[50, 49])
         assertEquals(Color.Blue, pixelMap[70, 0])
@@ -682,8 +752,8 @@ class DrawScopeTest {
         val width = 200
         val height = 200
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset1 = ImageAsset(width, height)
-        CanvasDrawScope().draw(Canvas(imageAsset1), size) {
+        val imageBitmap1 = ImageBitmap(width, height)
+        CanvasDrawScope().draw(Canvas(imageBitmap1), size) {
             drawRect(color = Color.Red)
             inset(20.0f, 12.0f, 10.0f, 8.0f) {
                 scale(2.0f, 0.5f) {
@@ -699,8 +769,8 @@ class DrawScopeTest {
             }
         }
 
-        val imageAsset2 = ImageAsset(width, height)
-        val saveCountCanvas = SaveCountCanvas(Canvas(imageAsset2))
+        val imageBitmap2 = ImageBitmap(width, height)
+        val saveCountCanvas = SaveCountCanvas(Canvas(imageBitmap2))
         CanvasDrawScope().draw(saveCountCanvas, size) {
             drawRect(color = Color.Red)
             withTransform({
@@ -722,8 +792,8 @@ class DrawScopeTest {
             assertEquals(1, saveCountCanvas.saveCount)
         }
 
-        val pixelMap1 = imageAsset1.toPixelMap()
-        val pixelMap2 = imageAsset2.toPixelMap()
+        val pixelMap1 = imageBitmap1.toPixelMap()
+        val pixelMap2 = imageBitmap2.toPixelMap()
         assertEquals(pixelMap1.width, pixelMap2.width)
         assertEquals(pixelMap1.height, pixelMap2.height)
         assertEquals(pixelMap1.stride, pixelMap2.stride)
@@ -868,7 +938,7 @@ class DrawScopeTest {
 
     @Test
     fun testDensityAndLayoutDirectionConfigured() {
-        val canvas = Canvas(ImageAsset(1, 1))
+        val canvas = Canvas(ImageBitmap(1, 1))
         CanvasDrawScope().draw(
             Density(density = 2.0f, fontScale = 3.0f),
             LayoutDirection.Rtl,
@@ -884,8 +954,8 @@ class DrawScopeTest {
 
     @Test
     fun testParametersRestoredAfterDraw() {
-        val canvas1 = Canvas(ImageAsset(200, 300))
-        val canvas2 = Canvas(ImageAsset(100, 200))
+        val canvas1 = Canvas(ImageBitmap(200, 300))
+        val canvas2 = Canvas(ImageBitmap(100, 200))
 
         val size1 = Size(200f, 300f)
         val size2 = Size(100f, 200f)
@@ -972,11 +1042,602 @@ class DrawScopeTest {
         }
     }
 
+    @Test
+    fun testLinearGradient() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(Brush.linearGradient(listOf(Color.Red, Color.Green, Color.Blue)))
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset.Zero,
+                        Offset(100f, 100f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testLinearGradientBottomEnd() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.linearGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        end = Offset(0f, Float.POSITIVE_INFINITY)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset.Zero,
+                        Offset(0f, 100f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testLinearGradientRightEnd() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.linearGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        end = Offset(Float.POSITIVE_INFINITY, 0f)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset.Zero,
+                        Offset(100f, 0f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testLinearGradientBottomStart() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.linearGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        start = Offset(0f, Float.POSITIVE_INFINITY)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset(0f, 100f),
+                        Offset(100f, 100f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testLinearGradientRightStart() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.linearGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        start = Offset(Float.POSITIVE_INFINITY, 0f)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset(100f, 0f),
+                        Offset(100f, 100f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testLinearGradientWithStops() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.linearGradient(
+                        0.0f to Color.Red,
+                        0.1f to Color.Green,
+                        0.8f to Color.Blue,
+                        start = Offset(10.0f, 10f),
+                        tileMode = TileMode.Repeated
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset(10f, 10f),
+                        Offset(100f, 100f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue),
+                        colorStops = listOf(0.0f, 0.1f, 0.8f),
+                        tileMode = TileMode.Repeated
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testHorizontalGradient() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(Brush.horizontalGradient(listOf(Color.Red, Color.Green, Color.Blue)))
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset.Zero,
+                        Offset(100f, 0f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testHorizontalGradientWithStops() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.horizontalGradient(
+                        0.0f to Color.Red,
+                        0.1f to Color.Green,
+                        0.8f to Color.Blue,
+                        startX = 10f,
+                        tileMode = TileMode.Repeated
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset(10f, 0f),
+                        Offset(100f, 0f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue),
+                        colorStops = listOf(0.0f, 0.1f, 0.8f),
+                        tileMode = TileMode.Repeated
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testVerticalGradient() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(Brush.verticalGradient(listOf(Color.Red, Color.Green, Color.Blue)))
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset.Zero,
+                        Offset(0f, 100f),
+                        listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testVerticalGradientWithStops() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.verticalGradient(
+                        0.0f to Color.Red,
+                        0.1f to Color.Green,
+                        0.8f to Color.Blue,
+                        startY = 10f,
+                        tileMode = TileMode.Repeated
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = LinearGradientShader(
+                        Offset(0f, 10f),
+                        Offset(0f, 100f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue),
+                        colorStops = listOf(0.0f, 0.1f, 0.8f),
+                        tileMode = TileMode.Repeated
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testRadialGradient() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.radialGradient(listOf(Color.Red, Color.Green, Color.Blue))
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = RadialGradientShader(
+                        Offset(50f, 50f),
+                        50f,
+                        colors = listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testRadialGradientOutsideDrawingBounds() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                val offsetRadialGradient = Brush.radialGradient(
+                    listOf(Color.Red, Color.Blue),
+                    center = Offset(150f, 150f),
+                    radius = 50f
+                )
+                drawRect(offsetRadialGradient)
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = RadialGradientShader(
+                        Offset(150f, 150f),
+                        radius = 50f,
+                        colors = listOf(Color.Red, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testRadialGradientBottomRight() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                val offsetRadialGradient = Brush.radialGradient(
+                    listOf(Color.Red, Color.Blue),
+                    center = Offset.Infinite
+                )
+                drawRect(offsetRadialGradient)
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = RadialGradientShader(
+                        Offset(100f, 100f),
+                        radius = 50f,
+                        colors = listOf(Color.Red, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testRadialGradientRight() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                val offsetRadialGradient = Brush.radialGradient(
+                    listOf(Color.Red, Color.Blue),
+                    center = Offset(Float.POSITIVE_INFINITY, 0f)
+                )
+                drawRect(offsetRadialGradient)
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = RadialGradientShader(
+                        Offset(100f, 0f),
+                        radius = 50f,
+                        colors = listOf(Color.Red, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testRadialGradientBottom() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                val offsetRadialGradient = Brush.radialGradient(
+                    listOf(Color.Red, Color.Blue),
+                    center = Offset(0f, Float.POSITIVE_INFINITY)
+                )
+                drawRect(offsetRadialGradient)
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = RadialGradientShader(
+                        Offset(0f, 100f),
+                        radius = 50f,
+                        colors = listOf(Color.Red, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testRadialGradientWithStops() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.radialGradient(
+                        0.0f to Color.Red,
+                        0.1f to Color.Green,
+                        0.8f to Color.Blue,
+                        radius = 10f,
+                        tileMode = TileMode.Mirror
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = RadialGradientShader(
+                        Offset(50f, 50f),
+                        10f,
+                        colors = listOf(Color.Red, Color.Green, Color.Blue),
+                        colorStops = listOf(0.0f, 0.1f, 0.8f),
+                        tileMode = TileMode.Mirror
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testSweepGradient() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.sweepGradient(listOf(Color.Red, Color.Green, Color.Blue))
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = SweepGradientShader(
+                        Offset(50f, 50f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testSweepGradientBottomRight() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.sweepGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        center = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = SweepGradientShader(
+                        Offset(100f, 100f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testSweepGradientBottom() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.sweepGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        center = Offset(0f, Float.POSITIVE_INFINITY)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = SweepGradientShader(
+                        Offset(0f, 100f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testSweepGradientRight() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.sweepGradient(
+                        listOf(Color.Red, Color.Green, Color.Blue),
+                        center = Offset(Float.POSITIVE_INFINITY, 0f)
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = SweepGradientShader(
+                        Offset(100f, 0f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testSweepGradientWithStops() {
+        testDrawScopeAndCanvasAreEquivalent(
+            100,
+            100,
+            {
+                drawRect(
+                    Brush.sweepGradient(
+                        0.0f to Color.Red,
+                        0.1f to Color.Green,
+                        0.8f to Color.Blue
+                    )
+                )
+            },
+            { canvas ->
+                val paint = Paint().apply {
+                    shader = SweepGradientShader(
+                        Offset(50f, 50f),
+                        colors = listOf(Color.Red, Color.Green, Color.Blue),
+                        colorStops = listOf(0.0f, 0.1f, 0.8f)
+                    )
+                }
+                canvas.drawRect(0f, 0f, 100f, 100f, paint)
+            }
+        )
+    }
+
+    @Test
+    fun testDrawScopeWithAlternatingPathEffectParameters() {
+        val strokeWidth = 2f
+        val strokeColor = Color.Red
+        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 3f), 1f)
+        val width = 100f
+        val height = 100f
+        // Verify that DrawScope is correctly updating internal Paint parameters
+        // across draw commands with a stroke
+        testDrawScopeAndCanvasAreEquivalent(
+            width.toInt(),
+            height.toInt(),
+            {
+                drawCircle(
+                    strokeColor,
+                    style = Stroke(
+                        width = strokeWidth,
+                        pathEffect = pathEffect
+                    )
+                )
+                drawLine(
+                    color = strokeColor,
+                    start = Offset(size.width / 2, size.height / 2),
+                    end = Offset(size.width, size.height / 2),
+                    strokeWidth = strokeWidth
+                )
+            },
+            { canvas ->
+                canvas.drawCircle(
+                    Offset(width / 2f, height / 2f),
+                    radius = 50f,
+                    Paint().apply {
+                        this.color = strokeColor
+                        this.style = PaintingStyle.Stroke
+                        this.strokeWidth = strokeWidth
+                        this.pathEffect = pathEffect
+                    }
+                )
+
+                canvas.drawLine(
+                    Offset(width / 2, height / 2),
+                    Offset(width, height / 2),
+                    Paint().apply {
+                        this.color = strokeColor
+                        this.style = PaintingStyle.Stroke
+                        this.strokeWidth = strokeWidth
+                    }
+                )
+            }
+        )
+    }
+
     private inline fun testDrawTransformDefault(block: WrappedDrawTransform.() -> Unit) {
         val width = 100
         val height = 150
         TestDrawScopeTransform().draw(
-            Canvas(ImageAsset(width, height)),
+            Canvas(ImageBitmap(width, height)),
             Size(width.toFloat(), height.toFloat())
         ) {
             withWrappedTransform({
@@ -996,16 +1657,16 @@ class DrawScopeTest {
         canvasBlock: (Canvas) -> Unit
     ) {
         val size = Size(width.toFloat(), height.toFloat())
-        val imageAsset1 = ImageAsset(width, height)
-        CanvasDrawScope().draw(Canvas(imageAsset1), size) {
+        val imageBitmap1 = ImageBitmap(width, height)
+        CanvasDrawScope().draw(Canvas(imageBitmap1), size) {
             drawScopeBlock()
         }
 
-        val imageAsset2 = ImageAsset(width, height)
-        canvasBlock(Canvas(imageAsset2))
+        val imageBitmap2 = ImageBitmap(width, height)
+        canvasBlock(Canvas(imageBitmap2))
 
-        val pixelMap1 = imageAsset1.toPixelMap()
-        val pixelMap2 = imageAsset2.toPixelMap()
+        val pixelMap1 = imageBitmap1.toPixelMap()
+        val pixelMap2 = imageBitmap2.toPixelMap()
         assertEquals(pixelMap1.width, pixelMap2.width)
         assertEquals(pixelMap1.height, pixelMap2.height)
         assertEquals(pixelMap1.stride, pixelMap2.stride)

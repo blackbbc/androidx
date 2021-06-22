@@ -24,12 +24,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
-import androidx.camera.camera2.internal.compat.CameraAccessExceptionCompat;
 import androidx.camera.camera2.internal.compat.CameraManagerCompat;
 import androidx.camera.core.CameraUnavailableException;
 import androidx.camera.core.impl.CameraDeviceSurfaceManager;
 import androidx.camera.core.impl.SurfaceConfig;
-import androidx.camera.core.impl.SurfaceSizeDefinition;
 import androidx.camera.core.impl.UseCaseConfig;
 import androidx.core.util.Preconditions;
 
@@ -37,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Camera device manager to provide the guaranteed supported stream capabilities related info for
@@ -50,7 +49,6 @@ import java.util.Map;
  */
 public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceManager {
     private static final String TAG = "Camera2DeviceSurfaceManager";
-    private static final Size MAXIMUM_PREVIEW_SIZE = new Size(1920, 1080);
     private final Map<String, SupportedSurfaceCombination> mCameraSupportedSurfaceCombinationMap =
             new HashMap<>();
     private final CamcorderProfileHelper mCamcorderProfileHelper;
@@ -62,13 +60,25 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
      */
     @RestrictTo(Scope.LIBRARY)
     public Camera2DeviceSurfaceManager(@NonNull Context context,
-            @Nullable Object cameraManager) throws CameraUnavailableException {
-        this(context, CamcorderProfile::hasProfile, cameraManager);
+            @Nullable Object cameraManager, @NonNull Set<String> availableCameraIds)
+            throws CameraUnavailableException {
+        this(context, new CamcorderProfileHelper() {
+            @Override
+            public boolean hasProfile(int cameraId, int quality) {
+                return CamcorderProfile.hasProfile(cameraId, quality);
+            }
+
+            @Override
+            public CamcorderProfile get(int cameraId, int quality) {
+                return CamcorderProfile.get(cameraId, quality);
+            }
+        }, cameraManager, availableCameraIds);
     }
 
     Camera2DeviceSurfaceManager(@NonNull Context context,
             @NonNull CamcorderProfileHelper camcorderProfileHelper,
-            @Nullable Object cameraManager)
+            @Nullable Object cameraManager,
+            @NonNull Set<String> availableCameraIds)
             throws CameraUnavailableException {
         Preconditions.checkNotNull(camcorderProfileHelper);
         mCamcorderProfileHelper = camcorderProfileHelper;
@@ -79,25 +89,22 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
         } else {
             cameraManagerCompat = CameraManagerCompat.from(context);
         }
-        init(context, cameraManagerCompat);
+        init(context, cameraManagerCompat, availableCameraIds);
     }
 
     /**
      * Prepare necessary resources for the surface manager.
      */
-    private void init(@NonNull Context context, @NonNull CameraManagerCompat cameraManager)
+    private void init(@NonNull Context context, @NonNull CameraManagerCompat cameraManager,
+            @NonNull Set<String> availableCameraIds)
             throws CameraUnavailableException {
         Preconditions.checkNotNull(context);
 
-        try {
-            for (String cameraId : cameraManager.getCameraIdList()) {
-                mCameraSupportedSurfaceCombinationMap.put(
-                        cameraId,
-                        new SupportedSurfaceCombination(
-                                context, cameraId, cameraManager, mCamcorderProfileHelper));
-            }
-        } catch (CameraAccessExceptionCompat e) {
-            throw CameraUnavailableExceptionHelper.createFrom(e);
+        for (String cameraId : availableCameraIds) {
+            mCameraSupportedSurfaceCombinationMap.put(
+                    cameraId,
+                    new SupportedSurfaceCombination(
+                            context, cameraId, cameraManager, mCamcorderProfileHelper));
         }
     }
 
@@ -205,53 +212,5 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
 
         return supportedSurfaceCombination.getSuggestedResolutions(existingSurfaces,
                 newUseCaseConfigs);
-    }
-
-    /**
-     * Get max supported output size for specific camera device and image format
-     *
-     * @param cameraId    the camera Id
-     * @param imageFormat the image format info
-     * @return the max supported output size for the image format
-     * @throws IllegalStateException if not initialized
-     */
-    @NonNull
-    @Override
-    public Size getMaxOutputSize(@NonNull String cameraId, int imageFormat) {
-        SupportedSurfaceCombination supportedSurfaceCombination =
-                mCameraSupportedSurfaceCombinationMap.get(cameraId);
-
-        if (supportedSurfaceCombination == null) {
-            throw new IllegalArgumentException(
-                    "Fail to find supported surface info - CameraId:" + cameraId);
-        }
-
-        return supportedSurfaceCombination.getMaxOutputSizeByFormat(imageFormat);
-    }
-
-    /**
-     * Retrieves the preview size, choosing the smaller of the display size and 1080P.
-     *
-     * @return preview size from {@link SurfaceSizeDefinition}
-     * @throws IllegalStateException if not initialized
-     */
-    @NonNull
-    @Override
-    public Size getPreviewSize() {
-        // 1920x1080 is maximum preview size
-        Size previewSize = MAXIMUM_PREVIEW_SIZE;
-
-        if (!mCameraSupportedSurfaceCombinationMap.isEmpty()) {
-            // Preview size depends on the display size and 1080P. Therefore, we can get the first
-            // camera device's preview size to return it.
-            String cameraId = (String) mCameraSupportedSurfaceCombinationMap.keySet().toArray()[0];
-            previewSize =
-                    mCameraSupportedSurfaceCombinationMap
-                            .get(cameraId)
-                            .getSurfaceSizeDefinition()
-                            .getPreviewSize();
-        }
-
-        return previewSize;
     }
 }

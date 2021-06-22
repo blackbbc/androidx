@@ -90,7 +90,7 @@ internal class PagePresenter<T : Any>(
     override val size: Int
         get() = placeholdersBefore + storageCount + placeholdersAfter
 
-    private fun List<TransformablePage<T>>.fullCount() = sumBy { it.data.size }
+    private fun List<TransformablePage<T>>.fullCount() = sumOf { it.data.size }
 
     fun processEvent(pageEvent: PageEvent<T>, callback: ProcessPageEventCallback) {
         when (pageEvent) {
@@ -106,7 +106,17 @@ internal class PagePresenter<T : Any>(
         }
     }
 
-    fun viewportHintForPresenterIndex(index: Int): ViewportHint {
+    fun initializeHint(): ViewportHint.Initial {
+        val presentedItems = storageCount
+        return ViewportHint.Initial(
+            presentedItemsBefore = presentedItems / 2,
+            presentedItemsAfter = presentedItems / 2,
+            originalPageOffsetFirst = originalPageOffsetFirst,
+            originalPageOffsetLast = originalPageOffsetLast
+        )
+    }
+
+    fun accessHintForPresenterIndex(index: Int): ViewportHint.Access {
         var pageIndex = 0
         var indexInPage = index - placeholdersBefore
         while (indexInPage >= pages[pageIndex].data.size && pageIndex < pages.lastIndex) {

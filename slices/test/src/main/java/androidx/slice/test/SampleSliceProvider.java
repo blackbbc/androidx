@@ -61,9 +61,12 @@ import androidx.slice.builders.MessagingSliceBuilder;
 import androidx.slice.builders.SelectionBuilder;
 import androidx.slice.builders.SliceAction;
 
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -84,8 +87,14 @@ public class SampleSliceProvider extends SliceProvider {
     public static final String EXTRA_TOAST_MESSAGE = "com.example.androidx.extra.TOAST_MESSAGE";
     public static final String ACTION_TOAST_RANGE_VALUE =
             "com.example.androidx.slice.action.TOAST_RANGE_VALUE";
+    public static final String ACTION_TOAST_DATE_VALUE =
+            "com.example.androidx.slice.action.TOAST_DATE_VALUE";
+    public static final String ACTION_TOAST_TIME_VALUE =
+            "com.example.androidx.slice.action.TOAST_TIME_VALUE";
     public static final String ACTION_PLAY_TTS = "com.example.androidx.slice.action.PLAY_TTS";
     public static int STAR_RATING = 0;
+    public static long DATE_MILLIS_VALUE = System.currentTimeMillis();
+    public static long TIME_MILLIS_VALUE = System.currentTimeMillis();
 
     public static final String[] URI_PATHS = {
             "message",
@@ -100,7 +109,11 @@ public class SampleSliceProvider extends SliceProvider {
             "contact2",
             "contact3",
             "contact4",
+            "singlepicker",
+            "picker",
             "gallery",
+            "galleryimagesizemovie",
+            "galleryimagesizethumbnail",
             "galleryoverlay",
             "indeterminaterange",
             "indeterminaterange2",
@@ -127,7 +140,8 @@ public class SampleSliceProvider extends SliceProvider {
             "selection",
             "notification",
             "tts",
-            "textbutton"
+            "textbutton",
+            "gridrowsliceaction"
     };
 
     @SuppressWarnings("deprecation")
@@ -204,8 +218,16 @@ public class SampleSliceProvider extends SliceProvider {
                 return createContact3(sliceUri);
             case "/contact4":
                 return createContact4(sliceUri);
+            case "/singlepicker":
+                return createSinglePicker(sliceUri);
+            case "/picker":
+                return createPicker(sliceUri);
             case "/gallery":
                 return createGallery(sliceUri);
+            case "/galleryimagesizemovie":
+                return createGalleryImageSizeMovie(sliceUri);
+            case "/galleryimagesizethumbnail":
+                return createGalleryImageSizeThumbnails(sliceUri);
             case "/galleryoverlay":
                 return createGalleryOverlay(sliceUri);
             case "/weather":
@@ -252,6 +274,8 @@ public class SampleSliceProvider extends SliceProvider {
                 return createTtsSlice(sliceUri);
             case "/textbutton":
                 return createTextButtonSlice(sliceUri);
+            case "/gridrowsliceaction":
+                return createGridRowSliceAction(sliceUri);
         }
         Log.w(TAG, String.format("Unknown uri: %s", sliceUri));
         return null;
@@ -338,6 +362,103 @@ public class SampleSliceProvider extends SliceProvider {
                 .build();
     }
 
+    private Slice createSinglePicker(Uri sliceUri) {
+        ListBuilder lb = new ListBuilder(getContext(), sliceUri, INFINITY);
+        lb.addRow(new RowBuilder()
+                .setTitle("Title:" + DateFormat.getTimeInstance(DateFormat.SHORT,
+                        Locale.ENGLISH).format(new Date(TIME_MILLIS_VALUE)))
+                .setPrimaryAction(SliceAction.createTimePicker(
+                        getBroadcastIntent(ACTION_TOAST_TIME_VALUE, null),
+                        "PA:" + DateFormat.getTimeInstance(DateFormat.SHORT,
+                                Locale.ENGLISH).format(new Date(TIME_MILLIS_VALUE)),
+                        TIME_MILLIS_VALUE
+                )));
+        return lb.build();
+    }
+
+    private Slice createPicker(Uri sliceUri) {
+        SliceAction primaryAction = SliceAction.create(
+                getBroadcastIntent(ACTION_TOAST, "set picked"),
+                IconCompat.createWithResource(getContext(), R.drawable.slices_1),
+                LARGE_IMAGE,
+                "set picked");
+        ListBuilder lb = new ListBuilder(getContext(), sliceUri, INFINITY);
+        lb.addRow(new RowBuilder()
+                .setTitle("Date and Time Picker")
+                .setPrimaryAction(primaryAction))
+                .addGridRow(new GridRowBuilder()
+                        .addCell(new CellBuilder().addTitleText("Date Picker").setSliceAction(
+                                SliceAction.createDatePicker(
+                                        getBroadcastIntent(ACTION_TOAST_DATE_VALUE, null),
+                                        DateFormat.getDateInstance(DateFormat.FULL,
+                                                Locale.ENGLISH).format(new Date(DATE_MILLIS_VALUE)),
+                                        DATE_MILLIS_VALUE
+                                ))
+                        )
+                        .addCell(new CellBuilder().addTitleText("Time Picker").setSliceAction(
+                                SliceAction.createTimePicker(
+                                        getBroadcastIntent(ACTION_TOAST_TIME_VALUE, null),
+                                        DateFormat.getTimeInstance(DateFormat.SHORT,
+                                                Locale.ENGLISH).format(new Date(TIME_MILLIS_VALUE)),
+                                        TIME_MILLIS_VALUE
+                                ))
+                        ));
+        return lb.build();
+    }
+
+    private Slice createGridRowSliceAction(Uri sliceUri) {
+        SliceAction primaryAction = SliceAction.create(
+                getBroadcastIntent(ACTION_TOAST, "PrimaryAction"),
+                IconCompat.createWithResource(getContext(), R.drawable.slices_1),
+                LARGE_IMAGE,
+                "PrimaryAction");
+        ListBuilder lb = new ListBuilder(getContext(), sliceUri, INFINITY);
+        lb.addRow(new RowBuilder()
+                .setTitle("Grid Row SliceAction Example")
+                .setPrimaryAction(primaryAction))
+                .addGridRow(new GridRowBuilder()
+                        .addCell(new CellBuilder()
+                                .addImage(IconCompat.createWithResource(getContext(),
+                                        R.drawable.weather_1), SMALL_IMAGE)
+                                .addText("pendingIntent")
+                                .addTitleText("from ContentIntent")
+                                .setContentIntent(getBroadcastIntent(ACTION_TOAST, "ContentIntent"))
+                        )
+                        .addCell(new CellBuilder()
+                                .addImage(IconCompat.createWithResource(getContext(),
+                                        R.drawable.weather_1), SMALL_IMAGE)
+                                .addText("pendingIntent")
+                                .addTitleText("from SliceAction")
+                                .setSliceAction(
+                                    SliceAction.create(
+                                            getBroadcastIntent(ACTION_TOAST, "SliceAction"),
+                                            IconCompat.createWithResource(getContext(),
+                                                    R.drawable.weather_1),
+                                            SMALL_IMAGE, "SliceAction"
+                                ))
+                        )
+                )
+                .addGridRow(new GridRowBuilder()
+                        .addCell(new CellBuilder()
+                                .addTitleText("Toggle 1")
+                                .setSliceAction(SliceAction.createToggle(
+                                        getBroadcastIntent(ACTION_TOAST, "Toggled 1"),
+                                        "Toggle Title", true /* isChecked */)))
+                        .addCell(new CellBuilder()
+                                .addTitleText("Toggle 2")
+                                .setSliceAction(SliceAction.createToggle(
+                                        getBroadcastIntent(ACTION_TOAST, "Toggled 2"),
+                                        "Toggle Title", false /* isChecked */)))
+                        .addCell(new CellBuilder().addTitleText("Time Picker").setSliceAction(
+                                SliceAction.createTimePicker(
+                                        getBroadcastIntent(ACTION_TOAST_TIME_VALUE, null),
+                                        DateFormat.getTimeInstance(DateFormat.SHORT,
+                                                Locale.ENGLISH).format(new Date(TIME_MILLIS_VALUE)),
+                                        TIME_MILLIS_VALUE
+                                ))));
+        return lb.build();
+    }
+
     private Slice createGallery(Uri sliceUri) {
         SliceAction primaryAction = SliceAction.create(
                 getBroadcastIntent(ACTION_TOAST, "open photo album"),
@@ -370,6 +491,68 @@ public class SampleSliceProvider extends SliceProvider {
         grb.setPrimaryAction(primaryAction)
                 .setSeeMoreAction(getBroadcastIntent(ACTION_TOAST, "see your gallery"))
                 .setContentDescription("Images from your trip to Hawaii");
+        return lb.addGridRow(grb).build();
+    }
+
+    private Slice createGalleryImageSizeMovie(Uri sliceUri) {
+        SliceAction primaryAction = SliceAction.create(
+                getBroadcastIntent(ACTION_TOAST, "open movie list"),
+                IconCompat.createWithResource(getContext(), R.drawable.slices_1),
+                LARGE_IMAGE,
+                "Open movie list");
+        ListBuilder lb = new ListBuilder(getContext(), sliceUri, INFINITY)
+                .setAccentColor(0xff4285F4);
+        lb.addRow(new RowBuilder()
+                .setTitle("These movies near you")
+                .setSubtitle("Top rated Movies")
+                .setPrimaryAction(primaryAction))
+                .addAction(SliceAction.create(
+                        getBroadcastIntent(ACTION_TOAST, ""),
+                        IconCompat.createWithResource(getContext(), R.drawable.ic_cast), ICON_IMAGE,
+                        "Share movie list"));
+        GridRowBuilder grb = new GridRowBuilder();
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.portrait), RAW_IMAGE_LARGE)
+                .addTitleText("MovieName the movie"));
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.portrait), RAW_IMAGE_LARGE)
+                .addTitleText("MovieName the movie2"));
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.portrait), RAW_IMAGE_LARGE)
+                .addTitleText("Amazing movie"));
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.portrait), RAW_IMAGE_LARGE)
+                .addTitleText("Cool movie").addText("The Sequel"));
+        return lb.addGridRow(grb).build();
+    }
+
+
+    private Slice createGalleryImageSizeThumbnails(Uri sliceUri) {
+        SliceAction primaryAction = SliceAction.create(
+                getBroadcastIntent(ACTION_TOAST, "open video list"),
+                IconCompat.createWithResource(getContext(), R.drawable.slices_1),
+                LARGE_IMAGE,
+                "Open video list");
+        ListBuilder lb = new ListBuilder(getContext(), sliceUri, INFINITY)
+                .setAccentColor(0xff4285F4);
+        lb.addRow(new RowBuilder()
+                .setTitle("Recommended videos")
+                .setSubtitle("Top rated Videos")
+                .setPrimaryAction(primaryAction))
+                .addAction(SliceAction.create(
+                        getBroadcastIntent(ACTION_TOAST, ""),
+                        IconCompat.createWithResource(getContext(), R.drawable.ic_cast), ICON_IMAGE,
+                        "Share videos"));
+        GridRowBuilder grb = new GridRowBuilder();
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.landscape), RAW_IMAGE_LARGE)
+                .addTitleText("You won't believe this movie"));
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.landscape), RAW_IMAGE_LARGE)
+                .addTitleText("Amazing movie"));
+        grb.addCell(new CellBuilder().addImage(IconCompat.createWithResource(getContext(),
+                R.drawable.landscape), RAW_IMAGE_LARGE)
+                .addTitleText("kittens wow"));
         return lb.addGridRow(grb).build();
     }
 

@@ -17,21 +17,22 @@
 package androidx.compose.ui.demos.gestures
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.gesture.longPressGestureFilter
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 
 /**
@@ -41,13 +42,13 @@ import androidx.compose.ui.unit.dp
 fun NestedLongPressDemo() {
     Column {
         Text(
-            "Demonstrates interaction between nested longPressGestureFitlers  in an " +
+            "Demonstrates interaction between nested pointerInput modifiers in an " +
                 "edge case that is nevertheless supported (normally regions will be separated" +
                 " by a pressIndicatorGestureFilter, but here they are not)."
         )
         Text(
             "This just demonstrates the interaction between directly nested " +
-                "longPressGestureFilters."
+                "pointerInputs with detectTapGestures."
         )
         LongPressableContainer(Modifier.fillMaxSize()) {
             LongPressableContainer(Modifier.padding(48.dp).fillMaxSize()) {
@@ -60,7 +61,7 @@ fun NestedLongPressDemo() {
 @Composable
 private fun LongPressableContainer(
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
     val defaultColor = DefaultBackgroundColor
     val pressedColor = PressedColor
@@ -80,10 +81,10 @@ private fun LongPressableContainer(
 
     Box(
         modifier
-            .longPressGestureFilter(onLongPress)
+            .pointerInput(Unit) { detectTapGestures(onLongPress = onLongPress) }
             .background(color)
             .border(BorderStroke(2.dp, BorderColor))
             .padding(2.dp),
-        alignment = Alignment.Center
-    ) { children() }
+        contentAlignment = Alignment.Center
+    ) { content() }
 }

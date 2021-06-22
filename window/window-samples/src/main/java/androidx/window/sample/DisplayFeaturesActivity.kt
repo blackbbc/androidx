@@ -22,8 +22,6 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.util.Consumer
-import androidx.window.DeviceState
-import androidx.window.DisplayFeature
 import androidx.window.WindowLayoutInfo
 import androidx.window.WindowManager
 import java.text.SimpleDateFormat
@@ -44,7 +42,10 @@ class DisplayFeaturesActivity : BaseSampleActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_display_features)
 
-        windowManager = getTestBackend()?.let { backend -> WindowManager(this, backend) }
+        windowManager = getTestBackend()?.let { backend ->
+            @Suppress("DEPRECATION") // TODO(b/173739071) remove when updating WindowManager
+            WindowManager(this, backend)
+        }
             ?: WindowManager(this)
 
         stateLog.clear()
@@ -53,20 +54,12 @@ class DisplayFeaturesActivity : BaseSampleActivity() {
 
     override fun onStart() {
         super.onStart()
-        windowManager.registerDeviceStateChangeCallback(
-            mainThreadExecutor,
-            stateContainer.stateConsumer
-        )
-        windowManager.registerLayoutChangeCallback(
-            mainThreadExecutor,
-            stateContainer.layoutConsumer
-        )
+        windowManager.registerLayoutChangeCallback(mainThreadExecutor, stateContainer)
     }
 
     override fun onStop() {
         super.onStop()
-        windowManager.unregisterDeviceStateChangeCallback(stateContainer.stateConsumer)
-        windowManager.unregisterLayoutChangeCallback(stateContainer.layoutConsumer)
+        windowManager.unregisterLayoutChangeCallback(stateContainer)
     }
 
     /** Updates the device state and display feature positions. */
@@ -80,13 +73,6 @@ class DisplayFeaturesActivity : BaseSampleActivity() {
 
         // Update the UI with the current state
         val stateStringBuilder = StringBuilder()
-        // Update the current state string
-        stateContainer.lastState?.let { deviceState ->
-            stateStringBuilder.append(getString(R.string.deviceState))
-                .append(": ")
-                .append(deviceState)
-                .append("\n")
-        }
 
         stateContainer.lastLayoutInfo?.let { windowLayoutInfo ->
             stateStringBuilder.append(getString(R.string.windowLayout))
@@ -107,11 +93,7 @@ class DisplayFeaturesActivity : BaseSampleActivity() {
                 }
 
                 val featureView = View(this)
-                val color = when (displayFeature.type) {
-                    DisplayFeature.TYPE_FOLD -> getColor(R.color.colorFeatureFold)
-                    DisplayFeature.TYPE_HINGE -> getColor(R.color.colorFeatureHinge)
-                    else -> getColor(R.color.colorFeatureUnknown)
-                }
+                val color = getColor(R.color.colorFeatureFold)
                 featureView.foreground = ColorDrawable(color)
 
                 rootLayout.addView(featureView, lp)
@@ -139,25 +121,10 @@ class DisplayFeaturesActivity : BaseSampleActivity() {
         return currentDate.toString()
     }
 
-    inner class StateContainer {
-        var lastState: DeviceState? = null
+    inner class StateContainer : Consumer<WindowLayoutInfo> {
         var lastLayoutInfo: WindowLayoutInfo? = null
 
-        val stateConsumer: Consumer<DeviceState>
-        val layoutConsumer: Consumer<WindowLayoutInfo>
-
-        init {
-            stateConsumer = Consumer { state: DeviceState -> update(state) }
-            layoutConsumer = Consumer { layout: WindowLayoutInfo -> update(layout) }
-        }
-
-        fun update(newDeviceState: DeviceState) {
-            updateStateLog(newDeviceState)
-            lastState = newDeviceState
-            updateCurrentState()
-        }
-
-        fun update(newLayoutInfo: WindowLayoutInfo) {
+        override fun accept(newLayoutInfo: WindowLayoutInfo) {
             updateStateLog(newLayoutInfo)
             lastLayoutInfo = newLayoutInfo
             updateCurrentState()

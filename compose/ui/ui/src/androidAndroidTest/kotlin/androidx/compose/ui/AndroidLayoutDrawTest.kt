@@ -18,6 +18,7 @@
 
 package androidx.compose.ui
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
@@ -28,35 +29,43 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.animate
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ExperimentalComposeApi
-import androidx.compose.runtime.Providers
-import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.emptyContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.testutils.assertPixels
+import androidx.compose.ui.draw.DrawModifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.AlignmentLine
-import androidx.compose.ui.layout.ExperimentalSubcomposeLayoutApi
 import androidx.compose.ui.layout.HorizontalAlignmentLine
 import androidx.compose.ui.layout.IntrinsicMeasurable
 import androidx.compose.ui.layout.IntrinsicMeasureScope
@@ -64,33 +73,40 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.LayoutModifier
 import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.ParentDataModifier
 import androidx.compose.ui.layout.VerticalAlignmentLine
-import androidx.compose.ui.layout.id
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.node.InternalCoreApi
 import androidx.compose.ui.node.Owner
 import androidx.compose.ui.node.Ref
+import androidx.compose.ui.platform.AndroidComposeView
 import androidx.compose.ui.platform.AndroidOwnerExtraAssertionsRule
-import androidx.compose.ui.platform.DensityAmbient
-import androidx.compose.ui.platform.LayoutDirectionAmbient
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.RenderNodeApi23
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.platform.RenderNodeApi29
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.platform.ViewLayer
+import androidx.compose.ui.platform.ViewLayerContainer
 import androidx.compose.ui.test.TestActivity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
+import androidx.compose.ui.unit.toOffset
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.FlakyTest
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
 import org.junit.Assert.assertEquals
@@ -122,6 +138,7 @@ class AndroidLayoutDrawTest {
     val activityTestRule = androidx.test.rule.ActivityTestRule<TestActivity>(
         TestActivity::class.java
     )
+
     @get:Rule
     val excessiveAssertions = AndroidOwnerExtraAssertionsRule()
     private lateinit var activity: TestActivity
@@ -164,6 +181,85 @@ class AndroidLayoutDrawTest {
         } finally {
             RenderNodeApi23.testFailCreateRenderNode = false
         }
+    }
+
+    @Test
+    fun testLayerCameraDistance() {
+        val targetCameraDistance = 15f
+        drawLatch = CountDownLatch(1)
+
+        var cameraDistanceApplied = false
+        activity.runOnUiThread {
+            // Verify that the camera distance parameters are consumed properly across API levels.
+            // camera distance on the View API assumes Dp however, the compose API consumes pixels
+            // Additionally RenderNode consumed the negative value of the camera distance.
+            // Ensure that each implementation of camera distance consumes positive pixel values
+            // properly. Layer implementations backed by View should be compatible on all
+            // API versions
+            cameraDistanceApplied = when (Build.VERSION.SDK_INT) {
+                // Use public RenderNode API
+                in Build.VERSION_CODES.Q..Int.MAX_VALUE ->
+                    verifyRenderNode29CameraDistance(targetCameraDistance) &&
+                        verifyViewLayerCameraDistance(targetCameraDistance)
+                // Cannot access private APIs on P
+                Build.VERSION_CODES.P -> verifyViewLayerCameraDistance(targetCameraDistance)
+                // Use stub access to framework RenderNode API
+                in Build.VERSION_CODES.M..Int.MAX_VALUE ->
+                    verifyRenderNode23CameraDistance(targetCameraDistance) &&
+                        verifyViewLayerCameraDistance(targetCameraDistance)
+                // No RenderNodes, use Views instead
+                else -> verifyViewLayerCameraDistance(targetCameraDistance)
+            }
+            drawLatch.countDown()
+        }
+
+        drawLatch.await(1, TimeUnit.SECONDS)
+
+        assertTrue(cameraDistanceApplied)
+    }
+
+    private fun verifyRenderNode29CameraDistance(cameraDistance: Float): Boolean =
+        // Verify that the internal render node has the camera distance property
+        // given to the wrapper
+        RenderNodeApi29(AndroidComposeView(activity)).apply {
+            this.cameraDistance = cameraDistance
+        }.dumpRenderNodeData().cameraDistance == cameraDistance
+
+    private fun verifyRenderNode23CameraDistance(cameraDistance: Float): Boolean =
+        // Verify that the internal render node has the camera distance property
+        // given to the wrapper
+        RenderNodeApi23(AndroidComposeView(activity)).apply {
+            this.cameraDistance = cameraDistance
+        }.dumpRenderNodeData().cameraDistance == -cameraDistance // Camera distance is negative
+
+    private fun verifyViewLayerCameraDistance(cameraDistance: Float): Boolean {
+        val layer = ViewLayer(
+            AndroidComposeView(activity),
+            ViewLayerContainer(activity),
+            {},
+            {}
+        ).apply {
+            updateLayerProperties(
+                scaleX = 1f,
+                scaleY = 1f,
+                alpha = 1f,
+                translationX = 0f,
+                translationY = 0f,
+                shadowElevation = 0f,
+                rotationX = 0f,
+                rotationY = 0f,
+                rotationZ = 0f,
+                cameraDistance = cameraDistance,
+                transformOrigin = TransformOrigin.Center,
+                shape = RectangleShape,
+                clip = true,
+                layoutDirection = LayoutDirection.Ltr,
+                density = Density(1f)
+            )
+        }
+        // Verify that the camera distance is applied properly even after accounting for
+        // the internal dp conversion within View
+        return layer.cameraDistance == cameraDistance * layer.resources.displayMetrics.densityDpi
     }
 
     // Tests that simple drawing works with draw with nested children
@@ -271,12 +367,9 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             // there isn't going to be a normal draw because we are just moving the repaint
             // boundary, but we should have a draw cycle
-            activityTestRule.findAndroidComposeView().viewTreeObserver.addOnDrawListener(object :
-                    ViewTreeObserver.OnDrawListener {
-                    override fun onDraw() {
-                        drawLatch.countDown()
-                    }
-                })
+            activityTestRule.findAndroidComposeView().viewTreeObserver.addOnDrawListener {
+                drawLatch.countDown()
+            }
             offset.value = 20
         }
 
@@ -307,7 +400,10 @@ class AndroidLayoutDrawTest {
 
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                Padding(size = (model.size * 3), modifier = fillColor(model, isInner = false)) {
+                Padding(
+                    size = (model.size * 3),
+                    modifier = Modifier.fillColor(model, isInner = false)
+                ) {
                 }
             }
         }
@@ -340,17 +436,17 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    children = {
+                    content = {
                         Padding(
                             size = (model.size * 3),
-                            modifier = fillColor(model, isInner = false)
+                            modifier = Modifier.fillColor(model, isInner = false)
                         ) { }
                         Padding(
                             size = model.size,
-                            modifier = fillColor(model, isInner = true)
+                            modifier = Modifier.fillColor(model, isInner = true)
                         ) { }
                     },
-                    measureBlock = { measurables, constraints ->
+                    measurePolicy = { measurables, constraints ->
                         val placeables = measurables.map { it.measure(constraints) }
                         layout(placeables[0].width, placeables[0].height) {
                             placeables[0].place(0, 0)
@@ -436,27 +532,27 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 val header = @Composable {
                     Layout(
-                        measureBlock = { _, constraints ->
+                        measurePolicy = { _, constraints ->
                             assertEquals(childConstraints[0], constraints)
                             layout(0, 0) {}
                         },
-                        children = emptyContent(), modifier = Modifier.layoutId("header")
+                        content = {}, modifier = Modifier.layoutId("header")
                     )
                 }
                 val footer = @Composable {
                     Layout(
-                        measureBlock = { _, constraints ->
+                        measurePolicy = { _, constraints ->
                             assertEquals(childConstraints[1], constraints)
                             layout(0, 0) {}
                         },
-                        children = emptyContent(), modifier = Modifier.layoutId("footer")
+                        content = {}, modifier = Modifier.layoutId("footer")
                     )
                     Layout(
-                        measureBlock = { _, constraints ->
+                        measurePolicy = { _, constraints ->
                             assertEquals(childConstraints[2], constraints)
                             layout(0, 0) {}
                         },
-                        children = emptyContent(), modifier = Modifier.layoutId("footer")
+                        content = {}, modifier = Modifier.layoutId("footer")
                     )
                 }
 
@@ -465,8 +561,8 @@ class AndroidLayoutDrawTest {
                     measurables.forEachIndexed { index, measurable ->
                         measurable.measure(childConstraints[index])
                     }
-                    val measurablesHeader = measurables.filter { it.id == "header" }
-                    val measurablesFooter = measurables.filter { it.id == "footer" }
+                    val measurablesHeader = measurables.filter { it.layoutId == "header" }
+                    val measurablesFooter = measurables.filter { it.layoutId == "footer" }
                     assertEquals(headerChildrenCount, measurablesHeader.size)
                     assertSame(measurables[0], measurablesHeader[0])
                     assertEquals(footerChildrenCount, measurablesFooter.size)
@@ -493,10 +589,12 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    modifier = Modifier.drawBehind {
-                        drawRect(model.outerColor)
+                    modifier = remember {
+                        Modifier.drawBehind {
+                            drawRect(model.outerColor)
+                        }
                     },
-                    children = {
+                    content = {
                         AtLeastSize(
                             size = model.size,
                             modifier = Modifier.drawBehind {
@@ -505,16 +603,18 @@ class AndroidLayoutDrawTest {
                             }
                         )
                     },
-                    measureBlock = { measurables, constraints ->
-                        measureCalls++
-                        layout(30, 30) {
-                            layoutCalls++
-                            layoutLatch.countDown()
-                            val placeable = measurables[0].measure(constraints)
-                            placeable.place(
-                                (30 - placeable.width) / 2,
-                                (30 - placeable.height) / 2
-                            )
+                    measurePolicy = remember {
+                        MeasurePolicy { measurables, constraints ->
+                            measureCalls++
+                            layout(30, 30) {
+                                layoutCalls++
+                                layoutLatch.countDown()
+                                val placeable = measurables[0].measure(constraints)
+                                placeable.place(
+                                    (30 - placeable.width) / 2,
+                                    (30 - placeable.height) / 2
+                                )
+                            }
                         }
                     }
                 )
@@ -542,11 +642,11 @@ class AndroidLayoutDrawTest {
         fun FixedSizeRow(
             width: Int,
             height: Int,
-            children: @Composable () -> Unit
+            content: @Composable () -> Unit
         ) {
             Layout(
-                children = children,
-                measureBlock = { measurables, constraints ->
+                content = content,
+                measurePolicy = { measurables, constraints ->
                     val resolvedWidth = constraints.constrainWidth(width)
                     val resolvedHeight = constraints.constrainHeight(height)
                     layout(resolvedWidth, resolvedHeight) {
@@ -579,12 +679,12 @@ class AndroidLayoutDrawTest {
             latch: CountDownLatch
         ) {
             Layout(
-                children = {},
+                content = {},
                 modifier = Modifier.drawBehind {
                     drawn.value = true
                     latch.countDown()
                 },
-                measureBlock = { _, constraints ->
+                measurePolicy = { _, constraints ->
                     measured.value = true
                     val resolvedWidth = constraints.constrainWidth(width)
                     val resolvedHeight = constraints.minHeight
@@ -635,10 +735,10 @@ class AndroidLayoutDrawTest {
         val innerColor = Color(0xFFFFFFFF)
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                AtLeastSize(size = 30, modifier = fillColor(outerColor)) {
+                AtLeastSize(size = 30, modifier = Modifier.fillColor(outerColor)) {
                     if (drawChild.value) {
                         Padding(size = 20) {
-                            AtLeastSize(size = 20, modifier = fillColor(innerColor)) {
+                            AtLeastSize(size = 20, modifier = Modifier.fillColor(innerColor)) {
                             }
                         }
                     }
@@ -666,12 +766,12 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    modifier = fillColor(Color.Green),
-                    children = {
+                    modifier = Modifier.fillColor(Color.Green),
+                    content = {
                         AtLeastSize(size = 10) {
                             AtLeastSize(
                                 size = 10,
-                                modifier = Modifier.drawLayer().then(fillColor(Color.Cyan))
+                                modifier = Modifier.graphicsLayer().fillColor(Color.Cyan)
                             ) {
                             }
                         }
@@ -794,7 +894,7 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 val child1 = @Composable {
                     Wrap {
-                        Layout(children = {}) { _, _ ->
+                        Layout(content = {}) { _, _ ->
                             layout(
                                 0,
                                 0,
@@ -808,7 +908,7 @@ class AndroidLayoutDrawTest {
                 }
                 val child2 = @Composable {
                     Wrap {
-                        Layout(children = {}) { _, _ ->
+                        Layout(content = {}) { _, _ ->
                             layout(
                                 0,
                                 0,
@@ -856,12 +956,12 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child1 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(0, 0, mapOf(TestLine1 to 10)) {}
                     }
                 }
                 val child2 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(0, 0, mapOf(TestLine2 to 20)) { }
                     }
                 }
@@ -901,7 +1001,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child1 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         ++child1Measures
                         layout(0, 0, mapOf(TestLine1 to 10)) {
                             ++child1Layouts
@@ -909,7 +1009,7 @@ class AndroidLayoutDrawTest {
                     }
                 }
                 val child2 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         ++child2Measures
                         layout(0, 0, mapOf(TestLine2 to 20)) {
                             ++child2Layouts
@@ -956,7 +1056,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child1 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         ++child1Measures
                         layout(0, 0, mapOf(TestLine1 to 10)) {
                             ++child1Layouts
@@ -964,7 +1064,7 @@ class AndroidLayoutDrawTest {
                     }
                 }
                 val child2 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         ++child2Measures
                         layout(0, 0, mapOf(TestLine2 to 20)) {
                             ++child2Layouts
@@ -1004,12 +1104,12 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child1 = @Composable {
-                    Layout(children = { }) { _, _ ->
+                    Layout(content = { }) { _, _ ->
                         layout(0, 0, mapOf(TestLine to 10)) { }
                     }
                 }
                 val child2 = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(
                             0,
                             0,
@@ -1046,7 +1146,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child = @Composable {
-                    Layout(children = { }) { _, _ ->
+                    Layout(content = { }) { _, _ ->
                         layout(0, 0, mapOf(TestLine to 10)) {
                             ++childLayouts
                         }
@@ -1086,7 +1186,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(0, 0, mapOf(TestLine to offset.value)) {}
                     }
                 }
@@ -1127,7 +1227,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(
                             0,
                             0,
@@ -1170,7 +1270,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(0, 0, mapOf(TestLine to offset.value)) { }
                     }
                 }
@@ -1207,12 +1307,13 @@ class AndroidLayoutDrawTest {
             ++alignmentLinesCalculations
             0
         }
+        var linePosition by mutableStateOf(10)
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val innerChild = @Composable {
                     offset.value // Artificial remeasure.
-                    Layout(children = {}) { _, _ ->
-                        layout(0, 0, mapOf(TestLine to 10)) { }
+                    Layout(content = {}) { _, _ ->
+                        layout(0, 0, mapOf(TestLine to linePosition)) { }
                     }
                 }
                 val child = @Composable {
@@ -1242,12 +1343,12 @@ class AndroidLayoutDrawTest {
         assertEquals(1, alignmentLinesCalculations)
 
         layoutLatch = CountDownLatch(1)
-        activityTestRule.runOnUiThreadIR { offset.value = 20 }
+        activityTestRule.runOnUiThreadIR { offset.value = 20; linePosition = 20 }
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
         assertEquals(1, alignmentLinesCalculations)
 
         layoutLatch = CountDownLatch(1)
-        activityTestRule.runOnUiThreadIR { offset.value = 10 }
+        activityTestRule.runOnUiThreadIR { offset.value = 10; linePosition = 30 }
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
         assertEquals(2, alignmentLinesCalculations)
     }
@@ -1259,7 +1360,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val innerChild = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         layout(0, 0, mapOf(TestLine to 10)) { }
                     }
                 }
@@ -1296,7 +1397,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child = @Composable {
-                    Layout(children = {}) { _, _ ->
+                    Layout(content = {}) { _, _ ->
                         ++innerChildMeasures
                         layout(0, 0, mapOf(TestLine to 10)) { ++innerChildLayouts }
                     }
@@ -1348,7 +1449,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val child = @Composable {
-                    Layout(children = {}) { _, constraints ->
+                    Layout(content = {}) { _, constraints ->
                         layout(
                             constraints.minWidth,
                             constraints.minHeight,
@@ -1375,26 +1476,44 @@ class AndroidLayoutDrawTest {
             }
         }
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
-        // Two layouts as the alignment line was only queried after the child was placed.
-        assertEquals(2, childLayouts)
+        assertEquals(1, childLayouts)
     }
 
     @Test
     fun testAlignmentLines_whenQueriedAfterPlacing_haveCorrectNumberOfLayouts() {
-        val TestLine = VerticalAlignmentLine(::min)
-        var layoutLatch = CountDownLatch(1)
         var childLayouts = 0
+        var childAlignmentLinesCalculations = 0
+        val TestLine = VerticalAlignmentLine { v1, _ ->
+            ++childAlignmentLinesCalculations
+            v1
+        }
         val offset = mutableStateOf(10)
+        var linePositionState by mutableStateOf(10)
+        var linePosition = 10
+        fun changeLinePosition() {
+            linePosition = 30 - linePosition
+            linePositionState = 30 - linePositionState
+        }
+        var layoutLatch = CountDownLatch(1)
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                val child = @Composable {
-                    Layout(children = {}) { _, constraints ->
+                val childChild = @Composable {
+                    Layout(content = {}) { _, constraints ->
                         layout(
                             constraints.minWidth,
                             constraints.minHeight,
-                            mapOf(TestLine to 10)
+                            mapOf(TestLine to linePositionState)
                         ) {
                             offset.value // To ensure relayout.
+                        }
+                    }
+                }
+                val child = @Composable {
+                    Layout(content = { childChild(); childChild() }) { measurables, constraints ->
+                        val placeables = measurables.map { it.measure(constraints) }
+                        layout(constraints.minWidth, constraints.minHeight) {
+                            offset.value // To ensure relayout.
+                            placeables.forEach { it.place(0, 0) }
                             ++childLayouts
                         }
                     }
@@ -1405,9 +1524,9 @@ class AndroidLayoutDrawTest {
                     }) { measurables, constraints ->
                         val placeable = measurables[0].measure(constraints)
                         layout(placeable.width, placeable.height) {
-                            if (offset.value > 15) assertEquals(10, placeable[TestLine])
+                            if (offset.value > 15) assertEquals(linePosition, placeable[TestLine])
                             placeable.place(0, 0)
-                            if (offset.value > 5) assertEquals(10, placeable[TestLine])
+                            if (offset.value > 5) assertEquals(linePosition, placeable[TestLine])
                         }
                     }
                 }
@@ -1424,37 +1543,42 @@ class AndroidLayoutDrawTest {
             }
         }
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
-        // Two layouts as the alignment line was only queried after the child was placed.
-        assertEquals(2, childLayouts)
-
-        layoutLatch = CountDownLatch(1)
-        activityTestRule.runOnUiThreadIR { offset.value = 12 }
-        assertTrue(layoutLatch.await(5, TimeUnit.SECONDS))
-        // Just one more layout as the alignment lines were speculatively calculated this time.
-        assertEquals(3, childLayouts)
-
-        layoutLatch = CountDownLatch(1)
-        activityTestRule.runOnUiThreadIR { offset.value = 17 }
-        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
-        // One layout as the alignment lines are queried before.
-        assertEquals(4, childLayouts)
-
-        layoutLatch = CountDownLatch(1)
-        activityTestRule.runOnUiThreadIR { offset.value = 12 }
-        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
-        // One layout as the alignment lines are still calculated speculatively.
-        assertEquals(5, childLayouts)
+        assertEquals(2, childLayouts + childAlignmentLinesCalculations)
 
         layoutLatch = CountDownLatch(1)
         activityTestRule.runOnUiThreadIR { offset.value = 1 }
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
-        assertEquals(6, childLayouts)
+        assertEquals(3, childLayouts + childAlignmentLinesCalculations)
+
         layoutLatch = CountDownLatch(1)
-        activityTestRule.runOnUiThreadIR { offset.value = 10 }
+        activityTestRule.runOnUiThreadIR { offset.value = 10; changeLinePosition() }
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
-        // Two layouts again, since alignment lines were not queried during last layout,
-        // so we did not calculate them speculatively anymore.
-        assertEquals(8, childLayouts)
+        assertEquals(5, childLayouts + childAlignmentLinesCalculations)
+
+        layoutLatch = CountDownLatch(1)
+        activityTestRule.runOnUiThreadIR { offset.value = 12; changeLinePosition() }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
+        assertEquals(7, childLayouts + childAlignmentLinesCalculations)
+
+        layoutLatch = CountDownLatch(1)
+        activityTestRule.runOnUiThreadIR { offset.value = 17; changeLinePosition() }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
+        assertEquals(9, childLayouts + childAlignmentLinesCalculations)
+
+        layoutLatch = CountDownLatch(1)
+        activityTestRule.runOnUiThreadIR { offset.value = 12; changeLinePosition() }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
+        assertEquals(11, childLayouts + childAlignmentLinesCalculations)
+
+        layoutLatch = CountDownLatch(1)
+        activityTestRule.runOnUiThreadIR { offset.value = 1; changeLinePosition() }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
+        assertEquals(13, childLayouts + childAlignmentLinesCalculations)
+
+        layoutLatch = CountDownLatch(1)
+        activityTestRule.runOnUiThreadIR { offset.value = 10; changeLinePosition() }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
+        assertEquals(15, childLayouts + childAlignmentLinesCalculations)
     }
 
     @Test
@@ -1534,11 +1658,11 @@ class AndroidLayoutDrawTest {
         testHorizontalLine: HorizontalAlignmentLine,
         assertLines: Modifier.(Int, Int) -> Modifier
     ) {
-        val layoutLatch = CountDownLatch(7)
+        val layoutLatch = CountDownLatch(1)
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 val layout = @Composable { modifier: Modifier ->
-                    Layout(modifier = modifier, children = {}) { _, _ ->
+                    Layout(modifier = modifier, content = {}) { _, _ ->
                         layout(
                             0,
                             0,
@@ -1557,16 +1681,16 @@ class AndroidLayoutDrawTest {
                 layout(
                     Modifier
                         .assertLines(30, 30)
-                        .drawLayer()
+                        .graphicsLayer()
                         .offset(20.toDp(), 10.toDp())
                 )
                 layout(
                     Modifier
                         .assertLines(30, 30)
                         .background(Color.Blue)
-                        .drawLayer()
+                        .graphicsLayer()
                         .offset(20.toDp(), 10.toDp())
-                        .drawLayer()
+                        .graphicsLayer()
                         .background(Color.Blue)
                 )
                 layout(
@@ -1574,9 +1698,9 @@ class AndroidLayoutDrawTest {
                         .background(Color.Blue)
                         .assertLines(30, 30)
                         .background(Color.Blue)
-                        .drawLayer()
+                        .graphicsLayer()
                         .offset(20.toDp(), 10.toDp())
-                        .drawLayer()
+                        .graphicsLayer()
                         .background(Color.Blue)
                 )
                 Wrap(
@@ -1584,9 +1708,9 @@ class AndroidLayoutDrawTest {
                         .background(Color.Blue)
                         .assertLines(30, 30)
                         .background(Color.Blue)
-                        .drawLayer()
+                        .graphicsLayer()
                         .offset(20.toDp(), 10.toDp())
-                        .drawLayer()
+                        .graphicsLayer()
                         .background(Color.Blue)
                 ) {
                     layout(Modifier)
@@ -1596,9 +1720,9 @@ class AndroidLayoutDrawTest {
                         .background(Color.Blue)
                         .assertLines(40, 50)
                         .background(Color.Blue)
-                        .drawLayer()
+                        .graphicsLayer()
                         .offset(20.toDp(), 10.toDp())
-                        .drawLayer()
+                        .graphicsLayer()
                         .background(Color.Blue)
                 ) {
                     layout(Modifier.offset(10.toDp(), 20.toDp()))
@@ -1615,23 +1739,23 @@ class AndroidLayoutDrawTest {
         var laidOut = false
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                val container = @Composable { children: @Composable () -> Unit ->
+                val container = @Composable { content: @Composable () -> Unit ->
                     // This simulates a Container optimisation, when the child does not
                     // affect parent size.
-                    Layout(children) { measurables, constraints ->
+                    Layout(content) { measurables, constraints ->
                         layout(30, 30) {
                             measurables[0].measure(constraints).place(0, 0)
                         }
                     }
                 }
-                val recomposingChild = @Composable { children: @Composable (Int) -> Unit ->
+                val recomposingChild = @Composable { content: @Composable (Int) -> Unit ->
                     // This simulates a child that recomposes, for example due to a transition.
-                    children(offset.value)
+                    content(offset.value)
                 }
                 val assumeLayoutBeforeDraw = @Composable { _: Int ->
                     // This assumes a layout was done before the draw pass.
                     Layout(
-                        children = {},
+                        content = {},
                         modifier = Modifier.drawBehind {
                             assertTrue(laidOut)
                             latch.countDown()
@@ -1665,7 +1789,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    children = {
+                    content = {
                         AtLeastSize(30, modifier = Modifier.drawBehind { drawn = true })
                     },
                     modifier = Modifier.drawLatchModifier()
@@ -1695,7 +1819,7 @@ class AndroidLayoutDrawTest {
         val model = SquareModel(size = 0)
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                Layout(children = { }) { _, _ ->
+                Layout(content = { }) { _, _ ->
                     latch.countDown()
                     layout(model.size, model.size) {}
                 }
@@ -1717,8 +1841,8 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    children = {
-                        Layout(children = emptyContent()) { _, _ ->
+                    content = {
+                        Layout(content = {}) { _, _ ->
                             latch.countDown()
                             layout(model.size, model.size) {}
                         }
@@ -1747,8 +1871,11 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    children = {
-                        Layout(modifier = Modifier.drawLayer(), children = emptyContent()) { _, _ ->
+                    content = {
+                        Layout(
+                            modifier = Modifier.graphicsLayer(),
+                            content = {}
+                        ) { _, _ ->
                             latch.countDown()
                             layout(model.size, model.size) {}
                         }
@@ -1780,7 +1907,7 @@ class AndroidLayoutDrawTest {
                     assertEquals(100.0f, size.height)
                     latch.countDown()
                 }
-                AtLeastSize(100, PaddingModifier(10).then(drawnContent)) {
+                AtLeastSize(100, Modifier.padding(10).then(drawnContent)) {
                 }
             }
         }
@@ -1794,7 +1921,7 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 AtLeastSize(
                     100,
-                    PaddingModifier(10).drawLayer()
+                    Modifier.padding(10).graphicsLayer()
                         .drawBehind {
                             assertEquals(100.0f, size.width)
                             assertEquals(100.0f, size.height)
@@ -1817,7 +1944,7 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 val child = @Composable {
                     Wrap {
-                        Layout(children = {}, modifier = PaddingModifier(padding)) { _, _ ->
+                        Layout(content = {}, modifier = Modifier.padding(padding)) { _, _ ->
                             layout(0, 0, mapOf(testLine to alignmentLinePosition)) { }
                         }
                     }
@@ -1858,11 +1985,11 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    children = {
+                    content = {
                         FixedSize(size, layoutModifier)
                         FixedSize(size, parentDataModifier)
                     },
-                    measureBlock = { measurables, constraints ->
+                    measurePolicy = { measurables, constraints ->
                         for (i in 0 until measurables.size) {
                             val child = measurables[i]
                             val placeable = child.measure(constraints)
@@ -1889,7 +2016,7 @@ class AndroidLayoutDrawTest {
                 FixedSize(30, Modifier.background(outerColor)) {
                     FixedSize(
                         10,
-                        PaddingModifier(10).background(innerColor).drawLatchModifier()
+                        Modifier.padding(10).background(innerColor).drawLatchModifier()
                     )
                 }
             }
@@ -1903,7 +2030,7 @@ class AndroidLayoutDrawTest {
         val layoutDirection = Ref<LayoutDirection>()
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     FixedSize(
                         size = 50,
                         modifier = Modifier.drawBehind {
@@ -1936,7 +2063,7 @@ class AndroidLayoutDrawTest {
         }
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
-                Providers(LayoutDirectionAmbient provides LayoutDirection.Rtl) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     FixedSize(
                         size = 50,
                         modifier = layoutModifier
@@ -1957,7 +2084,7 @@ class AndroidLayoutDrawTest {
                 FixedSize(30, Modifier.background(model, false)) {
                     FixedSize(
                         10,
-                        PaddingModifier(10).background(model, true).drawLatchModifier()
+                        Modifier.padding(10).background(model, true).drawLatchModifier()
                     )
                 }
             }
@@ -1979,8 +2106,8 @@ class AndroidLayoutDrawTest {
                 FixedSize(30, Modifier.background(Color.Green)) {
                     FixedSize(
                         10,
-                        Modifier.drawLayer()
-                            .then(PaddingModifier(10))
+                        Modifier.graphicsLayer()
+                            .padding(10)
                             .background(model, true)
                             .drawLatchModifier()
                     )
@@ -2047,7 +2174,7 @@ class AndroidLayoutDrawTest {
                 FixedSize(30, Modifier.background(color = outerColor)) {
                     FixedSize(
                         size = 10,
-                        modifier = PaddingModifier(10)
+                        modifier = Modifier.padding(10)
                             .background(color = innerColor)
                             .drawLatchModifier()
                     )
@@ -2098,7 +2225,7 @@ class AndroidLayoutDrawTest {
                 ) {
                     FixedSize(
                         offset.value,
-                        modifier = AlignTopLeft.drawLayer()
+                        modifier = AlignTopLeft.graphicsLayer()
                             .drawBehind {
                                 drawLatch.countDown()
                                 drawRect(blue)
@@ -2126,7 +2253,7 @@ class AndroidLayoutDrawTest {
     @Test
     fun layoutModifier_convenienceApi() {
         val size = 100
-        val offset = 15f
+        val offset = 15
         val latch = CountDownLatch(1)
         var resultCoordinates: LayoutCoordinates? = null
 
@@ -2138,7 +2265,7 @@ class AndroidLayoutDrawTest {
                         .layout { measurable, constraints ->
                             val placeable = measurable.measure(constraints)
                             layout(placeable.width, placeable.height) {
-                                placeable.place(Offset(offset, offset))
+                                placeable.place(offset, offset)
                             }
                         }.onGloballyPositioned {
                             resultCoordinates = it
@@ -2153,14 +2280,14 @@ class AndroidLayoutDrawTest {
         activity.runOnUiThread {
             assertEquals(size, resultCoordinates?.size?.height)
             assertEquals(size, resultCoordinates?.size?.width)
-            assertEquals(Offset(offset, offset), resultCoordinates?.positionInRoot)
+            assertEquals(IntOffset(offset, offset).toOffset(), resultCoordinates?.positionInRoot())
         }
     }
 
     @Test
     fun layoutModifier_convenienceApi_equivalent() {
         val size = 100
-        val offset = 15f
+        val offset = 15
         val latch = CountDownLatch(2)
 
         var convenienceCoordinates: LayoutCoordinates? = null
@@ -2174,7 +2301,7 @@ class AndroidLayoutDrawTest {
                         .layout { measurable, constraints ->
                             val placeable = measurable.measure(constraints)
                             layout(placeable.width, placeable.height) {
-                                placeable.place(Offset(offset, offset))
+                                placeable.place(offset, offset)
                             }
                         }.onGloballyPositioned {
                             convenienceCoordinates = it
@@ -2189,7 +2316,7 @@ class AndroidLayoutDrawTest {
                     ): MeasureResult {
                         val placeable = measurable.measure(constraints)
                         return layout(placeable.width, placeable.height) {
-                            placeable.place(Offset(offset, offset))
+                            placeable.place(offset, offset)
                         }
                     }
                 }
@@ -2208,7 +2335,7 @@ class AndroidLayoutDrawTest {
         activity.runOnUiThread {
             assertEquals(coordinates?.size?.height, convenienceCoordinates?.size?.height)
             assertEquals(coordinates?.size?.width, convenienceCoordinates?.size?.width)
-            assertEquals(coordinates?.positionInRoot, convenienceCoordinates?.positionInRoot)
+            assertEquals(coordinates?.positionInRoot(), convenienceCoordinates?.positionInRoot())
         }
     }
 
@@ -2229,22 +2356,21 @@ class AndroidLayoutDrawTest {
     // Tests that show layout bounds draws outlines around content and modifiers
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
-    @OptIn(InternalCoreApi::class)
+    @OptIn(InternalComposeUiApi::class)
     fun showLayoutBounds_content() {
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 FixedSize(size = 30, modifier = Modifier.background(Color.White)) {
                     FixedSize(
                         size = 10,
-                        modifier = PaddingModifier(5)
-                            .then(PaddingModifier(5))
+                        modifier = Modifier.padding(5)
+                            .padding(5)
                             .drawLatchModifier()
                     )
                 }
             }
-            val content = activity.findViewById<ViewGroup>(android.R.id.content)
-            val owner = content.getChildAt(0) as Owner
-            owner.showLayoutBounds = true
+            val composeView = activityTestRule.findAndroidComposeView() as AndroidComposeView
+            composeView.showLayoutBounds = true
         }
         activityTestRule.waitAndScreenShot().apply {
             assertRect(Color.White, size = 8)
@@ -2256,17 +2382,52 @@ class AndroidLayoutDrawTest {
         }
     }
 
+    // Ensure that showLayoutBounds is reset in onResume() to whatever is set in the
+    // settings.
+    @Test
+    @OptIn(InternalComposeUiApi::class)
+    fun showLayoutBounds_resetOnResume() {
+        activityTestRule.runOnUiThreadIR {
+            activity.setContent {
+            }
+        }
+        val composeView = activityTestRule.findAndroidComposeView() as AndroidComposeView
+        // find out whatever the current setting value is for showLayoutBounds
+        val startShowLayoutBounds = composeView.showLayoutBounds
+
+        activityTestRule.runOnUiThread {
+            val intent = Intent(activity, TestActivity::class.java)
+            activity.startActivity(intent)
+        }
+
+        assertTrue(activity.stopLatch.await(5, TimeUnit.SECONDS))
+
+        activityTestRule.runOnUiThread {
+            // set showLayoutBounds to something different
+            composeView.showLayoutBounds = !startShowLayoutBounds
+            activity.resumeLatch = CountDownLatch(1)
+            TestActivity.resumedActivity!!.finish()
+        }
+
+        assertTrue(activity.resumeLatch.await(5, TimeUnit.SECONDS))
+
+        activityTestRule.runOnUiThread {
+            // ensure showLayoutBounds was reset in onResume()
+            assertEquals(startShowLayoutBounds, composeView.showLayoutBounds)
+        }
+    }
+
     @Test
     fun requestRemeasureForAlreadyMeasuredChildWhileTheParentIsStillMeasuring() {
         val drawlatch = CountDownLatch(1)
         activityTestRule.runOnUiThreadIR {
             activity.setContent {
                 Layout(
-                    children = {
+                    content = {
                         val state = remember { mutableStateOf(false) }
                         var lastLayoutValue: Boolean = false
                         Layout(
-                            children = {},
+                            content = {},
                             modifier = Modifier.drawBehind {
                                 // this verifies the layout was remeasured before being drawn
                                 assertTrue(lastLayoutValue)
@@ -2282,14 +2443,13 @@ class AndroidLayoutDrawTest {
                             }
                             layout(100, 100) {}
                         }
-                        FixedSize(30, children = emptyContent())
+                        FixedSize(30, content = {})
                     }
                 ) { measurables, constraints ->
                     val (first, second) = measurables
                     val firstPlaceable = first.measure(constraints)
                     // switch frame, as inside the measure block we changed the model value
                     // this will trigger requestRemeasure on this first layout
-                    @OptIn(ExperimentalComposeApi::class)
                     Snapshot.sendApplyNotifications()
                     val secondPlaceable = second.measure(constraints)
                     layout(30, 30) {
@@ -2314,7 +2474,7 @@ class AndroidLayoutDrawTest {
                     FixedSize(
                         size = 20,
                         modifier = AlignTopLeft
-                            .then(PaddingModifier(5))
+                            .padding(5)
                             .scale(0.5f)
                             .background(Color.Red)
                             .latch(drawLatch)
@@ -2329,9 +2489,9 @@ class AndroidLayoutDrawTest {
     @Test
     fun layerModifier_scaleChange() {
         val scale = mutableStateOf(1f)
-        val layerModifier = object : DrawLayerModifier {
-            override val scaleX: Float get() = scale.value
-            override val scaleY: Float get() = scale.value
+        val layerModifier = Modifier.graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
         }
         activityTestRule.runOnUiThread {
             activity.setContent {
@@ -2341,7 +2501,7 @@ class AndroidLayoutDrawTest {
                 ) {
                     FixedSize(
                         size = 10,
-                        modifier = PaddingModifier(10)
+                        modifier = Modifier.padding(10)
                             .then(layerModifier)
                             .background(Color.Red)
                             .latch(drawLatch)
@@ -2365,15 +2525,18 @@ class AndroidLayoutDrawTest {
     @Test
     fun layerModifier_noClip() {
         val triangleShape = object : Shape {
-            override fun createOutline(size: Size, density: Density): Outline =
-                Outline.Generic(
-                    Path().apply {
-                        moveTo(size.width / 2f, 0f)
-                        lineTo(size.width, size.height)
-                        lineTo(0f, size.height)
-                        close()
-                    }
-                )
+            override fun createOutline(
+                size: Size,
+                layoutDirection: LayoutDirection,
+                density: Density
+            ) = Outline.Generic(
+                Path().apply {
+                    moveTo(size.width / 2f, 0f)
+                    lineTo(size.width, size.height)
+                    lineTo(0f, size.height)
+                    close()
+                }
+            )
         }
         activityTestRule.runOnUiThread {
             activity.setContent {
@@ -2382,8 +2545,8 @@ class AndroidLayoutDrawTest {
                 ) {
                     FixedSize(
                         size = 10,
-                        modifier = PaddingModifier(10)
-                            .drawLayer(shape = triangleShape)
+                        modifier = Modifier.padding(10)
+                            .graphicsLayer(shape = triangleShape)
                             .drawBehind {
                                 drawRect(
                                     Color.Blue,
@@ -2406,12 +2569,12 @@ class AndroidLayoutDrawTest {
         val innerColor = mutableStateOf(Color.Red)
         activityTestRule.runOnUiThread {
             activity.setContent {
-                val children: @Composable () -> Unit = remember {
+                val content: @Composable () -> Unit = remember {
                     @Composable {
                         FixedSize(
                             size = 10,
-                            modifier = Modifier.drawLayer()
-                                .then(PaddingModifier(10))
+                            modifier = Modifier.graphicsLayer()
+                                .padding(10)
                                 .background(innerColor.value)
                                 .latch(drawLatch)
                         ) {}
@@ -2419,12 +2582,12 @@ class AndroidLayoutDrawTest {
                 }
                 FixedSize(
                     size = 30,
-                    modifier = Modifier.drawLayer().background(Color.Blue)
+                    modifier = Modifier.graphicsLayer().background(Color.Blue)
                 ) {
                     FixedSize(
                         size = 30,
-                        modifier = Modifier.drawLayer(),
-                        children = children
+                        modifier = Modifier.graphicsLayer(),
+                        content = content
                     )
                 }
             }
@@ -2448,7 +2611,7 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 FixedSize(
                     30,
-                    Modifier.drawBehind { outerLatch.countDown() }.drawLayer()
+                    Modifier.drawBehind { outerLatch.countDown() }.graphicsLayer()
                 ) {
                     FixedSize(
                         10,
@@ -2481,12 +2644,12 @@ class AndroidLayoutDrawTest {
     @Test
     fun detachChildWithLayer() {
         activityTestRule.runOnUiThread {
-            val composition = activity.setContent {
-                FixedSize(10, Modifier.drawLayer()) {
+            activity.setContent {
+                FixedSize(10, Modifier.graphicsLayer()) {
                     FixedSize(8)
                 }
             }
-            composition.dispose()
+            activity.setContentView(View(activity)) // Replace content view with empty
         }
     }
 
@@ -2500,13 +2663,13 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 val yellowSquare = @Composable {
                     FixedSize(
-                        10, Modifier.drawLayer().background(Color.Yellow).drawLatchModifier()
+                        10, Modifier.graphicsLayer().background(Color.Yellow).drawLatchModifier()
                     ) {
                     }
                 }
                 Layout(
                     modifier = Modifier.background(Color.Red),
-                    children = yellowSquare
+                    content = yellowSquare
                 ) { measurables, _ ->
                     val childConstraints = Constraints.fixed(10, 10)
                     val p = measurables[0].measure(childConstraints)
@@ -2551,17 +2714,12 @@ class AndroidLayoutDrawTest {
                 FixedSize(30, Modifier.background(Color.Red).drawLatchModifier()) {
                     FixedSize(
                         10,
-                        PaddingModifier(10).then(
-                            object : DrawLayerModifier {
-                                override val translationX: Float
-                                    get() {
-                                        translationLatch.countDown()
-                                        return offset.value
-                                    }
-                                override val translationY: Float
-                                    get() = offset.value
-                            }
-                        ).background(Color.Yellow)
+                        Modifier.padding(10)
+                            .graphicsLayer {
+                                translationLatch.countDown()
+                                translationX = offset.value
+                                translationY = offset.value
+                            }.background(Color.Yellow)
                     ) {
                     }
                 }
@@ -2632,22 +2790,24 @@ class AndroidLayoutDrawTest {
         var color by mutableStateOf(Color.Red)
         var m: Measurable? = null
 
-        var layerLatch = CountDownLatch(1)
+        var layoutLatch = CountDownLatch(1)
 
-        class SpecialModifier(
-            val drawLatch: CountDownLatch,
-            val layerLatch: CountDownLatch
-        ) : DrawModifier, DrawLayerModifier {
+        class SpecialModifier : DrawModifier, LayoutModifier {
             override fun ContentDrawScope.draw() {
                 drawContent()
                 drawLatch.countDown()
             }
 
-            override val translationX: Float
-                get() {
-                    layerLatch.countDown()
-                    return super.translationX
+            override fun MeasureScope.measure(
+                measurable: Measurable,
+                constraints: Constraints
+            ): MeasureResult {
+                val placeable = measurable.measure(constraints)
+                layoutLatch.countDown()
+                return layout(placeable.width, placeable.height) {
+                    placeable.place(0, 0)
                 }
+            }
         }
 
         val layoutCaptureModifier = object : LayoutModifier {
@@ -2667,16 +2827,16 @@ class AndroidLayoutDrawTest {
                 FixedSize(
                     30,
                     layoutCaptureModifier
-                        .then(SpecialModifier(drawLatch, layerLatch))
+                        .then(SpecialModifier())
                         .background(color)
                 ) {}
             }
         }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
-        assertTrue(layerLatch.await(1, TimeUnit.SECONDS))
         var firstMeasurable = m
         drawLatch = CountDownLatch(1)
-        layerLatch = CountDownLatch(1)
+        layoutLatch = CountDownLatch(1)
 
         activityTestRule.runOnUiThread {
             m = null
@@ -2684,8 +2844,8 @@ class AndroidLayoutDrawTest {
         }
 
         // The latches are triggered in the new instance
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
-        assertTrue(layerLatch.await(1, TimeUnit.SECONDS))
         // The new instance's measurable is the same.
         assertNotNull(m)
         assertSame(firstMeasurable, m)
@@ -2702,8 +2862,8 @@ class AndroidLayoutDrawTest {
                 FixedSize(
                     size = 10,
                     modifier = Modifier.background(color = color).drawLatchModifier().then(
-                        PaddingModifier(10)
-                            .drawLayer()
+                        Modifier.padding(10)
+                            .graphicsLayer()
                             .background(Color.White)
                     )
                 )
@@ -2724,7 +2884,7 @@ class AndroidLayoutDrawTest {
         var zIndex by mutableStateOf(0f)
         activityTestRule.runOnUiThread {
             activity.setContent {
-                with(DensityAmbient.current) {
+                with(LocalDensity.current) {
                     FixedSize(
                         size = 30,
                         modifier = Modifier.background(color = Color.Blue).drawLatchModifier()
@@ -2732,7 +2892,7 @@ class AndroidLayoutDrawTest {
                         FixedSize(
                             size = 10,
                             modifier = Modifier
-                                .drawLayer()
+                                .graphicsLayer()
                                 .zIndex(zIndex)
                                 .padding(10.toDp())
                                 .background(Color.White)
@@ -2740,7 +2900,7 @@ class AndroidLayoutDrawTest {
                         FixedSize(
                             size = 10,
                             modifier = Modifier
-                                .drawLayer()
+                                .graphicsLayer()
                                 .zIndex(0f)
                                 .padding(10.toDp())
                                 .background(Color.Yellow)
@@ -2756,6 +2916,7 @@ class AndroidLayoutDrawTest {
         validateSquareColors(outerColor = Color.Blue, innerColor = Color.White, size = 10)
     }
 
+    @FlakyTest
     @Test
     fun makingItemLarger() {
         var height by mutableStateOf(30)
@@ -2764,7 +2925,7 @@ class AndroidLayoutDrawTest {
         activityTestRule.runOnUiThread {
             val linearLayout = LinearLayout(activity)
             linearLayout.orientation = LinearLayout.VERTICAL
-            val child = FrameLayout(activity)
+            val child = ComposeView(activity)
             activity.setContentView(linearLayout)
             linearLayout.addView(
                 child,
@@ -2818,8 +2979,8 @@ class AndroidLayoutDrawTest {
                 FixedSize(
                     size = 10,
                     modifier = Modifier.background(Color.Blue)
-                        .then(PaddingModifier(10))
-                        .drawLayer()
+                        .padding(10)
+                        .graphicsLayer()
                         .then(if (showInner) Modifier.background(Color.White) else Modifier)
                         .drawLatchModifier()
                 )
@@ -2866,15 +3027,15 @@ class AndroidLayoutDrawTest {
     @Test
     fun reattachingViewKeepsRootNodePlaced() {
         lateinit var container1: FrameLayout
-        lateinit var container2: FrameLayout
+        lateinit var container2: ComposeView
 
         activityTestRule.runOnUiThread {
             val activity = activityTestRule.activity
             container1 = FrameLayout(activity)
-            container2 = FrameLayout(activity)
+            container2 = ComposeView(activity)
             activity.setContentView(container1)
             container1.addView(container2)
-            container2.setContent(Recomposer.current()) {
+            container2.setContent {
                 FixedSize(10, Modifier.drawLatchModifier())
             }
         }
@@ -2898,7 +3059,6 @@ class AndroidLayoutDrawTest {
 
     // When a LayoutNode is removed, but it contains a layout that is being updated, the
     // layout should not be remeasured.
-    @OptIn(ExperimentalSubcomposeLayoutApi::class)
     @Test
     fun disappearingLayoutNode() {
         var size by mutableStateOf(10f)
@@ -2909,11 +3069,11 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 Box(Modifier.background(Color.Red).drawLatchModifier()) {
                     var animatedSize by remember { mutableStateOf(size) }
-                    animatedSize = animate(size)
+                    animatedSize = animateFloatAsState(size).value
                     if (animatedSize == 10f) {
                         Layout(
                             modifier = Modifier.background(Color.Cyan),
-                            children = {}
+                            content = {}
                         ) { _, _ ->
                             if (animatedSize != 10f) {
                                 measureLatch.countDown()
@@ -2942,34 +3102,43 @@ class AndroidLayoutDrawTest {
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
     fun drawDetachedLayoutNode() {
-        var frame: FrameLayout? = null
+        lateinit var view: ComposeView
         activityTestRule.runOnUiThread {
-            frame = FrameLayout(activity)
-            frame?.setContent(Recomposer.current()) {
-                with(DensityAmbient.current) {
+            view = ComposeView(activity)
+            view.setViewCompositionStrategy(
+                ViewCompositionStrategy.DisposeOnLifecycleDestroyed(activity)
+            )
+            view.setContent {
+                with(LocalDensity.current) {
                     Box(
                         Modifier
                             .background(Color.Blue)
-                            .size(30.toDp())
+                            .requiredSize(30.toDp())
                             .padding(10.toDp())
                             .background(Color.White)
                             .drawLatchModifier()
                     )
                 }
             }
-            activity.setContentView(frame)
+            activity.setContentView(
+                view,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            )
         }
 
         assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
 
         activityTestRule.runOnUiThread {
-            val parent = frame?.parent as ViewGroup
-            parent.removeView(frame)
+            val parent = view.parent as ViewGroup
+            parent.removeView(view)
         }
         activityTestRule.runOnUiThread {
             val bitmap = Bitmap.createBitmap(30, 30, Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(bitmap)
-            frame?.draw(canvas)
+            view.draw(canvas)
             bitmap.assertRect(Color.Blue, holeSize = 10)
             bitmap.assertRect(Color.White, size = 10)
         }
@@ -2979,16 +3148,16 @@ class AndroidLayoutDrawTest {
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
     fun drawInvalidationInDetachedLayoutNode() {
-        var frame: FrameLayout? = null
+        lateinit var view: ComposeView
         var innerColor by mutableStateOf(Color.White)
         activityTestRule.runOnUiThread {
-            frame = FrameLayout(activity)
-            frame?.setContent(Recomposer.current()) {
-                with(DensityAmbient.current) {
+            view = ComposeView(activity)
+            view.setContent {
+                with(LocalDensity.current) {
                     Box(
                         Modifier
                             .background(Color.Blue)
-                            .size(30.toDp())
+                            .requiredSize(30.toDp())
                             .padding(10.toDp())
                             .drawBehind {
                                 drawRect(innerColor)
@@ -2997,7 +3166,13 @@ class AndroidLayoutDrawTest {
                     )
                 }
             }
-            activity.setContentView(frame)
+            activity.setContentView(
+                view,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            )
         }
 
         validateSquareColors(Color.Blue, Color.White, size = 10)
@@ -3005,8 +3180,8 @@ class AndroidLayoutDrawTest {
 
         var parent: ViewGroup? = null
         activityTestRule.runOnUiThread {
-            parent = frame?.parent as ViewGroup
-            parent!!.removeView(frame)
+            parent = view.parent as ViewGroup
+            parent!!.removeView(view)
         }
         activityTestRule.runOnUiThread {} // wait for detach
 
@@ -3014,7 +3189,7 @@ class AndroidLayoutDrawTest {
         innerColor = Color.Yellow
 
         activityTestRule.runOnUiThread {
-            parent!!.addView(frame)
+            parent!!.addView(view)
         }
 
         validateSquareColors(Color.Blue, Color.Yellow, size = 10)
@@ -3024,28 +3199,28 @@ class AndroidLayoutDrawTest {
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
     fun sizeInvalidationInDetachedLayoutNode() {
-        var frame: FrameLayout? = null
+        lateinit var view: ComposeView
         var size by mutableStateOf(10.dp)
         var layoutLatch = CountDownLatch(1)
         var measuredSize = 0.dp
         val sizeModifier = Modifier.layout { measurable, constraints ->
             measuredSize = size
             layoutLatch.countDown()
-            val pxSize = size.toIntPx()
+            val pxSize = size.roundToPx()
             layout(pxSize, pxSize) {
                 measurable.measure(constraints).place(0, 0)
             }
         }
         activityTestRule.runOnUiThread {
-            frame = FrameLayout(activity)
-            frame?.setContent(Recomposer.current()) {
+            view = ComposeView(activity)
+            view.setContent {
                 Box(
                     Modifier
                         .background(Color.Blue)
                         .then(sizeModifier)
                 )
             }
-            activity.setContentView(frame)
+            activity.setContentView(view)
         }
 
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
@@ -3054,8 +3229,8 @@ class AndroidLayoutDrawTest {
 
         var parent: ViewGroup? = null
         activityTestRule.runOnUiThread {
-            parent = frame?.parent as ViewGroup
-            parent!!.removeView(frame)
+            parent = view.parent as ViewGroup
+            parent!!.removeView(view)
         }
         activityTestRule.runOnUiThread {} // wait for detach
 
@@ -3063,11 +3238,278 @@ class AndroidLayoutDrawTest {
         size = 30.dp
 
         activityTestRule.runOnUiThread {
-            parent!!.addView(frame)
+            parent!!.addView(view)
         }
 
         assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
         assertEquals(measuredSize, 30.dp)
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun zeroSizedComposeViewCanDrawOutsideItsBounds() {
+        val padding = 10
+        val size = padding * 2
+
+        lateinit var frameLayout: FrameLayout
+
+        activityTestRule.runOnUiThread {
+            val composeView = ComposeView(activity)
+            composeView.setContent {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .drawBehind {
+                            val marginFloat = padding.toFloat()
+                            drawRect(
+                                color = Color.Red,
+                                topLeft = Offset(-marginFloat, -marginFloat),
+                                size = Size(marginFloat * 2, marginFloat * 2)
+                            )
+                        }
+                )
+            }
+            frameLayout = FrameLayout(activity)
+            frameLayout.clipToPadding = false
+            frameLayout.clipChildren = false
+            frameLayout.setPadding(padding, padding, padding, padding)
+            frameLayout.addView(composeView, ViewGroup.LayoutParams(0, 0))
+            activity.setContentView(
+                frameLayout,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        activityTestRule.waitAndScreenShot(frameLayout).asImageBitmap()
+            .assertPixels(expectedSize = IntSize(size, size)) {
+                Color.Red
+            }
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun layoutUsesPlaceWithLayer() {
+        val yellow = Color(0xFFFFFF00)
+        val red = Color(0xFF800000)
+
+        activityTestRule.runOnUiThreadIR {
+            activity.setContent {
+                Layout(
+                    content = {
+                        AtLeastSize(
+                            size = 10,
+                            modifier = Modifier.drawBehind {
+                                drawRect(red)
+                            }
+                        )
+                    },
+                    modifier = Modifier.drawBehind {
+                        drawRect(yellow)
+                        drawLatch.countDown()
+                    }
+                ) { measurables, constraints ->
+                    val placeable = measurables.first().measure(constraints)
+                    layout(30, 30) {
+                        placeable.placeWithLayer(10, 10)
+                    }
+                }
+            }
+        }
+
+        validateSquareColors(outerColor = yellow, innerColor = red, size = 10)
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun layoutUsesPlaceWithLayerWithScale() {
+        val yellow = Color(0xFFFFFF00)
+        val red = Color(0xFF800000)
+
+        activityTestRule.runOnUiThreadIR {
+            activity.setContent {
+                Layout(
+                    content = {
+                        AtLeastSize(
+                            size = 20,
+                            modifier = Modifier.drawBehind {
+                                drawRect(red)
+                            }
+                        )
+                    },
+                    modifier = Modifier.drawBehind {
+                        drawRect(yellow)
+                        drawLatch.countDown()
+                    }
+                ) { measurables, constraints ->
+                    val placeable = measurables.first().measure(constraints)
+                    layout(30, 30) {
+                        placeable.placeWithLayer(5, 5) {
+                            scaleX = 0.5f
+                            scaleY = 0.5f
+                        }
+                    }
+                }
+            }
+        }
+
+        validateSquareColors(outerColor = yellow, innerColor = red, size = 10)
+    }
+
+    @Test
+    fun layoutMovesPlacedWithLayerChild_noInvalidations() {
+        var parentInvalidationCount = 0
+        var childInvalidationCount = 0
+        var offset by mutableStateOf(0)
+
+        activityTestRule.runOnUiThreadIR {
+            activity.setContent {
+                Layout(
+                    content = {
+                        AtLeastSize(
+                            size = 20,
+                            modifier = Modifier.drawBehind {
+                                childInvalidationCount++
+                            }
+                        )
+                    },
+                    modifier = Modifier.drawWithContent {
+                        drawContent()
+                        parentInvalidationCount++
+                        drawLatch.countDown()
+                    }
+                ) { measurables, constraints ->
+                    val placeable = measurables.first().measure(constraints)
+                    layout(30, 30) {
+                        placeable.placeWithLayer(offset, offset)
+                    }
+                }
+            }
+        }
+
+        assertTrue(drawLatch.await(1, TimeUnit.SECONDS))
+        assertEquals(1, parentInvalidationCount)
+        assertEquals(1, childInvalidationCount)
+
+        drawLatch = CountDownLatch(1)
+        offset = 10
+
+        assertFalse(drawLatch.await(300, TimeUnit.MILLISECONDS))
+        assertEquals(1, parentInvalidationCount)
+        assertEquals(1, childInvalidationCount)
+    }
+
+    /**
+     * invalidateDescendants should invalidate all layout layers.
+     */
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun invalidateDescendants() {
+        var color = Color.White
+        activityTestRule.runOnUiThread {
+            activity.setContent {
+                FixedSize(30, Modifier.background(Color.Blue)) {
+                    FixedSize(30, Modifier.graphicsLayer()) {
+                        with(LocalDensity.current) {
+                            Canvas(Modifier.requiredSize(10.toDp())) {
+                                drawRect(color)
+                                drawLatch.countDown()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        validateSquareColors(outerColor = Color.Blue, innerColor = Color.White, size = 10)
+
+        color = Color.Yellow
+
+        activityTestRule.runOnUiThread {
+            drawLatch = CountDownLatch(1)
+            val view = activityTestRule.findAndroidComposeView() as AndroidComposeView
+            view.invalidateDescendants()
+        }
+        validateSquareColors(outerColor = Color.Blue, innerColor = Color.Yellow, size = 10)
+    }
+
+    @Test
+    fun placeableMeasuredSize() = with(density) {
+        val realSize = 100.dp
+        val constrainedSize = 50.dp
+        val latch = CountDownLatch(1)
+        activityTestRule.runOnUiThread {
+            activity.setContent {
+                Layout(
+                    content = {
+                        Box(Modifier.requiredSize(realSize))
+                    }
+                ) { measurables, _ ->
+                    val placeable = measurables[0].measure(
+                        Constraints.fixed(constrainedSize.roundToPx(), constrainedSize.roundToPx())
+                    )
+                    assertEquals(realSize.roundToPx(), placeable.measuredWidth)
+                    assertEquals(realSize.roundToPx(), placeable.measuredHeight)
+                    assertEquals(constrainedSize.roundToPx(), placeable.width)
+                    assertEquals(constrainedSize.roundToPx(), placeable.height)
+                    latch.countDown()
+                    layout(1, 1) { }
+                }
+            }
+        }
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun noRemeasureWhenWeStopUsingStateInMeasuring() = with(density) {
+        val counter = mutableStateOf(0)
+        var latch = CountDownLatch(1)
+        var parentRemeasures = 0
+        var measurePolicy = mutableStateOf(
+            MeasurePolicy { measurables, constraints ->
+                counter.value
+                parentRemeasures++
+                measurables.first().measure(constraints)
+                layout(1, 1) { }
+            }
+        )
+        activityTestRule.runOnUiThread {
+            activity.setContent {
+                Layout(
+                    content = {
+                        Layout(
+                            content = {}
+                        ) { _, _ ->
+                            counter.value
+                            latch.countDown()
+                            layout(1, 1) { }
+                        }
+                    },
+                    measurePolicy = measurePolicy.value
+                )
+            }
+        }
+
+        assertTrue(latch.await(1, TimeUnit.SECONDS))
+        assertEquals(1, parentRemeasures)
+
+        latch = CountDownLatch(1)
+        measurePolicy.value = MeasurePolicy { measurables, constraints ->
+            // not using counter anymore
+            parentRemeasures++
+            measurables.first().measure(constraints)
+            layout(1, 1) { }
+        }
+
+        assertTrue(latch.await(10000, TimeUnit.SECONDS))
+        assertEquals(2, parentRemeasures)
+
+        latch = CountDownLatch(1)
+        counter.value = 1
+
+        assertTrue(latch.await(10000, TimeUnit.SECONDS))
+        assertEquals(2, parentRemeasures)
     }
 
     private fun composeSquares(model: SquareModel) {
@@ -3096,11 +3538,12 @@ class AndroidLayoutDrawTest {
             activity.setContent {
                 Padding(
                     size = model.size,
-                    modifier = fillColor(model, isInner = false, doCountDown = false).drawLayer()
+                    modifier = Modifier.fillColor(model, isInner = false, doCountDown = false)
+                        .graphicsLayer()
                 ) {
                     AtLeastSize(
                         size = model.size,
-                        modifier = Modifier.drawLayer().then(fillColor(model, isInner = true))
+                        modifier = Modifier.graphicsLayer().fillColor(model, isInner = true)
                     ) {
                     }
                 }
@@ -3114,11 +3557,11 @@ class AndroidLayoutDrawTest {
                 Position(
                     size = model.size * 3,
                     offset = offset,
-                    modifier = fillColor(model, isInner = false, doCountDown = false)
+                    modifier = Modifier.fillColor(model, isInner = false, doCountDown = false)
                 ) {
                     AtLeastSize(
                         size = model.size,
-                        modifier = Modifier.drawLayer().then(fillColor(model, isInner = true))
+                        modifier = Modifier.graphicsLayer().fillColor(model, isInner = true)
                     ) {
                     }
                 }
@@ -3132,9 +3575,12 @@ class AndroidLayoutDrawTest {
                 Position(
                     size = model.size * 3,
                     offset = offset,
-                    modifier = fillColor(model, isInner = false, doCountDown = false)
+                    modifier = Modifier.fillColor(model, isInner = false, doCountDown = false)
                 ) {
-                    AtLeastSize(size = model.size, modifier = fillColor(model, isInner = true)) {
+                    AtLeastSize(
+                        size = model.size,
+                        modifier = Modifier.fillColor(model, isInner = true)
+                    ) {
                     }
                 }
             }
@@ -3180,21 +3626,19 @@ class AndroidLayoutDrawTest {
         )
     }
 
-    @Composable
-    private fun fillColor(color: Color, doCountDown: Boolean = true): Modifier =
-        Modifier.drawBehind {
+    private fun Modifier.fillColor(color: Color, doCountDown: Boolean = true): Modifier =
+        drawBehind {
             drawRect(color)
             if (doCountDown) {
                 drawLatch.countDown()
             }
         }
 
-    @Composable
-    private fun fillColor(
+    private fun Modifier.fillColor(
         squareModel: SquareModel,
         isInner: Boolean,
         doCountDown: Boolean = true
-    ): Modifier = Modifier.drawBehind {
+    ): Modifier = drawBehind {
         drawRect(if (isInner) squareModel.innerColor else squareModel.outerColor)
         if (doCountDown) {
             drawLatch.countDown()
@@ -3208,9 +3652,9 @@ class AndroidLayoutDrawTest {
         size: Int,
         offset: State<Int>,
         modifier: Modifier = Modifier,
-        children: @Composable () -> Unit
+        content: @Composable () -> Unit
     ) {
-        Layout(modifier = modifier, children = children) { measurables, constraints ->
+        Layout(modifier = modifier, content = content) { measurables, constraints ->
             val placeables = measurables.map { m ->
                 m.measure(constraints)
             }
@@ -3259,7 +3703,7 @@ fun androidx.test.rule.ActivityTestRule<*>.validateSquareColors(
     offset: Int = 0,
     totalSize: Int = size * 3
 ) {
-    assertTrue("drawLatch timed out", drawLatch.await(10000, TimeUnit.SECONDS))
+    assertTrue("drawLatch timed out", drawLatch.await(1, TimeUnit.SECONDS))
     val bitmap = waitAndScreenShot()
     assertEquals(totalSize, bitmap.width)
     assertEquals(totalSize, bitmap.height)
@@ -3297,10 +3741,10 @@ fun assertColorsEqual(
 fun AtLeastSize(
     size: Int,
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit = emptyContent()
+    content: @Composable () -> Unit = {}
 ) {
     Layout(
-        measureBlock = { measurables, constraints ->
+        measurePolicy = { measurables, constraints ->
             val newConstraints = Constraints(
                 minWidth = max(size, constraints.minWidth),
                 maxWidth = if (constraints.hasBoundedWidth) {
@@ -3331,7 +3775,7 @@ fun AtLeastSize(
             }
         },
         modifier = modifier,
-        children = children
+        content = content
     )
 }
 
@@ -3339,9 +3783,9 @@ fun AtLeastSize(
 fun FixedSize(
     size: Int,
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit = emptyContent()
+    content: @Composable () -> Unit = {}
 ) {
-    Layout(children = children, modifier = modifier) { measurables, _ ->
+    Layout(content = content, modifier = modifier) { measurables, _ ->
         val newConstraints = Constraints.fixed(size, size)
         val placeables = measurables.map { m ->
             m.measure(newConstraints)
@@ -3355,10 +3799,10 @@ fun FixedSize(
 }
 
 @Composable
-fun Align(modifier: Modifier = Modifier.None, children: @Composable () -> Unit) {
+fun Align(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Layout(
         modifier = modifier,
-        measureBlock = { measurables, constraints ->
+        measurePolicy = { measurables, constraints ->
             val newConstraints = Constraints(
                 minWidth = 0,
                 maxWidth = constraints.maxWidth,
@@ -3380,7 +3824,7 @@ fun Align(modifier: Modifier = Modifier.None, children: @Composable () -> Unit) 
                 }
             }
         },
-        children = children
+        content = content
     )
 }
 
@@ -3388,11 +3832,11 @@ fun Align(modifier: Modifier = Modifier.None, children: @Composable () -> Unit) 
 internal fun Padding(
     size: Int,
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
     Layout(
         modifier = modifier,
-        measureBlock = { measurables, constraints ->
+        measurePolicy = { measurables, constraints ->
             val totalDiff = size * 2
             val targetMinWidth = constraints.minWidth - totalDiff
             val targetMaxWidth = if (constraints.hasBoundedWidth) {
@@ -3427,7 +3871,7 @@ internal fun Padding(
                 }
             }
         },
-        children = children
+        content = content
     )
 }
 
@@ -3436,9 +3880,9 @@ fun TwoMeasureLayout(
     size: Int,
     latch: CountDownLatch,
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
-    Layout(modifier = modifier, children = children) { measurables, _ ->
+    Layout(modifier = modifier, content = content) { measurables, _ ->
         val testConstraints = Constraints()
         measurables.forEach { it.measure(testConstraints) }
         val childConstraints = Constraints.fixed(size, size)
@@ -3463,12 +3907,12 @@ fun Wrap(
     modifier: Modifier = Modifier,
     minWidth: Int = 0,
     minHeight: Int = 0,
-    children: @Composable () -> Unit = {}
+    content: @Composable () -> Unit = {}
 ) {
-    Layout(modifier = modifier, children = children) { measurables, constraints ->
+    Layout(modifier = modifier, content = content) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints) }
-        val width = max(placeables.maxBy { it.width }?.width ?: 0, minWidth)
-        val height = max(placeables.maxBy { it.height }?.height ?: 0, minHeight)
+        val width = max(placeables.maxByOrNull { it.width }?.width ?: 0, minWidth)
+        val height = max(placeables.maxByOrNull { it.height }?.height ?: 0, minHeight)
         layout(width, height) {
             placeables.forEach { it.placeRelative(0, 0) }
         }
@@ -3480,7 +3924,7 @@ fun Scroller(
     modifier: Modifier = Modifier,
     onScrollPositionChanged: (position: Int, maxPosition: Int) -> Unit,
     offset: State<Int>,
-    child: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
     val maxPosition = remember { mutableStateOf(Constraints.Infinity) }
     ScrollerLayout(
@@ -3490,7 +3934,7 @@ fun Scroller(
             maxPosition.value = 0
             onScrollPositionChanged(offset.value, 0)
         },
-        child = child
+        content = content
     )
 }
 
@@ -3499,9 +3943,9 @@ private fun ScrollerLayout(
     modifier: Modifier = Modifier,
     @Suppress("UNUSED_PARAMETER") maxPosition: Int,
     onMaxPositionChanged: () -> Unit,
-    child: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
-    Layout(modifier = modifier, children = child) { measurables, constraints ->
+    Layout(modifier = modifier, content = content) { measurables, constraints ->
         val childConstraints = constraints.copy(
             maxHeight = constraints.maxHeight,
             maxWidth = Constraints.Infinity
@@ -3520,12 +3964,12 @@ private fun ScrollerLayout(
 fun WrapForceRelayout(
     model: State<Int>,
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit
+    content: @Composable () -> Unit
 ) {
-    Layout(modifier = modifier, children = children) { measurables, constraints ->
+    Layout(modifier = modifier, content = content) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints) }
-        val width = placeables.maxBy { it.width }?.width ?: 0
-        val height = placeables.maxBy { it.height }?.height ?: 0
+        val width = placeables.maxByOrNull { it.width }?.width ?: 0
+        val height = placeables.maxByOrNull { it.height }?.height ?: 0
         layout(width, height) {
             model.value
             placeables.forEach { it.placeRelative(0, 0) }
@@ -3534,8 +3978,8 @@ fun WrapForceRelayout(
 }
 
 @Composable
-fun SimpleRow(modifier: Modifier = Modifier, children: @Composable () -> Unit) {
-    Layout(modifier = modifier, children = children) { measurables, constraints ->
+fun SimpleRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(modifier = modifier, content = content) { measurables, constraints ->
         var width = 0
         var height = 0
         val placeables = measurables.map {
@@ -3555,8 +3999,8 @@ fun SimpleRow(modifier: Modifier = Modifier, children: @Composable () -> Unit) {
 }
 
 @Composable
-fun JustConstraints(modifier: Modifier, children: @Composable () -> Unit) {
-    Layout(children, modifier) { _, constraints ->
+fun JustConstraints(modifier: Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { _, constraints ->
         layout(constraints.minWidth, constraints.minHeight) {}
     }
 }
@@ -3576,13 +4020,13 @@ class DrawCounterListener(private val view: View) :
     }
 }
 
-fun PaddingModifier(padding: Int) = PaddingModifier(padding, padding, padding, padding)
+fun Modifier.padding(padding: Int) = this.then(PaddingModifier(padding, padding, padding, padding))
 
-data class PaddingModifier(
-    val left: Int = 0,
-    val top: Int = 0,
-    val right: Int = 0,
-    val bottom: Int = 0
+private data class PaddingModifier(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
 ) : LayoutModifier {
     override fun MeasureScope.measure(
         measurable: Measurable,
@@ -3688,8 +4132,14 @@ fun findAndroidComposeView(parent: ViewGroup): ViewGroup? {
 @RequiresApi(Build.VERSION_CODES.O)
 fun androidx.test.rule.ActivityTestRule<*>.waitAndScreenShot(
     forceInvalidate: Boolean = true
+): Bitmap = waitAndScreenShot(findAndroidComposeView(), forceInvalidate)
+
+@Suppress("DEPRECATION")
+@RequiresApi(Build.VERSION_CODES.O)
+fun androidx.test.rule.ActivityTestRule<*>.waitAndScreenShot(
+    view: View,
+    forceInvalidate: Boolean = true
 ): Bitmap {
-    val view = findAndroidComposeView()
     val flushListener = DrawCounterListener(view)
     val offset = intArrayOf(0, 0)
     var handler: Handler? = null
@@ -3755,7 +4205,7 @@ class LayoutAndDrawModifier(val color: Color) : LayoutModifier, DrawModifier {
 }
 
 fun Modifier.scale(scale: Float) = then(LayoutScale(scale))
-    .drawLayer(scaleX = scale, scaleY = scale)
+    .graphicsLayer(scaleX = scale, scaleY = scale)
 
 class LayoutScale(val scale: Float) : LayoutModifier {
     override fun MeasureScope.measure(

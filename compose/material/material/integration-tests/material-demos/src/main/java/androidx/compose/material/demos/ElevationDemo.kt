@@ -18,18 +18,19 @@ package androidx.compose.material.demos
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.ScrollableColumn
-import androidx.compose.foundation.Text
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.preferredHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,25 +41,27 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ElevationDemo() {
     Column {
-        Box(Modifier.padding(20.dp).fillMaxWidth(), alignment = Alignment.Center) {
+        Box(Modifier.padding(20.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
             val text = getMessage(MaterialTheme.colors.isLight)
             Text(text)
         }
-        ScrollableColumn(
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(25.dp)
         ) {
-            elevations.forEach { elevation ->
+            items(elevations) { elevation ->
                 ElevatedCard(elevation)
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun ElevatedCard(elevation: Dp) {
     Card(
-        Modifier.padding(start = 10.dp, top = 20.dp, end = 10.dp, bottom = 20.dp),
+        onClick = {},
+        modifier = Modifier.padding(start = 10.dp, top = 20.dp, end = 10.dp, bottom = 20.dp),
         shape = RoundedCornerShape(4.dp),
         border = if (elevation == 0.dp) BorderStroke(1.dp, Color.Gray) else null,
         elevation = elevation
@@ -66,9 +69,8 @@ private fun ElevatedCard(elevation: Dp) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .preferredHeight(150.dp)
-                .clickable(onClick = {}),
-            alignment = Alignment.Center
+                .height(150.dp),
+            contentAlignment = Alignment.Center
         ) {
             Text("$elevation", style = MaterialTheme.typography.h4)
         }

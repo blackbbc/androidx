@@ -16,31 +16,50 @@
 
 package androidx.core.location;
 
+import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+import static android.provider.Settings.Secure.LOCATION_MODE;
+import static android.provider.Settings.Secure.LOCATION_MODE_OFF;
 
+import static androidx.core.location.LocationCompat.getElapsedRealtimeMillis;
+
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
+import android.content.Context;
 import android.location.GnssStatus;
 import android.location.GpsStatus;
+import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.provider.Settings;
+import android.provider.Settings.Secure;
+import android.text.TextUtils;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.RequiresPermission;
 import androidx.collection.SimpleArrayMap;
-import androidx.core.os.HandlerExecutor;
+import androidx.core.os.CancellationSignal;
+import androidx.core.os.ExecutorCompat;
+import androidx.core.util.Consumer;
 import androidx.core.util.Preconditions;
 
+import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -48,25 +67,148 @@ import java.util.concurrent.TimeoutException;
  */
 public final class LocationManagerCompat {
 
-    private static final long PRE_N_LOOPER_TIMEOUT_S = 4;
+    private static final long GET_CURRENT_LOCATION_TIMEOUT_MS = 30 * 1000;
+    private static final long MAX_CURRENT_LOCATION_AGE_MS = 10 * 1000;
+    private static final long PRE_N_LOOPER_TIMEOUT_S = 5;
+
+    private static Field sContextField;
 
     /**
      * Returns the current enabled/disabled state of location.
      *
-     * @return true if location is enabled and false if location is disabled.
+     * <p>NOTE: Calling this method on API levels prior to 20 <i>may</i> require the
+     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION ACCESS_FINE_LOCATION} or
+     * {@link android.Manifest.permission#ACCESS_COARSE_LOCATION ACCESS_COARSE_LOCATION}
+     * permission if run on non-standard Android devices. The vast majority of devices should not
+     * require either permission to be present for this method.
+     *
+     * @return {@code true} if location is enabled or {@code false} if location is disabled
      */
     public static boolean isLocationEnabled(@NonNull LocationManager locationManager) {
-        if (VERSION.SDK_INT >= VERSION_CODES.P) {
-            return locationManager.isLocationEnabled();
-        } else {
-            // NOTE: for KitKat and above, it's preferable to use the proper API at the time to get
-            // the location mode, Secure.getInt(context, LOCATION_MODE, LOCATION_MODE_OFF). however,
-            // this requires a context we don't have directly (we could either ask the client to
-            // pass one in, or use reflection to get it from the location manager), and since KitKat
-            // and above remained backwards compatible, we can fallback to pre-kitkat behavior.
+        if (VERSION.SDK_INT >= 28) {
+            return Api28Impl.isLocationEnabled(locationManager);
+        }
 
-            return locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-                || locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        if (VERSION.SDK_INT <= 19) {
+            // KitKat and below have pointless location permission requirements when using
+            // isProviderEnabled(). Instead, we attempt to reflect a context so that we can query
+            // the underlying setting. If this fails, we fallback to isProviderEnabled() which may
+            // require the caller to hold location permissions.
+            try {
+                if (sContextField == null) {
+                    sContextField = LocationManager.class.getDeclaredField("mContext");
+                    sContextField.setAccessible(true);
+                }
+                Context context = (Context) sContextField.get(locationManager);
+
+                if (context != null) {
+                    if (VERSION.SDK_INT == 19) {
+                        return Secure.getInt(context.getContentResolver(), LOCATION_MODE,
+                                LOCATION_MODE_OFF) != LOCATION_MODE_OFF;
+                    } else {
+                        return !TextUtils.isEmpty(
+                                Settings.Secure.getString(context.getContentResolver(),
+                                        Settings.Secure.LOCATION_PROVIDERS_ALLOWED));
+                    }
+                }
+            } catch (ClassCastException | SecurityException | NoSuchFieldException
+                    | IllegalAccessException e) {
+                // oh well, fallback to isProviderEnabled()
+            }
+        }
+
+        return locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+            || locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+    }
+
+    /**
+     * Asynchronously returns a single current location fix from the given provider. This may
+     * activate sensors in order to compute a new location. The given callback will be invoked once
+     * and only once, either with a valid location or with a null location if the provider was
+     * unable to generate a valid location.
+     *
+     * <p>A client may supply an optional {@link CancellationSignal}. If this is used to cancel the
+     * operation, no callback should be expected after the cancellation.
+     *
+     * <p>This method may return locations from the very recent past (on the order of several
+     * seconds), but will never return older locations (for example, several minutes old or older).
+     * Clients may rely upon the guarantee that if this method returns a location, it will represent
+     * the best estimation of the location of the device in the present moment.
+     *
+     * <p>Clients calling this method from the background may notice that the method fails to
+     * determine a valid location fix more often than while in the foreground. Background
+     * applications may be throttled in their location accesses to some degree.
+     */
+    @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+    public static void getCurrentLocation(@NonNull LocationManager locationManager,
+            @NonNull String provider, @Nullable CancellationSignal cancellationSignal,
+            @NonNull Executor executor, @NonNull final Consumer<Location> consumer) {
+        if (VERSION.SDK_INT >= 30) {
+            Api30Impl.getCurrentLocation(locationManager, provider, cancellationSignal, executor,
+                    consumer);
+        } else {
+            if (cancellationSignal != null) {
+                cancellationSignal.throwIfCanceled();
+            }
+
+            final Location location = locationManager.getLastKnownLocation(provider);
+            if (location != null) {
+                long locationAgeMs =
+                        SystemClock.elapsedRealtime() - getElapsedRealtimeMillis(location);
+                if (locationAgeMs < MAX_CURRENT_LOCATION_AGE_MS) {
+                    executor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            consumer.accept(location);
+                        }
+                    });
+                    return;
+                }
+            }
+
+            final CancellableLocationListener listener =
+                    new CancellableLocationListener(locationManager, executor, consumer);
+            locationManager.requestLocationUpdates(provider, 0, 0, listener,
+                    Looper.getMainLooper());
+
+            if (cancellationSignal != null) {
+                cancellationSignal.setOnCancelListener(new CancellationSignal.OnCancelListener() {
+                    @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+                    @Override
+                    public void onCancel() {
+                        listener.cancel();
+                    }
+                });
+            }
+
+            listener.startTimeout(GET_CURRENT_LOCATION_TIMEOUT_MS);
+        }
+    }
+
+    /**
+     * Returns the model name (including vendor and hardware/software version) of the GNSS
+     * hardware driver, or null if this information is not available.
+     *
+     * No device-specific serial number or ID is returned from this API.
+     */
+    @Nullable
+    public static String getGnssHardwareModelName(@NonNull LocationManager locationManager) {
+        if (VERSION.SDK_INT >= 28) {
+            return Api28Impl.getGnssHardwareModelName(locationManager);
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Returns the model year of the GNSS hardware and software build, or 0 if the model year is
+     * before 2016.
+     */
+    public static int getGnssYearOfHardware(@NonNull LocationManager locationManager) {
+        if (VERSION.SDK_INT >= 28) {
+            return Api28Impl.getGnssYearOfHardware(locationManager);
+        } else {
+            return 0;
         }
     }
 
@@ -85,7 +227,7 @@ public final class LocationManagerCompat {
     public static boolean registerGnssStatusCallback(@NonNull LocationManager locationManager,
             @NonNull GnssStatusCompat.Callback callback, @NonNull Handler handler) {
         if (VERSION.SDK_INT >= VERSION_CODES.R) {
-            return registerGnssStatusCallback(locationManager, new HandlerExecutor(handler),
+            return registerGnssStatusCallback(locationManager, ExecutorCompat.create(handler),
                 callback);
         } else {
             return registerGnssStatusCallback(locationManager, new InlineHandlerExecutor(handler),
@@ -159,7 +301,6 @@ public final class LocationManagerCompat {
                     sGnssStatusListeners.put(callback, transport);
                     return true;
                 } else {
-                    transport.unregister();
                     return false;
                 }
             }
@@ -189,20 +330,41 @@ public final class LocationManagerCompat {
                 } else if (!baseHandler.post(task)) {
                     throw new IllegalStateException(baseHandler + " is shutting down");
                 }
+
+                boolean interrupted = false;
                 try {
-                    if (task.get(PRE_N_LOOPER_TIMEOUT_S, TimeUnit.SECONDS)) {
-                        sGnssStatusListeners.put(callback, myTransport);
-                        return true;
-                    } else {
-                        transport.unregister();
-                        return false;
+                    long remainingNanos = SECONDS.toNanos(PRE_N_LOOPER_TIMEOUT_S);
+                    long end = System.nanoTime() + remainingNanos;
+                    while (true) {
+                        try {
+                            if (task.get(remainingNanos, NANOSECONDS)) {
+                                sGnssStatusListeners.put(callback, myTransport);
+                                return true;
+                            } else {
+                                return false;
+                            }
+                        } catch (InterruptedException e) {
+                            // this is conceptually not an interruptible operation
+                            interrupted = true;
+                            remainingNanos = end - System.nanoTime();
+                        }
                     }
-                } catch (ExecutionException | InterruptedException e) {
-                    throw new IllegalStateException(e);
+                } catch (ExecutionException e) {
+                    if (e.getCause() instanceof RuntimeException) {
+                        throw (RuntimeException) e.getCause();
+                    } else if (e.getCause() instanceof Error) {
+                        throw (Error) e.getCause();
+                    } else {
+                        throw new IllegalStateException(e);
+                    }
                 } catch (TimeoutException e) {
                     throw new IllegalStateException(baseHandler + " appears to be blocked, please"
                             + " run registerGnssStatusCallback() directly on a Looper thread or "
                             + "ensure the main Looper is not blocked by this thread", e);
+                } finally {
+                    if (interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
                 }
             }
         }
@@ -462,9 +624,163 @@ public final class LocationManagerCompat {
         }
     }
 
-    // using this class allows listeners to be run more efficiently in the common case for pre-R
-    // SDKs where the AOSP callback is already on the same Looper the listener wants
-    private static class InlineHandlerExecutor implements Executor {
+    @RequiresApi(30)
+    private static class Api30Impl {
+        private Api30Impl() {}
+
+        @DoNotInline
+        @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+        static void getCurrentLocation(LocationManager locationManager, @NonNull String provider,
+                @Nullable CancellationSignal cancellationSignal,
+                @NonNull Executor executor, final @NonNull Consumer<Location> consumer) {
+            locationManager.getCurrentLocation(provider,
+                    cancellationSignal != null
+                            ? (android.os.CancellationSignal)
+                                cancellationSignal.getCancellationSignalObject()
+                            : null,
+                    executor,
+                    new java.util.function.Consumer<Location>() {
+                        @Override
+                        public void accept(Location location) {
+                            consumer.accept(location);
+                        }
+                    });
+        }
+    }
+
+    @RequiresApi(28)
+    private static class Api28Impl {
+        private Api28Impl() {}
+
+        @DoNotInline
+        static boolean isLocationEnabled(LocationManager locationManager) {
+            return locationManager.isLocationEnabled();
+        }
+
+        @DoNotInline
+        static String getGnssHardwareModelName(LocationManager locationManager) {
+            return locationManager.getGnssHardwareModelName();
+        }
+
+        @DoNotInline
+        static int getGnssYearOfHardware(LocationManager locationManager) {
+            return locationManager.getGnssYearOfHardware();
+        }
+    }
+
+    private static final class CancellableLocationListener implements LocationListener {
+
+        private final LocationManager mLocationManager;
+        private final Executor mExecutor;
+        private final Handler mTimeoutHandler;
+
+        private Consumer<Location> mConsumer;
+
+        @GuardedBy("this")
+        private boolean mTriggered;
+
+        @Nullable
+        Runnable mTimeoutRunnable;
+
+        CancellableLocationListener(LocationManager locationManager,
+                Executor executor, Consumer<Location> consumer) {
+            mLocationManager = locationManager;
+            mExecutor = executor;
+            mTimeoutHandler = new Handler(Looper.getMainLooper());
+
+            mConsumer = consumer;
+        }
+
+        @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+        public void cancel() {
+            synchronized (this) {
+                if (mTriggered) {
+                    return;
+                }
+                mTriggered = true;
+            }
+
+            cleanup();
+        }
+
+        public void startTimeout(long timeoutMs) {
+            synchronized (this) {
+                if (mTriggered) {
+                    return;
+                }
+
+                // ideally this would be a wakeup alarm, but that would require another compat layer
+                // to deal with translating pending intent alarms into listeners which doesn't exist
+                // at the moment, so this should be sufficient to prevent extreme battery drain
+                mTimeoutRunnable = new Runnable() {
+                    @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+                    @Override
+                    public void run() {
+                        mTimeoutRunnable = null;
+                        onLocationChanged((Location) null);
+                    }
+                };
+                mTimeoutHandler.postDelayed(mTimeoutRunnable, timeoutMs);
+            }
+        }
+
+        @Override
+        public void onStatusChanged(String provider, int status, Bundle extras) {}
+
+        @Override
+        public void onProviderEnabled(@NonNull String provider) {}
+
+        @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+        @Override
+        public void onProviderDisabled(@NonNull String p) {
+            onLocationChanged((Location) null);
+        }
+
+        @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+        @Override
+        public void onLocationChanged(@Nullable final Location location) {
+            synchronized (this) {
+                if (mTriggered) {
+                    return;
+                }
+                mTriggered = true;
+            }
+
+            final Consumer<Location> consumer = mConsumer;
+            mExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    consumer.accept(location);
+                }
+            });
+
+            cleanup();
+        }
+
+        @RequiresPermission(anyOf = {ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION})
+        private void cleanup() {
+            mConsumer = null;
+            mLocationManager.removeUpdates(this);
+            if (mTimeoutRunnable != null) {
+                mTimeoutHandler.removeCallbacks(mTimeoutRunnable);
+                mTimeoutRunnable = null;
+            }
+        }
+    }
+
+
+    /**
+     * An {@link Executor} that posts all executed tasks onto the given {@link Handler}. This
+     * version differs from {@link ExecutorCompat#create(Handler)} in that if the execute call is
+     * already occurring on the Looper of the given Handler, the Runnable will simply be executed
+     * directly. This avoids the cost of an additional thread trampoline when not necessary, but
+     * can introduce out-of-order execution violations as it is possible a given Runnable may
+     * execute before some other Runnable that was submitted to the executor earlier. Because of
+     * this limitation, use this Executor only when you are sure that all Runnables will always
+     * be submitted to this Executor from the same logical thread, and only if it is acceptable to
+     * bypass the given Handler completely.
+     */
+    private static final class InlineHandlerExecutor implements Executor {
         private final Handler mHandler;
 
         InlineHandlerExecutor(@NonNull Handler handler) {

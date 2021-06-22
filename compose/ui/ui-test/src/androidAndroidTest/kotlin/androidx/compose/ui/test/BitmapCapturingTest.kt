@@ -18,15 +18,18 @@ package androidx.compose.ui.test
 
 import android.os.Build
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.preferredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.AlertDialog
+import androidx.compose.material.Text
+import androidx.compose.testutils.assertContainsColor
+import androidx.compose.testutils.assertPixels
+import androidx.compose.testutils.expectError
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -36,7 +39,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Popup
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
-import androidx.compose.testutils.expectError
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
 import org.junit.Test
@@ -81,7 +83,7 @@ class BitmapCapturingTest(val config: TestConfig) {
 
         var calledCount = 0
         rule.onNodeWithTag(tag11)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(100, 50)) {
                 calledCount++
                 color11
@@ -89,17 +91,17 @@ class BitmapCapturingTest(val config: TestConfig) {
         assertThat(calledCount).isEqualTo(100 * 50)
 
         rule.onNodeWithTag(tag12)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(100, 50)) {
                 color12
             }
         rule.onNodeWithTag(tag21)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(100, 50)) {
                 color21
             }
         rule.onNodeWithTag(tag22)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(100, 50)) {
                 color22
             }
@@ -110,7 +112,7 @@ class BitmapCapturingTest(val config: TestConfig) {
         composeCheckerboard()
 
         rule.onNodeWithTag(rootTag)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(200, 100)) {
                 if (it.y >= 100 || it.x >= 200) {
                     throw AssertionError("$it is out of range!")
@@ -124,7 +126,7 @@ class BitmapCapturingTest(val config: TestConfig) {
         composeCheckerboard()
 
         rule.onNodeWithTag(tag11)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(100, 50)) {
                 color22 // Assuming wrong color
             }
@@ -135,7 +137,7 @@ class BitmapCapturingTest(val config: TestConfig) {
         composeCheckerboard()
 
         rule.onNodeWithTag(tag11)
-            .captureToBitmap()
+            .captureToImage()
             .assertPixels(expectedSize = IntSize(10, 10)) {
                 color21
             }
@@ -150,7 +152,7 @@ class BitmapCapturingTest(val config: TestConfig) {
         }
 
         rule.onNode(isDialog())
-            .captureToBitmap()
+            .captureToImage()
             .assertContainsColor(Color.Red)
     }
 
@@ -169,7 +171,7 @@ class BitmapCapturingTest(val config: TestConfig) {
             expectedMessage = ".*Popups currently cannot be captured to bitmap.*"
         ) {
             rule.onNode(isPopup())
-                .captureToBitmap()
+                .captureToImage()
         }
     }
 
@@ -200,13 +202,13 @@ class BitmapCapturingTest(val config: TestConfig) {
                                 Box(
                                     Modifier
                                         .testTag(tag11)
-                                        .preferredSize(100.toDp(), 50.toDp())
+                                        .size(100.toDp(), 50.toDp())
                                         .background(color = color11)
                                 )
                                 Box(
                                     Modifier
                                         .testTag(tag12)
-                                        .preferredSize(100.toDp(), 50.toDp())
+                                        .size(100.toDp(), 50.toDp())
                                         .background(color12)
                                 )
                             }
@@ -214,13 +216,13 @@ class BitmapCapturingTest(val config: TestConfig) {
                                 Box(
                                     Modifier
                                         .testTag(tag21)
-                                        .preferredSize(100.toDp(), 50.toDp())
+                                        .size(100.toDp(), 50.toDp())
                                         .background(color21)
                                 )
                                 Box(
                                     Modifier
                                         .testTag(tag22)
-                                        .preferredSize(100.toDp(), 50.toDp())
+                                        .size(100.toDp(), 50.toDp())
                                         .background(color22)
                                 )
                             }

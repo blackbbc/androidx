@@ -19,8 +19,6 @@ package androidx.wear.watchface.samples
 import android.content.Context
 import android.graphics.Color
 import androidx.wear.watchface.complications.rendering.ComplicationDrawable
-import androidx.wear.watchface.CanvasComplicationDrawable
-import androidx.wear.watchface.WatchState
 
 private fun Context.getStyleResourceId(
     styleResourceId: Int,
@@ -47,9 +45,8 @@ private fun Context.getStyleColor(
 }
 
 class ColorStyle(
-    val hourHandColor: Int,
-    val minuteHandColor: Int,
-    val secondsHandColor: Int,
+    val primaryColor: Int,
+    val secondaryColor: Int,
     val backgroundColor: Int,
     val outerElementColor: Int
 ) {
@@ -58,9 +55,8 @@ class ColorStyle(
             val styleResourceId =
                 context.resources.getIdentifier(styleName, "style", context.packageName)
             return ColorStyle(
-                context.getStyleColor(styleResourceId, R.attr.hour_hand_color, Color.WHITE),
-                context.getStyleColor(styleResourceId, R.attr.minute_hand_color, Color.WHITE),
-                context.getStyleColor(styleResourceId, R.attr.second_hand_color, Color.WHITE),
+                context.getStyleColor(styleResourceId, R.attr.primary_color, Color.WHITE),
+                context.getStyleColor(styleResourceId, R.attr.secondary_color, Color.WHITE),
                 context.getStyleColor(styleResourceId, R.attr.background_color, Color.BLACK),
                 context.getStyleColor(styleResourceId, R.attr.outer_element_color, Color.WHITE)
             )
@@ -90,9 +86,6 @@ class WatchFaceColorStyle(
         }
     }
 
-    fun getComplicationDrawableRenderer(context: Context, watchState: WatchState) =
-        CanvasComplicationDrawable(
-            ComplicationDrawable.getDrawable(context, complicationResourceId)!!,
-            watchState
-        )
+    fun getDrawable(context: Context) =
+        ComplicationDrawable.getDrawable(context, complicationResourceId)
 }

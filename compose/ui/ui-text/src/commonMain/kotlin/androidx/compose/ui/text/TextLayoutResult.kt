@@ -26,12 +26,11 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.util.annotation.VisibleForTesting
 
 /**
  * The data class which holds the set of parameters of the text layout computation.
  */
-data class TextLayoutInput(
+class TextLayoutInput(
     /**
      * The text used for computing text layout.
      */
@@ -87,12 +86,86 @@ data class TextLayoutInput(
      * The minimum width provided while calculating this text layout.
      */
     val constraints: Constraints
-)
+) {
+
+    fun copy(
+        text: AnnotatedString = this.text,
+        style: TextStyle = this.style,
+        placeholders: List<AnnotatedString.Range<Placeholder>> = this.placeholders,
+        maxLines: Int = this.maxLines,
+        softWrap: Boolean = this.softWrap,
+        overflow: TextOverflow = this.overflow,
+        density: Density = this.density,
+        layoutDirection: LayoutDirection = this.layoutDirection,
+        resourceLoader: Font.ResourceLoader = this.resourceLoader,
+        constraints: Constraints = this.constraints
+    ): TextLayoutInput {
+        return TextLayoutInput(
+            text = text,
+            style = style,
+            placeholders = placeholders,
+            maxLines = maxLines,
+            softWrap = softWrap,
+            overflow = overflow,
+            density = density,
+            layoutDirection = layoutDirection,
+            resourceLoader = resourceLoader,
+            constraints = constraints
+        )
+    }
+
+    override operator fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TextLayoutInput) return false
+
+        if (text != other.text) return false
+        if (style != other.style) return false
+        if (placeholders != other.placeholders) return false
+        if (maxLines != other.maxLines) return false
+        if (softWrap != other.softWrap) return false
+        if (overflow != other.overflow) return false
+        if (density != other.density) return false
+        if (layoutDirection != other.layoutDirection) return false
+        if (resourceLoader != other.resourceLoader) return false
+        if (constraints != other.constraints) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = text.hashCode()
+        result = 31 * result + style.hashCode()
+        result = 31 * result + placeholders.hashCode()
+        result = 31 * result + maxLines
+        result = 31 * result + softWrap.hashCode()
+        result = 31 * result + overflow.hashCode()
+        result = 31 * result + density.hashCode()
+        result = 31 * result + layoutDirection.hashCode()
+        result = 31 * result + resourceLoader.hashCode()
+        result = 31 * result + constraints.hashCode()
+        return result
+    }
+
+    override fun toString(): String {
+        return "TextLayoutInput(" +
+            "text=$text, " +
+            "style=$style, " +
+            "placeholders=$placeholders, " +
+            "maxLines=$maxLines, " +
+            "softWrap=$softWrap, " +
+            "overflow=$overflow, " +
+            "density=$density, " +
+            "layoutDirection=$layoutDirection, " +
+            "resourceLoader=$resourceLoader, " +
+            "constraints=$constraints" +
+            ")"
+    }
+}
 
 /**
  * The data class which holds text layout result.
  */
-data class TextLayoutResult internal constructor(
+class TextLayoutResult constructor(
     /**
      * The parameters used for computing this text layout result.
      */
@@ -102,9 +175,8 @@ data class TextLayoutResult internal constructor(
      * The multi paragraph object.
      *
      * This is the result of the text layout computation.
-     * This is expected to be used only for drawing from TextDelegate class.
      */
-    internal val multiParagraph: MultiParagraph,
+    val multiParagraph: MultiParagraph,
 
     /**
      * The amount of space required to paint this text in Int.
@@ -165,27 +237,17 @@ data class TextLayoutResult internal constructor(
     /**
      * Returns the end offset of the given line
      *
-     * If ellipsis happens on the given line, this returns the end of text since ellipsized
-     * characters are counted into the same line.
+     * Characters being ellipsized are treated as invisible characters. So that if visibleEnd is
+     * false, it will return line end including the ellipsized characters and vice verse.
      *
      * @param lineIndex the line number
+     * @param visibleEnd if true, the returned line end will not count trailing whitespaces or
+     * linefeed characters. Otherwise, this function will return the logical line end. By default
+     * it's false.
      * @return an exclusive end offset of the line.
-     * @see getLineVisibleEnd
      */
-    fun getLineEnd(lineIndex: Int): Int = multiParagraph.getLineEnd(lineIndex)
-
-    /**
-     * Returns the end of visible offset of the given line.
-     *
-     * If no ellipsis happens on the given line, this returns the line end offset with excluding
-     * trailing whitespaces.
-     * If ellipsis happens on the given line, this returns the offset that ellipsis started, i.e.
-     * the exclusive not ellipsized last character.
-     * @param lineIndex a 0 based line index
-     * @return an exclusive line end offset that is visible on the display
-     * @see getLineEnd
-     */
-    fun getLineVisibleEnd(lineIndex: Int): Int = multiParagraph.getLineVisibleEnd(lineIndex)
+    fun getLineEnd(lineIndex: Int, visibleEnd: Boolean = false): Int =
+        multiParagraph.getLineEnd(lineIndex, visibleEnd)
 
     /**
      * Returns true if ellipsis happens on the given line, otherwise returns false
@@ -335,9 +397,59 @@ data class TextLayoutResult internal constructor(
      * @return a drawing path
      */
     fun getPathForRange(start: Int, end: Int): Path = multiParagraph.getPathForRange(start, end)
+
+    fun copy(
+        layoutInput: TextLayoutInput = this.layoutInput,
+        size: IntSize = this.size
+    ): TextLayoutResult {
+        return TextLayoutResult(
+            layoutInput = layoutInput,
+            multiParagraph = multiParagraph,
+            size = size
+        )
+    }
+
+    override operator fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TextLayoutResult) return false
+
+        if (layoutInput != other.layoutInput) return false
+        if (multiParagraph != other.multiParagraph) return false
+        if (size != other.size) return false
+        if (firstBaseline != other.firstBaseline) return false
+        if (lastBaseline != other.lastBaseline) return false
+        if (placeholderRects != other.placeholderRects) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = layoutInput.hashCode()
+        result = 31 * result + multiParagraph.hashCode()
+        result = 31 * result + size.hashCode()
+        result = 31 * result + firstBaseline.hashCode()
+        result = 31 * result + lastBaseline.hashCode()
+        result = 31 * result + placeholderRects.hashCode()
+        return result
+    }
+
+    override fun toString(): String {
+        return "TextLayoutResult(" +
+            "layoutInput=$layoutInput, " +
+            "multiParagraph=$multiParagraph, " +
+            "size=$size, " +
+            "firstBaseline=$firstBaseline, " +
+            "lastBaseline=$lastBaseline, " +
+            "placeholderRects=$placeholderRects" +
+            ")"
+    }
 }
 
-@VisibleForTesting
+@Deprecated(
+    "Unused public function which was added for testing. The function does not do " +
+        "anything usable for Compose text APIs. The function is now deprecated and will be " +
+        "removed soon"
+)
 fun createTextLayoutResult(
     layoutInput: TextLayoutInput =
         TextLayoutInput(

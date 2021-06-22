@@ -1,26 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="5" by="lint 4.2.0-alpha06" client="gradle" variant="debug" version="4.2.0-alpha06">
+<issues format="6" by="lint 7.1.0-alpha02" type="baseline" client="cli" name="Lint" variant="all" version="7.1.0-alpha02">
 
     <issue
-        id="SyntheticAccessor"
-        message="Access to `private` field `mPreviewCaptureSessionConfigured` of class `CameraExtensionsActivity` requires synthetic accessor"
-        errorLine1="                        mPreviewCaptureSessionConfigured.countDown();"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="NewApi"
+        message="Call requires API level 29 (current min is 21): `android.os.Handler#hasCallbacks`"
+        errorLine1="        if (!mIdle &amp;&amp; !mHandler.hasCallbacks(mRunnable)) {"
+        errorLine2="                                ~~~~~~~~~~~~">
         <location
-            file="src/main/java/androidx/camera/integration/extensions/CameraExtensionsActivity.java"
-            line="170"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="SyntheticAccessor"
-        message="Access to `private` method `createUseCases` of class `CameraExtensionsActivity` requires synthetic accessor"
-        errorLine1="                        createUseCases();"
-        errorLine2="                        ~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/androidx/camera/integration/extensions/CameraExtensionsActivity.java"
-            line="451"
-            column="25"/>
+            file="src/androidTest/java/androidx/camera/integration/extensions/idlingresource/ViewIdlingResource.java"
+            line="78"
+            column="33"/>
     </issue>
 
     <issue
@@ -30,7 +19,7 @@
         errorLine2="                            ~~~~~~">
         <location
             file="src/main/java/androidx/camera/integration/extensions/CameraExtensionsActivity.java"
-            line="399"
+            line="265"
             column="29"/>
     </issue>
 

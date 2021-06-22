@@ -13,9 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse, collections, pathlib, os, re, sys
+import argparse, collections, os, re, sys
 
-dir_of_this_script = str(pathlib.Path(__file__).parent.absolute())
+dir_of_this_script = os.path.dirname(os.path.realpath(__file__))
 
 parser = argparse.ArgumentParser(
     description="""USAGE:
@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument("--validate", action="store_true", help="Validate that no unrecognized messages exist in the given log")
 parser.add_argument("--update", action="store_true", help="Update our list of recognized messages to include all messages from the given log")
 parser.add_argument("--gc", action="store_true", help="When generating a new exemptions file, exclude any exemptions that were not found in the given log. Only relevant with --update or --validate")
-parser.add_argument("log_path", help="Filepath of log to process", nargs=1)
+parser.add_argument("log_path", help="Filepath of log(s) to process", nargs="+")
 
 # a regexes_matcher can quickly identify which of a set of regexes matches a given text
 class regexes_matcher(object):
@@ -71,6 +71,8 @@ class regexes_matcher(object):
             if self.matches(text):
                 return 0
             return None
+        if not self.matches(text):
+            return None
         self.ensure_split()
         count = 0
         for child in self.children:
@@ -102,32 +104,14 @@ class regexes_matcher(object):
         return self.matcher.fullmatch(text)
 
 
-def select_failing_task_output(lines):
+def print_failing_task_names(lines):
     tasks_of_interest = []
     # first, find tasks of interest
     for line in lines:
         if line.startswith("Execution failed for task"):
             tasks_of_interest.append(line.split("task '")[1][:-3])
 
-
     print("Detected these failing tasks: " + str(tasks_of_interest))
-
-    # next, save all excerpts between start(interesting task) and end(interesting task)
-    current_interesting_tasks = []
-    retained_lines = []
-    for line in lines:
-        if line.startswith("Task ") and line.split(" ")[1] in tasks_of_interest:
-            if line.split(" ")[-1].strip() == "Starting":
-                current_interesting_tasks.append(line.split(" ")[1])
-            elif line.split(" ")[-1].strip() == "Finished":
-                current_interesting_tasks.remove(line.split(" ")[1])
-                retained_lines.append(line)
-        if current_interesting_tasks: retained_lines.append(line)
-    if retained_lines:
-        return retained_lines
-    # if no output was created by any failing tasks, then maybe there could be useful output from
-    # somewhere else
-    return lines
 
 def shorten_uninteresting_stack_frames(lines):
     result = []
@@ -139,55 +123,22 @@ def shorten_uninteresting_stack_frames(lines):
             prev_line_is_boring = True
         elif line.startswith("\tat java.base"):
             if not prev_line_is_boring:
-                result.append("\tat java.base...")
+                result.append("\tat java.base...\n")
             prev_line_is_boring = True
         else:
             result.append(line)
             prev_line_is_boring = False
     return result
 
-def remove_known_uninteresting_lines(lines):
-  skipLines = {
-      "A fine-grained performance profile is available: use the --scan option.",
-      "* Get more help at https://help.gradle.org",
-      "Use '--warning-mode all' to show the individual deprecation warnings.",
-      "See https://docs.gradle.org/6.5/userguide/command_line_interface.html#sec:command_line_warnings",
+# Returns the path of the config file holding exemptions for deterministic/consistent output.
+# These exemptions can be garbage collected via the `--gc` argument
+def get_deterministic_exemptions_path():
+    return os.path.join(dir_of_this_script, "messages.ignore")
 
-      "Note: Some input files use or override a deprecated API.",
-      "Note: Recompile with -Xlint:deprecation for details.",
-      "Note: Some input files use unchecked or unsafe operations.",
-      "Note: Recompile with -Xlint:unchecked for details.",
-
-      "w: ATTENTION!",
-      "This build uses unsafe internal compiler arguments:",
-      "-XXLanguage:-NewInference",
-      "-XXLanguage:+InlineClasses",
-      "This mode is not recommended for production use,",
-      "as no stability/compatibility guarantees are given on",
-      "compiler or generated code. Use it at your own risk!"
-  }
-  skipPrefixes = [
-      "See the profiling report at:",
-
-      "Deprecated Gradle features were used in this build"
-  ]
-  result = []
-  for line in lines:
-      stripped = line.strip()
-      if stripped in skipLines:
-          continue
-      include = True
-      for prefix in skipPrefixes:
-          if stripped.startswith(prefix):
-              include = False
-              break
-      if include:
-          result.append(line)
-  return result
-
-def get_exemptions_path():
-    return os.path.join(dir_of_this_script, "build_log_simplifier/messages.ignore")
-
+# Returns the path of the config file holding exemptions for nondetermistic/flaky output.
+# These exemptions will not be garbage collected via the `--gc` argument
+def get_flake_exemptions_path():
+    return os.path.join(dir_of_this_script, "message-flakes.ignore")
 
 # Returns a regexes_matcher that matches what is described by our config file
 # Ignores comments and ordering in our config file
@@ -220,7 +171,7 @@ def build_exemptions_code_matcher(config_lines):
         regexes.append(line)
     return regexes_matcher(regexes)
 
-def remove_configured_uninteresting_lines(lines, config_lines, validate_no_duplicates):
+def remove_by_regexes(lines, config_lines, validate_no_duplicates):
     fast_matcher = build_exemptions_matcher(config_lines)
     result = []
     for line in lines:
@@ -253,6 +204,23 @@ def collapse_consecutive_blank_lines(lines):
             prev_blank = False
     return result
 
+def extract_task_name(line):
+    prefix = "> Task "
+    if line.startswith(prefix):
+        return line[len(prefix):].strip()
+    return None
+
+def is_task_line(line):
+    return extract_task_name(line) is not None
+
+def extract_task_names(lines):
+    names = []
+    for line in lines:
+        name = extract_task_name(line)
+        if name is not None and name not in names:
+            names.append(name)
+    return names
+
 # If a task has no output (or only blank output), this function removes the task (and its output)
 # For example, turns this:
 #  > Task :a
@@ -270,8 +238,8 @@ def collapse_tasks_having_no_output(lines):
     pending_task = None
     pending_blanks = []
     for line in lines:
-        is_task = line.startswith("> Task ") or line.startswith("> Configure project ")
-        if is_task:
+        is_section = is_task_line(line) or line.startswith("> Configure project ") or line.startswith("FAILURE: Build failed with an exception.")
+        if is_section:
             pending_task = line
             pending_blanks = []
         elif line.strip() == "":
@@ -313,11 +281,13 @@ def normalize_paths(lines):
     out_dir = None
     dist_dir = None
     checkout_dir = None
+    gradle_user_home = None
     # we read checkout_root from the log file in case this build was run in a location,
     # such as on a build server
     out_marker = "OUT_DIR="
     dist_marker = "DIST_DIR="
     checkout_marker = "CHECKOUT="
+    gradle_user_home_marker="GRADLE_USER_HOME="
     for line in lines:
         if line.startswith(out_marker):
             out_dir = line.split(out_marker)[1].strip()
@@ -328,11 +298,18 @@ def normalize_paths(lines):
         if line.startswith(checkout_marker):
             checkout_dir = line.split(checkout_marker)[1].strip()
             continue
-        if out_dir is not None and dist_dir is not None and checkout_dir is not None:
+        if line.startswith(gradle_user_home_marker):
+            gradle_user_home = line.split(gradle_user_home_marker)[1].strip()
+            continue
+        if out_dir is not None and dist_dir is not None and checkout_dir is not None and gradle_user_home is not None:
             break
 
     # Remove any mentions of these paths, and replace them with consistent values
+    # Make sure to put these paths in the correct order so that more-specific paths will
+    # be matched first
     remove_paths = collections.OrderedDict()
+    if gradle_user_home is not None:
+        remove_paths[gradle_user_home] = "$GRADLE_USER_HOME"
     if dist_dir is not None:
         remove_paths[dist_dir] = "$DIST_DIR"
     if out_dir is not None:
@@ -392,12 +369,12 @@ def suggest_missing_exemptions(messages, config_lines):
         if line == "":
             continue
         # save task name
-        is_task = False
-        if line.startswith("> Task :") or line.startswith("> Configure project "):
+        is_section = False
+        if is_task_line(line) or line.startswith("> Configure project "):
             # If a task creates output, we record its name
             line = "# " + line
             pending_task_line = line
-            is_task = True
+            is_section = True
         # determine where to put task name
         current_found_index = existing_matcher.index_first_matching_regex(line)
         if current_found_index is not None:
@@ -407,7 +384,7 @@ def suggest_missing_exemptions(messages, config_lines):
             pending_task_line = None
             continue
         # skip outputting task names for tasks that don't output anything
-        if is_task:
+        if is_section:
             continue
 
         # escape message
@@ -507,53 +484,69 @@ def writelines(path, lines):
 def main():
     arguments = parser.parse_args()
 
-    # read file
-    log_path = arguments.log_path[0]
-    all_lines = readlines(log_path)
-    all_lines = [remove_control_characters(line) for line in all_lines]
-    all_lines = normalize_paths(all_lines)
+    # read each file
+    log_paths = arguments.log_path
+    all_lines = []
+    for log_path in log_paths:
+        lines = readlines(log_path)
+        lines = [remove_control_characters(line) for line in lines]
+        lines = normalize_paths(lines)
+        all_lines += lines
     # load configuration
-    exemption_regexes_from_file = readlines(get_exemptions_path())
+    flake_exemption_regexes = readlines(get_flake_exemptions_path())
+    deterministic_exemption_regexes = readlines(get_deterministic_exemptions_path())
+    exemption_regexes = flake_exemption_regexes + deterministic_exemption_regexes
+    # load configuration
     # remove lines we're not interested in
     update = arguments.update or arguments.gc
     validate = update or arguments.validate
     interesting_lines = all_lines
     if not validate:
-        interesting_lines = select_failing_task_output(interesting_lines)
-    interesting_lines = shorten_uninteresting_stack_frames(interesting_lines)
-    interesting_lines = remove_known_uninteresting_lines(interesting_lines)
-    interesting_lines = remove_configured_uninteresting_lines(interesting_lines, exemption_regexes_from_file, validate)
+        print_failing_task_names(interesting_lines)
+    interesting_lines = remove_by_regexes(interesting_lines, exemption_regexes, validate)
     interesting_lines = collapse_tasks_having_no_output(interesting_lines)
     interesting_lines = collapse_consecutive_blank_lines(interesting_lines)
 
     # process results
     if update:
-        if len(interesting_lines) != 0:
-            update_path = get_exemptions_path()
-            suggested = generate_suggested_exemptions(all_lines, exemption_regexes_from_file, arguments.gc)
+        if arguments.gc or len(interesting_lines) != 0:
+            update_path = get_deterministic_exemptions_path()
+            # filter out any inconsistently observed messages so we don't try to exempt them twice
+            all_lines = remove_by_regexes(all_lines, flake_exemption_regexes, validate)
+            # update the deterministic exemptions file based on the result
+            suggested = generate_suggested_exemptions(all_lines, deterministic_exemption_regexes, arguments.gc)
             writelines(update_path, suggested)
             print("build_log_simplifier.py updated exemptions " + update_path)
     elif validate:
         if len(interesting_lines) != 0:
             print("")
-            print("build_log_simplifier.py: Error: Found new messages!")
+            print("=" * 80)
+            print("build_log_simplifier.py: Error: Found " + str(len(interesting_lines)) + " new lines of warning output!")
             print("")
-            print("".join(interesting_lines))
-            print("Error: build_log_simplifier.py found " + str(len(interesting_lines)) + " new messages found in " + log_path + ".")
-            new_exemptions_path = log_path + ".ignore"
-            suggested = generate_suggested_exemptions(all_lines, exemption_regexes_from_file, arguments.gc)
+            print("The new output:")
+            print("  " + "  ".join(interesting_lines))
+            print("")
+            print("To reproduce this failure:")
+            print("  Try $ ./gradlew -Pandroidx.validateNoUnrecognizedMessages --rerun-tasks " + " ".join(extract_task_names(interesting_lines)))
+            print("")
+            print("Instructions:")
+            print("  Fix these messages if you can.")
+            print("  Otherwise, you may suppress them.")
+            print("  See also https://android.googlesource.com/platform/frameworks/support/+/androidx-main/development/build_log_simplifier/VALIDATION_FAILURE.md")
+            print("")
+            new_exemptions_path = log_paths[0] + ".ignore"
+            # filter out any inconsistently observed messages so we don't try to exempt them twice
+            all_lines = remove_by_regexes(all_lines, flake_exemption_regexes, validate)
+            # update deterministic exemptions file based on the result
+            suggested = generate_suggested_exemptions(all_lines, deterministic_exemption_regexes, arguments.gc)
             writelines(new_exemptions_path, suggested)
-            print("")
-            print("Please fix or suppress these new messages in the tool that generates them.")
-            print("If you cannot, then you can exempt them by doing:")
-            print("")
-            print("  1. cp " + new_exemptions_path + " " + get_exemptions_path() + " # or, if this script is running on the build server, you may download this file from there")
-            print("  2. modify the new lines to be more generalized (they are regular expressions) if it is more important to preemptively exempt similar messages than to be notified of new, similar messages")
-            print("")
-            print("Note that if you exempt these messages by updating the exemption file, this will suppress these messages in the output of CI builds but not in Android Studio.")
-            print("Additionally, adding more exemptions to this exemption file will cause the build to run more slowly than fixing or suppressing the message where it is generated.")
+            print("Files:")
+            print("  Full Log                   : " + ",".join(log_paths))
+            print("  Baseline                   : " + get_deterministic_exemptions_path())
+            print("  Autogenerated new baseline : " + new_exemptions_path)
             exit(1)
     else:
+        interesting_lines = shorten_uninteresting_stack_frames(interesting_lines)
         print("".join(interesting_lines))
 
 if __name__ == "__main__":

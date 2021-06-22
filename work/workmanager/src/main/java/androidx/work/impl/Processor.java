@@ -144,7 +144,8 @@ public class Processor implements ExecutionListener, ForegroundProcessor {
     }
 
     @Override
-    public void startForeground(@NonNull String workSpecId, @NonNull ForegroundInfo info) {
+    public void startForeground(@NonNull String workSpecId,
+            @NonNull ForegroundInfo foregroundInfo) {
         synchronized (mLock) {
             Logger.get().info(TAG, String.format("Moving WorkSpec (%s) to the foreground",
                     workSpecId));
@@ -155,7 +156,8 @@ public class Processor implements ExecutionListener, ForegroundProcessor {
                     mForegroundLock.acquire();
                 }
                 mForegroundWorkMap.put(workSpecId, wrapper);
-                Intent intent = createStartForegroundIntent(mAppContext, workSpecId, info);
+                Intent intent = createStartForegroundIntent(mAppContext, workSpecId,
+                        foregroundInfo);
                 ContextCompat.startForegroundService(mAppContext, intent);
             }
         }
@@ -309,7 +311,14 @@ public class Processor implements ExecutionListener, ForegroundProcessor {
             boolean hasForegroundWork = !mForegroundWorkMap.isEmpty();
             if (!hasForegroundWork) {
                 Intent intent = createStopForegroundIntent(mAppContext);
-                mAppContext.startService(intent);
+                try {
+                    // Wrapping this inside a try..catch, because there are bugs the platform
+                    // that cause an IllegalStateException when an intent is dispatched to stop
+                    // the foreground service that is running.
+                    mAppContext.startService(intent);
+                } catch (Throwable throwable) {
+                    Logger.get().error(TAG, "Unable to stop foreground service", throwable);
+                }
                 // Release wake lock if there is no more pending work.
                 if (mForegroundLock != null) {
                     mForegroundLock.release();

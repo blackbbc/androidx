@@ -20,55 +20,86 @@ import android.hardware.camera2.CameraCharacteristics;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.experimental.UseExperimental;
+import androidx.annotation.OptIn;
 import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
-import androidx.camera.core.Camera;
 import androidx.camera.core.CameraFilter;
 import androidx.camera.core.CameraInfo;
-import androidx.camera.core.ExperimentalCameraFilter;
-import androidx.camera.core.impl.CameraInternal;
+import androidx.camera.core.impl.CameraInfoInternal;
 import androidx.camera.extensions.impl.ImageCaptureExtenderImpl;
 import androidx.camera.extensions.impl.PreviewExtenderImpl;
 import androidx.core.util.Preconditions;
 
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A filter that filters camera based on extender implementation. If the implementation is
  * unavailable, the camera will be considered available.
  */
-@UseExperimental(markerClass = ExperimentalCameraFilter.class)
-public final class ExtensionCameraFilter implements CameraFilter {
+final class ExtensionCameraFilter implements CameraFilter {
+    private final Id mId;
     private final PreviewExtenderImpl mPreviewExtenderImpl;
     private final ImageCaptureExtenderImpl mImageCaptureExtenderImpl;
 
+    // TODO(b/183075483): These three constructors will be removed after new Extensions APIs are
+    //  public and the old extender APIs are removed.
     ExtensionCameraFilter(@Nullable PreviewExtenderImpl previewExtenderImpl) {
+        mId = Id.DEFAULT;
         mPreviewExtenderImpl = previewExtenderImpl;
         mImageCaptureExtenderImpl = null;
     }
 
     ExtensionCameraFilter(@Nullable ImageCaptureExtenderImpl imageCaptureExtenderImpl) {
+        mId = Id.DEFAULT;
         mPreviewExtenderImpl = null;
         mImageCaptureExtenderImpl = imageCaptureExtenderImpl;
     }
 
     ExtensionCameraFilter(@Nullable PreviewExtenderImpl previewExtenderImpl,
             @Nullable ImageCaptureExtenderImpl imageCaptureExtenderImpl) {
+        mId = Id.DEFAULT;
         mPreviewExtenderImpl = previewExtenderImpl;
         mImageCaptureExtenderImpl = imageCaptureExtenderImpl;
     }
 
-    @UseExperimental(markerClass = ExperimentalCamera2Interop.class)
+    ExtensionCameraFilter(@NonNull String filterId,
+            @Nullable PreviewExtenderImpl previewExtenderImpl) {
+        mId = Id.create(filterId);
+        mPreviewExtenderImpl = previewExtenderImpl;
+        mImageCaptureExtenderImpl = null;
+    }
+
+    ExtensionCameraFilter(@NonNull String filterId,
+            @Nullable ImageCaptureExtenderImpl imageCaptureExtenderImpl) {
+        mId = Id.create(filterId);
+        mPreviewExtenderImpl = null;
+        mImageCaptureExtenderImpl = imageCaptureExtenderImpl;
+    }
+
+    ExtensionCameraFilter(@NonNull String filterId,
+            @Nullable PreviewExtenderImpl previewExtenderImpl,
+            @Nullable ImageCaptureExtenderImpl imageCaptureExtenderImpl) {
+        mId = Id.create(filterId);
+        mPreviewExtenderImpl = previewExtenderImpl;
+        mImageCaptureExtenderImpl = imageCaptureExtenderImpl;
+    }
+
     @NonNull
     @Override
-    public LinkedHashSet<Camera> filter(@NonNull LinkedHashSet<Camera> cameras) {
-        LinkedHashSet<Camera> resultCameras = new LinkedHashSet<>();
-        for (Camera camera : cameras) {
-            Preconditions.checkState(camera instanceof CameraInternal,
-                    "The camera doesn't contain internal implementation.");
-            CameraInfo cameraInfo = camera.getCameraInfo();
-            String cameraId = Camera2CameraInfo.fromCameraInfo(cameraInfo).getCameraId();
+    public Id getId() {
+        return mId;
+    }
+
+    @OptIn(markerClass = ExperimentalCamera2Interop.class)
+    @NonNull
+    @Override
+    public List<CameraInfo> filter(@NonNull List<CameraInfo> cameraInfos) {
+        List<CameraInfo> result = new ArrayList<>();
+        for (CameraInfo cameraInfo : cameraInfos) {
+            Preconditions.checkArgument(cameraInfo instanceof CameraInfoInternal,
+                    "The camera info doesn't contain internal implementation.");
+            String cameraId = Camera2CameraInfo.from(cameraInfo).getCameraId();
             CameraCharacteristics cameraCharacteristics =
                     Camera2CameraInfo.extractCameraCharacteristics(cameraInfo);
 
@@ -86,10 +117,10 @@ public final class ExtensionCameraFilter implements CameraFilter {
             }
 
             if (available) {
-                resultCameras.add(camera);
+                result.add(cameraInfo);
             }
         }
 
-        return resultCameras;
+        return result;
     }
 }

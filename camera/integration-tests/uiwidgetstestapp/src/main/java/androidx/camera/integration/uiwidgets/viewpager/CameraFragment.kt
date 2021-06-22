@@ -24,13 +24,13 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
-import androidx.camera.integration.uiwidgets.R
+import androidx.camera.integration.uiwidgets.databinding.FragmentTextureviewBinding
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import com.google.common.util.concurrent.ListenableFuture
-import kotlinx.android.synthetic.main.fragment_textureview.preview_textureview
 
 /** A Fragment that displays a {@link PreviewView} with TextureView mode. */
 class CameraFragment : Fragment() {
@@ -39,6 +39,9 @@ class CameraFragment : Fragment() {
         fun newInstance() = CameraFragment()
         private const val TAG = "CameraFragment"
     }
+
+    private var _binding: FragmentTextureviewBinding? = null
+    private val binding get() = _binding!!
 
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
     private lateinit var cameraProvider: ProcessCameraProvider
@@ -53,20 +56,30 @@ class CameraFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        return inflater.inflate(R.layout.fragment_textureview, container, false)
+        _binding = FragmentTextureviewBinding.inflate(inflater, container, false)
+        return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         Log.d(TAG, "onViewCreated")
-        (requireActivity() as BaseActivity).previewView = preview_textureview
+        (requireActivity() as BaseActivity).previewView = binding.previewTextureview
 
         cameraProviderFuture.addListener(
             Runnable {
                 cameraProvider = cameraProviderFuture.get()
-                bindPreview()
+                if (viewLifecycleOwner.lifecycle.currentState != Lifecycle.State.DESTROYED) {
+                    bindPreview()
+                } else {
+                    Log.d(TAG, "Skip camera setup since the lifecycle is closed")
+                }
             },
-            ContextCompat.getMainExecutor(this.context)
+            ContextCompat.getMainExecutor(requireContext())
         )
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 
     private fun bindPreview() {
@@ -78,9 +91,8 @@ class CameraFragment : Fragment() {
 
         cameraProvider.bindToLifecycle(this, getCameraSelector(), preview)
 
-        preview_textureview.implementationMode =
-            PreviewView.ImplementationMode.COMPATIBLE
-        preview.setSurfaceProvider(preview_textureview.getSurfaceProvider())
+        binding.previewTextureview.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        preview.setSurfaceProvider(binding.previewTextureview.surfaceProvider)
     }
 
     private fun getCameraSelector(): CameraSelector {

@@ -30,7 +30,37 @@ import androidx.compose.ui.unit.Dp
  * @param brush brush to paint the border with
  */
 @Immutable
-data class BorderStroke(val width: Dp, val brush: Brush)
+class BorderStroke(val width: Dp, val brush: Brush) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is BorderStroke) return false
+
+        if (width != other.width) return false
+        if (brush != other.brush) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = width.hashCode()
+        result = 31 * result + brush.hashCode()
+        return result
+    }
+
+    override fun toString(): String {
+        return "BorderStroke(width=$width, brush=$brush)"
+    }
+
+    fun copy(
+        width: Dp = this.width,
+        brush: Brush = this.brush
+    ): BorderStroke {
+        return BorderStroke(
+            width = width,
+            brush = brush
+        )
+    }
+}
 
 /**
  * Create [BorderStroke] class with width and [Color]
@@ -40,36 +70,3 @@ data class BorderStroke(val width: Dp, val brush: Brush)
  */
 @Stable
 fun BorderStroke(width: Dp, color: Color) = BorderStroke(width, SolidColor(color))
-
-/**
- * Class to specify border appearance.
- *
- * @param size size of the border in [Dp]. Use [Dp.Hairline] for one-pixel border.
- * @param brush brush to paint the border with
- */
-@Immutable
-@Deprecated(
-    "Use BorderStroke instead",
-    replaceWith = ReplaceWith(
-        "BorderStroke(size, brush)",
-        "androidx.ui.foundation.BorderStroke"
-    )
-)
-data class Border(val size: Dp, val brush: Brush)
-
-/**
- * Create [Border] class with size and [Color]
- *
- * @param size size of the border in [Dp]. Use [Dp.Hairline] for one-pixel border.
- * @param color color to paint the border with
- */
-@Stable
-@Deprecated(
-    "Use BorderStroke instead",
-    replaceWith = ReplaceWith(
-        "BorderStroke(size, color)",
-        "androidx.ui.foundation.BorderStroke"
-    )
-)
-@Suppress("DEPRECATION")
-fun Border(size: Dp, color: Color) = Border(size, SolidColor(color))

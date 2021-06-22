@@ -29,24 +29,24 @@ import androidx.paging.PageEvent.Insert.Companion.Prepend
 import androidx.paging.PageEvent.Insert.Companion.Refresh
 import androidx.paging.PageEvent.LoadStateUpdate
 import androidx.paging.PagingSource.LoadResult.Page
+import androidx.paging.RemoteMediatorMock.LoadEvent
 import androidx.paging.TestPagingSource.Companion.LOAD_ERROR
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.channels.ConflatedBroadcastChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
@@ -64,20 +64,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
-@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(JUnit4::class)
 class PageFetcherSnapshotTest {
     private val testScope = TestCoroutineScope()
-    private val retryCh = ConflatedBroadcastChannel<Unit>()
-    private val pagingSourceFactory = {
-        TestPagingSource().also {
+    private val retryBus = ConflatedEventBus<Unit>()
+    private val pagingSourceFactory = suspend {
+        TestPagingSource(loadDelay = 1000).also {
             currentPagingSource = it
         }
     }
+
     private var currentPagingSource: TestPagingSource? = null
     private val config = PagingConfig(
         pageSize = 1,
@@ -93,15 +93,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(1..2)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(1..2)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -111,14 +109,12 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(PREPEND, false, Loading),
-                createPrepend(
-                    pageOffset = -1,
-                    range = 0..0,
-                    startState = NotLoading.Complete
-                )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
+            createPrepend(
+                pageOffset = -1,
+                range = 0..0,
+                startState = NotLoading.Complete
             )
         )
 
@@ -131,15 +127,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(1..2)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(1..2)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -149,19 +143,17 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(PREPEND, false, Loading),
-                createPrepend(
-                    pageOffset = -1,
-                    range = 0..0,
-                    startState = NotLoading.Complete
-                )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
+            createPrepend(
+                pageOffset = -1,
+                range = 0..0,
+                startState = NotLoading.Complete
             )
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 2,
@@ -171,21 +163,19 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                Drop(
-                    loadType = PREPEND,
-                    minPageOffset = -1,
-                    maxPageOffset = -1,
-                    placeholdersRemaining = 1
-                ),
-                createAppend(
-                    pageOffset = 1,
-                    range = 3..3,
-                    startState = NotLoading.Incomplete,
-                    endState = NotLoading.Incomplete
-                )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            Drop<Int>(
+                loadType = PREPEND,
+                minPageOffset = -1,
+                maxPageOffset = -1,
+                placeholdersRemaining = 1
+            ),
+            createAppend(
+                pageOffset = 1,
+                range = 3..3,
+                startState = NotLoading.Incomplete,
+                endState = NotLoading.Incomplete
             )
         )
 
@@ -198,15 +188,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 97..98)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 97..98)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -216,11 +204,9 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(pageOffset = 1, range = 99..99, endState = NotLoading.Complete)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(pageOffset = 1, range = 99..99, endState = NotLoading.Complete)
         )
 
         fetcherState.job.cancel()
@@ -232,15 +218,14 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 97..98)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 97..98)
+
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -250,20 +235,18 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(
-                    pageOffset = 1,
-                    range = 99..99,
-                    startState = NotLoading.Incomplete,
-                    endState = NotLoading.Complete
-                )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(
+                pageOffset = 1,
+                range = 99..99,
+                startState = NotLoading.Incomplete,
+                endState = NotLoading.Complete
             )
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -273,21 +256,19 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(PREPEND, false, Loading),
-                Drop(
-                    loadType = APPEND,
-                    minPageOffset = 1,
-                    maxPageOffset = 1,
-                    placeholdersRemaining = 1
-                ),
-                createPrepend(
-                    pageOffset = -1,
-                    range = 96..96,
-                    startState = NotLoading.Incomplete,
-                    endState = NotLoading.Incomplete
-                )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
+            Drop<Int>(
+                loadType = APPEND,
+                minPageOffset = 1,
+                maxPageOffset = 1,
+                placeholdersRemaining = 1
+            ),
+            createPrepend(
+                pageOffset = -1,
+                range = 96..96,
+                startState = NotLoading.Incomplete,
+                endState = NotLoading.Incomplete
             )
         )
 
@@ -301,8 +282,8 @@ class PageFetcherSnapshotTest {
 
         advanceUntilIdle()
 
-        val expected: List<PageEvent<Int>> = listOf(
-            LoadStateUpdate(REFRESH, false, Loading),
+        assertThat(fetcherState.pageEventLists[0]).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
             createRefresh(
                 range = 0..1,
                 startState = NotLoading.Complete,
@@ -310,7 +291,6 @@ class PageFetcherSnapshotTest {
             )
         )
 
-        assertEvents(expected, fetcherState.pageEventLists[0])
         fetcherState.job.cancel()
     }
 
@@ -321,8 +301,8 @@ class PageFetcherSnapshotTest {
 
         advanceUntilIdle()
 
-        val expected: List<PageEvent<Int>> = listOf(
-            LoadStateUpdate(REFRESH, false, Loading),
+        assertThat(fetcherState.pageEventLists[0]).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
             createRefresh(
                 range = 98..99,
                 startState = NotLoading.Incomplete,
@@ -330,7 +310,6 @@ class PageFetcherSnapshotTest {
             )
         )
 
-        assertEvents(expected, fetcherState.pageEventLists[0])
         fetcherState.job.cancel()
     }
 
@@ -341,12 +320,11 @@ class PageFetcherSnapshotTest {
 
         advanceUntilIdle()
 
-        val expected: List<PageEvent<Int>> = listOf(
-            LoadStateUpdate(REFRESH, false, Loading),
+        assertThat(fetcherState.pageEventLists[0]).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
             createRefresh(range = 50..51)
         )
 
-        assertEvents(expected, fetcherState.pageEventLists[0])
         fetcherState.job.cancel()
     }
 
@@ -356,7 +334,7 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -367,14 +345,13 @@ class PageFetcherSnapshotTest {
         )
         advanceUntilIdle()
 
-        val expected: List<PageEvent<Int>> = listOf(
-            LoadStateUpdate(REFRESH, false, Loading),
+        assertThat(fetcherState.pageEventLists[0]).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
             createRefresh(range = 50..51),
-            LoadStateUpdate(PREPEND, false, Loading),
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
             createPrepend(pageOffset = -1, range = 49..49)
         )
 
-        assertEvents(expected, fetcherState.pageEventLists[0])
         fetcherState.job.cancel()
     }
 
@@ -384,15 +361,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 50..51)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 50..51)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -402,11 +377,9 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(PREPEND, false, Loading),
-                createPrepend(pageOffset = -1, range = 49..49)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
+            createPrepend(pageOffset = -1, range = 49..49)
         )
 
         fetcherState.job.cancel()
@@ -428,15 +401,13 @@ class PageFetcherSnapshotTest {
             advanceUntilIdle()
             // Make sure the job didn't complete exceptionally
             assertFalse { fetcherState.job.isCancelled }
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(REFRESH, false, Loading),
-                    createRefresh(range = 50..51)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(REFRESH, false, Loading),
+                createRefresh(range = 50..51)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -447,15 +418,13 @@ class PageFetcherSnapshotTest {
             )
             advanceUntilIdle()
             assertFalse { fetcherState.job.isCancelled }
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(PREPEND, false, Loading),
-                    createPrepend(pageOffset = -1, range = 48..49)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(PREPEND, false, Loading),
+                createPrepend(pageOffset = -1, range = 48..49)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = -1,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -466,17 +435,15 @@ class PageFetcherSnapshotTest {
             )
             advanceUntilIdle()
             assertFalse { fetcherState.job.isCancelled }
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(PREPEND, false, Loading),
-                    Drop(
-                        loadType = APPEND,
-                        minPageOffset = 0,
-                        maxPageOffset = 0,
-                        placeholdersRemaining = 50
-                    ),
-                    createPrepend(pageOffset = -2, range = 46..47)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(PREPEND, false, Loading),
+                Drop<Int>(
+                    loadType = APPEND,
+                    minPageOffset = 0,
+                    maxPageOffset = 0,
+                    placeholdersRemaining = 50
+                ),
+                createPrepend(pageOffset = -2, range = 46..47)
             )
 
             fetcherState.job.cancel()
@@ -500,15 +467,17 @@ class PageFetcherSnapshotTest {
             val fetcherState = collectFetcherState(pageFetcher)
 
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(loadType = REFRESH, fromMediator = false, loadState = Loading),
-                    createRefresh(range = 50..54)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(
+                    loadType = REFRESH,
+                    fromMediator = false,
+                    loadState = Loading
+                ),
+                createRefresh(range = 50..54)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -518,16 +487,18 @@ class PageFetcherSnapshotTest {
                 )
             )
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(loadType = PREPEND, fromMediator = false, loadState = Loading),
-                    createPrepend(
-                        pageOffset = -1,
-                        range = 49..49,
-                        startState = Loading
-                    ),
-                    createPrepend(pageOffset = -2, range = 48..48)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(
+                    loadType = PREPEND,
+                    fromMediator = false,
+                    loadState = Loading
+                ),
+                createPrepend(
+                    pageOffset = -1,
+                    range = 49..49,
+                    startState = Loading
+                ),
+                createPrepend(pageOffset = -2, range = 48..48)
             )
 
             // Make sure the job didn't complete exceptionally
@@ -551,15 +522,13 @@ class PageFetcherSnapshotTest {
             val fetcherState = collectFetcherState(pageFetcher)
 
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(REFRESH, false, Loading),
-                    createRefresh(range = 50..51)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(REFRESH, false, Loading),
+                createRefresh(range = 50..51)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -569,15 +538,13 @@ class PageFetcherSnapshotTest {
                 )
             )
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(PREPEND, false, Loading),
-                    createPrepend(pageOffset = -1, range = 48..49)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(PREPEND, false, Loading),
+                createPrepend(pageOffset = -1, range = 48..49)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = -1,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -589,7 +556,7 @@ class PageFetcherSnapshotTest {
             // Start hint processing until load starts, but hasn't finished.
             advanceTimeBy(500)
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 1,
                     presentedItemsBefore = 3,
@@ -599,18 +566,16 @@ class PageFetcherSnapshotTest {
                 )
             )
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(PREPEND, false, Loading),
-                    LoadStateUpdate(APPEND, false, Loading),
-                    Drop(
-                        loadType = APPEND,
-                        minPageOffset = 0,
-                        maxPageOffset = 0,
-                        placeholdersRemaining = 50
-                    ),
-                    createPrepend(pageOffset = -2, range = 46..47)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(PREPEND, false, Loading),
+                LoadStateUpdate<Int>(APPEND, false, Loading),
+                Drop<Int>(
+                    loadType = APPEND,
+                    minPageOffset = 0,
+                    maxPageOffset = 0,
+                    placeholdersRemaining = 50
+                ),
+                createPrepend(pageOffset = -2, range = 46..47)
             )
 
             fetcherState.job.cancel()
@@ -630,15 +595,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(50..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..52)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -648,12 +611,10 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(PREPEND, false, Loading),
-                createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
-                createPrepend(pageOffset = -2, range = 48..48)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
+            createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
+            createPrepend(pageOffset = -2, range = 48..48)
         )
 
         fetcherState.job.cancel()
@@ -672,16 +633,18 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = REFRESH, fromMediator = false, loadState = Loading),
-                createRefresh(range = 50..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            createRefresh(range = 50..52)
         )
 
         // PREPEND a few pages.
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -691,17 +654,19 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = PREPEND, fromMediator = false, loadState = Loading),
-                createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
-                createPrepend(pageOffset = -2, range = 48..48)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = PREPEND,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
+            createPrepend(pageOffset = -2, range = 48..48)
         )
 
         // APPEND a few pages causing PREPEND pages to drop
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 2,
                 presentedItemsBefore = 4,
@@ -711,29 +676,31 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = APPEND, fromMediator = false, loadState = Loading),
-                Drop(
-                    loadType = PREPEND,
-                    minPageOffset = -2,
-                    maxPageOffset = -2,
-                    placeholdersRemaining = 49
-                ),
-                createAppend(pageOffset = 1, range = 53..53, endState = Loading),
-                Drop(
-                    loadType = PREPEND,
-                    minPageOffset = -1,
-                    maxPageOffset = -1,
-                    placeholdersRemaining = 50
-                ),
-                createAppend(pageOffset = 2, range = 54..54)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = APPEND,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            Drop<Int>(
+                loadType = PREPEND,
+                minPageOffset = -2,
+                maxPageOffset = -2,
+                placeholdersRemaining = 49
+            ),
+            createAppend(pageOffset = 1, range = 53..53, endState = Loading),
+            Drop<Int>(
+                loadType = PREPEND,
+                minPageOffset = -1,
+                maxPageOffset = -1,
+                placeholdersRemaining = 50
+            ),
+            createAppend(pageOffset = 2, range = 54..54)
         )
 
         // PREPEND a page, this hint would normally be ignored, but has a newer generationId.
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -743,17 +710,19 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = PREPEND, fromMediator = false, loadState = Loading),
-                Drop(
-                    loadType = APPEND,
-                    minPageOffset = 2,
-                    maxPageOffset = 2,
-                    placeholdersRemaining = 46
-                ),
-                createPrepend(pageOffset = -1, range = 49..49)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = PREPEND,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            Drop<Int>(
+                loadType = APPEND,
+                minPageOffset = 2,
+                maxPageOffset = 2,
+                placeholdersRemaining = 46
+            ),
+            createPrepend(pageOffset = -1, range = 49..49)
         )
 
         fetcherState.job.cancel()
@@ -765,15 +734,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(50..51)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..51)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -783,11 +750,9 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(1, 52..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(1, 52..52)
         )
 
         fetcherState.job.cancel()
@@ -806,15 +771,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(50..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..52)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 2,
                 presentedItemsBefore = 2,
@@ -824,17 +787,15 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(
-                    pageOffset = 1,
-                    range = 53..53,
-                    startState = NotLoading.Incomplete,
-                    endState = Loading
-                ),
-                createAppend(2, 54..54)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(
+                pageOffset = 1,
+                range = 53..53,
+                startState = NotLoading.Incomplete,
+                endState = Loading
+            ),
+            createAppend(2, 54..54)
         )
 
         fetcherState.job.cancel()
@@ -853,15 +814,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 50..51)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 50..51)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -871,15 +830,13 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(pageOffset = 1, range = 52..53)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(pageOffset = 1, range = 52..53)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 1,
                 indexInPage = 1,
                 presentedItemsBefore = 3,
@@ -889,17 +846,15 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                Drop(
-                    loadType = PREPEND,
-                    minPageOffset = 0,
-                    maxPageOffset = 0,
-                    placeholdersRemaining = 52
-                ),
-                createAppend(pageOffset = 2, range = 54..55)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            Drop<Int>(
+                loadType = PREPEND,
+                minPageOffset = 0,
+                maxPageOffset = 0,
+                placeholdersRemaining = 52
+            ),
+            createAppend(pageOffset = 2, range = 54..55)
         )
 
         fetcherState.job.cancel()
@@ -922,15 +877,13 @@ class PageFetcherSnapshotTest {
             val fetcherState = collectFetcherState(pageFetcher)
 
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(REFRESH, false, Loading),
-                    createRefresh(range = 50..54)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(REFRESH, false, Loading),
+                createRefresh(range = 50..54)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 4,
                     presentedItemsBefore = 4,
@@ -940,16 +893,14 @@ class PageFetcherSnapshotTest {
                 )
             )
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(APPEND, false, Loading),
-                    createAppend(
-                        pageOffset = 1,
-                        range = 55..55,
-                        endState = Loading
-                    ),
-                    createAppend(pageOffset = 2, range = 56..56)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(APPEND, false, Loading),
+                createAppend(
+                    pageOffset = 1,
+                    range = 55..55,
+                    endState = Loading
+                ),
+                createAppend(pageOffset = 2, range = 56..56)
             )
 
             fetcherState.job.cancel()
@@ -970,15 +921,13 @@ class PageFetcherSnapshotTest {
             val fetcherState = collectFetcherState(pageFetcher)
 
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(REFRESH, false, Loading),
-                    createRefresh(range = 50..51)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(REFRESH, false, Loading),
+                createRefresh(range = 50..51)
             )
 
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 1,
                     presentedItemsBefore = 1,
@@ -988,16 +937,14 @@ class PageFetcherSnapshotTest {
                 )
             )
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(APPEND, false, Loading),
-                    createAppend(pageOffset = 1, range = 52..53)
-                )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(APPEND, false, Loading),
+                createAppend(pageOffset = 1, range = 52..53)
             )
 
             // Start hint processing until load starts, but hasn't finished.
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 1,
                     indexInPage = 1,
                     presentedItemsBefore = 3,
@@ -1008,7 +955,7 @@ class PageFetcherSnapshotTest {
             )
             advanceTimeBy(500)
             fetcherState.pagingDataList[0].receiver.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -1018,22 +965,20 @@ class PageFetcherSnapshotTest {
                 )
             )
             advanceUntilIdle()
-            assertThat(fetcherState.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(APPEND, false, Loading),
-                    LoadStateUpdate(PREPEND, false, Loading),
-                    Drop(
-                        loadType = PREPEND,
-                        minPageOffset = 0,
-                        maxPageOffset = 0,
-                        placeholdersRemaining = 52
-                    ),
-                    createAppend(
-                        pageOffset = 2,
-                        range = 54..55,
-                        startState = NotLoading.Incomplete,
-                        endState = NotLoading.Incomplete
-                    )
+            assertThat(fetcherState.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(APPEND, false, Loading),
+                LoadStateUpdate<Int>(PREPEND, false, Loading),
+                Drop<Int>(
+                    loadType = PREPEND,
+                    minPageOffset = 0,
+                    maxPageOffset = 0,
+                    placeholdersRemaining = 52
+                ),
+                createAppend(
+                    pageOffset = 2,
+                    range = 54..55,
+                    startState = NotLoading.Incomplete,
+                    endState = NotLoading.Incomplete
                 )
             )
 
@@ -1054,16 +999,18 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = REFRESH, fromMediator = false, loadState = Loading),
-                createRefresh(range = 50..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            createRefresh(range = 50..52)
         )
 
         // APPEND a few pages.
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 2,
                 presentedItemsBefore = 2,
@@ -1073,17 +1020,19 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = APPEND, fromMediator = false, loadState = Loading),
-                createAppend(pageOffset = 1, range = 53..53, endState = Loading),
-                createAppend(pageOffset = 2, range = 54..54)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = APPEND,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            createAppend(pageOffset = 1, range = 53..53, endState = Loading),
+            createAppend(pageOffset = 2, range = 54..54)
         )
 
         // PREPEND a few pages causing APPEND pages to drop
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -1093,29 +1042,31 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = PREPEND, fromMediator = false, loadState = Loading),
-                Drop(
-                    loadType = APPEND,
-                    minPageOffset = 2,
-                    maxPageOffset = 2,
-                    placeholdersRemaining = 46
-                ),
-                createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
-                Drop(
-                    loadType = APPEND,
-                    minPageOffset = 1,
-                    maxPageOffset = 1,
-                    placeholdersRemaining = 47
-                ),
-                createPrepend(pageOffset = -2, range = 48..48)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = PREPEND,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            Drop<Int>(
+                loadType = APPEND,
+                minPageOffset = 2,
+                maxPageOffset = 2,
+                placeholdersRemaining = 46
+            ),
+            createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
+            Drop<Int>(
+                loadType = APPEND,
+                minPageOffset = 1,
+                maxPageOffset = 1,
+                placeholdersRemaining = 47
+            ),
+            createPrepend(pageOffset = -2, range = 48..48)
         )
 
         // APPEND a page, this hint would normally be ignored, but has a newer generationId.
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 3,
@@ -1125,17 +1076,19 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(loadType = APPEND, fromMediator = false, loadState = Loading),
-                Drop(
-                    loadType = PREPEND,
-                    minPageOffset = -2,
-                    maxPageOffset = -2,
-                    placeholdersRemaining = 49
-                ),
-                createAppend(pageOffset = 1, range = 53..53)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = APPEND,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            Drop<Int>(
+                loadType = PREPEND,
+                minPageOffset = -2,
+                maxPageOffset = -2,
+                placeholdersRemaining = 49
+            ),
+            createAppend(pageOffset = 1, range = 53..53)
         )
 
         fetcherState.job.cancel()
@@ -1147,20 +1100,16 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(50..51)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..51)
         )
 
         pageFetcher.refresh()
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(50..51)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..51)
         )
 
         fetcherState.job.cancel()
@@ -1172,15 +1121,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(50..51)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..51)
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -1191,21 +1138,17 @@ class PageFetcherSnapshotTest {
         )
         advanceUntilIdle()
 
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(1, 52..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(1, 52..52)
         )
 
         pageFetcher.refresh()
         advanceUntilIdle()
 
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(51..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(51..52)
         )
 
         fetcherState.job.cancel()
@@ -1219,8 +1162,10 @@ class PageFetcherSnapshotTest {
                 delay(2000)
                 fail("Should never get here")
             }
+
+            override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
         }
-        val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryCh.asFlow())
+        val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryBus.flow)
 
         collectSnapshotData(pager) { _, job ->
 
@@ -1239,24 +1184,22 @@ class PageFetcherSnapshotTest {
     fun retry() = testScope.runBlockingTest {
         pauseDispatcher {
             val pageSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { state, _ ->
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createRefresh(range = 50..51)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createRefresh(range = 50..51)
                 )
 
                 pageSource.errorNextLoad = true
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 1,
                         presentedItemsBefore = 1,
@@ -1266,32 +1209,28 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Error(LOAD_ERROR)
-                        )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Error(LOAD_ERROR)
                     )
                 )
 
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createAppend(pageOffset = 1, range = 52..52)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createAppend(pageOffset = 1, range = 52..52)
                 )
             }
         }
@@ -1301,24 +1240,22 @@ class PageFetcherSnapshotTest {
     fun retryNothing() = testScope.runBlockingTest {
         pauseDispatcher {
             val pageSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { state, _ ->
 
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createRefresh(range = 50..51)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createRefresh(range = 50..51)
                 )
 
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 1,
                         presentedItemsBefore = 1,
@@ -1328,17 +1265,15 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createAppend(pageOffset = 1, range = 52..52)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createAppend(pageOffset = 1, range = 52..52)
                 )
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
                 assertTrue { state.newEvents().isEmpty() }
             }
@@ -1349,24 +1284,22 @@ class PageFetcherSnapshotTest {
     fun retryTwice() = testScope.runBlockingTest {
         pauseDispatcher {
             val pageSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { state, _ ->
 
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createRefresh(range = 50..51)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createRefresh(range = 50..51)
                 )
                 pageSource.errorNextLoad = true
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 1,
                         presentedItemsBefore = 1,
@@ -1376,33 +1309,29 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Error(LOAD_ERROR)
-                        )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Error(LOAD_ERROR)
                     )
                 )
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createAppend(pageOffset = 1, range = 52..52)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createAppend(pageOffset = 1, range = 52..52)
                 )
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
                 assertTrue { state.newEvents().isEmpty() }
             }
@@ -1420,26 +1349,24 @@ class PageFetcherSnapshotTest {
                 maxSize = 4
             )
             val pageSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { state, _ ->
                 // Initial REFRESH
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createRefresh(range = 50..51)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createRefresh(range = 50..51)
                 )
 
                 // Failed APPEND
                 pageSource.errorNextLoad = true
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 1,
                         presentedItemsBefore = 1,
@@ -1449,25 +1376,23 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Error(LOAD_ERROR)
-                        )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Error(LOAD_ERROR)
                     )
                 )
 
                 // Failed PREPEND
                 pageSource.errorNextLoad = true
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 0,
                         presentedItemsBefore = 0,
@@ -1477,44 +1402,40 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = PREPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        LoadStateUpdate(
-                            loadType = PREPEND,
-                            fromMediator = false,
-                            loadState = Error(LOAD_ERROR)
-                        )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = PREPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    LoadStateUpdate<Int>(
+                        loadType = PREPEND,
+                        fromMediator = false,
+                        loadState = Error(LOAD_ERROR)
                     )
                 )
 
                 // Retry should trigger in both directions.
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = PREPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        LoadStateUpdate(
-                            loadType = APPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createPrepend(
-                            pageOffset = -1,
-                            range = 49..49,
-                            startState = NotLoading.Incomplete,
-                            endState = Loading
-                        ),
-                        createAppend(pageOffset = 1, range = 52..52)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = PREPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    LoadStateUpdate<Int>(
+                        loadType = APPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createPrepend(
+                        pageOffset = -1,
+                        range = 49..49,
+                        startState = NotLoading.Incomplete,
+                        endState = Loading
+                    ),
+                    createAppend(pageOffset = 1, range = 52..52)
                 )
             }
         }
@@ -1530,8 +1451,10 @@ class PageFetcherSnapshotTest {
                     nextResult = null
                     return result ?: LoadResult.Error(LOAD_ERROR)
                 }
+
+                override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
             }
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { pageEvents, _ ->
                 // Successful REFRESH
@@ -1543,21 +1466,19 @@ class PageFetcherSnapshotTest {
                     itemsAfter = 48
                 )
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(REFRESH, false, Loading),
-                        Refresh(
-                            pages = listOf(TransformablePage(listOf(0, 1))),
-                            placeholdersBefore = 50,
-                            placeholdersAfter = 48,
-                            combinedLoadStates = CombinedLoadStates.IDLE_SOURCE
-                        )
+                assertThat(pageEvents.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(REFRESH, false, Loading),
+                    Refresh(
+                        pages = listOf(TransformablePage(listOf(0, 1))),
+                        placeholdersBefore = 50,
+                        placeholdersAfter = 48,
+                        combinedLoadStates = CombinedLoadStates.IDLE_SOURCE
                     )
                 )
 
                 // Hint to trigger APPEND
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 1,
                         presentedItemsBefore = 1,
@@ -1567,27 +1488,24 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(APPEND, false, Loading),
-                        LoadStateUpdate(APPEND, false, Error(LOAD_ERROR))
-                    )
+                assertThat(pageEvents.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(APPEND, false, Loading),
+                    LoadStateUpdate<Int>(APPEND, false, Error(LOAD_ERROR))
                 )
 
                 // Retry failed APPEND
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(APPEND, false, Loading),
-                        LoadStateUpdate(APPEND, false, Error(LOAD_ERROR))
-                    )
+                assertThat(pageEvents.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(APPEND, false, Loading),
+                    LoadStateUpdate<Int>(APPEND, false, Error(LOAD_ERROR))
+
                 )
 
                 // This hint should be ignored even though in the non-error state it would
                 // re-emit for APPEND due to greater presenterIndex value.
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 2,
                         presentedItemsBefore = 2,
@@ -1597,11 +1515,11 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(listOf<PageEvent<Int>>())
+                assertThat(pageEvents.newEvents()).isEmpty()
 
                 // Hint to trigger PREPEND
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 0,
                         presentedItemsBefore = 0,
@@ -1611,29 +1529,25 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(PREPEND, false, Loading),
-                        LoadStateUpdate(PREPEND, false, Error(LOAD_ERROR))
-                    )
+                assertThat(pageEvents.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(PREPEND, false, Loading),
+                    LoadStateUpdate<Int>(PREPEND, false, Error(LOAD_ERROR))
                 )
 
                 // Retry failed hints, both PREPEND and APPEND should trigger.
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(PREPEND, false, Loading),
-                        LoadStateUpdate(APPEND, false, Loading),
-                        LoadStateUpdate(PREPEND, false, Error(LOAD_ERROR)),
-                        LoadStateUpdate(APPEND, false, Error(LOAD_ERROR))
-                    )
+                assertThat(pageEvents.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(PREPEND, false, Loading),
+                    LoadStateUpdate<Int>(APPEND, false, Loading),
+                    LoadStateUpdate<Int>(PREPEND, false, Error(LOAD_ERROR)),
+                    LoadStateUpdate<Int>(APPEND, false, Error(LOAD_ERROR))
                 )
 
                 // This hint should be ignored even though in the non-error state it would
                 // re-emit for PREPEND due to smaller presenterIndex value.
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = -1,
                         presentedItemsBefore = 0,
@@ -1643,7 +1557,7 @@ class PageFetcherSnapshotTest {
                     )
                 )
                 advanceUntilIdle()
-                assertThat(pageEvents.newEvents()).isEqualTo(listOf<PageEvent<Int>>())
+                assertThat(pageEvents.newEvents()).isEmpty()
             }
         }
     }
@@ -1652,26 +1566,22 @@ class PageFetcherSnapshotTest {
     fun retryRefresh() = testScope.runBlockingTest {
         pauseDispatcher {
             val pageSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { state, _ ->
 
                 pageSource.errorNextLoad = true
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(REFRESH, false, Loading),
-                        LoadStateUpdate(REFRESH, false, Error(LOAD_ERROR))
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(REFRESH, false, Loading),
+                    LoadStateUpdate<Int>(REFRESH, false, Error(LOAD_ERROR))
                 )
 
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(REFRESH, false, Loading),
-                        createRefresh(50..51)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(REFRESH, false, Loading),
+                    createRefresh(50..51)
                 )
             }
         }
@@ -1681,26 +1591,24 @@ class PageFetcherSnapshotTest {
     fun retryRefreshWithBufferedHint() = testScope.runBlockingTest {
         pauseDispatcher {
             val pageSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pageSource, config, retryFlow = retryBus.flow)
             collectSnapshotData(pager) { state, _ ->
                 pageSource.errorNextLoad = true
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Error(LOAD_ERROR)
-                        )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Error(LOAD_ERROR)
                     )
                 )
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 0,
                         presentedItemsBefore = 0,
@@ -1712,23 +1620,21 @@ class PageFetcherSnapshotTest {
                 advanceUntilIdle()
                 assertTrue { state.newEvents().isEmpty() }
 
-                retryCh.offer(Unit)
+                retryBus.send(Unit)
                 advanceUntilIdle()
-                assertThat(state.newEvents()).isEqualTo(
-                    listOf<PageEvent<Int>>(
-                        LoadStateUpdate(
-                            loadType = REFRESH,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createRefresh(range = 50..51),
-                        LoadStateUpdate(
-                            loadType = PREPEND,
-                            fromMediator = false,
-                            loadState = Loading
-                        ),
-                        createPrepend(pageOffset = -1, range = 49..49)
-                    )
+                assertThat(state.newEvents()).containsExactly(
+                    LoadStateUpdate<Int>(
+                        loadType = REFRESH,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createRefresh(range = 50..51),
+                    LoadStateUpdate<Int>(
+                        loadType = PREPEND,
+                        fromMediator = false,
+                        loadState = Loading
+                    ),
+                    createPrepend(pageOffset = -1, range = 49..49)
                 )
             }
         }
@@ -1753,7 +1659,7 @@ class PageFetcherSnapshotTest {
         }
 
         var createdPagingSource = false
-        val factory = {
+        val factory = suspend {
             check(!createdPagingSource)
             createdPagingSource = true
             TestPagingSource(items = List(2) { it })
@@ -1802,7 +1708,7 @@ class PageFetcherSnapshotTest {
         }
 
         var createdPagingSource = false
-        val factory = {
+        val factory = suspend {
             check(!createdPagingSource)
             createdPagingSource = true
             TestPagingSource(items = List(2) { it })
@@ -1847,12 +1753,11 @@ class PageFetcherSnapshotTest {
 
         advanceUntilIdle()
 
-        val expected: List<PageEvent<Int>> = listOf(
-            LoadStateUpdate(REFRESH, false, Loading),
+        assertThat(fetcherState.pageEventLists[0]).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
             createRefresh(range = 50..51).let { Refresh(it.pages, 0, 0, it.combinedLoadStates) }
         )
 
-        assertEvents(expected, fetcherState.pageEventLists[0])
         fetcherState.job.cancel()
     }
 
@@ -1869,14 +1774,12 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 50..51).let { Refresh(it.pages, 0, 0, it.combinedLoadStates) }
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 50..51).let { Refresh(it.pages, 0, 0, it.combinedLoadStates) }
         )
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -1886,11 +1789,9 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(PREPEND, false, Loading),
-                createPrepend(-1, 49..49).let { Prepend(it.pages, 0, it.combinedLoadStates) }
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(PREPEND, false, Loading),
+            createPrepend(-1, 49..49).let { Prepend(it.pages, 0, it.combinedLoadStates) }
         )
 
         fetcherState.job.cancel()
@@ -1909,15 +1810,13 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 50..51).let { Refresh(it.pages, 0, 0, it.combinedLoadStates) }
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 50..51).let { Refresh(it.pages, 0, 0, it.combinedLoadStates) }
         )
 
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 1,
                 presentedItemsBefore = 1,
@@ -1927,11 +1826,9 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(1, 52..52).let { Append(it.pages, 0, it.combinedLoadStates) }
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(1, 52..52).let { Append(it.pages, 0, it.combinedLoadStates) }
         )
 
         fetcherState.job.cancel()
@@ -1950,14 +1847,12 @@ class PageFetcherSnapshotTest {
         val fetcherState = collectFetcherState(pageFetcher)
 
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(range = 50..52)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(range = 50..52)
         )
         fetcherState.pagingDataList[0].receiver.accessHint(
-            ViewportHint(
+            ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 2,
                 presentedItemsBefore = 2,
@@ -1967,30 +1862,21 @@ class PageFetcherSnapshotTest {
             )
         )
         advanceUntilIdle()
-        assertThat(fetcherState.newEvents()).isEqualTo(
-            listOf<PageEvent<Int>>(
-                LoadStateUpdate(APPEND, false, Loading),
-                createAppend(pageOffset = 1, range = 53..53)
-            )
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(APPEND, false, Loading),
+            createAppend(pageOffset = 1, range = 53..53)
         )
 
         fetcherState.job.cancel()
     }
 
     @Test
-    fun refreshKeyInfo_nullHint() = testScope.runBlockingTest {
-        val pagingSource = pagingSourceFactory()
-        val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryCh.asFlow())
-        assertNull(pager.refreshKeyInfo())
-    }
-
-    @Test
-    fun refreshKeyInfo_pagesEmpty() = testScope.runBlockingTest {
+    fun currentPagingState_pagesEmptyWithHint() = testScope.runBlockingTest {
         pauseDispatcher {
             val pagingSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryBus.flow)
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -1999,21 +1885,62 @@ class PageFetcherSnapshotTest {
                     originalPageOffsetLast = 0
                 )
             )
-            assertNull(pager.refreshKeyInfo())
+            assertThat(pager.currentPagingState()).isEqualTo(
+                PagingState<Int, Int>(
+                    pages = listOf(),
+                    anchorPosition = 0,
+                    config = config,
+                    leadingPlaceholderCount = 0
+                )
+            )
         }
     }
 
+    /**
+     * Verify we re-use previous PagingState for remote refresh if there are no pages loaded.
+     */
     @Test
-    fun refreshKeyInfo_loadedIndex() = testScope.runBlockingTest {
+    fun currentPagingState_ignoredOnEmptyPages() = testScope.runBlockingTest {
+        val remoteMediator = RemoteMediatorMock()
+        val pagingSource = pagingSourceFactory()
+        val pager = PageFetcherSnapshot(
+            initialKey = 50,
+            pagingSource = pagingSource,
+            config = config,
+            retryFlow = retryBus.flow,
+            remoteMediatorConnection = RemoteMediatorAccessor(testScope, remoteMediator)
+        )
+        pager.accessHint(
+            ViewportHint.Access(
+                pageOffset = 0,
+                indexInPage = 0,
+                presentedItemsBefore = 0,
+                presentedItemsAfter = 1,
+                originalPageOffsetFirst = 0,
+                originalPageOffsetLast = 0
+            )
+        )
+        assertThat(pager.currentPagingState()).isEqualTo(
+            PagingState<Int, Int>(
+                pages = listOf(),
+                anchorPosition = 0,
+                config = config,
+                leadingPlaceholderCount = 0
+            )
+        )
+    }
+
+    @Test
+    fun currentPagingState_loadedIndex() = testScope.runBlockingTest {
         pauseDispatcher {
             val pagingSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { _, _ ->
                 advanceUntilIdle()
 
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = 1,
                         presentedItemsBefore = 1,
@@ -2023,17 +1950,17 @@ class PageFetcherSnapshotTest {
                     )
                 )
 
-                val refreshKeyInfo = pager.refreshKeyInfo()
-                assertNotNull(refreshKeyInfo)
-                assertEquals(51, refreshKeyInfo.anchorPosition)
+                val pagingState = pager.currentPagingState()
+                assertNotNull(pagingState)
+                assertEquals(51, pagingState.anchorPosition)
 
                 // Assert from anchorPosition in placeholdersBefore
-                assertEquals(50, refreshKeyInfo.closestItemToPosition(10))
+                assertEquals(50, pagingState.closestItemToPosition(10))
                 // Assert from anchorPosition in loaded indices
-                assertEquals(50, refreshKeyInfo.closestItemToPosition(50))
-                assertEquals(51, refreshKeyInfo.closestItemToPosition(51))
+                assertEquals(50, pagingState.closestItemToPosition(50))
+                assertEquals(51, pagingState.closestItemToPosition(51))
                 // Assert from anchorPosition in placeholdersAfter
-                assertEquals(51, refreshKeyInfo.closestItemToPosition(90))
+                assertEquals(51, pagingState.closestItemToPosition(90))
 
                 val loadedPage = Page(
                     data = listOf(50, 51),
@@ -2042,29 +1969,29 @@ class PageFetcherSnapshotTest {
                     itemsBefore = 50,
                     itemsAfter = 48
                 )
-                assertEquals(listOf(loadedPage), refreshKeyInfo.pages)
+                assertEquals(listOf(loadedPage), pagingState.pages)
                 // Assert from anchorPosition in placeholdersBefore
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(10))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(10))
                 // Assert from anchorPosition in loaded indices
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(50))
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(51))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(50))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(51))
                 // Assert from anchorPosition in placeholdersAfter
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(90))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(90))
             }
         }
     }
 
     @Test
-    fun refreshKeyInfo_placeholdersBefore() = testScope.runBlockingTest {
+    fun currentPagingState_placeholdersBefore() = testScope.runBlockingTest {
         pauseDispatcher {
             val pagingSource = pagingSourceFactory()
-            val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryCh.asFlow())
+            val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryBus.flow)
 
             collectSnapshotData(pager) { _, _ ->
                 advanceUntilIdle()
 
                 pager.accessHint(
-                    ViewportHint(
+                    ViewportHint.Access(
                         pageOffset = 0,
                         indexInPage = -40,
                         presentedItemsBefore = -40,
@@ -2074,9 +2001,9 @@ class PageFetcherSnapshotTest {
                     )
                 )
 
-                val refreshKeyInfo = pager.refreshKeyInfo()
-                assertNotNull(refreshKeyInfo)
-                assertEquals(10, refreshKeyInfo.anchorPosition)
+                val pagingState = pager.currentPagingState()
+                assertNotNull(pagingState)
+                assertEquals(10, pagingState.anchorPosition)
                 assertEquals(
                     listOf(
                         Page(
@@ -2087,16 +2014,16 @@ class PageFetcherSnapshotTest {
                             itemsAfter = 48
                         )
                     ),
-                    refreshKeyInfo.pages
+                    pagingState.pages
                 )
 
                 // Assert from anchorPosition in placeholdersBefore
-                assertEquals(50, refreshKeyInfo.closestItemToPosition(10))
+                assertEquals(50, pagingState.closestItemToPosition(10))
                 // Assert from anchorPosition in loaded indices
-                assertEquals(50, refreshKeyInfo.closestItemToPosition(50))
-                assertEquals(51, refreshKeyInfo.closestItemToPosition(51))
+                assertEquals(50, pagingState.closestItemToPosition(50))
+                assertEquals(51, pagingState.closestItemToPosition(51))
                 // Assert from anchorPosition in placeholdersAfter
-                assertEquals(51, refreshKeyInfo.closestItemToPosition(90))
+                assertEquals(51, pagingState.closestItemToPosition(90))
 
                 val loadedPage = Page(
                     data = listOf(50, 51),
@@ -2106,54 +2033,137 @@ class PageFetcherSnapshotTest {
                     itemsAfter = 48
                 )
                 // Assert from anchorPosition in placeholdersBefore
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(10))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(10))
                 // Assert from anchorPosition in loaded indices
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(50))
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(51))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(50))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(51))
                 // Assert from anchorPosition in placeholdersAfter
-                assertEquals(loadedPage, refreshKeyInfo.closestPageToPosition(90))
+                assertEquals(loadedPage, pagingState.closestPageToPosition(90))
             }
         }
     }
 
     @Test
-    fun pageFetcherSnapshot_currentPagingState() = testScope.runBlockingTest {
+    fun currentPagingState_noHint() = testScope.runBlockingTest {
         val pager = PageFetcherSnapshot(
             initialKey = 50,
             pagingSource = TestPagingSource(loadDelay = 100),
             config = config,
-            retryFlow = retryCh.asFlow()
+            retryFlow = retryBus.flow
         )
 
-        assertEquals(null, pager.refreshKeyInfo())
+        assertThat(pager.currentPagingState()).isEqualTo(
+            PagingState<Int, Int>(
+                pages = listOf(),
+                anchorPosition = null,
+                config = config,
+                leadingPlaceholderCount = 0,
+            )
+        )
     }
 
     @Test
     fun retry_ignoresNewSignalsWhileProcessing() = testScope.runBlockingTest {
         val pagingSource = pagingSourceFactory()
-        val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryCh.asFlow())
+        val pager = PageFetcherSnapshot(50, pagingSource, config, retryFlow = retryBus.flow)
         collectSnapshotData(pager) { state, _ ->
             pagingSource.errorNextLoad = true
             advanceUntilIdle()
-            assertThat(state.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(REFRESH, false, Loading),
-                    LoadStateUpdate(REFRESH, false, Error(LOAD_ERROR))
-                )
+            assertThat(state.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(REFRESH, false, Loading),
+                LoadStateUpdate<Int>(REFRESH, false, Error(LOAD_ERROR))
             )
 
             pagingSource.errorNextLoad = true
-            retryCh.offer(Unit)
+            retryBus.send(Unit)
             // Should be ignored by pager as it's still processing previous retry.
-            retryCh.offer(Unit)
+            retryBus.send(Unit)
             advanceUntilIdle()
-            assertThat(state.newEvents()).isEqualTo(
-                listOf<PageEvent<Int>>(
-                    LoadStateUpdate(REFRESH, false, Loading),
-                    LoadStateUpdate(REFRESH, false, Error(LOAD_ERROR))
-                )
+            assertThat(state.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(REFRESH, false, Loading),
+                LoadStateUpdate<Int>(REFRESH, false, Error(LOAD_ERROR))
             )
         }
+    }
+
+    /**
+     * The case where all pages from presenter have been dropped in fetcher, so instead of
+     * counting dropped pages against prefetchDistance, we should clamp that logic to only count
+     * pages that have been loaded.
+     */
+    @Test
+    fun doLoad_prependPresenterPagesDropped() = testScope.runBlockingTest {
+        val pageFetcher = PageFetcher(pagingSourceFactory, 50, config)
+        val fetcherState = collectFetcherState(pageFetcher)
+
+        advanceUntilIdle()
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..51)
+        )
+
+        // Send a hint from a presenter state that only sees pages well after the pages loaded in
+        // fetcher state:
+        // [hint], [50, 51], [52], [53], [54], [55]
+        fetcherState.pagingDataList[0].receiver.accessHint(
+            ViewportHint.Access(
+                pageOffset = 4,
+                indexInPage = -6,
+                presentedItemsBefore = -6,
+                presentedItemsAfter = 2,
+                originalPageOffsetFirst = 4,
+                originalPageOffsetLast = 6
+            )
+        )
+        advanceUntilIdle()
+
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(loadType = PREPEND, fromMediator = false, loadState = Loading),
+            createPrepend(pageOffset = -1, range = 49..49, startState = Loading),
+            createPrepend(pageOffset = -2, range = 48..48, startState = NotLoading.Incomplete),
+        )
+
+        fetcherState.job.cancel()
+    }
+
+    /**
+     * The case where all pages from presenter have been dropped in fetcher, so instead of
+     * counting dropped pages against prefetchDistance, we should clamp that logic to only count
+     * pages that have been loaded.
+     */
+    @Test
+    fun doLoad_appendPresenterPagesDropped() = testScope.runBlockingTest {
+        val pageFetcher = PageFetcher(pagingSourceFactory, 50, config)
+        val fetcherState = collectFetcherState(pageFetcher)
+
+        advanceUntilIdle()
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(REFRESH, false, Loading),
+            createRefresh(50..51)
+        )
+
+        // Send a hint from a presenter state that only sees pages well before the pages loaded in
+        // fetcher state:
+        // [46], [47], [48], [49], [50, 51], [hint]
+        fetcherState.pagingDataList[0].receiver.accessHint(
+            ViewportHint.Access(
+                pageOffset = -4,
+                indexInPage = 6,
+                presentedItemsBefore = 2,
+                presentedItemsAfter = -6,
+                originalPageOffsetFirst = -6,
+                originalPageOffsetLast = -4
+            )
+        )
+        advanceUntilIdle()
+
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(loadType = APPEND, fromMediator = false, loadState = Loading),
+            createAppend(pageOffset = 1, range = 52..52, endState = Loading),
+            createAppend(pageOffset = 2, range = 53..53, endState = NotLoading.Incomplete),
+        )
+
+        fetcherState.job.cancel()
     }
 
     @Test
@@ -2182,9 +2192,16 @@ class PageFetcherSnapshotTest {
         val expected = listOf(
             listOf(
                 LoadStateUpdate(REFRESH, true, Loading),
-                LoadStateUpdate(REFRESH, true, Error(EXCEPTION)),
                 LoadStateUpdate(REFRESH, false, Loading),
-                createRefresh(0..2, remoteLoadStatesOf(refreshRemote = Error(EXCEPTION))),
+                LoadStateUpdate(REFRESH, true, Error(EXCEPTION)),
+                createRefresh(
+                    range = 0..2,
+                    remoteLoadStatesOf(
+                        refresh = Error(EXCEPTION),
+                        prependLocal = NotLoading.Complete,
+                        refreshRemote = Error(EXCEPTION),
+                    ),
+                ),
                 // since remote refresh failed and launch initial refresh is requested,
                 // we won't receive any append/prepend events
             )
@@ -2263,6 +2280,151 @@ class PageFetcherSnapshotTest {
     }
 
     @Test
+    fun remoteMediator_remoteRefreshCachesPreviousPagingState() = testScope.runBlockingTest {
+        @OptIn(ExperimentalPagingApi::class)
+        val remoteMediator = RemoteMediatorMock().apply {
+            initializeResult = RemoteMediator.InitializeAction.LAUNCH_INITIAL_REFRESH
+            loadCallback = { _, _ -> RemoteMediator.MediatorResult.Success(true) }
+        }
+
+        val config = PagingConfig(
+            pageSize = 1,
+            prefetchDistance = 2,
+            enablePlaceholders = true,
+            initialLoadSize = 1,
+            maxSize = 5
+        )
+        val pager = PageFetcher(
+            initialKey = 0,
+            pagingSourceFactory = { TestPagingSource(items = listOf(0)) },
+            config = config,
+            remoteMediator = remoteMediator
+        )
+
+        val state = collectFetcherState(pager)
+
+        // Let the initial page load; loaded data should be [0]
+        advanceUntilIdle()
+        assertThat(remoteMediator.newLoadEvents).containsExactly(
+            LoadEvent<Int, Int>(
+                loadType = REFRESH,
+                state = PagingState<Int, Int>(
+                    pages = listOf(),
+                    anchorPosition = null,
+                    config = config,
+                    leadingPlaceholderCount = 0,
+                ),
+            )
+        )
+
+        // Explicit call to refresh, which should trigger remote refresh with cached PagingState.
+        pager.refresh()
+        advanceUntilIdle()
+
+        assertThat(remoteMediator.newLoadEvents).containsExactly(
+            LoadEvent<Int, Int>(
+                loadType = REFRESH,
+                state = PagingState<Int, Int>(
+                    pages = listOf(
+                        Page(
+                            data = listOf(0),
+                            prevKey = null,
+                            nextKey = null,
+                            itemsBefore = 0,
+                            itemsAfter = 0,
+                        ),
+                    ),
+                    anchorPosition = null,
+                    config = config,
+                    leadingPlaceholderCount = 0,
+                ),
+            )
+        )
+
+        state.job.cancel()
+    }
+
+    @Test
+    fun remoteMediator_remoteRefreshEndOfPaginationReached() = testScope.runBlockingTest {
+        @OptIn(ExperimentalPagingApi::class)
+        val remoteMediator = RemoteMediatorMock().apply {
+            initializeResult = RemoteMediator.InitializeAction.LAUNCH_INITIAL_REFRESH
+            loadCallback = { _, _ -> RemoteMediator.MediatorResult.Success(true) }
+        }
+
+        val config = PagingConfig(
+            pageSize = 1,
+            prefetchDistance = 2,
+            enablePlaceholders = true,
+            initialLoadSize = 1,
+            maxSize = 5
+        )
+        val pager = PageFetcher(
+            initialKey = 0,
+            pagingSourceFactory = { TestPagingSource(items = listOf(0)) },
+            config = config,
+            remoteMediator = remoteMediator
+        )
+
+        val state = collectFetcherState(pager)
+
+        advanceUntilIdle()
+
+        assertThat(state.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = true,
+                loadState = Loading
+            ),
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = false,
+                loadState = Loading
+            ),
+            LoadStateUpdate<PageEvent<Int>>(
+                loadType = REFRESH,
+                fromMediator = true,
+                loadState = NotLoading(endOfPaginationReached = true)
+            ),
+            LoadStateUpdate<Int>(
+                loadType = PREPEND,
+                fromMediator = true,
+                loadState = NotLoading(endOfPaginationReached = true)
+            ),
+            LoadStateUpdate<Int>(
+                loadType = APPEND,
+                fromMediator = true,
+                loadState = NotLoading(endOfPaginationReached = true)
+            ),
+            Refresh(
+                pages = listOf(
+                    TransformablePage(
+                        originalPageOffsets = intArrayOf(0),
+                        data = listOf(0),
+                        hintOriginalPageOffset = 0,
+                        hintOriginalIndices = null
+                    )
+                ),
+                placeholdersBefore = 0,
+                placeholdersAfter = 0,
+                combinedLoadStates = remoteLoadStatesOf(
+                    refresh = NotLoading(endOfPaginationReached = true),
+                    prepend = NotLoading(endOfPaginationReached = true),
+                    append = NotLoading(endOfPaginationReached = true),
+                    refreshLocal = NotLoading(endOfPaginationReached = false),
+                    prependLocal = NotLoading(endOfPaginationReached = true),
+                    appendLocal = NotLoading(endOfPaginationReached = true),
+                    refreshRemote = NotLoading(endOfPaginationReached = true),
+                    prependRemote = NotLoading(endOfPaginationReached = true),
+                    appendRemote = NotLoading(endOfPaginationReached = true),
+                )
+            )
+        )
+
+        state.job.cancel()
+    }
+
+    @Test
     fun remoteMediator_endOfPaginationNotReachedLoadStatePrepend() = testScope.runBlockingTest {
         @OptIn(ExperimentalPagingApi::class)
         val remoteMediator = object : RemoteMediatorMock() {
@@ -2290,7 +2452,7 @@ class PageFetcherSnapshotTest {
             remoteMediator = remoteMediator
         )
 
-        val expected = listOf(
+        val expected: List<List<PageEvent<Int>>> = listOf(
             listOf(
                 LoadStateUpdate(
                     loadType = REFRESH,
@@ -2306,7 +2468,9 @@ class PageFetcherSnapshotTest {
                     ),
                     placeholdersBefore = 0,
                     placeholdersAfter = 99,
-                    combinedLoadStates = remoteLoadStatesOf()
+                    combinedLoadStates = remoteLoadStatesOf(
+                        prependLocal = NotLoading.Complete
+                    )
                 ),
                 LoadStateUpdate(
                     loadType = PREPEND,
@@ -2329,7 +2493,9 @@ class PageFetcherSnapshotTest {
                     ),
                     placeholdersBefore = 0,
                     placeholdersAfter = 99,
-                    combinedLoadStates = remoteLoadStatesOf()
+                    combinedLoadStates = remoteLoadStatesOf(
+                        prependLocal = NotLoading.Complete
+                    )
                 )
             )
 
@@ -2381,7 +2547,9 @@ class PageFetcherSnapshotTest {
                         ),
                         placeholdersBefore = 0,
                         placeholdersAfter = 99,
-                        combinedLoadStates = remoteLoadStatesOf()
+                        combinedLoadStates = remoteLoadStatesOf(
+                            prependLocal = NotLoading.Complete,
+                        )
                     ),
                     LoadStateUpdate(
                         loadType = PREPEND,
@@ -2445,12 +2613,9 @@ class PageFetcherSnapshotTest {
                     combinedLoadStates = remoteLoadStatesOf()
                 )
             )
-            assertEvents(
-                eventsByGeneration[0],
-                refreshEvents
-            )
+            assertThat(eventsByGeneration[0]).isEqualTo(refreshEvents)
             accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -2486,7 +2651,7 @@ class PageFetcherSnapshotTest {
                     loadType = PREPEND,
                     fromMediator = true,
                     loadState = NotLoading.Complete
-                )
+                ),
             )
             awaitEventCount(refreshEvents.size + postHintEvents.size)
             assertEquals(
@@ -2540,7 +2705,9 @@ class PageFetcherSnapshotTest {
                         ),
                         placeholdersBefore = 99,
                         placeholdersAfter = 0,
-                        combinedLoadStates = remoteLoadStatesOf()
+                        combinedLoadStates = remoteLoadStatesOf(
+                            appendLocal = NotLoading.Complete,
+                        )
                     ),
                     LoadStateUpdate(
                         loadType = APPEND,
@@ -2563,7 +2730,9 @@ class PageFetcherSnapshotTest {
                         ),
                         placeholdersBefore = 99,
                         placeholdersAfter = 0,
-                        combinedLoadStates = remoteLoadStatesOf()
+                        combinedLoadStates = remoteLoadStatesOf(
+                            appendLocal = NotLoading.Complete,
+                        )
                     ),
                 )
             )
@@ -2597,8 +2766,8 @@ class PageFetcherSnapshotTest {
             remoteMediator = remoteMediator
         )
 
-        val expected = listOf(
-            listOf<PageEvent<Int>>(
+        val expected: List<List<PageEvent<Int>>> = listOf(
+            listOf(
                 LoadStateUpdate(
                     loadType = REFRESH,
                     fromMediator = false,
@@ -2613,7 +2782,9 @@ class PageFetcherSnapshotTest {
                     ),
                     placeholdersBefore = 99,
                     placeholdersAfter = 0,
-                    combinedLoadStates = remoteLoadStatesOf()
+                    combinedLoadStates = remoteLoadStatesOf(
+                        appendLocal = NotLoading.Complete,
+                    )
                 ),
                 LoadStateUpdate(
                     loadType = APPEND,
@@ -2678,7 +2849,7 @@ class PageFetcherSnapshotTest {
             awaitEventCount(initialEvents.size)
             assertEvents(initialEvents, eventsByGeneration[0])
             accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 48,
                     presentedItemsBefore = 48,
@@ -2717,7 +2888,7 @@ class PageFetcherSnapshotTest {
                 ),
             )
             awaitEventCount(initialEvents.size + postHintEvents.size)
-            assertEvents(initialEvents + postHintEvents, eventsByGeneration[0])
+            assertThat(eventsByGeneration[0]).isEqualTo(initialEvents + postHintEvents)
         }
     }
 
@@ -2736,7 +2907,7 @@ class PageFetcherSnapshotTest {
             ): MediatorResult {
                 super.load(loadType, state)
                 currentPagingSource!!.invalidate()
-                return MediatorResult.Success(endOfPaginationReached = true)
+                return MediatorResult.Success(endOfPaginationReached = false)
             }
         }
 
@@ -2761,8 +2932,13 @@ class PageFetcherSnapshotTest {
                         fromMediator = true,
                         loadState = Loading
                     ),
+                    LoadStateUpdate(
+                        loadType = REFRESH,
+                        fromMediator = true,
+                        loadState = NotLoading.Incomplete
+                    ),
                 ),
-                listOf<PageEvent<Int>>(
+                listOf(
                     LoadStateUpdate(
                         loadType = REFRESH,
                         fromMediator = false,
@@ -2778,10 +2954,108 @@ class PageFetcherSnapshotTest {
                         placeholdersBefore = 50,
                         placeholdersAfter = 49,
                         combinedLoadStates = remoteLoadStatesOf()
-                    )
+                    ),
                 )
             )
         )
+    }
+
+    @Test
+    fun remoteMediator_initialRefreshSuccessEndOfPagination() = testScope.runBlockingTest {
+        @OptIn(ExperimentalPagingApi::class)
+        val remoteMediator = object : RemoteMediatorMock(loadDelay = 2000) {
+            override suspend fun initialize(): InitializeAction {
+                super.initialize()
+                return InitializeAction.LAUNCH_INITIAL_REFRESH
+            }
+
+            override suspend fun load(
+                loadType: LoadType,
+                state: PagingState<Int, Int>
+            ): MediatorResult {
+                super.load(loadType, state)
+                return MediatorResult.Success(endOfPaginationReached = true)
+            }
+        }
+
+        val config = PagingConfig(
+            pageSize = 1,
+            prefetchDistance = 2,
+            enablePlaceholders = true,
+            initialLoadSize = 1,
+            maxSize = 5
+        )
+        val pager = PageFetcher(
+            initialKey = 50,
+            pagingSourceFactory = {
+                TestPagingSource().apply {
+                    nextLoadResult = Page(
+                        data = listOf(50),
+                        prevKey = null,
+                        nextKey = null,
+                        itemsBefore = 50,
+                        itemsAfter = 49
+                    )
+                }
+            },
+            config = config,
+            remoteMediator = remoteMediator
+        )
+
+        val fetcherState = collectFetcherState(pager)
+
+        advanceTimeBy(1000)
+
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = true,
+                loadState = Loading,
+            ),
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = false,
+                loadState = Loading,
+            ),
+            Refresh(
+                pages = listOf(
+                    TransformablePage(
+                        originalPageOffset = 0,
+                        data = listOf(50)
+                    )
+                ),
+                placeholdersBefore = 50,
+                placeholdersAfter = 49,
+                combinedLoadStates = remoteLoadStatesOf(
+                    refresh = Loading,
+                    prependLocal = NotLoading.Complete,
+                    appendLocal = NotLoading.Complete,
+                    refreshRemote = Loading,
+                )
+            ),
+        )
+
+        advanceUntilIdle()
+
+        assertThat(fetcherState.newEvents()).containsExactly(
+            LoadStateUpdate<Int>(
+                loadType = REFRESH,
+                fromMediator = true,
+                loadState = NotLoading.Complete,
+            ),
+            LoadStateUpdate<Int>(
+                loadType = PREPEND,
+                fromMediator = true,
+                loadState = NotLoading.Complete
+            ),
+            LoadStateUpdate<Int>(
+                loadType = APPEND,
+                fromMediator = true,
+                loadState = NotLoading.Complete
+            ),
+        )
+
+        fetcherState.job.cancel()
     }
 
     @Test
@@ -2796,10 +3070,12 @@ class PageFetcherSnapshotTest {
                 jumpThreshold = 10
             )
             var didJump = false
-            val pager = PageFetcherSnapshot(
+            val pager = PageFetcherSnapshot<Int, Int>(
                 initialKey = 50,
                 pagingSource = pagingSourceFactory(),
-                config = config, retryFlow = retryCh.asFlow()
+                config = config,
+                retryFlow = retryBus.flow,
+                previousPagingState = null,
             ) {
                 didJump = true
             }
@@ -2809,7 +3085,7 @@ class PageFetcherSnapshotTest {
             advanceUntilIdle()
 
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = -50,
                     presentedItemsBefore = -50,
@@ -2833,7 +3109,7 @@ class PageFetcherSnapshotTest {
                 initialKey = 50,
                 pagingSource = TestPagingSource(jumpingSupported = false),
                 config = PagingConfig(pageSize = 1, prefetchDistance = 1, jumpThreshold = 1),
-                retryFlow = retryCh.asFlow()
+                retryFlow = retryBus.flow
             )
         }
     }
@@ -2859,9 +3135,11 @@ class PageFetcherSnapshotTest {
                     }.also {
                         loads++
                     }
+
+                    override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
                 },
                 config = config,
-                retryFlow = retryCh.asFlow()
+                retryFlow = retryBus.flow
             )
 
             // Trigger collection on flow.
@@ -2873,7 +3151,7 @@ class PageFetcherSnapshotTest {
 
             // Trigger first prepend with key = 0
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -2886,7 +3164,7 @@ class PageFetcherSnapshotTest {
 
             // Trigger second prepend with key = 0
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -2913,9 +3191,11 @@ class PageFetcherSnapshotTest {
                         is LoadParams.Refresh -> Page(listOf(0, 0), 0, 0)
                         else -> Page(listOf(0), 0, 0)
                     }
+
+                    override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
                 },
                 config = config,
-                retryFlow = retryCh.asFlow()
+                retryFlow = retryBus.flow
             )
 
             // Trigger collection on flow.
@@ -2930,7 +3210,7 @@ class PageFetcherSnapshotTest {
 
             // Trigger first prepend with key = 0
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -2943,7 +3223,7 @@ class PageFetcherSnapshotTest {
 
             // Trigger second prepend with key = 0
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -2977,9 +3257,11 @@ class PageFetcherSnapshotTest {
                     }.also {
                         loads++
                     }
+
+                    override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
                 },
                 config = config,
-                retryFlow = retryCh.asFlow()
+                retryFlow = retryBus.flow
             )
 
             // Trigger collection on flow.
@@ -2991,7 +3273,7 @@ class PageFetcherSnapshotTest {
 
             // Trigger first prepend with key = 0
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -3004,7 +3286,7 @@ class PageFetcherSnapshotTest {
 
             // Trigger second prepend with key = 0
             pager.accessHint(
-                ViewportHint(
+                ViewportHint.Access(
                     pageOffset = 0,
                     indexInPage = 0,
                     presentedItemsBefore = 0,
@@ -3020,12 +3302,51 @@ class PageFetcherSnapshotTest {
     }
 
     @Test
+    fun initializeHintAfterEmpty() = testScope.runBlockingTest {
+        val pageFetcherSnapshot = PageFetcherSnapshot(
+            initialKey = 50,
+            pagingSource = TestPagingSource(),
+            config = config,
+            retryFlow = emptyFlow(),
+        )
+        collectSnapshotData(pageFetcherSnapshot) { state, _ ->
+            advanceUntilIdle()
+            assertThat(state.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(
+                    loadType = REFRESH,
+                    fromMediator = false,
+                    loadState = Loading
+                ),
+                createRefresh(range = 50..51),
+            )
+
+            pageFetcherSnapshot.accessHint(ViewportHint.Initial(0, 0, 0, 0))
+            advanceUntilIdle()
+            assertThat(state.newEvents()).containsExactly(
+                LoadStateUpdate<Int>(
+                    loadType = PREPEND,
+                    fromMediator = false,
+                    loadState = Loading
+                ),
+                LoadStateUpdate<Int>(
+                    loadType = APPEND,
+                    fromMediator = false,
+                    loadState = Loading
+                ),
+                createPrepend(pageOffset = -1, range = 49..49, endState = Loading),
+                createAppend(pageOffset = 1, range = 52..52),
+            )
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    @Test
     fun pageEventSentAfterChannelClosed() {
         val pager = PageFetcherSnapshot(
             initialKey = 50,
             pagingSource = TestPagingSource(loadDelay = 100),
             config = config,
-            retryFlow = retryCh.asFlow()
+            retryFlow = retryBus.flow
         )
 
         val deferred = GlobalScope.async {
@@ -3040,7 +3361,7 @@ class PageFetcherSnapshotTest {
     fun generationalViewportHint_shouldPrioritizeOver_presenterUpdates() {
         val prependHint = GenerationalViewportHint(
             generationId = 0,
-            hint = ViewportHint(
+            hint = ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = -10,
@@ -3051,7 +3372,7 @@ class PageFetcherSnapshotTest {
         )
         val prependHintWithPresenterUpdate = GenerationalViewportHint(
             generationId = 0,
-            hint = ViewportHint(
+            hint = ViewportHint.Access(
                 pageOffset = -10,
                 indexInPage = 0,
                 presentedItemsBefore = -5,
@@ -3064,7 +3385,7 @@ class PageFetcherSnapshotTest {
 
         val appendHint = GenerationalViewportHint(
             generationId = 0,
-            hint = ViewportHint(
+            hint = ViewportHint.Access(
                 pageOffset = 0,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -3075,7 +3396,7 @@ class PageFetcherSnapshotTest {
         )
         val appendHintWithPresenterUpdate = GenerationalViewportHint(
             generationId = 0,
-            hint = ViewportHint(
+            hint = ViewportHint.Access(
                 pageOffset = 10,
                 indexInPage = 0,
                 presentedItemsBefore = 0,
@@ -3087,13 +3408,33 @@ class PageFetcherSnapshotTest {
         assertTrue { appendHintWithPresenterUpdate.shouldPrioritizeOver(appendHint, APPEND) }
     }
 
-    @OptIn(ExperimentalPagingApi::class)
-    private suspend fun <Key : Any, Value : Any> createRemoteMediatorAccessor(
-        delegate: RemoteMediator<Key, Value>
-    ): RemoteMediatorAccessor<Key, Value> {
-        return RemoteMediatorAccessor(testScope, delegate).also {
-            it.initialize()
-        }
+    @Test
+    fun generationalViewportHint_shouldPrioritizeAccessOverInitial() {
+        val accessHint = GenerationalViewportHint(
+            generationId = 0,
+            hint = ViewportHint.Access(
+                pageOffset = 0,
+                indexInPage = 0,
+                presentedItemsBefore = 0,
+                presentedItemsAfter = 0,
+                originalPageOffsetFirst = 0,
+                originalPageOffsetLast = 0
+            )
+        )
+        val initialHint = GenerationalViewportHint(
+            generationId = 0,
+            hint = ViewportHint.Initial(
+                presentedItemsBefore = 0,
+                presentedItemsAfter = 0,
+                originalPageOffsetFirst = 0,
+                originalPageOffsetLast = 0
+            )
+        )
+
+        assertTrue { accessHint.shouldPrioritizeOver(initialHint, PREPEND) }
+        assertFalse { initialHint.shouldPrioritizeOver(accessHint, PREPEND) }
+        assertTrue { accessHint.shouldPrioritizeOver(accessHint, APPEND) }
+        assertFalse { initialHint.shouldPrioritizeOver(accessHint, APPEND) }
     }
 
     internal class CollectedPageEvents<T : Any>(val pageEvents: ArrayList<PageEvent<T>>) {
@@ -3123,8 +3464,7 @@ class PageFetcherSnapshotTest {
         job.cancel()
     }
 
-    internal fun <T : Any> PageFetcher<*, T>.pageEvents(
-    ): Flow<PageEvent<T>> {
+    internal fun <T : Any> PageFetcher<*, T>.pageEvents(): Flow<PageEvent<T>> {
         return flow.flatMapLatest {
             it.flow
         }
@@ -3166,13 +3506,13 @@ class PageFetcherSnapshotTest {
     internal suspend fun <T : Any> PageFetcher<*, T>.assertEventByGeneration(
         expected: List<List<PageEvent<T>>>
     ) {
-        val total = expected.sumBy { it.size }
+        val total = expected.sumOf { it.size }
         val actual = collectEvents {
             awaitEventCount(total)
             stop()
         }
         expected.forEachIndexed { index, list ->
-            assertEvents(list, actual.getOrNull(index) ?: emptyList())
+            assertThat(actual.getOrNull(index) ?: emptyList<PageEvent<T>>()).isEqualTo(list)
         }
         assertThat(actual.size).isEqualTo(expected.size)
     }

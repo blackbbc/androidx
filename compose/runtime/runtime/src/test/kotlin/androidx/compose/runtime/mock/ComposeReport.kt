@@ -19,31 +19,31 @@ package androidx.compose.runtime.mock
 import androidx.compose.runtime.Composable
 
 @Composable
-fun MockComposeScope.reportsTo(report: Report) {
-    text(report.from)
-    text("reports to")
-    text(report.to)
+fun ReportsTo(report: Report) {
+    Text(report.from)
+    Text("reports to")
+    Text(report.to)
 }
 
-fun MockViewValidator.reportsTo(report: Report) {
-    text(report.from)
-    text("reports to")
-    text(report.to)
+fun MockViewValidator.ReportsTo(report: Report) {
+    Text(report.from)
+    Text("reports to")
+    Text(report.to)
 }
 
 @Composable
-fun MockComposeScope.reportsReport(reports: Iterable<Report>) {
-    linear {
-        repeat(of = reports) { report ->
-            reportsTo(report)
+fun ReportsReport(reports: Iterable<Report>) {
+    Linear {
+        Repeated(of = reports) { report ->
+            ReportsTo(report)
         }
     }
 }
 
-fun MockViewValidator.reportsReport(reports: Iterable<Report>) {
-    linear {
-        repeat(of = reports) { report ->
-            reportsTo(report)
+fun MockViewValidator.ReportsReport(reports: Iterable<Report>) {
+    Linear {
+        Repeated(of = reports) { report ->
+            ReportsTo(report)
         }
     }
 }

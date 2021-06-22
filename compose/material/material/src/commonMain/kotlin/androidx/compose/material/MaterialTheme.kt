@@ -16,17 +16,22 @@
 
 package androidx.compose.material
 
-import androidx.compose.foundation.Indication
-import androidx.compose.foundation.AmbientIndication
-import androidx.compose.foundation.ProvideTextStyle
-import androidx.compose.material.ripple.RippleIndication
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.material.ripple.LocalRippleTheme
+import androidx.compose.material.ripple.RippleTheme
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ComposableContract
-import androidx.compose.runtime.Providers
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 
 /**
- * A MaterialTheme defines the styling principles from the Material design specification.
+ * <a href="https://material.io/design/material-theming/overview.html" class="external" target="_blank">Material Theming</a>.
+ *
+ * Material Theming refers to the customization of your Material Design app to better reflect your
+ * product’s brand.
  *
  * Material components such as [Button] and [Checkbox] use values provided here when retrieving
  * default values.
@@ -58,18 +63,22 @@ fun MaterialTheme(
     content: @Composable () -> Unit
 ) {
     val rememberedColors = remember {
-        // TODO: b/162450508 remove the unnecessary .copy() here when it isn't needed to ensure that
-        // we don't skip the updateColorsFrom call
+        // Explicitly creating a new object here so we don't mutate the initial [colors]
+        // provided, and overwrite the values set in it.
         colors.copy()
     }.apply { updateColorsFrom(colors) }
-    val indicationFactory: @Composable () -> Indication = remember { { RippleIndication() } }
-    Providers(
-        AmbientColors provides rememberedColors,
-        AmbientIndication provides indicationFactory,
-        AmbientTypography provides typography,
-        AmbientShapes provides shapes
+    val rippleIndication = rememberRipple()
+    val selectionColors = rememberTextSelectionColors(rememberedColors)
+    CompositionLocalProvider(
+        LocalColors provides rememberedColors,
+        LocalContentAlpha provides ContentAlpha.high,
+        LocalIndication provides rippleIndication,
+        LocalRippleTheme provides MaterialRippleTheme,
+        LocalShapes provides shapes,
+        LocalTextSelectionColors provides selectionColors,
+        LocalTypography provides typography
     ) {
-        ProvideTextStyle(value = typography.body1, children = content)
+        ProvideTextStyle(value = typography.body1, content = content)
     }
 }
 
@@ -83,26 +92,41 @@ object MaterialTheme {
      *
      * @sample androidx.compose.material.samples.ThemeColorSample
      */
-    @Composable
-    @ComposableContract(readonly = true)
     val colors: Colors
-        get() = AmbientColors.current
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalColors.current
 
     /**
      * Retrieves the current [Typography] at the call site's position in the hierarchy.
      *
      * @sample androidx.compose.material.samples.ThemeTextStyleSample
      */
-    @Composable
-    @ComposableContract(readonly = true)
     val typography: Typography
-        get() = AmbientTypography.current
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalTypography.current
 
     /**
      * Retrieves the current [Shapes] at the call site's position in the hierarchy.
      */
-    @Composable
-    @ComposableContract(readonly = true)
     val shapes: Shapes
-        get() = AmbientShapes.current
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalShapes.current
+}
+
+@Immutable
+private object MaterialRippleTheme : RippleTheme {
+    @Composable
+    override fun defaultColor() = RippleTheme.defaultRippleColor(
+        contentColor = LocalContentColor.current,
+        lightTheme = MaterialTheme.colors.isLight
+    )
+
+    @Composable
+    override fun rippleAlpha() = RippleTheme.defaultRippleAlpha(
+        contentColor = LocalContentColor.current,
+        lightTheme = MaterialTheme.colors.isLight
+    )
 }

@@ -17,7 +17,6 @@
 package androidx.security.identity;
 
 import android.content.Context;
-import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 
@@ -31,6 +30,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
@@ -46,6 +46,7 @@ import co.nstant.in.cbor.CborEncoder;
 import co.nstant.in.cbor.CborException;
 import co.nstant.in.cbor.builder.ArrayBuilder;
 import co.nstant.in.cbor.builder.MapBuilder;
+import co.nstant.in.cbor.model.DataItem;
 import co.nstant.in.cbor.model.UnicodeString;
 
 class SoftwareWritableIdentityCredential extends WritableIdentityCredential {
@@ -110,12 +111,10 @@ class SoftwareWritableIdentityCredential extends WritableIdentityCredential {
                     .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512);
 
             // Attestation is only available in Nougat and onwards.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                if (challenge == null) {
-                    challenge = new byte[0];
-                }
-                builder.setAttestationChallenge(challenge);
+            if (challenge == null) {
+                challenge = new byte[0];
             }
+            builder.setAttestationChallenge(challenge);
             kpg.initialize(builder.build());
             mKeyPair = kpg.generateKeyPair();
 
@@ -147,7 +146,7 @@ class SoftwareWritableIdentityCredential extends WritableIdentityCredential {
     }
 
     // Returns COSE_Sign1 with payload set to ProofOfProvisioning
-    static byte[] buildProofOfProvisioningWithSignature(String docType,
+    static DataItem buildProofOfProvisioningWithSignature(String docType,
             PersonalizationData personalizationData,
             PrivateKey key) {
 
@@ -174,14 +173,14 @@ class SoftwareWritableIdentityCredential extends WritableIdentityCredential {
                 .add(dataBuilder.build().get(0))
                 .add(false);
 
-        byte[] signatureBytes;
+        DataItem signature;
         try {
             ByteArrayOutputStream dtsBaos = new ByteArrayOutputStream();
             CborEncoder dtsEncoder = new CborEncoder(dtsBaos);
             dtsEncoder.encode(signedDataBuilder.build().get(0));
             byte[] dataToSign = dtsBaos.toByteArray();
 
-            signatureBytes = Util.coseSign1Sign(key,
+            signature = Util.coseSign1Sign(key,
                     dataToSign,
                     null,
                     null);
@@ -191,28 +190,37 @@ class SoftwareWritableIdentityCredential extends WritableIdentityCredential {
                 | CborException e) {
             throw new RuntimeException("Error building ProofOfProvisioning", e);
         }
-        return signatureBytes;
+        return signature;
     }
 
     @NonNull
     @Override
     public byte[] personalize(@NonNull PersonalizationData personalizationData) {
 
-        ensureCredentialKey(null);
+        try {
+            ensureCredentialKey(null);
 
-        byte[] encodedBytes = buildProofOfProvisioningWithSignature(mDocType,
-                personalizationData,
-                mKeyPair.getPrivate());
+            DataItem signature = buildProofOfProvisioningWithSignature(mDocType,
+                    personalizationData,
+                    mKeyPair.getPrivate());
 
-        CredentialData.createCredentialData(
-                mContext,
-                mDocType,
-                mCredentialName,
-                CredentialData.getAliasFromCredentialName(mCredentialName),
-                mCertificates,
-                personalizationData);
+            byte[] proofOfProvisioning = Util.coseSign1GetData(signature);
+            byte[] proofOfProvisioningSha256 = MessageDigest.getInstance("SHA-256").digest(
+                    proofOfProvisioning);
 
-        return encodedBytes;
+            CredentialData.createCredentialData(
+                    mContext,
+                    mDocType,
+                    mCredentialName,
+                    CredentialData.getAliasFromCredentialName(mCredentialName),
+                    mCertificates,
+                    personalizationData,
+                    proofOfProvisioningSha256,
+                    false);
+
+            return Util.cborEncode(signature);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Error digesting ProofOfProvisioning", e);
+        }
     }
-
 }

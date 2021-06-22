@@ -16,43 +16,68 @@
 
 package androidx.compose.ui.input.pointer
 
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.testutils.TestViewConfiguration
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.gesture.ExperimentalPointerInput
+import androidx.compose.ui.platform.InspectableValue
+import androidx.compose.ui.platform.ValueElement
+import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
+import androidx.compose.ui.test.TestActivity
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.Uptime
+import androidx.lifecycle.Lifecycle
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.LargeTest
 import androidx.test.filters.SmallTest
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.test.runBlockingTest
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.yield
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @SmallTest
 @RunWith(AndroidJUnit4::class)
-@OptIn(ExperimentalPointerInput::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class SuspendingPointerInputFilterTest {
+    @After
+    fun after() {
+        // some tests may set this
+        isDebugInspectorInfoEnabled = false
+    }
+
     @Test
-    fun testAwaitSingleEvent(): Unit = runBlocking {
-        val filter = SuspendingPointerInputFilter()
+    fun testAwaitSingleEvent(): Unit = runBlockingTest {
+        val filter = SuspendingPointerInputFilter(TestViewConfiguration())
 
         val result = CompletableDeferred<PointerEvent>()
         launch {
             with(filter) {
-                handlePointerInput {
+                awaitPointerEventScope {
                     result.complete(awaitPointerEvent())
                 }
             }
         }
-        yield()
 
         val emitter = PointerInputChangeEmitter()
         val expectedChange = emitter.nextChange(Offset(5f, 5f))
@@ -71,20 +96,19 @@ class SuspendingPointerInputFilterTest {
     }
 
     @Test
-    fun testAwaitSeveralEvents(): Unit = runBlocking {
-        val filter = SuspendingPointerInputFilter()
+    fun testAwaitSeveralEvents(): Unit = runBlockingTest {
+        val filter = SuspendingPointerInputFilter(TestViewConfiguration())
         val results = Channel<PointerEvent>(Channel.UNLIMITED)
-        val reader = launch {
+        launch {
             with(filter) {
-                handlePointerInput {
+                awaitPointerEventScope {
                     repeat(3) {
-                        results.offer(awaitPointerEvent())
+                        results.trySend(awaitPointerEvent())
                     }
                     results.close()
                 }
             }
         }
-        yield()
 
         val emitter = PointerInputChangeEmitter()
         val expected = listOf(
@@ -104,25 +128,22 @@ class SuspendingPointerInputFilterTest {
         }
 
         assertEquals(expected, received)
-
-        reader.cancel()
     }
 
     @Test
-    fun testSyntheticCancelEvent(): Unit = runBlocking {
-        val filter = SuspendingPointerInputFilter()
+    fun testSyntheticCancelEvent(): Unit = runBlockingTest {
+        val filter = SuspendingPointerInputFilter(TestViewConfiguration())
         val results = Channel<PointerEvent>(Channel.UNLIMITED)
-        val reader = launch {
+        launch {
             with(filter) {
-                handlePointerInput {
+                awaitPointerEventScope {
                     repeat(3) {
-                        results.offer(awaitPointerEvent())
+                        results.trySend(awaitPointerEvent())
                     }
                     results.close()
                 }
             }
         }
-        yield()
 
         val bounds = IntSize(50, 50)
         val emitter1 = PointerInputChangeEmitter(0)
@@ -148,14 +169,12 @@ class SuspendingPointerInputFilterTest {
                 listOf(
                     PointerInputChange(
                         PointerId(0),
-                        current = PointerInputData(
-                            position = Offset(6f, 6f),
-                            down = false
-                        ),
-                        previous = PointerInputData(
-                            position = Offset(6f, 6f),
-                            down = true
-                        ),
+                        0,
+                        Offset(6f, 6f),
+                        false,
+                        0,
+                        Offset(6f, 6f),
+                        true,
                         consumed = ConsumedData(downChange = true)
                     )
                 )
@@ -177,36 +196,123 @@ class SuspendingPointerInputFilterTest {
             val actualEvent = received[index]
             PointerEventSubject.assertThat(actualEvent).isStructurallyEqualTo(expectedEvent)
         }
+    }
 
-        reader.cancel()
+    @Test
+    fun testCancelledHandlerBlock() = runBlockingTest {
+        val filter = SuspendingPointerInputFilter(TestViewConfiguration())
+        val counter = TestCounter()
+        val handler = launch {
+            with(filter) {
+                try {
+                    awaitPointerEventScope {
+                        try {
+                            counter.expect(1, "about to call awaitPointerEvent")
+                            awaitPointerEvent()
+                            fail("awaitPointerEvent returned; should have thrown for cancel")
+                        } finally {
+                            counter.expect(3, "inner finally block running")
+                        }
+                    }
+                } finally {
+                    counter.expect(4, "outer finally block running; inner finally should have run")
+                }
+            }
+        }
+
+        counter.expect(2, "before cancelling handler; awaitPointerEvent should be suspended")
+        handler.cancel()
+        counter.expect(5, "after cancelling; finally blocks should have run")
+    }
+
+    @Test
+    fun testInspectorValue() = runBlocking<Unit> {
+        isDebugInspectorInfoEnabled = true
+        val block: suspend PointerInputScope.() -> Unit = {}
+        val modifier = Modifier.pointerInput(Unit, block) as InspectableValue
+
+        assertThat(modifier.nameFallback).isEqualTo("pointerInput")
+        assertThat(modifier.valueOverride).isNull()
+        assertThat(modifier.inspectableElements.asIterable()).containsExactly(
+            ValueElement("key1", Unit),
+            ValueElement("block", block)
+        )
+    }
+
+    @Test
+    @LargeTest
+    fun testRestartPointerInput() = runBlocking {
+        var toAdd by mutableStateOf("initial")
+        val result = mutableListOf<String>()
+        val latch = CountDownLatch(2)
+        ActivityScenario.launch(TestActivity::class.java).use { scenario ->
+            scenario.moveToState(Lifecycle.State.CREATED)
+            scenario.onActivity {
+                it.setContent {
+                    // Read the value in composition to change the lambda capture below
+                    val toCapture = toAdd
+                    Box(
+                        Modifier.pointerInput(toCapture) {
+                            result += toCapture
+                            latch.countDown()
+                            suspendCancellableCoroutine<Unit> {}
+                        }
+                    )
+                }
+            }
+            scenario.moveToState(Lifecycle.State.STARTED)
+            Snapshot.withMutableSnapshot {
+                toAdd = "secondary"
+            }
+            assertTrue("waiting for relaunch timed out", latch.await(3, TimeUnit.SECONDS))
+            assertEquals(
+                listOf("initial", "secondary"),
+                result
+            )
+        }
     }
 }
 
 private fun PointerInputChange.toPointerEvent() = PointerEvent(listOf(this))
 
-@ExperimentalPointerInput
 private val PointerEvent.firstChange get() = changes.first()
 
 private class PointerInputChangeEmitter(id: Int = 0) {
     val pointerId = PointerId(id.toLong())
-    var previousData = PointerInputData()
+    var previousTime = 0L
+    var previousPosition = Offset.Zero
+    var previousPressed = false
 
     fun nextChange(
-        position: Offset? = null,
+        position: Offset = Offset.Zero,
         down: Boolean = true,
-        time: Uptime? = null
+        time: Long = 0
     ): PointerInputChange {
-        val current = PointerInputData(
-            position = position,
-            down = down,
-            uptime = time
-        )
-
         return PointerInputChange(
             id = pointerId,
-            current = current,
-            previous = previousData,
+            time,
+            position,
+            down,
+            previousTime,
+            previousPosition,
+            previousPressed,
             consumed = ConsumedData()
-        ).also { previousData = current }
+        ).also {
+            previousTime = time
+            previousPosition = position
+            previousPressed = down
+        }
+    }
+}
+
+private class TestCounter {
+    private var count = 0
+
+    fun expect(checkpoint: Int, message: String = "(no message)") {
+        val expected = count + 1
+        if (checkpoint != expected) {
+            fail("out of order event $checkpoint, expected $expected, $message")
+        }
+        count = expected
     }
 }

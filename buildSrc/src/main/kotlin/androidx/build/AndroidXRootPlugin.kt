@@ -16,27 +16,35 @@
 
 package androidx.build
 
+import androidx.build.AndroidXPlugin.Companion.ZIP_CONSTRAINED_TEST_CONFIGS_WITH_APKS_TASK
 import androidx.build.AndroidXPlugin.Companion.ZIP_TEST_CONFIGS_WITH_APKS_TASK
 import androidx.build.dependencyTracker.AffectedModuleDetector
 import androidx.build.gradle.isRoot
-import androidx.build.jacoco.Jacoco
 import androidx.build.license.CheckExternalDependencyLicensesTask
 import androidx.build.playground.VerifyPlaygroundGradlePropertiesTask
 import androidx.build.studio.StudioTask.Companion.registerStudioTask
+import androidx.build.testConfiguration.registerOwnersServiceTasks
 import androidx.build.uptodatedness.TaskUpToDateValidator
 import com.android.build.gradle.api.AndroidBasePlugin
-import com.android.build.gradle.internal.tasks.factory.dependsOn
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.plugins.ExtraPropertiesExtension
+import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.gradle.api.plugins.JavaPlugin
 import org.gradle.api.tasks.bundling.Zip
+import org.gradle.api.tasks.bundling.ZipEntryCompression
+import org.gradle.build.event.BuildEventsListenerRegistry
 import org.gradle.kotlin.dsl.KotlinClosure1
 import org.gradle.kotlin.dsl.extra
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-class AndroidXRootPlugin : Plugin<Project> {
+abstract class AndroidXRootPlugin : Plugin<Project> {
+    @get:javax.inject.Inject
+    abstract val registry: BuildEventsListenerRegistry
+
     override fun apply(project: Project) {
         if (!project.isRoot) {
             throw Exception("This plugin should only be applied to root project")
@@ -49,7 +57,6 @@ class AndroidXRootPlugin : Plugin<Project> {
         tasks.register("listAndroidXProperties", ListAndroidXPropertiesTask::class.java)
         setDependencyVersions()
         configureKtlintCheckFile()
-        configureCheckInvalidSuppress()
         tasks.register(CheckExternalDependencyLicensesTask.TASK_NAME)
 
         val buildOnServerTask = tasks.create(
@@ -78,12 +85,20 @@ class AndroidXRootPlugin : Plugin<Project> {
         if (partiallyDejetifyArchiveTask != null)
             buildOnServerTask.dependsOn(partiallyDejetifyArchiveTask)
 
-        val projectModules = ConcurrentHashMap<String, String>()
-        extra.set("projects", projectModules)
+        buildOnServerTask.dependsOn(
+            tasks.register(
+                "saveSystemStats",
+                SaveSystemStatsTask::class.java
+            ) { task ->
+                task.outputFile.set(File(project.getDistributionDirectory(), "system_stats.txt"))
+            }
+        )
+
+        extra.set("projects", ConcurrentHashMap<String, String>())
         buildOnServerTask.dependsOn(tasks.named(CheckExternalDependencyLicensesTask.TASK_NAME))
-        // Anchor task that invokes running all subprojects :properties tasks which ensure that
+        // Anchor task that invokes running all subprojects :validateProperties tasks which ensure that
         // Android Studio sync is able to succeed.
-        val allProperties = tasks.register("allProperties")
+        val validateAllProperties = tasks.register("validateAllProperties")
         subprojects { project ->
             // Add a method for each sub project where they can declare an optional
             // dependency on a project or its latest snapshot artifact.
@@ -100,17 +115,31 @@ class AndroidXRootPlugin : Plugin<Project> {
                 )
             )
             project.plugins.withType(AndroidBasePlugin::class.java) {
-                buildOnServerTask.dependsOn("${project.path}:assembleDebug")
-                buildOnServerTask.dependsOn("${project.path}:assembleAndroidTest")
-                if (!project.rootProject.hasProperty(AndroidXPlugin.USE_MAX_DEP_VERSIONS)) {
-                    buildOnServerTask.dependsOn("${project.path}:lintDebug")
+                buildOnServerTask.dependsOn("${project.path}:assembleRelease")
+                if (!project.usingMaxDepVersions()) {
+                    project.afterEvaluate {
+                        project.agpVariants.all { variant ->
+                            // in AndroidX, release and debug variants are essentially the same,
+                            // so we don't run the lintRelease task on the build server
+                            if (!variant.name.toLowerCase().contains("release")) {
+                                val taskName = "lint${variant.name.capitalize()}"
+                                buildOnServerTask.dependsOn("${project.path}:$taskName")
+                            }
+                        }
+                    }
                 }
             }
             project.plugins.withType(JavaPlugin::class.java) {
                 buildOnServerTask.dependsOn("${project.path}:jar")
             }
 
-            allProperties.dependsOn("${project.path}:properties")
+            val validateProperties = project.tasks.register(
+                "validateProperties",
+                ValidatePropertiesTask::class.java
+            )
+            validateAllProperties.configure {
+                it.dependsOn(validateProperties)
+            }
         }
 
         if (partiallyDejetifyArchiveTask != null) {
@@ -124,36 +153,43 @@ class AndroidXRootPlugin : Plugin<Project> {
             }
         }
 
-        val buildTestApks = tasks.register(AndroidXPlugin.BUILD_TEST_APKS_TASK)
-        if (project.isCoverageEnabled()) {
-            val createCoverageJarTask = Jacoco.createCoverageJarTask(this)
-            buildTestApks.configure {
-                it.dependsOn(createCoverageJarTask)
-            }
-            buildOnServerTask.dependsOn(createCoverageJarTask)
-            buildOnServerTask.dependsOn(Jacoco.createZipEcFilesTask(this))
-            buildOnServerTask.dependsOn(Jacoco.createUberJarTask(this))
-        }
+        tasks.register(AndroidXPlugin.BUILD_TEST_APKS_TASK)
 
-        val zipTestConfigsWithApks = project.tasks.register(
+        project.tasks.register(
             ZIP_TEST_CONFIGS_WITH_APKS_TASK, Zip::class.java
-        )
-        // can't chain this, or a kotlin.Unit gets added as dependency below instead of the task
-        zipTestConfigsWithApks.configure {
+        ) {
             it.destinationDirectory.set(project.getDistributionDirectory())
             it.archiveFileName.set("androidTest.zip")
             it.from(project.getTestConfigDirectory())
+            // We're mostly zipping a bunch of .apk files that are already compressed
+            it.entryCompression = ZipEntryCompression.STORED
         }
-        buildOnServerTask.dependsOn(zipTestConfigsWithApks)
+        project.tasks.register(
+            ZIP_CONSTRAINED_TEST_CONFIGS_WITH_APKS_TASK, Zip::class.java
+        ) {
+            it.destinationDirectory.set(project.getDistributionDirectory())
+            it.archiveFileName.set("constrainedAndroidTest.zip")
+            it.from(project.getConstrainedTestConfigDirectory())
+            // We're mostly zipping a bunch of .apk files that are already compressed
+            it.entryCompression = ZipEntryCompression.STORED
+        }
 
         AffectedModuleDetector.configure(gradle, this)
 
+        // Needs to be called before evaluationDependsOnChildren in usingMaxDepVersions block
+        publishInspectionArtifacts()
+        registerOwnersServiceTasks()
+
         // If useMaxDepVersions is set, iterate through all the project and substitute any androidx
         // artifact dependency with the local tip of tree version of the library.
-        if (hasProperty(AndroidXPlugin.USE_MAX_DEP_VERSIONS)) {
+        if (project.usingMaxDepVersions()) {
             // This requires evaluating all sub-projects to create the module:project map
             // and project dependencies.
-            evaluationDependsOnChildren()
+            allprojects { project2 ->
+                // evaluationDependsOnChildren isn't transitive so we must call it on each project
+                project2.evaluationDependsOnChildren()
+            }
+            val projectModules = getProjectsMap()
             subprojects { subproject ->
                 // TODO(153485458) remove most of these exceptions
                 if (!subproject.name.contains("hilt") &&
@@ -161,13 +197,25 @@ class AndroidXRootPlugin : Plugin<Project> {
                     subproject.name != "docs-tip-of-tree" &&
                     subproject.name != "camera-testapp-timing" &&
                     subproject.name != "room-testapp" &&
-                    subproject.name != "support-media2-test-client-previous" &&
-                    subproject.name != "support-media2-test-service-previous"
+                    !(
+                        subproject.path.contains
+                        ("media2:media2-session:version-compat-tests:client-previous")
+                        ) &&
+                    !(
+                        subproject.path.contains
+                        ("media2:media2-session:version-compat-tests:service-previous")
+                        )
                 ) {
                     subproject.configurations.all { configuration ->
                         configuration.resolutionStrategy.dependencySubstitution.apply {
-                            for (e in projectModules) {
-                                substitute(module(e.key)).with(project(e.value))
+                            all { dep ->
+                                val requested = dep.getRequested()
+                                if (requested is ModuleComponentSelector) {
+                                    val module = requested.group + ":" + requested.module
+                                    if (projectModules.containsKey(module)) {
+                                        dep.useTarget(project(projectModules[module]!!))
+                                    }
+                                }
                             }
                         }
                     }
@@ -177,28 +225,51 @@ class AndroidXRootPlugin : Plugin<Project> {
 
         registerStudioTask()
 
-        TaskUpToDateValidator.setup(project)
+        TaskUpToDateValidator.setup(project, registry)
 
         project.tasks.register("listTaskOutputs", ListTaskOutputsTask::class.java) { task ->
             task.setOutput(File(project.getDistributionDirectory(), "task_outputs.txt"))
             task.removePrefix(project.getCheckoutRoot().path)
         }
-        publishInspectionArtifacts()
+
+        project.ensureOneKotlinCompilerRunner()
     }
 
+    @Suppress("UnstableApiUsage")
     private fun Project.setDependencyVersions() {
-        val buildVersions = (project.rootProject.property("ext") as ExtraPropertiesExtension)
-            .let { it.get("build_versions") as Map<*, *> }
-
-        fun getVersion(key: String) = checkNotNull(buildVersions[key]) {
-            "Could not find a version for `$key`"
-        }.toString()
-
+        val libs = project.extensions.getByType(
+            VersionCatalogsExtension::class.java
+        ).find("libs").get()
+        fun getVersion(key: String): String {
+            val version = libs.findVersion(key)
+            return if (version.isPresent) {
+                version.get().requiredVersion
+            } else {
+                throw GradleException("Could not find a version for `$key`")
+            }
+        }
         androidx.build.dependencies.kotlinVersion = getVersion("kotlin")
-        androidx.build.dependencies.kotlinCoroutinesVersion = getVersion("kotlin_coroutines")
-        androidx.build.dependencies.agpVersion = getVersion("agp")
-        androidx.build.dependencies.lintVersion = getVersion("lint")
-        androidx.build.dependencies.hiltVersion = getVersion("hilt")
+        androidx.build.dependencies.kotlinCoroutinesVersion = getVersion("kotlinCoroutines")
+        androidx.build.dependencies.kspVersion = getVersion("ksp")
+        androidx.build.dependencies.agpVersion = getVersion("androidGradlePlugin")
+        androidx.build.dependencies.lintVersion = getVersion("androidLint")
+    }
+
+    // Experimental workaround for https://youtrack.jetbrains.com/issue/KT-46820
+    // Creates one kotlin compiler runner as soon as possible, to avoid concurrency issues when
+    // trying to create multiple at once
+    private fun Project.ensureOneKotlinCompilerRunner() {
+        val taskGraph = project.gradle.taskGraph
+        taskGraph.whenReady {
+            for (task in taskGraph.allTasks) {
+                val compile = task as? KotlinCompile
+                if (compile != null) {
+                    @Suppress("invisible_member")
+                    compile.compilerRunner()
+                    break
+                }
+            }
+        }
     }
 
     companion object {

@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2019 The Android Open Source Project
  *
@@ -18,24 +19,30 @@ package androidx.compose.foundation
 
 import android.os.Build
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.preferredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.testutils.assertShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.DensityAmbient
 import androidx.compose.ui.platform.InspectableValue
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.ValueElement
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertShape
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
@@ -56,6 +63,18 @@ class BackgroundTest {
 
     private val contentTag = "Content"
 
+    private val rtlAwareShape = object : Shape {
+        override fun createOutline(
+            size: Size,
+            layoutDirection: LayoutDirection,
+            density: Density
+        ) = if (layoutDirection == LayoutDirection.Ltr) {
+            RectangleShape.createOutline(size, layoutDirection, density)
+        } else {
+            CircleShape.createOutline(size, layoutDirection, density)
+        }
+    }
+
     @Before
     fun before() {
         isDebugInspectorInfoEnabled = true
@@ -71,14 +90,14 @@ class BackgroundTest {
         rule.setContent {
             SemanticParent {
                 Box(
-                    Modifier.preferredSize(40f.toDp()).background(Color.Magenta),
-                    alignment = Alignment.Center
+                    Modifier.size(40f.toDp()).background(Color.Magenta),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(Modifier.preferredSize(20f.toDp()).background(Color.White))
+                    Box(Modifier.size(20f.toDp()).background(Color.White))
                 }
             }
         }
-        val bitmap = rule.onNodeWithTag(contentTag).captureToBitmap()
+        val bitmap = rule.onNodeWithTag(contentTag).captureToImage()
         bitmap.assertShape(
             density = rule.density,
             backgroundColor = Color.Magenta,
@@ -94,17 +113,17 @@ class BackgroundTest {
         rule.setContent {
             SemanticParent {
                 Box(
-                    Modifier.preferredSize(40f.toDp()).background(Color.Magenta),
-                    alignment = Alignment.Center
+                    Modifier.size(40f.toDp()).background(Color.Magenta),
+                    contentAlignment = Alignment.Center
                 ) {
                     Box(
-                        Modifier.preferredSize(20f.toDp())
+                        Modifier.size(20f.toDp())
                             .background(SolidColor(Color.White))
                     )
                 }
             }
         }
-        val bitmap = rule.onNodeWithTag(contentTag).captureToBitmap()
+        val bitmap = rule.onNodeWithTag(contentTag).captureToImage()
         bitmap.assertShape(
             density = rule.density,
             backgroundColor = Color.Magenta,
@@ -120,13 +139,13 @@ class BackgroundTest {
         rule.setContent {
             SemanticParent {
                 Box(
-                    Modifier.preferredSize(40f.toDp())
+                    Modifier.size(40f.toDp())
                         .background(Color.Magenta)
                         .background(color = Color.White, shape = CircleShape)
                 )
             }
         }
-        val bitmap = rule.onNodeWithTag(contentTag).captureToBitmap()
+        val bitmap = rule.onNodeWithTag(contentTag).captureToImage()
         bitmap.assertShape(
             density = rule.density,
             backgroundColor = Color.Magenta,
@@ -141,7 +160,7 @@ class BackgroundTest {
         rule.setContent {
             SemanticParent {
                 Box(
-                    Modifier.preferredSize(40f.toDp())
+                    Modifier.size(40f.toDp())
                         .background(Color.Magenta)
                         .background(
                             brush = SolidColor(Color.White),
@@ -150,8 +169,64 @@ class BackgroundTest {
                 )
             }
         }
-        val bitmap = rule.onNodeWithTag(contentTag).captureToBitmap()
+        val bitmap = rule.onNodeWithTag(contentTag).captureToImage()
         bitmap.assertShape(
+            density = rule.density,
+            backgroundColor = Color.Magenta,
+            shape = CircleShape,
+            shapeColor = Color.White,
+            shapeOverlapPixelCount = 2.0f
+        )
+    }
+
+    @Test
+    fun background_rtl_initially() {
+        rule.setContent {
+            SemanticParent {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    Box(
+                        Modifier.size(40f.toDp())
+                            .background(Color.Magenta)
+                            .background(
+                                brush = SolidColor(Color.White),
+                                shape = rtlAwareShape
+                            )
+                    )
+                }
+            }
+        }
+        val bitmap = rule.onNodeWithTag(contentTag).captureToImage()
+        bitmap.assertShape(
+            density = rule.density,
+            backgroundColor = Color.Magenta,
+            shape = CircleShape,
+            shapeColor = Color.White,
+            shapeOverlapPixelCount = 2.0f
+        )
+    }
+
+    @Test
+    fun background_rtl_after_switch() {
+        val direction = mutableStateOf(LayoutDirection.Ltr)
+        rule.setContent {
+            SemanticParent {
+                CompositionLocalProvider(LocalLayoutDirection provides direction.value) {
+                    Box(
+                        Modifier.size(40f.toDp())
+                            .background(Color.Magenta)
+                            .background(
+                                brush = SolidColor(Color.White),
+                                shape = rtlAwareShape
+                            )
+                    )
+                }
+            }
+        }
+
+        rule.runOnIdle {
+            direction.value = LayoutDirection.Rtl
+        }
+        rule.onNodeWithTag(contentTag).captureToImage().assertShape(
             density = rule.density,
             backgroundColor = Color.Magenta,
             shape = CircleShape,
@@ -190,9 +265,9 @@ class BackgroundTest {
     }
 
     @Composable
-    private fun SemanticParent(children: @Composable Density.() -> Unit) {
+    private fun SemanticParent(content: @Composable Density.() -> Unit) {
         Box(Modifier.testTag(contentTag)) {
-            DensityAmbient.current.children()
+            LocalDensity.current.content()
         }
     }
 }

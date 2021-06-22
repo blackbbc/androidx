@@ -22,24 +22,25 @@ import android.util.Size;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.experimental.UseExperimental;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraControl;
-import androidx.camera.core.CameraFilter;
 import androidx.camera.core.CameraInfo;
 import androidx.camera.core.CameraSelector;
-import androidx.camera.core.ExperimentalCameraFilter;
 import androidx.camera.core.Logger;
 import androidx.camera.core.UseCase;
 import androidx.camera.core.ViewPort;
 import androidx.camera.core.impl.CameraConfig;
 import androidx.camera.core.impl.CameraConfigs;
+import androidx.camera.core.impl.CameraControlInternal;
 import androidx.camera.core.impl.CameraDeviceSurfaceManager;
 import androidx.camera.core.impl.CameraInfoInternal;
 import androidx.camera.core.impl.CameraInternal;
+import androidx.camera.core.impl.Config;
 import androidx.camera.core.impl.SurfaceConfig;
 import androidx.camera.core.impl.UseCaseConfig;
 import androidx.camera.core.impl.UseCaseConfigFactory;
+import androidx.camera.core.impl.utils.executor.CameraXExecutors;
+import androidx.core.util.Consumer;
 import androidx.core.util.Preconditions;
 
 import java.util.ArrayList;
@@ -88,6 +89,10 @@ public final class CameraUseCaseAdapter implements Camera {
     // actually been attached to the CameraInternal instance.
     @GuardedBy("mLock")
     private boolean mAttached = true;
+
+    // This holds the cached Interop config from CameraControlInternal.
+    @GuardedBy("mLock")
+    private Config mInteropConfig = null;
 
     /**
      * Create a new {@link CameraUseCaseAdapter} instance.
@@ -167,7 +172,6 @@ public final class CameraUseCaseAdapter implements Camera {
      * @throws CameraException Thrown if the combination of newly added UseCases and the
      *                         currently added UseCases exceed the capability of the camera.
      */
-    @UseExperimental(markerClass = androidx.camera.core.ExperimentalUseCaseGroup.class)
     public void addUseCases(@NonNull Collection<UseCase> useCases) throws CameraException {
         synchronized (mLock) {
             List<UseCase> newUseCases = new ArrayList<>();
@@ -205,6 +209,7 @@ public final class CameraUseCaseAdapter implements Camera {
 
             mUseCases.addAll(newUseCases);
             if (mAttached) {
+                notifyAttachedUseCasesChange(mUseCases);
                 mCameraInternal.attachUseCases(newUseCases);
             }
 
@@ -252,11 +257,15 @@ public final class CameraUseCaseAdapter implements Camera {
      * data if they are active.
      *
      * <p> This will start the underlying {@link CameraInternal} instance.
+     *
+     * <p> This will restore the cached Interop config to the {@link CameraInternal}.
      */
     public void attachUseCases() {
         synchronized (mLock) {
             if (!mAttached) {
                 mCameraInternal.attachUseCases(mUseCases);
+                notifyAttachedUseCasesChange(mUseCases);
+                restoreInteropConfig();
 
                 // Notify to update the use case's active state because it may be cleared if the
                 // use case was ever detached from a camera previously.
@@ -273,13 +282,39 @@ public final class CameraUseCaseAdapter implements Camera {
      * Detach the UseCases from the {@link CameraInternal} so that the UseCases stop receiving data.
      *
      * <p> This will stop the underlying {@link CameraInternal} instance.
+     *
+     * <p> This will cache the Interop config from the {@link CameraInternal}.
      */
     public void detachUseCases() {
         synchronized (mLock) {
             if (mAttached) {
                 mCameraInternal.detachUseCases(new ArrayList<>(mUseCases));
+                cacheInteropConfig();
                 mAttached = false;
             }
+        }
+    }
+
+    /**
+     * Restores the cached InteropConfig to the camera.
+     */
+    private void restoreInteropConfig() {
+        synchronized (mLock) {
+            if (mInteropConfig != null) {
+                mCameraInternal.getCameraControlInternal().addInteropConfig(mInteropConfig);
+            }
+        }
+    }
+
+    /**
+     * Caches and clears the InteropConfig from the camera.
+     */
+    private void cacheInteropConfig() {
+        synchronized (mLock) {
+            CameraControlInternal cameraControlInternal =
+                    mCameraInternal.getCameraControlInternal();
+            mInteropConfig = cameraControlInternal.getInteropConfig();
+            cameraControlInternal.clearInteropConfig();
         }
     }
 
@@ -309,7 +344,8 @@ public final class CameraUseCaseAdapter implements Camera {
                 ConfigPair configPair = configPairMap.get(useCase);
                 // Combine with default configuration.
                 UseCaseConfig<?> combinedUseCaseConfig =
-                        useCase.mergeConfigs(configPair.mExtendedConfig, configPair.mCameraConfig);
+                        useCase.mergeConfigs(cameraInfoInternal, configPair.mExtendedConfig,
+                                configPair.mCameraConfig);
                 configToUseCaseMap.put(combinedUseCaseConfig, useCase);
             }
 
@@ -326,7 +362,6 @@ public final class CameraUseCaseAdapter implements Camera {
         return suggestedResolutions;
     }
 
-    @UseExperimental(markerClass = androidx.camera.core.ExperimentalUseCaseGroup.class)
     private void updateViewPort(@NonNull Map<UseCase, Size> suggestedResolutionsMap,
             @NonNull Collection<UseCase> useCases) {
         synchronized (mLock) {
@@ -452,63 +487,29 @@ public final class CameraUseCaseAdapter implements Camera {
     }
 
     @Override
-    @UseExperimental(markerClass = ExperimentalCameraFilter.class)
-    public void setExtendedConfig(@Nullable CameraConfig cameraConfig) throws CameraException {
+    public void setExtendedConfig(@Nullable CameraConfig cameraConfig) {
         synchronized (mLock) {
-            CameraConfig newCameraConfig = cameraConfig == null ? CameraConfigs.emptyConfig() :
-                    cameraConfig;
-            // Check for new camera
-            CameraFilter cameraFilter = newCameraConfig.getCameraFilter();
-            CameraSelector cameraSelector =
-                    new CameraSelector.Builder().addCameraFilter(cameraFilter).build();
-            CameraInternal cameraInternal = cameraSelector.select(mCameraInternals);
-
-            Map<UseCase, ConfigPair> configs = getConfigs(mUseCases,
-                    newCameraConfig.getUseCaseConfigFactory(), mUseCaseConfigFactory);
-
-            // Calculate the config
-            Map<UseCase, Size> suggestedResolutionsMap;
-            try {
-                suggestedResolutionsMap =
-                        calculateSuggestedResolutions(cameraInternal.getCameraInfoInternal(),
-                                mUseCases,
-                                Collections.emptyList(),
-                                configs);
-            } catch (IllegalArgumentException e) {
-                // It can fail because of the suggested resolution
-                // It can fail because the merged configs are no good
-                throw new CameraException(e.getMessage());
+            if (cameraConfig == null) {
+                mCameraConfig = CameraConfigs.emptyConfig();
+                return;
             }
-
-            updateViewPort(suggestedResolutionsMap, mUseCases);
-
-            if (mAttached) {
-                mCameraInternal.detachUseCases(mUseCases);
-            }
-
-            for (UseCase useCase : mUseCases) {
-                useCase.onDetach(mCameraInternal);
-            }
-
-            for (UseCase useCase : mUseCases) {
-                ConfigPair configPair = configs.get(useCase);
-                useCase.onAttach(cameraInternal, configPair.mExtendedConfig,
-                        configPair.mCameraConfig);
-                useCase.updateSuggestedResolution(
-                        Preconditions.checkNotNull(suggestedResolutionsMap.get(useCase)));
-            }
-
-            if (mAttached) {
-                cameraInternal.attachUseCases(mUseCases);
-            }
-
-            for (UseCase useCase : mUseCases) {
-                useCase.notifyState();
-            }
-
-            mCameraInternal = cameraInternal;
-            // Update the config map now that the setting has succeeded
-            mCameraConfig = newCameraConfig;
+            mCameraConfig = cameraConfig;
         }
+    }
+
+    /**
+     * Notify the attached use cases change to the listener
+     */
+    private void notifyAttachedUseCasesChange(@NonNull List<UseCase> useCases) {
+        CameraXExecutors.mainThreadExecutor().execute(() -> {
+            for (UseCase useCase : useCases) {
+                Consumer<Collection<UseCase>> attachedUseCasesUpdateListener =
+                        useCase.getCurrentConfig().getAttachedUseCasesUpdateListener(null);
+
+                if (attachedUseCasesUpdateListener != null) {
+                    attachedUseCasesUpdateListener.accept(Collections.unmodifiableList(useCases));
+                }
+            }
+        });
     }
 }

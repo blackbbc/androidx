@@ -36,8 +36,6 @@ import androidx.camera.integration.antelope.MainActivity.Companion.cameraParams
 import androidx.camera.integration.antelope.MainActivity.Companion.logd
 import androidx.camera.integration.antelope.cameracontrollers.Camera2CaptureSessionCallback
 import androidx.camera.integration.antelope.cameracontrollers.Camera2DeviceStateCallback
-import kotlinx.android.synthetic.main.activity_main.surface_preview
-import kotlinx.android.synthetic.main.activity_main.texture_preview
 import java.util.Arrays
 import java.util.Collections
 
@@ -77,14 +75,26 @@ fun initializeCameras(activity: MainActivity) {
     val manager = activity.getSystemService(AppCompatActivity.CAMERA_SERVICE) as CameraManager
     try {
         val numCameras = manager.cameraIdList.size
-
         for (cameraId in manager.cameraIdList) {
+            var cameraParamsValid = true
+
             val tempCameraParams = CameraParams().apply {
 
                 val cameraChars = manager.getCameraCharacteristics(cameraId)
                 val cameraCapabilities =
                     cameraChars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
                         ?: IntArray(0)
+
+                // Check supported format.
+                val map = cameraChars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                if (map == null || map.isOutputSupportedFor(ImageFormat.JPEG) == false) {
+                    cameraParamsValid = false
+                    logd(
+                        "Null streamConfigurationMap or not supporting JPEG output format " +
+                            "in cameraId:" + cameraId
+                    )
+                    return@apply
+                }
 
                 // Multi-camera
                 for (capability in cameraCapabilities) {
@@ -166,8 +176,8 @@ fun initializeCameras(activity: MainActivity) {
                 camera2CaptureSessionCallback =
                     Camera2CaptureSessionCallback(activity, this, TestConfig())
 
-                previewSurfaceView = activity.surface_preview
-                cameraXPreviewTexture = activity.texture_preview
+                previewSurfaceView = activity.binding.surfacePreview
+                cameraXPreviewTexture = activity.binding.texturePreview
 
                 cameraXPreviewBuilder = Preview.Builder()
 
@@ -180,27 +190,29 @@ fun initializeCameras(activity: MainActivity) {
                     physicalCameras = cameraChars.physicalCameraIds
                 }
 
-                // Get Camera2 and CameraX image capture sizes
-                val map =
-                    characteristics?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                if (map != null) {
-                    cam2MaxSize = Collections.max(
-                        Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
-                        CompareSizesByArea()
-                    )
-                    cam2MinSize = Collections.min(
-                        Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
-                        CompareSizesByArea()
-                    )
+                // Get Camera2 and CameraX image capture sizes.
+                cam2MaxSize = Collections.max(
+                    Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
+                    CompareSizesByArea()
+                )
 
-                    // Use minimum image size for preview
-                    previewSurfaceView?.holder?.setFixedSize(cam2MinSize.width, cam2MinSize.height)
-                }
+                cam2MinSize = Collections.min(
+                    Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
+                    CompareSizesByArea()
+                )
+
+                // Use minimum image size for preview
+                previewSurfaceView?.holder?.setFixedSize(cam2MinSize.width, cam2MinSize.height)
 
                 setupImageReader(activity, this, TestConfig())
             }
 
-            cameraParams.put(cameraId, tempCameraParams)
+            if (cameraParamsValid == false) {
+                logd("Don't put Camera " + cameraId + "of " + numCameras)
+                continue
+            } else {
+                cameraParams.put(cameraId, tempCameraParams)
+            }
         } // For all camera devices
     } catch (accessError: CameraAccessException) {
         accessError.printStackTrace()

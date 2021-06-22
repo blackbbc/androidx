@@ -17,17 +17,24 @@
 package androidx.compose.ui
 
 import android.util.Log
+import android.view.View
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.Text
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.testutils.ComposeTestCase
 import androidx.compose.testutils.createAndroidComposeBenchmarkRunner
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,14 +50,17 @@ class MemoryLeakTest {
     val activityTestRule = androidx.test.rule.ActivityTestRule(ComponentActivity::class.java)
 
     @Test
-    fun disposeAndRemoveOwnerView_assertViewWasGarbageCollected() {
+    fun disposeAndRemoveOwnerView_assertViewWasGarbageCollected() = runBlocking {
         class SimpleTestCase : ComposeTestCase {
             @Composable
-            override fun emitContent() {
+            override fun Content() {
+                // The following line adds coverage for delayed coroutine memory leaks.
+                LaunchedEffect(Unit) { delay(10000) }
+
                 Column {
                     repeat(3) {
                         Box {
-                            Text("Hello")
+                            BasicText("Hello")
                         }
                     }
                 }
@@ -63,7 +73,7 @@ class MemoryLeakTest {
         // callback. But because we take over the main thread no callbacks get dispatched. This is
         // still issue for benchmarks though, as they need to fully occupy the main thread. You can
         // add check on main looper and perform clean asap if you are on main thread.
-        activityTestRule.runOnUiThread {
+        withContext(AndroidUiDispatcher.Main) {
             val runner = createAndroidComposeBenchmarkRunner(
                 testCaseFactory,
                 activityTestRule.activity
@@ -85,29 +95,28 @@ class MemoryLeakTest {
     }
 
     @Test
-    fun disposeContent_assertNoLeak() {
-        activityTestRule.runOnUiThread {
-            // We have to ignore the first run because `dispose` leaves the OwnerView in the
-            // View hierarchy to reuse it next time. That is probably not the final desired behavior
-            loopAndVerifyMemory(iterations = 400, gcFrequency = 40, ignoreFirstRun = true) {
-                val composition = activityTestRule.activity.setContent {
-                    Column {
-                        repeat(3) {
-                            Box {
-                                Text("Hello")
-                            }
+    fun disposeContent_assertNoLeak() = runBlocking(AndroidUiDispatcher.Main) {
+        // We have to ignore the first run because `dispose` leaves the OwnerView in the
+        // View hierarchy to reuse it next time. That is probably not the final desired behavior
+        val emptyView = View(activityTestRule.activity)
+        loopAndVerifyMemory(iterations = 400, gcFrequency = 40) {
+            activityTestRule.activity.setContent {
+                Column {
+                    repeat(3) {
+                        Box {
+                            BasicText("Hello")
                         }
                     }
                 }
-
-                // This typically recycles the old view
-                composition.dispose()
             }
+
+            // This replaces the Compose view, disposing its composition.
+            activityTestRule.activity.setContentView(emptyView)
         }
     }
 
     @Test
-    fun memoryCheckerTest_noAllocationsExpected() {
+    fun memoryCheckerTest_noAllocationsExpected() = runBlocking {
         // This smoke test checks that we don't give false alert and run all the iterations
         var i = 0
         loopAndVerifyMemory(200, 10) {
@@ -117,7 +126,7 @@ class MemoryLeakTest {
     }
 
     @Test(expected = AssertionError::class)
-    fun memoryCheckerTest_errorExpected() {
+    fun memoryCheckerTest_errorExpected(): Unit = runBlocking {
         // This smoke test simulates memory leak and verifies that it was found
         val data = mutableListOf<IntArray>()
         loopAndVerifyMemory(10, 2) {
@@ -133,8 +142,10 @@ class MemoryLeakTest {
     /**
      * Runs the given code in a loop for exactly [iterations] times and every [gcFrequency] it will
      * force garbage collection and check the allocated heap size.
+     * Suspending so that we can briefly yield() to the dispatcher before collecting garbage
+     * so that event loop driven cleanup processes can run before we take measurements.
      */
-    fun loopAndVerifyMemory(
+    suspend fun loopAndVerifyMemory(
         iterations: Int,
         gcFrequency: Int,
         ignoreFirstRun: Boolean = false,
@@ -145,6 +156,8 @@ class MemoryLeakTest {
         // Collect data
         repeat(iterations) { i ->
             if (i % gcFrequency == 0) {
+                // Let any scheduled cleanup processes run before we take measurements
+                yield()
                 Runtime.getRuntime().let {
                     it.gc() // Run gc
                     rawStats.add(it.totalMemory() - it.freeMemory()) // Collect memory info

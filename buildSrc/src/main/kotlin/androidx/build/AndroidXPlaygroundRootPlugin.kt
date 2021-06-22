@@ -16,9 +16,13 @@
 
 package androidx.build
 
+import androidx.build.AndroidXRootPlugin.Companion.PROJECT_OR_ARTIFACT_EXT_NAME
+import androidx.build.gradle.getByType
 import androidx.build.gradle.isRoot
-import groovy.util.XmlParser
-import groovy.xml.QName
+import androidx.build.playground.FindAffectedModulesTask
+import com.android.build.gradle.LibraryExtension
+import com.android.build.gradle.LibraryPlugin
+import groovy.xml.DOMBuilder
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -37,10 +41,12 @@ import java.net.URL
 @Suppress("unused") // used in Playground Projects
 class AndroidXPlaygroundRootPlugin : Plugin<Project> {
     private lateinit var rootProject: Project
+
     /**
      * List of snapshot repositories to fetch AndroidX artifacts
      */
     private lateinit var repos: PlaygroundRepositories
+
     /**
      * The configuration for the plugin read from the gradle properties
      */
@@ -64,14 +70,39 @@ class AndroidXPlaygroundRootPlugin : Plugin<Project> {
         rootProject = target
         config = PlaygroundProperties.load(rootProject)
         repos = PlaygroundRepositories(config)
+        rootProject.repositories.addPlaygroundRepositories()
         rootProject.subprojects {
             configureSubProject(it)
+        }
+
+        // TODO(b/185539993): Re-enable InvalidFragmentVersionForActivityResult which was
+        //  temporarily disabled for navigation-dynamic-features-fragment since it depends on an old
+        //  (stable) version of activity, which doesn't include aosp/1670206, allowing use of
+        //  Fragment 1.4.x.
+        target.findProject(":navigation:navigation-dynamic-features-fragment")
+            ?.disableInvalidFragmentVersionForActivityResultLint()
+
+        rootProject.tasks.register("findAffectedModules", FindAffectedModulesTask::class.java)
+    }
+
+    private fun Project.disableInvalidFragmentVersionForActivityResultLint() {
+        plugins.all { plugin ->
+            when (plugin) {
+                is LibraryPlugin -> {
+                    val libraryExtension = extensions.getByType<LibraryExtension>()
+                    afterEvaluate {
+                        libraryExtension.lintOptions.apply {
+                            disable("InvalidFragmentVersionForActivityResult")
+                        }
+                    }
+                }
+            }
         }
     }
 
     private fun configureSubProject(project: Project) {
         project.repositories.addPlaygroundRepositories()
-        project.extra.set(AndroidXRootPlugin.PROJECT_OR_ARTIFACT_EXT_NAME, projectOrArtifactClosure)
+        project.extra.set(PROJECT_OR_ARTIFACT_EXT_NAME, projectOrArtifactClosure)
         project.configurations.all { configuration ->
             configuration.resolutionStrategy.dependencySubstitution.all { substitution ->
                 substitution.replaceIfSnapshot()
@@ -94,15 +125,25 @@ class AndroidXPlaygroundRootPlugin : Plugin<Project> {
             return requested
         } else {
             val sections = path.split(":")
-            if (sections.size == 3) {
-                // first is empty, second is project, third is artifact
-                var group = "androidx.${sections[1]}"
-                if (group == "androidx.arch") {
-                    group = "androidx.arch.core"
-                }
-                return "$group:${sections[2]}:$SNAPSHOT_MARKER"
+
+            if (sections[0].isNotEmpty()) {
+                throw GradleException(
+                    "Expected projectOrArtifact path to start with empty section but got $path"
+                )
             }
-            throw GradleException("cannot find/replace project $path")
+
+            // Typically androidx projects have 3 sections, compose has 4.
+            if (sections.size >= 3) {
+                val group = sections
+                    // Filter empty sections as many declarations start with ':'
+                    .filter { !it.isBlank() }
+                    // Last element is the artifact.
+                    .dropLast(1)
+                    .joinToString(".")
+                return "androidx.$group:${sections.last()}:$SNAPSHOT_MARKER"
+            }
+
+            throw GradleException("projectOrArtifact cannot find/replace project $path")
         }
     }
 
@@ -133,10 +174,15 @@ class AndroidXPlaygroundRootPlugin : Plugin<Project> {
         } else {
             val metadataUrl = "${repos.snapshots}/$groupPath/$modulePath/maven-metadata.xml"
             URL(metadataUrl).openStream().use {
-                val parsedMetadata = XmlParser().parse(it)
-                val snapshotVersion = parsedMetadata
-                    .getAt(QName.valueOf("versioning"))
-                    .getAt("latest").text()
+                val parsedMetadata = DOMBuilder.parse(it.reader())
+                val versionNodes = parsedMetadata.getElementsByTagName("latest")
+                if (versionNodes.length != 1) {
+                    throw GradleException(
+                        "AndroidXPlaygroundRootPlugin#findSnapshotVersion expected exactly one " +
+                            "latest version in $metadataUrl, but got ${versionNodes.length}"
+                    )
+                }
+                val snapshotVersion = versionNodes.item(0).textContent
                 metadataCacheFile.parentFile.mkdirs()
                 metadataCacheFile.writeText(snapshotVersion, Charsets.UTF_8)
                 snapshotVersion
@@ -156,6 +202,7 @@ class AndroidXPlaygroundRootPlugin : Plugin<Project> {
         }
         google()
         mavenCentral()
+        @Suppress("DEPRECATION") // b/181908259
         jcenter()
     }
 
@@ -167,7 +214,8 @@ class AndroidXPlaygroundRootPlugin : Plugin<Project> {
         val metalava = "https://androidx.dev/metalava/builds/${props.metalavaBuildId}/artifacts" +
             "/repo/m2repository"
         val doclava = "https://androidx.dev/dokka/builds/${props.dokkaBuildId}/artifacts/repository"
-        val all = listOf(snapshots, metalava, doclava)
+        val prebuilts = "https://androidx.dev/storage/prebuilts/androidx/internal/repository"
+        val all = listOf(snapshots, metalava, doclava, prebuilts)
     }
 
     private data class PlaygroundProperties(

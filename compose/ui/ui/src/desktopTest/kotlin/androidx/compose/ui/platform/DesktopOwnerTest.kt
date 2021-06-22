@@ -16,9 +16,9 @@
 
 package androidx.compose.ui.platform
 
-import androidx.compose.animation.animate
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.TweenSpec
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,73 +29,53 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumnFor
-import androidx.compose.runtime.ExperimentalComposeApi
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.Surface
+import androidx.compose.material.TextField
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.drawLayer
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusState
+import androidx.compose.ui.focus.focusOrder
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.gesture.scrollorientationlocking.Orientation
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.keyEvent
 import androidx.compose.ui.input.mouse.MouseScrollEvent
+import androidx.compose.ui.input.mouse.MouseScrollOrientation
 import androidx.compose.ui.input.mouse.MouseScrollUnit
-import androidx.compose.ui.node.ExperimentalLayoutNodeApi
-import androidx.compose.ui.node.LayoutNode
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.test.junit4.DesktopScreenshotTestRule
-import androidx.compose.ui.test.initCompose
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import org.junit.Assert.assertEquals
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyPress
+import androidx.compose.ui.unit.dp
+import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
+import java.awt.event.KeyEvent
 
-@OptIn(
-    ExperimentalLayoutNodeApi::class,
-    ExperimentalComposeApi::class,
-    ExperimentalCoroutinesApi::class
-)
 class DesktopOwnerTest {
     @get:Rule
     val screenshotRule = DesktopScreenshotTestRule("ui/ui-desktop/ui")
-
-    @Test
-    fun `single invalidate with multiple observers and single state change`() {
-        initCompose()
-
-        var invalidateCount = 0
-
-        val owners = DesktopOwners(
-            invalidate = {
-                invalidateCount++
-            }
-        )
-        val owner = DesktopOwner(owners)
-        val node = LayoutNode()
-        val state = mutableStateOf(2)
-
-        owner.observeLayoutModelReads(node) {
-            state.value
-        }
-
-        owner.observeLayoutModelReads(node) {
-            state.value
-        }
-
-        val oldInvalidateCount = invalidateCount
-
-        Snapshot.notifyObjectsInitialized()
-        state.value++
-        Snapshot.sendApplyNotifications()
-
-        assertEquals(1, invalidateCount - oldInvalidateCount)
-    }
+    @get:Rule
+    val composeRule = createComposeRule()
 
     @Test(timeout = 5000)
     fun `rendering of Box state change`() = renderingTest(width = 40, height = 40) {
@@ -218,7 +198,7 @@ class DesktopOwnerTest {
         var translationX by mutableStateOf(10f)
         var offsetX by mutableStateOf(10.dp)
         setContent {
-            Box(Modifier.offset(x = offsetX).drawLayer(translationX = translationX)) {
+            Box(Modifier.offset(x = offsetX).graphicsLayer(translationX = translationX)) {
                 Box(Modifier.background(Color.Green).size(10.dp))
             }
         }
@@ -246,44 +226,43 @@ class DesktopOwnerTest {
 
     @Test(timeout = 5000)
     fun `rendering of transition`() = renderingTest(width = 40, height = 40) {
-        var targetValue by mutableStateOf(10f)
+        val startValue = 10f
+        var targetValue by mutableStateOf(startValue)
+        var lastComposedValue = Float.MIN_VALUE
 
         setContent {
-            val value = animate(
+            val value by animateFloatAsState(
                 targetValue,
-                animSpec = TweenSpec(durationMillis = 30, easing = LinearEasing)
+                animationSpec = TweenSpec(durationMillis = 30, easing = LinearEasing)
             )
             Box(Modifier.size(value.dp).background(Color.Blue))
+            lastComposedValue = value
         }
 
         awaitNextRender()
         screenshotRule.snap(surface, "frame1_initial")
 
-        currentTimeMillis = 20
-        awaitNextRender()
-        screenshotRule.snap(surface, "frame2_20ms")
-
-        currentTimeMillis = 30
-        awaitNextRender()
-        screenshotRule.snap(surface, "frame3_30ms")
-        assertFalse(hasRenders())
-
         targetValue = 40f
-        currentTimeMillis = 30
         awaitNextRender()
-        screenshotRule.snap(surface, "frame4_30ms_target40")
+        screenshotRule.snap(surface, "frame2_target40_0ms")
 
-        currentTimeMillis = 40
-        awaitNextRender()
-        screenshotRule.snap(surface, "frame5_40ms_target40")
+        // animation can start not immediately, but on the second/third frame
+        // so wait when the animation will change the animating value
+        while (lastComposedValue == startValue) {
+            currentTimeMillis += 10
+            awaitNextRender()
+        }
 
-        currentTimeMillis = 50
-        awaitNextRender()
-        screenshotRule.snap(surface, "frame6_50ms_target40")
+        screenshotRule.snap(surface, "frame3_target40_10ms")
 
-        currentTimeMillis = 60
+        currentTimeMillis += 10
         awaitNextRender()
-        screenshotRule.snap(surface, "frame7_60ms_target40")
+        screenshotRule.snap(surface, "frame4_target40_20ms")
+
+        currentTimeMillis += 10
+        awaitNextRender()
+        screenshotRule.snap(surface, "frame5_target40_30ms")
+
         assertFalse(hasRenders())
     }
 
@@ -324,10 +303,12 @@ class DesktopOwnerTest {
         var height by mutableStateOf(10.dp)
         setContent {
             Box(Modifier.padding(10.dp)) {
-                LazyColumnFor(
-                    listOf(Color.Red, Color.Green, Color.Blue, Color.Black, Color.Gray)
-                ) { color ->
-                    Box(Modifier.size(width = 30.dp, height = height).background(color))
+                LazyColumn {
+                    items(
+                        listOf(Color.Red, Color.Green, Color.Blue, Color.Black, Color.Gray)
+                    ) { color ->
+                        Box(Modifier.size(width = 30.dp, height = height).background(color))
+                    }
                 }
             }
         }
@@ -339,7 +320,7 @@ class DesktopOwnerTest {
         owners.onMouseScroll(
             10,
             10,
-            MouseScrollEvent(MouseScrollUnit.Page(1f), Orientation.Vertical)
+            MouseScrollEvent(MouseScrollUnit.Page(1f), MouseScrollOrientation.Vertical)
         )
         awaitNextRender()
         screenshotRule.snap(surface, "frame2_onMouseScroll")
@@ -348,7 +329,7 @@ class DesktopOwnerTest {
         owners.onMouseScroll(
             10,
             10,
-            MouseScrollEvent(MouseScrollUnit.Page(10f), Orientation.Vertical)
+            MouseScrollEvent(MouseScrollUnit.Page(10f), MouseScrollOrientation.Vertical)
         )
         awaitNextRender()
         screenshotRule.snap(surface, "frame3_onMouseScroll")
@@ -374,5 +355,153 @@ class DesktopOwnerTest {
         awaitNextRender()
         screenshotRule.snap(surface, "frame1_initial")
         assertFalse(hasRenders())
+    }
+
+    @Test(timeout = 5000)
+    fun `launch effect`() = renderingTest(width = 40, height = 40) {
+        var effectIsLaunched = false
+
+        setContent {
+            LaunchedEffect(Unit) {
+                effectIsLaunched = true
+            }
+        }
+
+        awaitNextRender()
+        assertThat(effectIsLaunched).isTrue()
+    }
+
+    @Test(timeout = 5000)
+    fun `change density`() = renderingTest(width = 40, height = 40) {
+        @Composable
+        fun redRect() {
+            Box(Modifier.size(4.dp).background(Color.Red))
+        }
+
+        @Composable
+        fun greenRectOnCanvas() {
+            Canvas(Modifier.size(100.dp)) {
+                drawRect(
+                    Color.Green,
+                    topLeft = Offset(4f * density, 4f * density),
+                    size = Size(4f * density, 4f * density)
+                )
+            }
+        }
+
+        @Composable
+        fun blueRectInRoundedLayer() {
+            Box(
+                Modifier
+                    .offset(8.dp, 8.dp)
+                    .graphicsLayer(shape = RoundedCornerShape(2.dp), clip = true)
+            ) {
+                Box(
+                    Modifier
+                        .size(4.dp)
+                        .background(Color.Blue)
+                )
+            }
+        }
+
+        @Composable
+        fun elevation() {
+            Box(
+                Modifier
+                    .offset(8.dp, 0.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.size(4.dp),
+                    elevation = 2.dp
+                ) {
+                }
+            }
+        }
+
+        setContent {
+            redRect()
+            greenRectOnCanvas()
+            blueRectInRoundedLayer()
+            elevation()
+        }
+
+        density = 2f
+        awaitNextRender()
+        screenshotRule.snap(surface, "frame1_density2")
+
+        density = 3f
+        awaitNextRender()
+        screenshotRule.snap(surface, "frame2_density3")
+
+        assertFalse(hasRenders())
+    }
+
+    @Test(expected = TestException::class)
+    fun `catch exception in LaunchedEffect`() {
+        runBlocking(Dispatchers.Main) {
+            composeRule.setContent {
+                LaunchedEffect(Unit) {
+                    throw TestException()
+                }
+            }
+            composeRule.awaitIdle()
+        }
+    }
+
+    private class TestException : RuntimeException()
+
+    @ExperimentalComposeUiApi
+    @Test
+    fun `focus management by keys`() {
+        var field1FocusState: FocusState? = null
+        var field2FocusState: FocusState? = null
+        val (focusItem1, focusItem2) = FocusRequester.createRefs()
+        composeRule.setContent {
+            var text by remember { mutableStateOf("") }
+            Row {
+                TextField(
+                    text,
+                    onValueChange = { text = it },
+                    maxLines = 1,
+                    modifier = Modifier
+                        .onFocusChanged { field1FocusState = it }
+                        .focusOrder(focusItem1) {
+                            next = focusItem2
+                        }
+                )
+                TextField(
+                    text,
+                    onValueChange = { text = it },
+                    maxLines = 1,
+                    modifier = Modifier
+                        .onFocusChanged { field2FocusState = it }
+                        .focusOrder(focusItem2) {
+                            previous = focusItem1
+                        }
+                )
+            }
+        }
+        composeRule.runOnIdle { focusItem1.requestFocus() }
+
+        composeRule.runOnIdle {
+            assertThat(field1FocusState!!.isFocused).isTrue()
+            assertThat(field2FocusState!!.isFocused).isFalse()
+        }
+
+        composeRule.onRoot().performKeyPress(keyEvent(Key.Tab, KeyEventType.KeyDown))
+
+        composeRule.runOnIdle {
+            assertThat(field1FocusState!!.isFocused).isFalse()
+            assertThat(field2FocusState!!.isFocused).isTrue()
+        }
+
+        composeRule.onRoot().performKeyPress(
+            keyEvent(Key.Tab, KeyEventType.KeyDown, KeyEvent.SHIFT_DOWN_MASK)
+        )
+
+        composeRule.runOnIdle {
+            assertThat(field1FocusState!!.isFocused).isTrue()
+            assertThat(field2FocusState!!.isFocused).isFalse()
+        }
     }
 }

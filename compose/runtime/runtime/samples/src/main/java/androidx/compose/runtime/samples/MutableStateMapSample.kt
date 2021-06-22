@@ -18,32 +18,32 @@ package androidx.compose.runtime.samples
 
 import androidx.annotation.Sampled
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Button
+import androidx.compose.material.Text
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.input.TextFieldValue
 
-@Composable
 @OptIn(ExperimentalFoundationApi::class)
 @Sampled
 fun stateMapSample() {
     @Composable
     fun NamesAndAges() {
-        var name by remember { mutableStateOf(TextFieldValue("name")) }
-        var saying by remember { mutableStateOf(TextFieldValue("saying")) }
-        val sayings = mutableStateMapOf(
-            "Caesar" to "Et tu, Brute?",
-            "Hamlet" to "To be or not to be",
-            "Richard III" to "My kingdom for a horse"
-        )
+        var name by remember { mutableStateOf("name") }
+        var saying by remember { mutableStateOf("saying") }
+        val sayings = remember {
+            mutableStateMapOf(
+                "Caesar" to "Et tu, Brute?",
+                "Hamlet" to "To be or not to be",
+                "Richard III" to "My kingdom for a horse"
+            )
+        }
 
         Column {
             Row {
@@ -55,10 +55,10 @@ fun stateMapSample() {
                     value = saying,
                     onValueChange = { saying = it }
                 )
-                Button(onClick = { sayings[name.text] = saying.text }) {
+                Button(onClick = { sayings[name] = saying }) {
                     Text("Add")
                 }
-                Button(onClick = { sayings.remove(name.text) }) {
+                Button(onClick = { sayings.remove(name) }) {
                     Text("Remove")
                 }
             }

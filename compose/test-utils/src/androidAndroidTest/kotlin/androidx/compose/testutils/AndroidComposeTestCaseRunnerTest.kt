@@ -17,14 +17,15 @@
 package androidx.compose.testutils
 
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.onCommit
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import org.junit.Rule
@@ -38,12 +39,11 @@ class AndroidComposeTestCaseRunnerTest {
     @get:Rule
     val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
-    internal fun <T : ComponentActivity> AndroidComposeTestRule<T>.forGivenContent(
-        composable: @Composable () -> Unit
-    ): ComposeTestCaseSetup {
+    internal fun <A : ComponentActivity> AndroidComposeTestRule<ActivityScenarioRule<A>, A>
+    .forGivenContent(composable: @Composable () -> Unit): ComposeTestCaseSetup {
         return forGivenTestCase(object : ComposeTestCase {
             @Composable
-            override fun emitContent() {
+            override fun Content() {
                 composable()
             }
         })
@@ -87,7 +87,7 @@ class AndroidComposeTestCaseRunnerTest {
         composeTestRule.forGivenContent {
             val state = remember { mutableStateOf(0) }
             Text("Hello ${state.value}")
-            onCommit {
+            SideEffect {
                 state.value++
             }
         }.performTestWithEventsControl {

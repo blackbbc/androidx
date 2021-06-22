@@ -18,28 +18,35 @@ package androidx.compose.ui.input.pointer
 
 import android.content.Context
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ExperimentalComposeApi
-import androidx.compose.runtime.Recomposer
-import androidx.compose.runtime.emptyContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.OpenComposeView
 import androidx.compose.ui.composed
+import androidx.compose.ui.findAndroidComposeView
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.gesture.PointerCoords
 import androidx.compose.ui.gesture.PointerProperties
-import androidx.compose.ui.gesture.tapGestureFilter
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.AndroidComposeView
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.viewinterop.AndroidView
@@ -69,20 +76,54 @@ class AndroidPointerInputTest {
     )
 
     private lateinit var androidComposeView: AndroidComposeView
-    private lateinit var container: ViewGroup
+    private lateinit var container: OpenComposeView
 
     @Before
     fun setup() {
         val activity = rule.activity
-        container = spy(FrameLayout(activity)).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+        container = spy(OpenComposeView(activity))
+
+        rule.runOnUiThread {
+            activity.setContentView(
+                container,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
             )
+        }
+    }
+
+    @Test
+    fun dispatchTouchEvent_invalidCoordinates() {
+        countDown { latch ->
+            rule.runOnUiThread {
+                container.setContent {
+                    FillLayout(
+                        Modifier
+                            .consumeMovementGestureFilter()
+                            .onGloballyPositioned { latch.countDown() }
+                    )
+                }
+            }
         }
 
         rule.runOnUiThread {
-            activity.setContentView(container)
+            val motionEvent = MotionEvent(
+                0,
+                MotionEvent.ACTION_DOWN,
+                1,
+                0,
+                arrayOf(PointerProperties(0)),
+                arrayOf(PointerCoords(Float.NaN, Float.NaN))
+            )
+
+            val androidComposeView = findAndroidComposeView(container)!!
+            // Act
+            val actual = androidComposeView.dispatchTouchEvent(motionEvent)
+
+            // Assert
+            assertThat(actual).isFalse()
         }
     }
 
@@ -93,7 +134,7 @@ class AndroidPointerInputTest {
 
         countDown { latch ->
             rule.runOnUiThread {
-                container.setContent(Recomposer.current()) {
+                container.setContent {
                     FillLayout(
                         Modifier
                             .onGloballyPositioned { latch.countDown() }
@@ -103,8 +144,6 @@ class AndroidPointerInputTest {
         }
 
         rule.runOnUiThread {
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
-
             val motionEvent = MotionEvent(
                 0,
                 MotionEvent.ACTION_DOWN,
@@ -115,7 +154,7 @@ class AndroidPointerInputTest {
             )
 
             // Act
-            val actual = androidComposeView.dispatchTouchEvent(motionEvent)
+            val actual = findRootView(container).dispatchTouchEvent(motionEvent)
 
             // Assert
             assertThat(actual).isFalse()
@@ -129,7 +168,7 @@ class AndroidPointerInputTest {
 
         countDown { latch ->
             rule.runOnUiThread {
-                container.setContent(Recomposer.current()) {
+                container.setContent {
                     FillLayout(
                         Modifier
                             .consumeMovementGestureFilter()
@@ -140,11 +179,8 @@ class AndroidPointerInputTest {
         }
 
         rule.runOnUiThread {
-
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
-
             val locationInWindow = IntArray(2).also {
-                androidComposeView.getLocationInWindow(it)
+                container.getLocationInWindow(it)
             }
 
             val motionEvent = MotionEvent(
@@ -157,7 +193,7 @@ class AndroidPointerInputTest {
             )
 
             // Act
-            val actual = androidComposeView.dispatchTouchEvent(motionEvent)
+            val actual = findRootView(container).dispatchTouchEvent(motionEvent)
 
             // Assert
             assertThat(actual).isTrue()
@@ -183,22 +219,24 @@ class AndroidPointerInputTest {
     @Test
     fun dispatchTouchEvent_notMeasuredLayoutsAreMeasuredFirst() {
         val size = mutableStateOf(10)
-        val latch = CountDownLatch(1)
+        var latch = CountDownLatch(1)
         var consumedDownPosition: Offset? = null
         rule.runOnUiThread {
-            container.setContent(Recomposer.current()) {
-                Layout(
-                    {},
-                    Modifier
-                        .consumeDownGestureFilter {
-                            consumedDownPosition = it
-                        }
-                        .onGloballyPositioned {
-                            latch.countDown()
-                        }
-                ) { _, _ ->
-                    val sizePx = size.value
-                    layout(sizePx, sizePx) {}
+            container.setContent {
+                Box(Modifier.fillMaxSize().wrapContentSize(align = AbsoluteAlignment.TopLeft)) {
+                    Layout(
+                        {},
+                        Modifier
+                            .consumeDownGestureFilter {
+                                consumedDownPosition = it
+                            }
+                            .onGloballyPositioned {
+                                latch.countDown()
+                            }
+                    ) { _, _ ->
+                        val sizePx = size.value
+                        layout(sizePx, sizePx) {}
+                    }
                 }
             }
         }
@@ -206,26 +244,25 @@ class AndroidPointerInputTest {
         assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue()
 
         rule.runOnUiThread {
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
-
             // we update size from 10 to 20 pixels
             size.value = 20
             // this call will synchronously mark the LayoutNode as needs remeasure
-            @OptIn(ExperimentalComposeApi::class)
             Snapshot.sendApplyNotifications()
+            val locationInWindow = IntArray(2).also {
+                container.getLocationInWindow(it)
+            }
 
-            val ownerPosition = androidComposeView.calculatePosition()
             val motionEvent = MotionEvent(
                 0,
                 MotionEvent.ACTION_DOWN,
                 1,
                 0,
                 arrayOf(PointerProperties(0)),
-                arrayOf(PointerCoords(ownerPosition.x + 15f, ownerPosition.y + 15f))
+                arrayOf(PointerCoords(locationInWindow[0] + 15f, locationInWindow[1] + 15f))
             )
 
             // we expect it to first remeasure and only then process
-            androidComposeView.dispatchTouchEvent(motionEvent)
+            findRootView(container).dispatchTouchEvent(motionEvent)
 
             assertThat(consumedDownPosition).isEqualTo(Offset(15f, 15f))
         }
@@ -248,7 +285,7 @@ class AndroidPointerInputTest {
 
         countDown { latch ->
             rule.runOnUiThread {
-                container.setContent(Recomposer.current()) {
+                container.setContent {
                     AndroidWithCompose(context, 1) {
                         AndroidWithCompose(context, 10) {
                             AndroidWithCompose(context, 100) {
@@ -270,11 +307,8 @@ class AndroidPointerInputTest {
         }
 
         rule.runOnUiThread {
-
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
-
             val locationInWindow = IntArray(2).also {
-                androidComposeView.getLocationInWindow(it)
+                container.getLocationInWindow(it)
             }
 
             val motionEvent = MotionEvent(
@@ -292,12 +326,12 @@ class AndroidPointerInputTest {
             )
 
             // Act
-            androidComposeView.dispatchTouchEvent(motionEvent)
+            findRootView(container).dispatchTouchEvent(motionEvent)
 
             // Assert
             assertThat(log).hasSize(1)
             assertThat(log[0]).hasSize(1)
-            assertThat(log[0][0].current.position).isEqualTo(Offset(0f, 0f))
+            assertThat(log[0][0].position).isEqualTo(Offset(0f, 0f))
         }
     }
 
@@ -310,7 +344,7 @@ class AndroidPointerInputTest {
 
         countDown { latch ->
             rule.runOnUiThread {
-                container.setContent(Recomposer.current()) {
+                container.setContent {
                     FillLayout(
                         Modifier
                             .consumeMovementGestureFilter(consumeMovement)
@@ -321,10 +355,8 @@ class AndroidPointerInputTest {
         }
 
         rule.runOnUiThread {
-
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
             val (x, y) = IntArray(2).let { array ->
-                androidComposeView.getLocationInWindow(array)
+                container.getLocationInWindow(array)
                 array.map { item -> item.toFloat() }
             }
 
@@ -346,10 +378,10 @@ class AndroidPointerInputTest {
                 arrayOf(PointerCoords(x + 1, y))
             )
 
-            androidComposeView.dispatchTouchEvent(down)
+            findRootView(container).dispatchTouchEvent(down)
 
             // Act
-            androidComposeView.dispatchTouchEvent(move)
+            findRootView(container).dispatchTouchEvent(move)
 
             // Assert
             if (callsRequestDisallowInterceptTouchEvent) {
@@ -375,7 +407,7 @@ class AndroidPointerInputTest {
 
         countDown { latch ->
             rule.runOnUiThread {
-                container.setContent(Recomposer.current()) {
+                container.setContent {
                     FillLayout(
                         Modifier
                             .logEventsGestureFilter(log)
@@ -386,16 +418,13 @@ class AndroidPointerInputTest {
         }
 
         rule.runOnUiThread {
-
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
-
             // Get the current location in window.
             val locationInWindow = IntArray(2).also {
-                androidComposeView.getLocationInWindow(it)
+                container.getLocationInWindow(it)
             }
 
             // Offset the androidComposeView.
-            androidComposeView.offsetTopAndBottom(offset)
+            container.offsetTopAndBottom(offset)
 
             // Create a motion event that is also offset.
             val motionEvent = MotionEvent(
@@ -413,12 +442,12 @@ class AndroidPointerInputTest {
             )
 
             // Act
-            androidComposeView.dispatchTouchEvent(motionEvent)
+            findRootView(container).dispatchTouchEvent(motionEvent)
 
             // Assert
             assertThat(log).hasSize(1)
             assertThat(log[0]).hasSize(1)
-            assertThat(log[0][0].current.position).isEqualTo(Offset(0f, 0f))
+            assertThat(log[0][0].position).isEqualTo(Offset(0f, 0f))
         }
     }
 
@@ -434,14 +463,14 @@ class AndroidPointerInputTest {
         var positionedLatch = CountDownLatch(1)
 
         rule.runOnUiThread {
-            container.setContent(Recomposer.current()) {
+            container.setContent {
                 FillLayout(
                     Modifier
-                        .tapGestureFilter {
-                            tapLatch.countDown()
+                        .pointerInput(Unit) {
+                            detectTapGestures { tapLatch.countDown() }
                         }.then(
-                            if (tap2Enabled) Modifier.tapGestureFilter {
-                                tapLatch2.countDown()
+                            if (tap2Enabled) Modifier.pointerInput(Unit) {
+                                detectTapGestures { tapLatch2.countDown() }
                             } else Modifier
                         ).onGloballyPositioned { positionedLatch.countDown() }
                 )
@@ -452,18 +481,16 @@ class AndroidPointerInputTest {
 
         val locationInWindow = IntArray(2)
         rule.runOnUiThread {
-            androidComposeView = container.getChildAt(0) as AndroidComposeView
-
             // Get the current location in window.
-            androidComposeView.getLocationInWindow(locationInWindow)
+            container.getLocationInWindow(locationInWindow)
 
             val downEvent = createPointerEventAt(0, MotionEvent.ACTION_DOWN, locationInWindow)
-            androidComposeView.dispatchTouchEvent(downEvent)
+            findRootView(container).dispatchTouchEvent(downEvent)
         }
 
         rule.runOnUiThread {
             val upEvent = createPointerEventAt(200, MotionEvent.ACTION_UP, locationInWindow)
-            androidComposeView.dispatchTouchEvent(upEvent)
+            findRootView(container).dispatchTouchEvent(upEvent)
         }
 
         assertTrue(tapLatch.await(1, TimeUnit.SECONDS))
@@ -475,7 +502,7 @@ class AndroidPointerInputTest {
 
         rule.runOnUiThread {
             val downEvent = createPointerEventAt(1000, MotionEvent.ACTION_DOWN, locationInWindow)
-            androidComposeView.dispatchTouchEvent(downEvent)
+            findRootView(container).dispatchTouchEvent(downEvent)
         }
         // Need to wait for long press timeout (at least)
         rule.runOnUiThread {
@@ -484,7 +511,7 @@ class AndroidPointerInputTest {
                 MotionEvent.ACTION_UP,
                 locationInWindow
             )
-            androidComposeView.dispatchTouchEvent(upEvent)
+            findRootView(container).dispatchTouchEvent(upEvent)
         }
         assertTrue(tapLatch2.await(1, TimeUnit.SECONDS))
 
@@ -494,12 +521,60 @@ class AndroidPointerInputTest {
 
         rule.runOnUiThread {
             val downEvent = createPointerEventAt(2000, MotionEvent.ACTION_DOWN, locationInWindow)
-            androidComposeView.dispatchTouchEvent(downEvent)
+            findRootView(container).dispatchTouchEvent(downEvent)
         }
         rule.runOnUiThread {
             val upEvent = createPointerEventAt(2200, MotionEvent.ACTION_UP, locationInWindow)
-            androidComposeView.dispatchTouchEvent(upEvent)
+            findRootView(container).dispatchTouchEvent(upEvent)
         }
+        assertTrue(tapLatch.await(1, TimeUnit.SECONDS))
+    }
+
+    /**
+     * There are times that getLocationOnScreen() returns (0, 0). Touch input should still arrive
+     * at the correct place even if getLocationOnScreen() gives a different result than the
+     * rawX, rawY indicate.
+     */
+    @Test
+    fun badGetLocationOnScreen() {
+        val tapLatch = CountDownLatch(1)
+        val layoutLatch = CountDownLatch(1)
+        rule.runOnUiThread {
+            container.setContent {
+                with(LocalDensity.current) {
+                    Box(
+                        Modifier
+                            .size(250.toDp())
+                            .layout { measurable, constraints ->
+                                val p = measurable.measure(constraints)
+                                layout(p.width, p.height) {
+                                    p.place(0, 0)
+                                    layoutLatch.countDown()
+                                }
+                            }
+                    ) {
+                        Box(
+                            Modifier
+                                .align(AbsoluteAlignment.TopLeft)
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        awaitFirstDown()
+                                        tapLatch.countDown()
+                                    }
+                                }.size(10.toDp())
+                        )
+                    }
+                }
+            }
+        }
+        assertTrue(layoutLatch.await(1, TimeUnit.SECONDS))
+        rule.runOnUiThread { }
+
+        val down = createPointerEventAt(0, MotionEvent.ACTION_DOWN, intArrayOf(105, 205))
+        down.offsetLocation(-100f, -200f)
+        val composeView = findAndroidComposeView(container) as AndroidComposeView
+        composeView.dispatchTouchEvent(down)
+
         assertTrue(tapLatch.await(1, TimeUnit.SECONDS))
     }
 
@@ -519,12 +594,11 @@ class AndroidPointerInputTest {
         )
 }
 
-@Suppress("TestFunctionName")
 @Composable
-fun AndroidWithCompose(context: Context, androidPadding: Int, children: @Composable () -> Unit) {
-    val anotherLayout = FrameLayout(context).also { view ->
-        view.setContent(Recomposer.current()) {
-            children()
+fun AndroidWithCompose(context: Context, androidPadding: Int, content: @Composable () -> Unit) {
+    val anotherLayout = ComposeView(context).also { view ->
+        view.setContent {
+            content()
         }
         view.setPadding(androidPadding, androidPadding, androidPadding, androidPadding)
     }
@@ -559,10 +633,7 @@ private class ConsumeMovementGestureFilter(val consumeMovement: Boolean) : Point
     ) {
         if (consumeMovement) {
             pointerEvent.changes.fastForEach {
-                it.consumePositionChange(
-                    it.positionChange().x,
-                    it.positionChange().y
-                )
+                it.consumePositionChange()
             }
         }
     }
@@ -579,7 +650,7 @@ private class ConsumeDownChangeFilter : PointerInputFilter() {
     ) {
         pointerEvent.changes.fastForEach {
             if (it.changedToDown()) {
-                onDown(it.current.position!!)
+                onDown(it.position)
                 it.consumeDownChange()
             }
         }
@@ -607,7 +678,7 @@ private class LogEventsGestureFilter(val log: MutableList<List<PointerInputChang
 @Suppress("TestFunctionName")
 @Composable
 private fun FillLayout(modifier: Modifier = Modifier) {
-    Layout(emptyContent(), modifier) { _, constraints ->
+    Layout({}, modifier) { _, constraints ->
         layout(constraints.maxWidth, constraints.maxHeight) {}
     }
 }
@@ -644,3 +715,11 @@ private fun MotionEvent(
     0,
     0
 )
+
+internal fun findRootView(view: View): View {
+    val parent = view.parent
+    if (parent is View) {
+        return findRootView(parent)
+    }
+    return view
+}

@@ -17,43 +17,138 @@
 package androidx.wear.watchface.control
 
 import android.annotation.SuppressLint
+import androidx.annotation.RequiresApi
 import androidx.annotation.UiThread
+import androidx.wear.utility.TraceEvent
+import androidx.wear.watchface.IndentingPrintWriter
+import androidx.wear.watchface.control.data.WallpaperInteractiveWatchFaceInstanceParams
 
-/** Keeps track of [InteractiveWatchFaceInstance]s. */
+/** Keeps track of [InteractiveWatchFaceImpl]s. */
 internal class InteractiveInstanceManager {
     private constructor()
 
     private class RefCountedInteractiveWatchFaceInstance(
-        val instance: InteractiveWatchFaceInstance,
+        val impl: InteractiveWatchFaceImpl,
         var refcount: Int
+    ) {
+        @UiThread
+        fun dump(writer: IndentingPrintWriter) {
+            writer.println("InteractiveInstanceManager:")
+            writer.increaseIndent()
+            writer.println("impl.instanceId=${impl.instanceId}")
+            writer.println("refcount=$refcount")
+            impl.engine.dump(writer)
+            writer.decreaseIndent()
+        }
+    }
+
+    class PendingWallpaperInteractiveWatchFaceInstance(
+        val params: WallpaperInteractiveWatchFaceInstanceParams,
+        val callback: IPendingInteractiveWatchFace
     )
 
     companion object {
         private val instances = HashMap<String, RefCountedInteractiveWatchFaceInstance>()
+        private val pendingWallpaperInteractiveWatchFaceInstanceLock = Any()
+        private var pendingWallpaperInteractiveWatchFaceInstance:
+            PendingWallpaperInteractiveWatchFaceInstance? = null
 
         @SuppressLint("SyntheticAccessor")
-        @UiThread
-        fun addInstance(instance: InteractiveWatchFaceInstance) {
-            require(!instances.containsKey(instance.instanceId))
-            instances[instance.instanceId] = RefCountedInteractiveWatchFaceInstance(instance, 1)
+        fun addInstance(impl: InteractiveWatchFaceImpl) {
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                require(!instances.containsKey(impl.instanceId)) {
+                    "Already have an InteractiveWatchFaceImpl with id ${impl.instanceId}"
+                }
+                instances[impl.instanceId] = RefCountedInteractiveWatchFaceInstance(impl, 1)
+            }
         }
 
         @SuppressLint("SyntheticAccessor")
-        @UiThread
-        fun getAndRetainInstance(instanceId: String): InteractiveWatchFaceInstance ? {
-            val refCountedInstance = instances[instanceId] ?: return null
-            refCountedInstance.refcount++
-            return refCountedInstance.instance
+        fun getAndRetainInstance(instanceId: String): InteractiveWatchFaceImpl? {
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                val refCountedInstance = instances[instanceId] ?: return null
+                refCountedInstance.refcount++
+                return refCountedInstance.impl
+            }
         }
 
         @SuppressLint("SyntheticAccessor")
-        @UiThread
         fun releaseInstance(instanceId: String) {
-            val instance = instances[instanceId]!!
-            if (--instance.refcount == 0) {
-                instance.instance.engine.onDestroy()
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                instances[instanceId]?.let {
+                    if (--it.refcount == 0) {
+                        instances.remove(instanceId)
+                    }
+                }
+            }
+        }
+
+        @SuppressLint("SyntheticAccessor")
+        fun deleteInstance(instanceId: String) {
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
                 instances.remove(instanceId)
             }
+        }
+
+        @SuppressLint("SyntheticAccessor")
+        fun renameInstance(oldInstanceId: String, newInstanceId: String) {
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                val instance = instances.remove(oldInstanceId)
+                require(instance != null) {
+                    "Expected an InteractiveWatchFaceImpl with id $oldInstanceId"
+                }
+                require(!instances.containsKey(newInstanceId)) {
+                    "Already have an InteractiveWatchFaceImpl with id $newInstanceId"
+                }
+                instances.put(newInstanceId, instance)
+            }
+        }
+
+        /** Can be called on any thread. */
+        @SuppressLint("SyntheticAccessor")
+        @RequiresApi(27)
+        fun getExistingInstanceOrSetPendingWallpaperInteractiveWatchFaceInstance(
+            value: PendingWallpaperInteractiveWatchFaceInstance
+        ): IInteractiveWatchFace? {
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                val instance = instances[value.params.instanceId]
+                return if (instance != null) {
+                    instance.impl
+                } else {
+                    TraceEvent("Set pendingWallpaperInteractiveWatchFaceInstance").use {
+                        pendingWallpaperInteractiveWatchFaceInstance = value
+                    }
+                    null
+                }
+            }
+        }
+
+        /** Can be called on any thread. */
+        @SuppressLint("SyntheticAccessor")
+        fun takePendingWallpaperInteractiveWatchFaceInstance():
+            PendingWallpaperInteractiveWatchFaceInstance? {
+                synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                    val returnValue = pendingWallpaperInteractiveWatchFaceInstance
+                    pendingWallpaperInteractiveWatchFaceInstance = null
+                    return returnValue
+                }
+            }
+
+        @UiThread
+        fun dump(writer: IndentingPrintWriter) {
+            writer.println("InteractiveInstanceManager instances:")
+            writer.increaseIndent()
+            pendingWallpaperInteractiveWatchFaceInstance?.let {
+                writer.println(
+                    "Pending WallpaperInteractiveWatchFaceInstance id ${it.params.instanceId}"
+                )
+            }
+            synchronized(pendingWallpaperInteractiveWatchFaceInstanceLock) {
+                for ((_, value) in instances) {
+                    value.dump(writer)
+                }
+            }
+            writer.decreaseIndent()
         }
     }
 }

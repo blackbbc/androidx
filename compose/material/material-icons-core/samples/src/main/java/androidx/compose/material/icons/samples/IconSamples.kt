@@ -24,7 +24,7 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
-import androidx.compose.ui.graphics.vector.VectorAsset
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 
 @Sampled
@@ -38,10 +38,10 @@ fun AppIcons() {
 @Sampled
 @Composable
 fun DrawIcon() {
-    Icon(Icons.Rounded.Menu)
+    Icon(Icons.Rounded.Menu, contentDescription = "Localized description")
 }
 
 @Composable
-private fun SomeComposable(icon: VectorAsset) {
+private fun SomeComposable(icon: ImageVector) {
     Box(Modifier.paint(rememberVectorPainter(icon)))
 }

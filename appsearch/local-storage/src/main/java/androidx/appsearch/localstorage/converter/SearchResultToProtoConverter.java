@@ -22,12 +22,16 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RestrictTo;
 import androidx.appsearch.app.GenericDocument;
 import androidx.appsearch.app.SearchResult;
+import androidx.appsearch.app.SearchResultPage;
+import androidx.core.util.Preconditions;
 
 import com.google.android.icing.proto.SearchResultProto;
+import com.google.android.icing.proto.SearchResultProtoOrBuilder;
 import com.google.android.icing.proto.SnippetMatchProto;
 import com.google.android.icing.proto.SnippetProto;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Translates a {@link SearchResultProto} into {@link SearchResult}s.
@@ -36,15 +40,49 @@ import java.util.ArrayList;
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public class SearchResultToProtoConverter {
-    private SearchResultToProtoConverter() {}
+    private SearchResultToProtoConverter() {
+    }
 
-    /** Translate a {@link SearchResultProto.ResultProto} into {@link SearchResult}. */
+    /**
+     * Translate a {@link SearchResultProto} into {@link SearchResultPage}.
+     *
+     * @param proto The {@link SearchResultProto} containing results.
+     * @param packageNames A parallel array of package names. The package name at index 'i' of
+     *                     this list should be the package that indexed the document at index 'i'
+     *                     of proto.getResults(i).
+     * @return {@link SearchResultPage} of results.
+     */
     @NonNull
-    public static SearchResult convertSearchResult(
-            @NonNull SearchResultProto.ResultProtoOrBuilder proto) {
+    public static SearchResultPage toSearchResultPage(@NonNull SearchResultProtoOrBuilder proto,
+            @NonNull List<String> packageNames) {
+        Preconditions.checkArgument(proto.getResultsCount() == packageNames.size(), "Size of "
+                + "results does not match the number of package names.");
         Bundle bundle = new Bundle();
-        GenericDocument document = GenericDocumentToProtoConverter.convert(proto.getDocument());
+        bundle.putLong(SearchResultPage.NEXT_PAGE_TOKEN_FIELD, proto.getNextPageToken());
+        ArrayList<Bundle> resultBundles = new ArrayList<>(proto.getResultsCount());
+        for (int i = 0; i < proto.getResultsCount(); i++) {
+            resultBundles.add(toSearchResultBundle(proto.getResults(i),
+                    packageNames.get(i)));
+        }
+        bundle.putParcelableArrayList(SearchResultPage.RESULTS_FIELD, resultBundles);
+        return new SearchResultPage(bundle);
+    }
+
+    /**
+     * Translate a {@link SearchResultProto.ResultProto} into {@link SearchResult}.
+     *
+     * @param proto The proto to be converted.
+     * @param packageName The package name associated with the document in {@code proto}.
+     * @return A {@link SearchResult} bundle.
+     */
+    @NonNull
+    private static Bundle toSearchResultBundle(
+            @NonNull SearchResultProto.ResultProtoOrBuilder proto, @NonNull String packageName) {
+        Bundle bundle = new Bundle();
+        GenericDocument document =
+                GenericDocumentToProtoConverter.toGenericDocument(proto.getDocument());
         bundle.putBundle(SearchResult.DOCUMENT_FIELD, document.getBundle());
+        bundle.putString(SearchResult.PACKAGE_NAME_FIELD, packageName);
 
         ArrayList<Bundle> matchList = new ArrayList<>();
         if (proto.hasSnippet()) {
@@ -59,7 +97,7 @@ public class SearchResultToProtoConverter {
         }
         bundle.putParcelableArrayList(SearchResult.MATCHES_FIELD, matchList);
 
-        return new SearchResult(bundle);
+        return bundle;
     }
 
     private static Bundle convertToMatchInfoBundle(

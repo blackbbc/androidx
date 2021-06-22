@@ -20,6 +20,7 @@ import androidx.activity.lint.ActivityResultFragmentVersionDetector.Companion.FR
 import com.android.tools.lint.checks.infrastructure.LintDetectorTest
 import com.android.tools.lint.detector.api.Detector
 import com.android.tools.lint.detector.api.Issue
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
@@ -57,6 +58,103 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
     }
 
     @Test
+    fun expectPassRegisterForActivityResultStableVersions() {
+        lint().files(
+            kotlin(
+                """
+                package com.example
+
+                import androidx.activity.result.ActivityResultCaller
+                import androidx.activity.result.contract.ActivityResultContract
+
+                val launcher = ActivityResultCaller().registerForActivityResult(ActivityResultContract())
+            """
+            ),
+            gradle(
+                "build.gradle",
+                """
+                dependencies {
+                    api("androidx.fragment:fragment:1.3.1")
+                }
+            """
+            ).indented()
+        )
+            .run().expectClean()
+    }
+
+    @Test
+    fun expectPassNewerStableVersion() {
+        lint().files(
+            kotlin(
+                """
+                package com.example
+
+                import androidx.activity.result.ActivityResultCaller
+                import androidx.activity.result.contract.ActivityResultContract
+
+                val launcher = ActivityResultCaller().registerForActivityResult(ActivityResultContract())
+            """
+            ),
+            gradle(
+                "build.gradle",
+                """
+                dependencies {
+                    api("androidx.fragment:fragment:1.4.0")
+                }
+            """
+            ).indented()
+        ).run().expectClean()
+    }
+
+    @Test
+    fun expectPassNewerSnapshotVersions() {
+        lint().files(
+            kotlin(
+                """
+                package com.example
+
+                import androidx.activity.result.ActivityResultCaller
+                import androidx.activity.result.contract.ActivityResultContract
+
+                val launcher = ActivityResultCaller().registerForActivityResult(ActivityResultContract())
+            """
+            ),
+            gradle(
+                "build.gradle",
+                """
+                dependencies {
+                    api("androidx.fragment:fragment:1.4.0-SNAPSHOT")
+                }
+            """
+            ).indented()
+        ).run().expectClean()
+    }
+
+    @Test
+    fun expectPassNewerAlphaVersions() {
+        lint().files(
+            kotlin(
+                """
+                package com.example
+
+                import androidx.activity.result.ActivityResultCaller
+                import androidx.activity.result.contract.ActivityResultContract
+
+                val launcher = ActivityResultCaller().registerForActivityResult(ActivityResultContract())
+            """
+            ),
+            gradle(
+                "build.gradle",
+                """
+                dependencies {
+                    api("androidx.fragment:fragment:1.4.0-alpha01")
+                }
+            """
+            ).indented()
+        ).run().expectClean()
+    }
+
+    @Test
     fun expectPassRegisterForActivityResultProject() {
         lint().files(
             kotlin(
@@ -87,7 +185,7 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
             gradle(
                 """
                 dependencies {
-                    api("androidx.fragment:fragment:1.3.0-alpha05")
+                    api("androidx.fragment:fragment:1.2.4")
                 }
             """
             ),
@@ -119,7 +217,7 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
             gradle(
                 """
                 dependencies {
-                    api("androidx.fragment:fragment:1.3.0-alpha05")
+                    api("androidx.fragment:fragment:1.2.4")
                 }
             """
             ),
@@ -155,7 +253,7 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
             gradle(
                 """
                 dependencies {
-                    api("androidx.fragment:fragment:1.3.0-alpha05")
+                    api("androidx.fragment:fragment:1.2.4")
                 }
             """
             ),
@@ -179,10 +277,10 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
             .run()
             .expect(
                 """
-                src/main/kotlin/com/example/test.kt:6: Error: Upgrade Fragment version to at least 1.3.0-alpha08. [InvalidFragmentVersionForActivityResult]
+                src/main/kotlin/com/example/test.kt:6: Error: Upgrade Fragment version to at least $FRAGMENT_VERSION. [InvalidFragmentVersionForActivityResult]
                 val launcher1 = ActivityResultCaller().registerForActivityResult(ActivityResultContract())
                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                src/main/kotlin/com/example/test.kt:11: Error: Upgrade Fragment version to at least 1.3.0-alpha08. [InvalidFragmentVersionForActivityResult]
+                src/main/kotlin/com/example/test.kt:11: Error: Upgrade Fragment version to at least $FRAGMENT_VERSION. [InvalidFragmentVersionForActivityResult]
                     launcher2 = ActivityResultCaller().registerForActivityResult(ActivityResultContract())
                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                 2 errors, 0 warnings
@@ -190,6 +288,7 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
             )
     }
 
+    @Ignore("b/187524979")
     @Test
     fun expectFailTransitiveDependency() {
         val projectFragment = project(
@@ -207,14 +306,14 @@ class ActivityResultFragmentVersionDetectorTest : LintDetectorTest() {
                 "build.gradle",
                 """
                 dependencies {
-                    implementation("androidx.fragment:fragment-ktx:1.3.0-alpha05")
+                    implementation("androidx.fragment:fragment-ktx:1.2.4")
                 }
             """
             ).indented()
         ).withDependencyGraph(
             """
-                +--- androidx.fragment:fragment-ktx:1.3.0-alpha05
-                     \--- androidx.fragment:fragment:1.3.0-alpha05
+                +--- androidx.fragment:fragment-ktx:1.2.4
+                     \--- androidx.fragment:fragment:1.2.4
             """.trimIndent()
         )
 

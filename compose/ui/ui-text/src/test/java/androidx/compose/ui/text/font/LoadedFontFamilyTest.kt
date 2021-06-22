@@ -16,7 +16,6 @@
 
 package androidx.compose.ui.text.font
 
-import androidx.compose.ui.text.Typeface
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,7 +29,7 @@ class LoadedFontFamilyTest {
     fun testCreateAndGetTypeface() {
         val typeface = TestTypeface(FontFamily.Monospace)
 
-        val loadedFontFamily = fontFamily(typeface)
+        val loadedFontFamily = FontFamily(typeface) as LoadedFontFamily
 
         assertThat(loadedFontFamily.typeface).isEqualTo(typeface)
     }

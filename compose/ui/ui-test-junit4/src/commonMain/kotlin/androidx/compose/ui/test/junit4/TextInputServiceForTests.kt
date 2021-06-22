@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The Android Open Source Project
+ * Copyright 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
 
 package androidx.compose.ui.test.junit4
 
-import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.input.EditOperation
+import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.InputSessionToken
-import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.ImeOptions
 import androidx.compose.ui.text.input.PlatformTextInputService
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TextInputService
+import androidx.compose.ui.text.input.TextInputSession
 
 /**
  * Extra layer that serves as an observer between the text input service and text fields.
@@ -32,33 +31,32 @@ import androidx.compose.ui.text.input.TextInputService
  * accept input from the IME. Here we grab that callback so we can fetch it commands the same
  * way IME would do.
  */
-@OptIn(ExperimentalTextApi::class)
 internal class TextInputServiceForTests(
     platformTextInputService: PlatformTextInputService
 ) : TextInputService(platformTextInputService) {
 
-    var onEditCommand: ((List<EditOperation>) -> Unit)? = null
+    var onEditCommand: ((List<EditCommand>) -> Unit)? = null
     var onImeActionPerformed: ((ImeAction) -> Unit)? = null
 
     override fun startInput(
         value: TextFieldValue,
-        keyboardOptions: KeyboardOptions,
-        onEditCommand: (List<EditOperation>) -> Unit,
+        imeOptions: ImeOptions,
+        onEditCommand: (List<EditCommand>) -> Unit,
         onImeActionPerformed: (ImeAction) -> Unit
-    ): InputSessionToken {
+    ): TextInputSession {
         this.onEditCommand = onEditCommand
         this.onImeActionPerformed = onImeActionPerformed
         return super.startInput(
             value,
-            keyboardOptions,
+            imeOptions,
             onEditCommand,
             onImeActionPerformed
         )
     }
 
-    override fun stopInput(token: InputSessionToken) {
+    override fun stopInput(session: TextInputSession) {
         this.onEditCommand = null
         this.onImeActionPerformed = null
-        super.stopInput(token)
+        super.stopInput(session)
     }
 }

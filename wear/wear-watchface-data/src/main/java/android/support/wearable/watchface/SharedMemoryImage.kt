@@ -14,65 +14,78 @@
  * limitations under the License.
  */
 
-@file:JvmName("SharedMemoryImage")
-
 package android.support.wearable.watchface
 
 import android.graphics.Bitmap
-import android.graphics.Bitmap.CompressFormat
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.SharedMemory
+import androidx.annotation.RequiresApi
 import androidx.annotation.RestrictTo
-import java.io.ByteArrayOutputStream
+import androidx.wear.utility.TraceEvent
 import java.nio.ByteBuffer
 
 /**
- * WebP compresses a [Bitmap] with the specified quality (100 = lossless) which is
- * stored in shared memory and serialized to a bundle.
+ * This class requires API level 27 and is only intended for use in conjunction with
+ * wear-watchface-client which also requires API level 27.
  *
  * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-@Suppress("DEPRECATION")
-public fun Bitmap.toAshmemCompressedImageBundle(quality: Int): Bundle {
-    val stream = ByteArrayOutputStream()
-    this.compress(CompressFormat.WEBP, quality, stream)
-    val bytes = stream.toByteArray()
-    val ashmem = SharedMemory.create("WatchFace.Screenshot.Bitmap", bytes.size)
-    var byteBuffer: ByteBuffer? = null
-    try {
-        byteBuffer = ashmem.mapReadWrite()
-        byteBuffer.put(bytes)
-        return Bundle().apply {
-            this.putParcelable(Constants.KEY_SCREENSHOT, ashmem)
+public class SharedMemoryImage {
+    @RequiresApi(27)
+    public companion object {
+        /** Stores a [Bitmap] in shared memory and serializes it as a bundle. */
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+        @Suppress("DEPRECATION")
+        public fun ashmemWriteImageBundle(
+            bitmap: Bitmap
+        ): Bundle = TraceEvent("SharedMemoryImage.ashmemWriteImageBundle").use {
+            val ashmem =
+                SharedMemory.create("WatchFace.Screenshot.Bitmap", bitmap.allocationByteCount)
+            var byteBuffer: ByteBuffer? = null
+            try {
+                byteBuffer = ashmem.mapReadWrite()
+                bitmap.copyPixelsToBuffer(byteBuffer)
+                return Bundle().apply {
+                    this.putInt(Constants.KEY_BITMAP_WIDTH_PX, bitmap.width)
+                    this.putInt(Constants.KEY_BITMAP_HEIGHT_PX, bitmap.height)
+                    this.putInt(Constants.KEY_BITMAP_CONFIG_ORDINAL, bitmap.config.ordinal)
+                    this.putParcelable(Constants.KEY_SCREENSHOT, ashmem)
+                }
+            } finally {
+                if (byteBuffer != null) {
+                    SharedMemory.unmap(byteBuffer)
+                }
+            }
         }
-    } finally {
-        if (byteBuffer != null) {
-            SharedMemory.unmap(byteBuffer)
-        }
-    }
-}
 
-/**
- * Deserializes a [Bundle] containing a [Bitmap] serialized by
- * [Bitmap.toAshmemCompressedImageBundle].
- *
- * @hide
- */
-@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-public fun Bundle.ashmemCompressedImageBundleToBitmap(): Bitmap? {
-    this.classLoader = SharedMemory::class.java.classLoader
-    val ashmem = this.getParcelable<SharedMemory>(Constants.KEY_SCREENSHOT) ?: return null
-    var byteBuffer: ByteBuffer? = null
-    try {
-        byteBuffer = ashmem.mapReadOnly()
-        val bufferBytes = ByteArray(byteBuffer.remaining())
-        byteBuffer.get(bufferBytes)
-        return BitmapFactory.decodeByteArray(bufferBytes, /* offset= */0, bufferBytes.size)
-    } finally {
-        if (byteBuffer != null) {
-            SharedMemory.unmap(byteBuffer)
+        /**
+         * Deserializes a [Bundle] containing a [Bitmap] serialized by [ashmemWriteImageBundle].
+         */
+        public fun ashmemReadImageBundle(
+            bundle: Bundle
+        ): Bitmap = TraceEvent("SharedMemoryImage.ashmemReadImageBundle").use {
+            bundle.classLoader = SharedMemory::class.java.classLoader
+            val ashmem = bundle.getParcelable<SharedMemory>(Constants.KEY_SCREENSHOT)
+                ?: throw IllegalStateException("Bundle did not contain " + Constants.KEY_SCREENSHOT)
+            val width = bundle.getInt(Constants.KEY_BITMAP_WIDTH_PX)
+            val height = bundle.getInt(Constants.KEY_BITMAP_HEIGHT_PX)
+            val configOrdinal = bundle.getInt(Constants.KEY_BITMAP_CONFIG_ORDINAL)
+            var byteBuffer: ByteBuffer? = null
+            try {
+                val bitmap = Bitmap.createBitmap(
+                    width,
+                    height,
+                    Bitmap.Config.values().find { it.ordinal == configOrdinal }!!
+                )
+                byteBuffer = ashmem.mapReadOnly()
+                bitmap.copyPixelsFromBuffer(byteBuffer)
+                return bitmap
+            } finally {
+                if (byteBuffer != null) {
+                    SharedMemory.unmap(byteBuffer)
+                }
+            }
         }
     }
 }

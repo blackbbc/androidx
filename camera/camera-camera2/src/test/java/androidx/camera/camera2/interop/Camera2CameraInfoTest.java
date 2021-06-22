@@ -24,12 +24,10 @@ import static org.mockito.Mockito.when;
 import android.hardware.camera2.CameraCharacteristics;
 import android.os.Build;
 
-import androidx.annotation.experimental.UseExperimental;
+import androidx.annotation.OptIn;
 import androidx.camera.camera2.internal.Camera2CameraInfoImpl;
 import androidx.camera.camera2.internal.compat.CameraCharacteristicsCompat;
-import androidx.camera.core.Camera;
 import androidx.camera.core.impl.CameraInfoInternal;
-import androidx.camera.testing.fakes.FakeCamera;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -40,7 +38,7 @@ import org.robolectric.annotation.internal.DoNotInstrument;
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
 @Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
-@UseExperimental(markerClass = ExperimentalCamera2Interop.class)
+@OptIn(markerClass = ExperimentalCamera2Interop.class)
 public final class Camera2CameraInfoTest {
 
     @Test
@@ -76,20 +74,15 @@ public final class Camera2CameraInfoTest {
     public void canGetCamera2CameraInfo() {
         Camera2CameraInfo camera2CameraInfo = mock(Camera2CameraInfo.class);
         Camera2CameraInfoImpl cameraInfoImpl = mock(Camera2CameraInfoImpl.class);
-        when(cameraInfoImpl.getCamera2CameraInfo()).thenAnswer(
-                ignored -> camera2CameraInfo);
-        Camera camera = new FakeCamera(null, cameraInfoImpl);
-        Camera2CameraInfo resultCamera2CameraInfo = Camera2CameraInfo.fromCameraInfo(
-                camera.getCameraInfo());
+        when(cameraInfoImpl.getCamera2CameraInfo()).thenAnswer(ignored -> camera2CameraInfo);
+        Camera2CameraInfo resultCamera2CameraInfo = Camera2CameraInfo.from(cameraInfoImpl);
 
         assertThat(resultCamera2CameraInfo).isEqualTo(camera2CameraInfo);
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void getCameraInfoThrows_whenNotCamera2Impl() {
+    @Test(expected = IllegalArgumentException.class)
+    public void fromCameraInfoThrows_whenNotCamera2Impl() {
         CameraInfoInternal wrongCameraInfo = mock(CameraInfoInternal.class);
-        Camera camera = new FakeCamera(null, wrongCameraInfo);
-
-        Camera2CameraInfo.fromCameraInfo(camera.getCameraInfo());
+        Camera2CameraInfo.from(wrongCameraInfo);
     }
 }

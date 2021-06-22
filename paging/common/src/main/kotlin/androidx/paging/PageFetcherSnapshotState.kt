@@ -27,7 +27,6 @@ import androidx.paging.PageEvent.Insert.Companion.Refresh
 import androidx.paging.PagingConfig.Companion.MAX_SIZE_UNBOUNDED
 import androidx.paging.PagingSource.LoadResult.Page
 import androidx.paging.PagingSource.LoadResult.Page.Companion.COUNT_UNDEFINED
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -49,7 +48,7 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
         private set
 
     internal val storageCount
-        get() = pages.sumBy { it.data.size }
+        get() = pages.sumOf { it.data.size }
 
     private var _placeholdersBefore = 0
 
@@ -109,16 +108,14 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
     internal var sourceLoadStates = LoadStates.IDLE
         private set
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     fun consumePrependGenerationIdAsFlow(): Flow<Int> {
         return prependGenerationIdCh.consumeAsFlow()
-            .onStart { prependGenerationIdCh.offer(prependGenerationId) }
+            .onStart { prependGenerationIdCh.trySend(prependGenerationId) }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     fun consumeAppendGenerationIdAsFlow(): Flow<Int> {
         return appendGenerationIdCh.consumeAsFlow()
-            .onStart { appendGenerationIdCh.offer(appendGenerationId) }
+            .onStart { appendGenerationIdCh.trySend(appendGenerationId) }
     }
 
     fun setSourceLoadState(type: LoadType, newState: LoadState): Boolean {
@@ -152,24 +149,33 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
                 placeholdersBefore = placeholdersBefore,
                 placeholdersAfter = placeholdersAfter,
                 combinedLoadStates = CombinedLoadStates(
+                    refresh = sourceLoadStates.refresh,
+                    prepend = sourceLoadStates.prepend,
+                    append = sourceLoadStates.append,
                     source = sourceLoadStates,
-                    mediator = null
+                    mediator = null,
                 )
             )
             PREPEND -> Prepend(
                 pages = pages,
                 placeholdersBefore = placeholdersBefore,
                 combinedLoadStates = CombinedLoadStates(
+                    refresh = sourceLoadStates.refresh,
+                    prepend = sourceLoadStates.prepend,
+                    append = sourceLoadStates.append,
                     source = sourceLoadStates,
-                    mediator = null
+                    mediator = null,
                 )
             )
             APPEND -> Append(
                 pages = pages,
                 placeholdersAfter = placeholdersAfter,
                 combinedLoadStates = CombinedLoadStates(
+                    refresh = sourceLoadStates.refresh,
+                    prepend = sourceLoadStates.prepend,
+                    append = sourceLoadStates.append,
                     source = sourceLoadStates,
-                    mediator = null
+                    mediator = null,
                 )
             )
         }
@@ -245,7 +251,7 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
                 placeholdersBefore = event.placeholdersRemaining
 
                 prependGenerationId++
-                prependGenerationIdCh.offer(prependGenerationId)
+                prependGenerationIdCh.trySend(prependGenerationId)
             }
             APPEND -> {
                 repeat(event.pageCount) { _pages.removeAt(pages.size - 1) }
@@ -253,7 +259,7 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
                 placeholdersAfter = event.placeholdersRemaining
 
                 appendGenerationId++
-                appendGenerationIdCh.offer(appendGenerationId)
+                appendGenerationIdCh.trySend(appendGenerationId)
             }
             else -> throw IllegalArgumentException("cannot drop ${event.loadType}")
         }
@@ -323,7 +329,7 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
         }
     }
 
-    internal fun currentPagingState(viewportHint: ViewportHint?) = PagingState<Key, Value>(
+    internal fun currentPagingState(viewportHint: ViewportHint.Access?) = PagingState<Key, Value>(
         pages = pages.toList(),
         anchorPosition = viewportHint?.let { hint ->
             // Translate viewportHint to anchorPosition based on fetcher state (pre-transformation),
@@ -385,6 +391,7 @@ internal class PageFetcherSnapshotState<Key : Any, Value : Any> private construc
      * Wrapper for [PageFetcherSnapshotState], which protects access behind a [Mutex] to prevent
      * race scenarios.
      */
+    @Suppress("SyntheticAccessor")
     internal class Holder<Key : Any, Value : Any>(
         private val config: PagingConfig
     ) {

@@ -52,7 +52,10 @@ import java.util.concurrent.TimeUnit
  *
  * @see androidx.benchmark.junit4.BenchmarkRule#getState()
  */
-public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) constructor() {
+public class BenchmarkState {
+
+    /** @suppress */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) constructor()
 
     private var stages = listOf(
         MetricsContainer(arrayOf(TimeCapture()), 1),
@@ -74,7 +77,7 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
      */
     @JvmField // Used by [BenchmarkState.keepRunningInline()]
     @PublishedApi
-    internal var iterationsRemaining = -1
+    internal var iterationsRemaining: Int = -1
 
     /**
      * Number of iterations in a repeat.
@@ -115,6 +118,7 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
     private var stats = mutableListOf<Stats>()
     private var allData = mutableListOf<LongArray>()
 
+    /** @suppress */
     @SuppressLint("MethodNameUnits")
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     public fun getMinTimeNanos(): Long {
@@ -124,10 +128,7 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
 
     private fun checkState() {
         check(state != NOT_STARTED) {
-            "The benchmark wasn't started! Every test in a class " +
-                "with a BenchmarkRule must contain a benchmark. In Kotlin, call " +
-                "benchmarkRule.measureRepeated {}, or in Java, call " +
-                "benchmarkRule.getState().keepRunning() to run your benchmark."
+            "Attempting to interact with a benchmark that wasn't started!"
         }
         check(state == FINISHED) {
             "The benchmark hasn't finished! In Java, use " +
@@ -445,27 +446,11 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
             " Call BenchmarkState.resumeTiming() before BenchmarkState.keepRunning()."
     }
 
-    internal data class Report(
-        val className: String,
-        val testName: String,
-        val totalRunTimeNs: Long,
-        val data: List<List<Long>>,
-        val stats: List<Stats>,
-        val repeatIterations: Int,
-        val thermalThrottleSleepSeconds: Long,
-        val warmupIterations: Int
-    ) {
-        fun getStats(which: String): Stats {
-            return stats.first { it.name == which }
-        }
-    }
-
-    private fun getReport(testName: String, className: String) = Report(
+    private fun getReport(testName: String, className: String) = BenchmarkResult(
         className = className,
         testName = testName,
         totalRunTimeNs = totalRunTimeNs,
-        data = allData.map { it.toList() },
-        stats = stats,
+        metrics = metricResultList(stats, allData),
         repeatIterations = iterationsPerRepeat,
         thermalThrottleSleepSeconds = thermalThrottleSleepSeconds,
         warmupIterations = warmupRepeats
@@ -487,7 +472,7 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
             stats.forEach { it.putInBundle(status, PREFIX) }
         }
         InstrumentationResultScope(status).ideSummaryRecord(
-            ideSummaryLineWrapped(
+            summaryV1 = ideSummaryLineWrapped(
                 key,
                 getMinTimeNanos(),
                 stats.firstOrNull { it.name == "allocationCount" }?.median
@@ -517,6 +502,10 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
         simpleClassName: String,
         methodName: String
     ) {
+        if (state == NOT_STARTED) {
+            return; // nothing to report, BenchmarkState wasn't used
+        }
+
         checkState() // this method is triggered externally
         val fullTestName = "$PREFIX$simpleClassName.$methodName"
         val bundle = getFullStatusReport(
@@ -609,12 +598,14 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
         ) {
             val metricsContainer = MetricsContainer(REPEAT_COUNT = dataNs.size)
             metricsContainer.data[metricsContainer.data.lastIndex] = dataNs.toLongArray()
-            val report = Report(
+            val report = BenchmarkResult(
                 className = className,
                 testName = testName,
                 totalRunTimeNs = totalRunTimeNs,
-                data = metricsContainer.data.map { it.toList() },
-                stats = metricsContainer.captureFinished(maxIterations = 1),
+                metrics = metricResultList(
+                    stats = metricsContainer.captureFinished(maxIterations = 1),
+                    data = metricsContainer.data.toList()
+                ),
                 repeatIterations = repeatIterations,
                 thermalThrottleSleepSeconds = thermalThrottleSleepSeconds,
                 warmupIterations = warmupIterations
@@ -625,7 +616,7 @@ public class BenchmarkState @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) construc
 
             instrumentationReport {
                 ideSummaryRecord(
-                    ideSummaryLineWrapped(
+                    summaryV1 = ideSummaryLineWrapped(
                         key = fullTestName,
                         nanos = report.getStats("timeNs").min,
                         allocations = null

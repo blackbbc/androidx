@@ -18,16 +18,18 @@ package androidx.navigation.compose.samples
 
 import androidx.annotation.Sampled
 import androidx.annotation.StringRes
-import androidx.compose.foundation.ScrollableColumn
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.Button
-import androidx.compose.material.ButtonConstants
+import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.Divider
+import androidx.compose.material.Scaffold
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,8 +41,9 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.navigate
+import androidx.navigation.compose.navArgument
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navigation
 
 sealed class Screen(val route: String, @StringRes val resourceId: Int) {
     object Profile : Screen("profile", R.string.profile)
@@ -48,7 +51,6 @@ sealed class Screen(val route: String, @StringRes val resourceId: Int) {
     object Scrollable : Screen("scrollable", R.string.scrollable)
 }
 
-@Sampled
 @Composable
 fun BasicNav() {
     val navController = rememberNavController()
@@ -56,6 +58,58 @@ fun BasicNav() {
         composable(Screen.Profile.route) { Profile(navController) }
         composable(Screen.Dashboard.route) { Dashboard(navController) }
         composable(Screen.Scrollable.route) { Scrollable(navController) }
+    }
+}
+
+@Composable
+fun NestedNavStartDestination() {
+    val navController = rememberNavController()
+    NavHost(navController, startDestination = "nested") {
+        navigation(startDestination = Screen.Profile.route, route = "nested") {
+            composable(Screen.Profile.route) { Profile(navController) }
+        }
+        composable(Screen.Dashboard.route) { Dashboard(navController) }
+        composable(Screen.Scrollable.route) { Scrollable(navController) }
+    }
+}
+
+@Composable
+fun NestedNavInGraph() {
+    val navController = rememberNavController()
+    NavHost(navController, startDestination = Screen.Profile.route) {
+        composable(Screen.Profile.route) { Profile(navController) }
+        navigation(startDestination = "nested", route = Screen.Dashboard.route) {
+            composable("nested") { Dashboard(navController) }
+        }
+        composable(Screen.Scrollable.route) { Scrollable(navController) }
+    }
+}
+
+@Sampled
+@Composable
+fun NavScaffold() {
+    val navController = rememberNavController()
+    Scaffold { innerPadding ->
+        NavHost(navController, Screen.Profile.route, Modifier.padding(innerPadding)) {
+            composable(Screen.Profile.route) { Profile(navController) }
+            composable(Screen.Dashboard.route) { Dashboard(navController) }
+            composable(Screen.Scrollable.route) { Scrollable(navController) }
+        }
+    }
+}
+
+@Sampled
+@Composable
+fun NavWithArgs() {
+    val navController = rememberNavController()
+    NavHost(navController, startDestination = Screen.Profile.route) {
+        composable(Screen.Profile.route) { Profile(navController) }
+        composable(
+            Screen.Dashboard.route,
+            arguments = listOf(navArgument("userId") { defaultValue = "no value given" })
+        ) { backStackEntry ->
+            Dashboard(navController, backStackEntry.arguments?.getString("userId"))
+        }
     }
 }
 
@@ -90,8 +144,8 @@ fun Scrollable(navController: NavController) {
         NavigateButton(stringResource(Screen.Dashboard.resourceId)) {
             navController.navigate(Screen.Dashboard.route)
         }
-        ScrollableColumn(Modifier.weight(1f)) {
-            phrases.forEach { phrase ->
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(phrases) { phrase ->
                 Text(phrase, fontSize = 30.sp)
             }
         }
@@ -106,7 +160,7 @@ fun NavigateButton(
 ) {
     Button(
         onClick = listener,
-        colors = ButtonConstants.defaultButtonColors(backgroundColor = LightGray),
+        colors = ButtonDefaults.buttonColors(backgroundColor = LightGray),
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(text = "Navigate to $text")
@@ -118,7 +172,7 @@ fun NavigateBackButton(navController: NavController) {
     if (navController.previousBackStackEntry != null) {
         Button(
             onClick = { navController.popBackStack() },
-            colors = ButtonConstants.defaultButtonColors(backgroundColor = LightGray),
+            colors = ButtonDefaults.buttonColors(backgroundColor = LightGray),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(text = "Go to Previous screen")

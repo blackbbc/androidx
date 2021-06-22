@@ -28,37 +28,38 @@ import kotlin.test.assertTrue
 
 @SmallTest
 @RunWith(AndroidJUnit4::class)
-class ResultWriterTest {
-
+public class ResultWriterTest {
     @get:Rule
-    val tempFolder = TemporaryFolder()
+    public val tempFolder: TemporaryFolder = TemporaryFolder()
 
-    private val data = arrayOf(longArrayOf(100, 101, 102))
-    private val names = listOf("timeNs")
+    private val metricResults = listOf(
+        MetricResult(
+            name = "timeNs",
+            data = longArrayOf(100L, 101L, 102L)
+        )
+    )
 
-    private val reportA = BenchmarkState.Report(
+    private val reportA = BenchmarkResult(
         testName = "MethodA",
         className = "package.Class1",
         totalRunTimeNs = 900000000,
-        data = data.map { it.toList() },
-        stats = data.mapIndexed { i, it -> Stats(it, names[i]) },
+        metrics = metricResults,
         repeatIterations = 100000,
         thermalThrottleSleepSeconds = 90000000,
         warmupIterations = 8000
     )
-    private val reportB = BenchmarkState.Report(
+    private val reportB = BenchmarkResult(
         testName = "MethodB",
         className = "package.Class2",
         totalRunTimeNs = 900000000,
-        data = data.map { it.toList() },
-        stats = data.mapIndexed { i, it -> Stats(it, names[i]) },
+        metrics = metricResults,
         repeatIterations = 100000,
         thermalThrottleSleepSeconds = 90000000,
         warmupIterations = 8000
     )
 
     @Test
-    fun shouldClearExistingContent() {
+    public fun shouldClearExistingContent() {
         val tempFile = tempFolder.newFile()
 
         val fakeText = "This text should not be in the final output"
@@ -69,7 +70,7 @@ class ResultWriterTest {
     }
 
     @Test
-    fun validateJson() {
+    public fun validateJson() {
         val tempFile = tempFolder.newFile()
 
         val sustainedPerformanceModeInUse = IsolationActivity.sustainedPerformanceModeInUse
@@ -80,6 +81,7 @@ class ResultWriterTest {
             {
                 "context": {
                     "build": {
+                        "brand": "${Build.BRAND}",
                         "device": "${Build.DEVICE}",
                         "fingerprint": "${Build.FINGERPRINT}",
                         "model": "${Build.MODEL}",
@@ -144,13 +146,12 @@ class ResultWriterTest {
     }
 
     @Test
-    fun validateJsonWithParams() {
-        val reportWithParams = BenchmarkState.Report(
+    public fun validateJsonWithParams() {
+        val reportWithParams = BenchmarkResult(
             testName = "MethodWithParams[number=2,primeNumber=true]",
             className = "package.Class",
             totalRunTimeNs = 900000000,
-            data = data.map { it.toList() },
-            stats = data.mapIndexed { i, it -> Stats(it, names[i]) },
+            metrics = metricResults,
             repeatIterations = 100000,
             thermalThrottleSleepSeconds = 90000000,
             warmupIterations = 8000
@@ -174,13 +175,12 @@ class ResultWriterTest {
     }
 
     @Test
-    fun validateJsonWithInvalidParams() {
-        val reportWithInvalidParams = BenchmarkState.Report(
+    public fun validateJsonWithInvalidParams() {
+        val reportWithInvalidParams = BenchmarkResult(
             testName = "MethodWithParams[number=2,=true,]",
             className = "package.Class",
             totalRunTimeNs = 900000000,
-            data = data.map { it.toList() },
-            stats = data.mapIndexed { i, it -> Stats(it, names[i]) },
+            metrics = metricResults,
             repeatIterations = 100000,
             thermalThrottleSleepSeconds = 90000000,
             warmupIterations = 8000

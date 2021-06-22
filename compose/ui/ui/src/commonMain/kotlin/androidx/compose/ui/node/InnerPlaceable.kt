@@ -16,39 +16,32 @@
 
 package androidx.compose.ui.node
 
-import androidx.compose.runtime.collection.ExperimentalCollectionApi
-import androidx.compose.ui.layout.Placeable
-import androidx.compose.ui.focus.ExperimentalFocus
-import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.input.nestedscroll.NestedScrollDelegatingWrapper
 import androidx.compose.ui.input.pointer.PointerInputFilter
 import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.semantics.SemanticsWrapper
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 
-@OptIn(ExperimentalLayoutNodeApi::class)
 internal class InnerPlaceable(
     layoutNode: LayoutNode
 ) : LayoutNodeWrapper(layoutNode), Density by layoutNode.measureScope {
 
-    override val providedAlignmentLines: Set<AlignmentLine>
-        get() = layoutNode.providedAlignmentLines.keys
-    override val isAttached: Boolean
-        get() = layoutNode.isAttached()
-
     override val measureScope get() = layoutNode.measureScope
 
-    override fun performMeasure(constraints: Constraints): Placeable {
-        val measureResult = layoutNode.measureBlocks.measure(
-            layoutNode.measureScope,
-            layoutNode.children,
-            constraints
-        )
+    override fun measure(constraints: Constraints): Placeable = performingMeasure(constraints) {
+        val measureResult = with(layoutNode.measurePolicy) {
+            layoutNode.measureScope.measure(layoutNode.children, constraints)
+        }
         layoutNode.handleMeasureResult(measureResult)
         return this
     }
@@ -62,51 +55,34 @@ internal class InnerPlaceable(
 
     override fun findLastFocusWrapper(): ModifiedFocusNode? = findPreviousFocusWrapper()
 
-    @OptIn(ExperimentalFocus::class)
-    override fun propagateFocusStateChange(focusState: FocusState) {
-        wrappedBy?.propagateFocusStateChange(focusState)
-    }
-
     override fun findPreviousKeyInputWrapper() = wrappedBy?.findPreviousKeyInputWrapper()
+
+    override fun findPreviousNestedScrollWrapper() = wrappedBy?.findPreviousNestedScrollWrapper()
+
+    override fun findNextNestedScrollWrapper(): NestedScrollDelegatingWrapper? = null
 
     override fun findNextKeyInputWrapper(): ModifiedKeyInputNode? = null
 
     override fun findLastKeyInputWrapper(): ModifiedKeyInputNode? = findPreviousKeyInputWrapper()
 
-    override fun minIntrinsicWidth(height: Int): Int {
-        return layoutNode.measureBlocks.minIntrinsicWidth(
-            measureScope,
-            layoutNode.children,
-            height
-        )
-    }
+    override fun minIntrinsicWidth(height: Int) =
+        layoutNode.intrinsicsPolicy.minIntrinsicWidth(height)
 
-    override fun minIntrinsicHeight(width: Int): Int {
-        return layoutNode.measureBlocks.minIntrinsicHeight(
-            measureScope,
-            layoutNode.children,
-            width
-        )
-    }
+    override fun minIntrinsicHeight(width: Int) =
+        layoutNode.intrinsicsPolicy.minIntrinsicHeight(width)
 
-    override fun maxIntrinsicWidth(height: Int): Int {
-        return layoutNode.measureBlocks.maxIntrinsicWidth(
-            measureScope,
-            layoutNode.children,
-            height
-        )
-    }
+    override fun maxIntrinsicWidth(height: Int) =
+        layoutNode.intrinsicsPolicy.maxIntrinsicWidth(height)
 
-    override fun maxIntrinsicHeight(width: Int): Int {
-        return layoutNode.measureBlocks.maxIntrinsicHeight(
-            measureScope,
-            layoutNode.children,
-            width
-        )
-    }
+    override fun maxIntrinsicHeight(width: Int) =
+        layoutNode.intrinsicsPolicy.maxIntrinsicHeight(width)
 
-    override fun placeAt(position: IntOffset) {
-        this.position = position
+    override fun placeAt(
+        position: IntOffset,
+        zIndex: Float,
+        layerBlock: (GraphicsLayerScope.() -> Unit)?
+    ) {
+        super.placeAt(position, zIndex, layerBlock)
 
         // The wrapper only runs their placement block to obtain our position, which allows them
         // to calculate the offset of an alignment line we have already provided a position for.
@@ -118,48 +94,58 @@ internal class InnerPlaceable(
         layoutNode.onNodePlaced()
     }
 
-    override operator fun get(line: AlignmentLine): Int {
-        return layoutNode.calculateAlignmentLines()[line] ?: AlignmentLine.Unspecified
+    override fun calculateAlignmentLine(alignmentLine: AlignmentLine): Int {
+        return layoutNode.calculateAlignmentLines()[alignmentLine] ?: AlignmentLine.Unspecified
     }
 
-    @OptIn(ExperimentalCollectionApi::class)
-    override fun draw(canvas: Canvas) {
-        withPositionTranslation(canvas) {
-            val owner = layoutNode.requireOwner()
-            layoutNode.zSortedChildren.forEach { child ->
-                if (child.isPlaced) {
-                    require(child.layoutState == LayoutNode.LayoutState.Ready) {
-                        "$child is not ready. layoutState is ${child.layoutState}"
-                    }
-                    child.draw(canvas)
-                }
+    override fun performDraw(canvas: Canvas) {
+        val owner = layoutNode.requireOwner()
+        layoutNode.zSortedChildren.forEach { child ->
+            if (child.isPlaced) {
+                child.draw(canvas)
             }
-            if (owner.showLayoutBounds) {
-                drawBorder(canvas, innerBoundsPaint)
-            }
+        }
+        if (owner.showLayoutBounds) {
+            drawBorder(canvas, innerBoundsPaint)
         }
     }
 
-    @OptIn(ExperimentalCollectionApi::class)
     override fun hitTest(
-        pointerPositionRelativeToScreen: Offset,
+        pointerPosition: Offset,
         hitPointerInputFilters: MutableList<PointerInputFilter>
     ) {
-        // Any because as soon as true is returned, we know we have found a hit path and we must
-        // not add PointerInputFilters on different paths so we should not even go looking.
-        val originalSize = hitPointerInputFilters.size
-        layoutNode.zSortedChildren.reversedAny { child ->
-            callHitTest(child, pointerPositionRelativeToScreen, hitPointerInputFilters)
-            hitPointerInputFilters.size > originalSize
+        hitTestSubtree(pointerPosition, hitPointerInputFilters, LayoutNode::hitTest)
+    }
+
+    override fun hitTestSemantics(
+        pointerPosition: Offset,
+        hitSemanticsWrappers: MutableList<SemanticsWrapper>
+    ) {
+        hitTestSubtree(pointerPosition, hitSemanticsWrappers, LayoutNode::hitTestSemantics)
+    }
+
+    private inline fun <T> hitTestSubtree(
+        pointerPosition: Offset,
+        hitResult: MutableList<T>,
+        nodeHitTest: LayoutNode.(Offset, MutableList<T>) -> Unit
+    ) {
+        if (withinLayerBounds(pointerPosition)) {
+            val originalSize = hitResult.size
+            // Any because as soon as true is returned, we know we have found a hit path and we must
+            // not add hit results on different paths so we should not even go looking.
+            layoutNode.zSortedChildren.reversedAny { child ->
+                if (child.isPlaced) {
+                    child.nodeHitTest(pointerPosition, hitResult)
+                    hitResult.size > originalSize
+                } else {
+                    false
+                }
+            }
         }
     }
 
-    override fun attach() {
-        // Do nothing. InnerPlaceable only is attached when the LayoutNode is attached.
-    }
-
-    override fun detach() {
-        // Do nothing. InnerPlaceable only is detached when the LayoutNode is detached.
+    override fun getWrappedByCoordinates(): LayoutCoordinates {
+        return this
     }
 
     internal companion object {
@@ -167,14 +153,6 @@ internal class InnerPlaceable(
             paint.color = Color.Red
             paint.strokeWidth = 1f
             paint.style = PaintingStyle.Stroke
-        }
-
-        private fun callHitTest(
-            node: LayoutNode,
-            globalPoint: Offset,
-            hitPointerInputFilters: MutableList<PointerInputFilter>
-        ) {
-            node.hitTest(globalPoint, hitPointerInputFilters)
         }
     }
 }

@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-@file:Suppress("NOTHING_TO_INLINE", "EXPERIMENTAL_FEATURE_WARNING")
+@file:Suppress(
+    "NOTHING_TO_INLINE",
+    "INLINE_CLASS_DEPRECATED",
+    "EXPERIMENTAL_FEATURE_WARNING"
+)
 
 package androidx.compose.ui.unit
 
@@ -28,12 +32,18 @@ import androidx.compose.ui.util.unpackInt2
 import kotlin.math.roundToInt
 
 /**
+ * Constructs a [IntOffset] from [x] and [y] position [Int] values.
+ */
+@Stable
+fun IntOffset(x: Int, y: Int): IntOffset =
+    IntOffset(packInts(x, y))
+
+/**
  * A two-dimensional position using [Int] pixels for units
  */
 @Immutable
-inline class IntOffset(
-    @PublishedApi internal val packedValue: Long
-) {
+inline class IntOffset internal constructor(@PublishedApi internal val packedValue: Long) {
+
     /**
      * The horizontal aspect of the position in [Int] pixels.
      */
@@ -121,24 +131,8 @@ inline class IntOffset(
 
     companion object {
         val Zero = IntOffset(0, 0)
-
-        @Deprecated(
-            "Use IntOffset.Zero instead",
-            ReplaceWith(
-                "Zero",
-                "androidx.compose.ui.unit.IntOffset"
-            )
-        )
-        val Origin = Zero
     }
 }
-
-/**
- * Constructs a [IntOffset] from [x] and [y] position [Int] values.
- */
-@Stable
-inline fun IntOffset(x: Int, y: Int): IntOffset =
-    IntOffset(packInts(x, y))
 
 /**
  * Linearly interpolate between two [IntOffset]s.
@@ -176,3 +170,9 @@ operator fun IntOffset.plus(offset: Offset): Offset =
 @Stable
 operator fun IntOffset.minus(offset: Offset): Offset =
     Offset(x - offset.x, y - offset.y)
+
+/**
+ * Round a [Offset] down to the nearest [Int] coordinates.
+ */
+@Stable
+inline fun Offset.round(): IntOffset = IntOffset(x.roundToInt(), y.roundToInt())

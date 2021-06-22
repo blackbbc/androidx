@@ -16,36 +16,39 @@
 
 package androidx.compose.integration.demos
 
-import androidx.compose.foundation.AmbientContentColor
-import androidx.compose.foundation.AmbientTextStyle
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.ScrollableColumn
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.preferredHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.integration.demos.common.Demo
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.ListItem
+import androidx.compose.material.LocalContentColor
+import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
 import androidx.compose.material.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
-import androidx.compose.runtime.onCommit
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.ExperimentalFocus
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.annotatedString
-import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
@@ -57,14 +60,13 @@ fun DemoFilter(launchableDemos: List<Demo>, filterText: String, onNavigate: (Dem
     val filteredDemos = launchableDemos
         .filter { it.title.contains(filterText, ignoreCase = true) }
         .sortedBy { it.title }
-    ScrollableColumn {
+    // TODO: migrate to LazyColumn after b/175671850
+    Column(Modifier.verticalScroll(rememberScrollState())) {
         filteredDemos.forEach { demo ->
             FilteredDemoListItem(
                 demo,
                 filterText = filterText,
-                onNavigate = {
-                    onNavigate(it)
-                }
+                onNavigate = onNavigate
             )
         }
     }
@@ -75,8 +77,8 @@ fun DemoFilter(launchableDemos: List<Demo>, filterText: String, onNavigate: (Dem
  */
 @Composable
 fun FilterAppBar(
-    filterText: TextFieldValue,
-    onFilter: (TextFieldValue) -> Unit,
+    filterText: String,
+    onFilter: (String) -> Unit,
     onClose: () -> Unit
 ) {
     with(MaterialTheme.colors) {
@@ -89,7 +91,7 @@ fun FilterAppBar(
         }
         TopAppBar(backgroundColor = appBarColor, contentColor = onSurface) {
             IconButton(modifier = Modifier.align(Alignment.CenterVertically), onClick = onClose) {
-                Icon(Icons.Filled.Close)
+                Icon(Icons.Filled.Close, null)
             }
             FilterField(
                 filterText,
@@ -104,38 +106,39 @@ fun FilterAppBar(
  * [BasicTextField] that edits the current [filterText], providing [onFilter] when edited.
  */
 @Composable
-@OptIn(
-    ExperimentalFocus::class,
-    ExperimentalFoundationApi::class
-)
+@OptIn(ExperimentalFoundationApi::class)
 private fun FilterField(
-    filterText: TextFieldValue,
-    onFilter: (TextFieldValue) -> Unit,
+    filterText: String,
+    onFilter: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val focusRequester = FocusRequester()
+    val focusRequester = remember { FocusRequester() }
     // TODO: replace with Material text field when available
     BasicTextField(
         modifier = modifier.focusRequester(focusRequester),
         value = filterText,
         onValueChange = onFilter,
-        textStyle = AmbientTextStyle.current,
-        cursorColor = AmbientContentColor.current
+        textStyle = LocalTextStyle.current,
+        cursorBrush = SolidColor(LocalContentColor.current)
     )
-    onCommit { focusRequester.requestFocus() }
+    DisposableEffect(focusRequester) {
+        focusRequester.requestFocus()
+        onDispose { }
+    }
 }
 
 /**
  * [ListItem] that displays a [demo] and highlights any matches for [filterText] inside [Demo.title]
  */
 @Composable
+@OptIn(ExperimentalMaterialApi::class)
 private fun FilteredDemoListItem(
     demo: Demo,
     filterText: String,
     onNavigate: (Demo) -> Unit
 ) {
     val primary = MaterialTheme.colors.primary
-    val annotatedString = annotatedString {
+    val annotatedString = buildAnnotatedString {
         val title = demo.title
         var currentIndex = 0
         val pattern = filterText.toRegex(option = RegexOption.IGNORE_CASE)
@@ -158,7 +161,7 @@ private fun FilteredDemoListItem(
         ListItem(
             text = {
                 Text(
-                    modifier = Modifier.preferredHeight(56.dp).wrapContentSize(Alignment.Center),
+                    modifier = Modifier.height(56.dp).wrapContentSize(Alignment.Center),
                     text = annotatedString
                 )
             },

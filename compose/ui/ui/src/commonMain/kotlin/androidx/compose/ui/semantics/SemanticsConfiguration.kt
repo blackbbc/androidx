@@ -75,15 +75,7 @@ class SemanticsConfiguration :
      * [SemanticsNode] representing the owning component.
      */
     var isMergingSemanticsOfDescendants: Boolean = false
-
-    /**
-     * Whether this configuration is empty.
-     *
-     * An empty configuration doesn't contain any semantic information that it
-     * wants to contribute to the semantics tree.
-     */
-    val isEmpty: Boolean
-        get() = props.isEmpty() && !isMergingSemanticsOfDescendants
+    var isClearingSemantics: Boolean = false
 
     // CONFIGURATION COMBINATION LOGIC
 
@@ -91,7 +83,7 @@ class SemanticsConfiguration :
      * Absorb the semantic information from a child SemanticsNode into this configuration.
      *
      * This merges the child's semantic configuration using the `merge()` method defined
-     * on the key.  This is used when mergeAllDescendants is specified (for accessibility focusable
+     * on the key.  This is used when mergeDescendants is specified (for accessibility focusable
      * nodes).
      */
     @Suppress("UNCHECKED_CAST")
@@ -109,16 +101,29 @@ class SemanticsConfiguration :
      * Absorb the semantic information from a peer modifier into this configuration.
      *
      * This is repeatedly called for each semantics {} modifier on one LayoutNode to collapse
-     * them into one SemanticsConfiguration.  Values with a key already seen are ignored
-     * (the semantics value of the outermost modifier with a given semantics key is the one used).
+     * them into one SemanticsConfiguration. If a key is already seen and the value is
+     * AccessibilityAction, the resulting AccessibilityAction's label/action will be the
+     * label/action of the outermost modifier with this key and nonnull label/action, or null if no
+     * nonnull label/action is found. If the value is not AccessibilityAction, values with a key
+     * already seen are ignored (the semantics value of the outermost modifier with a given
+     * semantics key is the one used).
      */
     internal fun collapsePeer(peer: SemanticsConfiguration) {
         if (peer.isMergingSemanticsOfDescendants) {
             isMergingSemanticsOfDescendants = true
         }
+        if (peer.isClearingSemantics) {
+            isClearingSemantics = true
+        }
         for ((key, nextValue) in peer.props) {
             if (!props.contains(key)) {
                 props[key] = nextValue
+            } else if (nextValue is AccessibilityAction<*>) {
+                val value = props[key] as AccessibilityAction<*>
+                props[key] = AccessibilityAction(
+                    value.label ?: nextValue.label,
+                    value.action ?: nextValue.action
+                )
             }
         }
     }
@@ -127,6 +132,7 @@ class SemanticsConfiguration :
     fun copy(): SemanticsConfiguration {
         val copy = SemanticsConfiguration()
         copy.isMergingSemanticsOfDescendants = isMergingSemanticsOfDescendants
+        copy.isClearingSemantics = isClearingSemantics
         copy.props.putAll(props)
         return copy
     }
@@ -135,8 +141,9 @@ class SemanticsConfiguration :
         if (this === other) return true
         if (other !is SemanticsConfiguration) return false
 
-        if (isMergingSemanticsOfDescendants != other.isMergingSemanticsOfDescendants) return false
         if (props != other.props) return false
+        if (isMergingSemanticsOfDescendants != other.isMergingSemanticsOfDescendants) return false
+        if (isClearingSemantics != other.isClearingSemantics) return false
 
         return true
     }
@@ -144,6 +151,7 @@ class SemanticsConfiguration :
     override fun hashCode(): Int {
         var result = props.hashCode()
         result = 31 * result + isMergingSemanticsOfDescendants.hashCode()
+        result = 31 * result + isClearingSemantics.hashCode()
         return result
     }
 
@@ -154,6 +162,12 @@ class SemanticsConfiguration :
         if (isMergingSemanticsOfDescendants) {
             propsString.append(nextSeparator)
             propsString.append("mergeDescendants=true")
+            nextSeparator = ", "
+        }
+
+        if (isClearingSemantics) {
+            propsString.append(nextSeparator)
+            propsString.append("isClearingSemantics=true")
             nextSeparator = ", "
         }
 

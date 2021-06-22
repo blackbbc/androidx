@@ -18,18 +18,17 @@ package androidx.compose.runtime
 
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.filters.MediumTest
+import androidx.test.filters.LargeTest
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-@MediumTest
+@LargeTest
 @RunWith(AndroidJUnit4::class)
 class AndroidSnapshotTests : BaseComposeTest() {
     @get:Rule
     override val activityRule = makeTestActivityRule()
 
-    @OptIn(ExperimentalComposeApi::class)
     @Test // regression test for b/163903673
     fun testCommittingInABackgroundThread() {
         val states = Array(10000) { mutableStateOf(0) }
@@ -53,13 +52,13 @@ class AndroidSnapshotTests : BaseComposeTest() {
                 }
             }
             try {
-                repeat(1000) {
+                repeat(100) {
                     activityRule.activity.uiThread {
                         Snapshot.sendApplyNotifications()
                     }
                 }
             } finally {
-                unregister()
+                unregister.dispose()
             }
         } finally {
             stop = true

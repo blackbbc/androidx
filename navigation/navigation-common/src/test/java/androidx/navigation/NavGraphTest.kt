@@ -23,8 +23,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
-import java.util.Arrays
-import java.util.NoSuchElementException
 
 @RunWith(JUnit4::class)
 class NavGraphTest {
@@ -109,7 +107,7 @@ class NavGraphTest {
             id = FIRST_DESTINATION_ID
         }
         try {
-            graph.startDestination = destination.id
+            graph.setStartDestination(destination.id)
         } catch (e: IllegalArgumentException) {
             assertWithMessage("Setting a start destination with same id as its parent should fail")
                 .that(e).hasMessageThat().contains(
@@ -124,7 +122,7 @@ class NavGraphTest {
         val graph = navGraphNavigator.createDestination()
         val destination = createFirstDestination()
         val secondDestination = createSecondDestination()
-        graph.addDestinations(Arrays.asList(destination, secondDestination))
+        graph.addDestinations(listOf(destination, secondDestination))
 
         assertThat(destination.parent).isEqualTo(graph)
         assertThat(graph.findNode(FIRST_DESTINATION_ID)).isEqualTo(destination)

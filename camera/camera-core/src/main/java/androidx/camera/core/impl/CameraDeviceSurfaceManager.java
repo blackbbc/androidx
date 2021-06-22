@@ -25,6 +25,7 @@ import androidx.camera.core.InitializationException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Camera device manager to provide the guaranteed supported stream capabilities related info for
@@ -41,12 +42,13 @@ public interface CameraDeviceSurfaceManager {
          *
          * @param context the android context
          * @param cameraManager the camera manager object used to query the camera information.
+         * @param availableCameraIds current available camera ids.
          * @return the factory instance
          * @throws InitializationException if it fails to create the factory
          */
         @NonNull
         CameraDeviceSurfaceManager newInstance(@NonNull Context context,
-                @Nullable Object cameraManager)
+                @Nullable Object cameraManager, @NonNull Set<String> availableCameraIds)
                 throws InitializationException;
     }
 
@@ -71,16 +73,6 @@ public interface CameraDeviceSurfaceManager {
     SurfaceConfig transformSurfaceConfig(String cameraId, int imageFormat, Size size);
 
     /**
-     * Get max supported output size for specific camera device and image format
-     *
-     * @param cameraId    the camera Id
-     * @param imageFormat the image format info
-     * @return the max supported output size for the image format
-     */
-    @Nullable
-    Size getMaxOutputSize(String cameraId, int imageFormat);
-
-    /**
      * Retrieves a map of suggested resolutions for the given list of use cases.
      *
      * @param cameraId          the camera id of the camera device used by the use cases
@@ -100,11 +92,4 @@ public interface CameraDeviceSurfaceManager {
             @NonNull String cameraId,
             @NonNull List<SurfaceConfig> existingSurfaces,
             @NonNull List<UseCaseConfig<?>> newUseCaseConfigs);
-
-    /**
-     * Retrieves the preview size, choosing the smaller of the display size and 1080P.
-     *
-     * @return the size used for the on screen preview
-     */
-    Size getPreviewSize();
 }

@@ -17,6 +17,7 @@
 package androidx.compose.compiler.plugins.kotlin
 
 import com.intellij.openapi.util.io.FileUtil
+import org.intellij.lang.annotations.Language
 import org.jetbrains.kotlin.cli.common.CLICompiler
 import org.jetbrains.kotlin.cli.common.CLITool
 import org.jetbrains.kotlin.cli.common.ExitCode
@@ -28,10 +29,6 @@ import java.io.File
 import java.io.PrintStream
 import java.io.PrintWriter
 
-// KotlinTestUtils
-private fun tmpDir(name: String): File {
-    return FileUtil.createTempDirectory(name, "", false).canonicalFile
-}
 // AbstractCliTest
 private fun executeCompilerGrabOutput(
     compiler: CLITool<*>,
@@ -79,14 +76,19 @@ fun String.trimTrailingWhitespacesAndAddNewlineAtEOF(): String =
 
 abstract class AbstractMultiPlatformIntegrationTest : AbstractCompilerTest() {
     fun multiplatform(
+        @Language("kotlin")
         common: String,
+        @Language("kotlin")
         jvm: String,
         output: String
     ) {
         setUp()
         val tmpdir = tmpDir(getTestName(true))
 
-        assert(composePluginJar.exists())
+        assert(
+            composePluginJar.exists(),
+            { "Compiler plugin jar does not exist: $composePluginJar" }
+        )
 
         val optionalArgs = arrayOf(
             "-cp",

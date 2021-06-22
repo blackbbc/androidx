@@ -18,16 +18,15 @@ package androidx.compose.ui.draw
 
 import android.graphics.Bitmap
 import android.os.Build
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.AtLeastSize
-import androidx.compose.ui.DrawLayerModifier
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Padding
-import androidx.compose.ui.PaddingModifier
 import androidx.compose.ui.assertColorsEqual
 import androidx.compose.ui.assertRect
 import androidx.compose.ui.background
-import androidx.compose.ui.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -40,10 +39,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.padding
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.runOnUiThreadIR
 import androidx.compose.ui.test.TestActivity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.waitAndScreenShot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
@@ -67,11 +69,11 @@ class ClipDrawTest {
     private lateinit var drawLatch: CountDownLatch
 
     private val rectShape = object : Shape {
-        override fun createOutline(size: Size, density: Density): Outline =
+        override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
             Outline.Rectangle(size.toRect())
     }
     private val triangleShape = object : Shape {
-        override fun createOutline(size: Size, density: Density): Outline =
+        override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
             Outline.Generic(
                 Path().apply {
                     moveTo(size.width / 2f, 0f)
@@ -82,7 +84,7 @@ class ClipDrawTest {
             )
     }
     private val invertedTriangleShape = object : Shape {
-        override fun createOutline(size: Size, density: Density): Outline =
+        override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
             Outline.Generic(
                 Path().apply {
                     lineTo(size.width, 0f)
@@ -105,10 +107,10 @@ class ClipDrawTest {
     fun simpleRectClip() {
         rule.runOnUiThreadIR {
             activity.setContent {
-                Padding(size = 10, modifier = FillColor(Color.Green)) {
+                Padding(size = 10, modifier = Modifier.fillColor(Color.Green)) {
                     AtLeastSize(
                         size = 10,
-                        modifier = Modifier.clip(rectShape).then(FillColor(Color.Cyan))
+                        modifier = Modifier.clip(rectShape).fillColor(Color.Cyan)
                     ) {
                     }
                 }
@@ -126,10 +128,10 @@ class ClipDrawTest {
     fun simpleClipToBounds() {
         rule.runOnUiThreadIR {
             activity.setContent {
-                Padding(size = 10, modifier = FillColor(Color.Green)) {
+                Padding(size = 10, modifier = Modifier.fillColor(Color.Green)) {
                     AtLeastSize(
                         size = 10,
-                        modifier = Modifier.clipToBounds().then(FillColor(Color.Cyan))
+                        modifier = Modifier.clipToBounds().fillColor(Color.Cyan)
                     ) {
                     }
                 }
@@ -149,12 +151,11 @@ class ClipDrawTest {
             activity.setContent {
                 AtLeastSize(
                     size = 10,
-                    modifier = FillColor(Color.Green)
-                        .then(PaddingModifier(10))
-                        .then(Modifier.clip(rectShape))
-                        .then(FillColor(Color.Cyan))
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .padding(10)
+                        .clip(rectShape)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -168,18 +169,20 @@ class ClipDrawTest {
     @Test
     fun roundedUniformRectClip() {
         val shape = object : Shape {
-            override fun createOutline(size: Size, density: Density): Outline =
-                Outline.Rounded(RoundRect(size.toRect(), CornerRadius(12f)))
+            override fun createOutline(
+                size: Size,
+                layoutDirection: LayoutDirection,
+                density: Density
+            ) = Outline.Rounded(RoundRect(size.toRect(), CornerRadius(12f)))
         }
         rule.runOnUiThreadIR {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green)
+                    modifier = Modifier.fillColor(Color.Green)
                         .clip(shape)
-                        .then(FillColor(Color.Cyan))
-                ) {
-                }
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -203,24 +206,28 @@ class ClipDrawTest {
     @Test
     fun roundedRectWithDiffCornersClip() {
         val shape = object : Shape {
-            override fun createOutline(size: Size, density: Density): Outline =
-                Outline.Rounded(
-                    RoundRect(
-                        size.toRect(),
-                        CornerRadius.Zero,
-                        CornerRadius(12f),
-                        CornerRadius(12f),
-                        CornerRadius(12f)
-                    )
+            override fun createOutline(
+                size: Size,
+                layoutDirection: LayoutDirection,
+                density: Density
+            ) = Outline.Rounded(
+                RoundRect(
+                    size.toRect(),
+                    CornerRadius.Zero,
+                    CornerRadius(12f),
+                    CornerRadius(12f),
+                    CornerRadius(12f)
                 )
+            )
         }
         rule.runOnUiThreadIR {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green).clip(shape).then(FillColor(Color.Cyan))
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .clip(shape)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -242,11 +249,10 @@ class ClipDrawTest {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green).then(Modifier.clip(triangleShape)).then(
-                        FillColor(Color.Cyan)
-                    )
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .clip(triangleShape)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -260,26 +266,28 @@ class ClipDrawTest {
     fun concaveClip() {
         // 30 pixels rect with a rect hole of 10 pixels in the middle
         val concaveShape = object : Shape {
-            override fun createOutline(size: Size, density: Density): Outline =
-                Outline.Generic(
-                    Path().apply {
-                        op(
-                            Path().apply { addRect(Rect(0f, 0f, 30f, 30f)) },
-                            Path().apply { addRect(Rect(10f, 10f, 20f, 20f)) },
-                            PathOperation.difference
-                        )
-                    }
-                )
+            override fun createOutline(
+                size: Size,
+                layoutDirection: LayoutDirection,
+                density: Density
+            ) = Outline.Generic(
+                Path().apply {
+                    op(
+                        Path().apply { addRect(Rect(0f, 0f, 30f, 30f)) },
+                        Path().apply { addRect(Rect(10f, 10f, 20f, 20f)) },
+                        PathOperation.Difference
+                    )
+                }
+            )
         }
         rule.runOnUiThreadIR {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green).then(Modifier.clip(concaveShape)).then(
-                        FillColor(Color.Cyan)
-                    )
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .clip(concaveShape)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -298,11 +306,10 @@ class ClipDrawTest {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green).then(Modifier.clip(model.value)).then(
-                        FillColor(Color.Cyan)
-                    )
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .clip(model.value)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -313,8 +320,11 @@ class ClipDrawTest {
         drawLatch = CountDownLatch(1)
         rule.runOnUiThreadIR {
             model.value = object : Shape {
-                override fun createOutline(size: Size, density: Density): Outline =
-                    Outline.Rounded(RoundRect(size.toRect(), CornerRadius(12f)))
+                override fun createOutline(
+                    size: Size,
+                    layoutDirection: LayoutDirection,
+                    density: Density
+                ) = Outline.Rounded(RoundRect(size.toRect(), CornerRadius(12f)))
             }
         }
 
@@ -335,11 +345,10 @@ class ClipDrawTest {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green).then(Modifier.clip(model.value)).then(
-                        FillColor(Color.Cyan)
-                    )
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .clip(model.value)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -364,11 +373,10 @@ class ClipDrawTest {
             activity.setContent {
                 AtLeastSize(
                     size = 30,
-                    modifier = FillColor(Color.Green).then(Modifier.clip(model.value)).then(
-                        FillColor(Color.Cyan)
-                    )
-                ) {
-                }
+                    modifier = Modifier.fillColor(Color.Green)
+                        .clip(model.value)
+                        .fillColor(Color.Cyan)
+                ) {}
             }
         }
 
@@ -399,11 +407,9 @@ class ClipDrawTest {
             drawLatch.countDown()
         }
 
-        val clip = object : DrawLayerModifier {
-            override val shape: Shape
-                get() = model.value
-            override val clip: Boolean
-                get() = true
+        val clip = Modifier.graphicsLayer {
+            shape = model.value
+            clip = true
         }
 
         rule.runOnUiThreadIR {
@@ -437,9 +443,9 @@ class ClipDrawTest {
 
         rule.runOnUiThreadIR {
             activity.setContent {
-                Padding(size = 10, modifier = FillColor(Color.Green)) {
+                Padding(size = 10, modifier = Modifier.fillColor(Color.Green)) {
                     val modifier = if (model.value) {
-                        Modifier.clip(rectShape).then(FillColor(Color.Cyan))
+                        Modifier.clip(rectShape).fillColor(Color.Cyan)
                     } else {
                         Modifier
                     }
@@ -461,8 +467,49 @@ class ClipDrawTest {
         }
     }
 
-    private fun FillColor(color: Color): Modifier {
-        return Modifier.drawBehind {
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun switchLayoutDirection() {
+        val direction = mutableStateOf(LayoutDirection.Ltr)
+        val shape = object : Shape {
+            override fun createOutline(
+                size: Size,
+                layoutDirection: LayoutDirection,
+                density: Density
+            ) = if (layoutDirection == LayoutDirection.Ltr) {
+                rectShape.createOutline(size, layoutDirection, density)
+            } else {
+                triangleShape.createOutline(size, layoutDirection, density)
+            }
+        }
+
+        rule.runOnUiThreadIR {
+            activity.setContent {
+                CompositionLocalProvider(LocalLayoutDirection provides direction.value) {
+                    AtLeastSize(
+                        size = 30,
+                        modifier = Modifier.fillColor(Color.Green)
+                            .clip(shape)
+                            .fillColor(Color.Cyan)
+                    ) {}
+                }
+            }
+        }
+
+        takeScreenShot(30).apply {
+            assertRect(Color.Cyan, size = 30)
+        }
+
+        drawLatch = CountDownLatch(1)
+        rule.runOnUiThread { direction.value = LayoutDirection.Rtl }
+
+        takeScreenShot(30).apply {
+            assertTriangle(Color.Cyan, Color.Green)
+        }
+    }
+
+    private fun Modifier.fillColor(color: Color): Modifier {
+        return drawBehind {
             drawRect(
                 color,
                 topLeft = Offset(-100f, -100f),

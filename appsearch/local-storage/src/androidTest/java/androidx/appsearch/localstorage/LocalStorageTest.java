@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+// @exportToFramework:skipFile()
 package androidx.appsearch.localstorage;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -27,15 +27,15 @@ import org.junit.Test;
 public class LocalStorageTest {
     @Test
     public void testSameInstance() throws Exception {
-        LocalStorage b1 = LocalStorage.getInstance(ApplicationProvider.getApplicationContext())
-                .get().getResultValue();
-        LocalStorage b2 = LocalStorage.getInstance(ApplicationProvider.getApplicationContext())
-                .get().getResultValue();
+        LocalStorage b1 =
+                LocalStorage.getOrCreateInstance(ApplicationProvider.getApplicationContext());
+        LocalStorage b2 =
+                LocalStorage.getOrCreateInstance(ApplicationProvider.getApplicationContext());
         assertThat(b1).isSameInstanceAs(b2);
     }
 
     @Test
-    public void testDatabaseName() throws Exception {
+    public void testDatabaseName() {
         // Test special character can present in database name. When a special character is banned
         // in database name, add checker in SearchContext.Builder and reflect it in java doc.
         LocalStorage.SearchContext.Builder contextBuilder =

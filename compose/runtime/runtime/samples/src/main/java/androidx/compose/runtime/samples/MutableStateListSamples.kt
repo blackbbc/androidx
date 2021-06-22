@@ -18,27 +18,25 @@ package androidx.compose.runtime.samples
 
 import androidx.annotation.Sampled
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Button
+import androidx.compose.material.Text
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.input.TextFieldValue
 
-@Composable
 @OptIn(ExperimentalFoundationApi::class)
 @Sampled
 fun stateListSample() {
     @Composable
     fun Names() {
-        var name by remember { mutableStateOf(TextFieldValue("user")) }
-        val names = mutableStateListOf<String>()
+        var name by remember { mutableStateOf("user") }
+        val names = remember { mutableStateListOf<String>() }
 
         Column {
             Row {
@@ -46,7 +44,7 @@ fun stateListSample() {
                     value = name,
                     onValueChange = { name = it }
                 )
-                Button(onClick = { names.add(name.text) }) {
+                Button(onClick = { names.add(name) }) {
                     Text("Add")
                 }
             }

@@ -33,11 +33,10 @@ import androidx.test.filters.MediumTest;
 import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.DeterministicAead;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.aead.AeadFactory;
+import com.google.crypto.tink.aead.AeadConfig;
 import com.google.crypto.tink.aead.AesGcmKeyManager;
-import com.google.crypto.tink.config.TinkConfig;
 import com.google.crypto.tink.daead.AesSivKeyManager;
-import com.google.crypto.tink.daead.DeterministicAeadFactory;
+import com.google.crypto.tink.daead.DeterministicAeadConfig;
 import com.google.crypto.tink.integration.android.AndroidKeysetManager;
 import com.google.crypto.tink.subtle.Base64;
 
@@ -348,6 +347,7 @@ public class EncryptedSharedPreferencesTest {
                 sharedPreferences.getAll().size());
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void testWriteSharedPrefsTink() throws Exception {
         String tinkTestPrefs = "TinkTestPrefs";
@@ -366,7 +366,8 @@ public class EncryptedSharedPreferencesTest {
         encryptedEditor.commit();
 
         // Set up Tink
-        TinkConfig.register();
+        DeterministicAeadConfig.register();
+        AeadConfig.register();
 
         KeysetHandle daeadKeysetHandle = new AndroidKeysetManager.Builder()
                 .withKeyTemplate(AesSivKeyManager.aes256SivTemplate())
@@ -375,8 +376,8 @@ public class EncryptedSharedPreferencesTest {
                 .withMasterKeyUri(KEYSTORE_PATH_URI + "_androidx_security_master_key_")
                 .build().getKeysetHandle();
 
-        DeterministicAead deterministicAead = DeterministicAeadFactory.getPrimitive(
-                daeadKeysetHandle);
+        DeterministicAead deterministicAead =
+                daeadKeysetHandle.getPrimitive(DeterministicAead.class);
         byte[] encryptedKey = deterministicAead.encryptDeterministically(testKey.getBytes(UTF_8),
                 tinkTestPrefs.getBytes());
         String encodedKey = Base64.encode(encryptedKey);
@@ -392,9 +393,7 @@ public class EncryptedSharedPreferencesTest {
                         "__androidx_security_crypto_encrypted_prefs_value_keyset__", tinkTestPrefs)
                 .withMasterKeyUri(KEYSTORE_PATH_URI + "_androidx_security_master_key_")
                 .build().getKeysetHandle();
-
-        Aead aead = AeadFactory.getPrimitive(aeadKeysetHandle);
-
+        Aead aead = aeadKeysetHandle.getPrimitive(Aead.class);
         String encryptedValue = sharedPreferences.getString(encodedKey, null);
         byte[] cipherText = Base64.decode(encryptedValue);
         ByteBuffer values = ByteBuffer.wrap(aead.decrypt(cipherText, encodedKey.getBytes(UTF_8)));
@@ -406,6 +405,34 @@ public class EncryptedSharedPreferencesTest {
         Assert.assertEquals("String should have been equal to original",
                 actualValue,
                 testValue);
+    }
+
+    @Test
+    public void testReentrantCallbackCalls() throws Exception {
+        SharedPreferences encryptedSharedPreferences = EncryptedSharedPreferences
+                .create(mContext,
+                        PREFS_FILE,
+                        mMasterKey,
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM);
+
+        encryptedSharedPreferences.registerOnSharedPreferenceChangeListener(
+                new SharedPreferences.OnSharedPreferenceChangeListener() {
+                    @Override
+                    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences,
+                            String key) {
+                        sharedPreferences.unregisterOnSharedPreferenceChangeListener(this);
+                    }
+                });
+
+        encryptedSharedPreferences.registerOnSharedPreferenceChangeListener(
+                (sharedPreferences, key) -> {
+                    // No-op
+                });
+
+        SharedPreferences.Editor editor = encryptedSharedPreferences.edit();
+        editor.putString("someKey", "someValue");
+        editor.apply();
     }
 
 }

@@ -51,6 +51,18 @@ public class DeviceQuirksLoader {
         if (ExcludedSupportedSizesQuirk.load()) {
             quirks.add(new ExcludedSupportedSizesQuirk());
         }
+        if (CrashWhenTakingPhotoWithAutoFlashAEModeQuirk.load()) {
+            quirks.add(new CrashWhenTakingPhotoWithAutoFlashAEModeQuirk());
+        }
+        if (PreviewPixelHDRnetQuirk.load()) {
+            quirks.add(new PreviewPixelHDRnetQuirk());
+        }
+        if (StillCaptureFlashStopRepeatingQuirk.load()) {
+            quirks.add(new StillCaptureFlashStopRepeatingQuirk());
+        }
+        if (ExtraSupportedSurfaceCombinationsQuirk.load()) {
+            quirks.add(new ExtraSupportedSurfaceCombinationsQuirk());
+        }
 
         return quirks;
     }

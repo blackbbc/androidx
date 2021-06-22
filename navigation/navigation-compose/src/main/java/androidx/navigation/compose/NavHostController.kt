@@ -19,24 +19,17 @@ package androidx.navigation.compose
 import android.content.Context
 import android.os.Bundle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.onCommit
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.savedinstancestate.Saver
-import androidx.compose.runtime.savedinstancestate.rememberSavedInstanceState
-import androidx.compose.ui.platform.ContextAmbient
-import androidx.core.net.toUri
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
-import androidx.navigation.NavDeepLinkRequest
-import androidx.navigation.NavGraph
-import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
-import androidx.navigation.navigation
-
-const val KEY_ROUTE = "android-support-nav:controller:route"
 
 /**
  * Gets the current navigation back stack entry as a [MutableState]. When the given navController
@@ -50,7 +43,7 @@ public fun NavController.currentBackStackEntryAsState(): State<NavBackStackEntry
     val currentNavBackStackEntry = remember { mutableStateOf(currentBackStackEntry) }
     // setup the onDestinationChangedListener responsible for detecting when the
     // current back stack entry changes
-    onCommit(this) {
+    DisposableEffect(this) {
         val callback = NavController.OnDestinationChangedListener { controller, _, _ ->
             currentNavBackStackEntry.value = controller.currentBackStackEntry
         }
@@ -70,8 +63,8 @@ public fun NavController.currentBackStackEntryAsState(): State<NavBackStackEntry
  */
 @Composable
 public fun rememberNavController(): NavHostController {
-    val context = ContextAmbient.current
-    return rememberSavedInstanceState(saver = NavControllerSaver(context)) {
+    val context = LocalContext.current
+    return rememberSaveable(saver = NavControllerSaver(context)) {
         createNavController(context)
     }
 }
@@ -90,31 +83,3 @@ private fun NavControllerSaver(
     save = { it.saveState() },
     restore = { createNavController(context).apply { restoreState(it) } }
 )
-
-/**
- * Navigate to a route in the current NavGraph.
- *
- * @param route route for the destination
- */
-public fun NavController.navigate(route: String) {
-    navigate(NavDeepLinkRequest.Builder.fromUri(createRoute(route).toUri()).build())
-}
-
-/**
- * Construct a new [NavGraph]
- *
- * @param route the route for the graph
- * @param startDestination the route for the start destination
- * @param builder the builder used to construct the graph
- */
-internal fun NavController.createGraph(
-    route: String? = null,
-    startDestination: String,
-    builder: NavGraphBuilder.() -> Unit
-): NavGraph = navigatorProvider.navigation(
-    if (route != null) createRoute(route).hashCode() else 0,
-    createRoute(startDestination).hashCode(),
-    builder
-)
-
-internal fun createRoute(route: String) = "android-app://androidx.navigation.compose/$route"

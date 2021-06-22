@@ -22,7 +22,6 @@ import android.graphics.Rect;
 
 import androidx.annotation.NonNull;
 import androidx.camera.core.CameraControl;
-import androidx.camera.core.ExperimentalExposureCompensation;
 import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.FocusMeteringResult;
 import androidx.camera.core.ImageCapture.FlashMode;
@@ -82,7 +81,6 @@ public interface CameraControlInternal extends CameraControl {
      */
     @NonNull
     @Override
-    @ExperimentalExposureCompensation
     ListenableFuture<Integer> setExposureCompensationIndex(int exposure);
 
     /**
@@ -91,10 +89,36 @@ public interface CameraControlInternal extends CameraControl {
     void submitCaptureRequests(@NonNull List<CaptureConfig> captureConfigs);
 
     /**
+     * Gets the current SessionConfig.
+     *
+     * <p>When the SessionConfig is changed,
+     * {@link ControlUpdateCallback#onCameraControlUpdateSessionConfig()} will be called to
+     * notify the change.
+     */
+    @NonNull
+    SessionConfig getSessionConfig();
+
+    /**
      * Gets the full sensor rect.
      */
     @NonNull
     Rect getSensorRect();
+
+    /**
+     * Adds the Interop configuration.
+     */
+    void addInteropConfig(@NonNull Config config);
+
+    /**
+     * Clears the Interop configuration set previously.
+     */
+    void clearInteropConfig();
+
+    /**
+     * Gets the Interop configuration.
+     */
+    @NonNull
+    Config getInteropConfig();
 
     CameraControlInternal DEFAULT_EMPTY_INSTANCE = new CameraControlInternal() {
         @FlashMode
@@ -127,18 +151,22 @@ public interface CameraControlInternal extends CameraControl {
 
         @Override
         public void cancelAfAeTrigger(boolean cancelAfTrigger, boolean cancelAePrecaptureTrigger) {
-
         }
 
         @NonNull
         @Override
-        @ExperimentalExposureCompensation
         public ListenableFuture<Integer> setExposureCompensationIndex(int exposure) {
             return Futures.immediateFuture(0);
         }
 
         @Override
         public void submitCaptureRequests(@NonNull List<CaptureConfig> captureConfigs) {
+        }
+
+        @NonNull
+        @Override
+        public SessionConfig getSessionConfig() {
+            return SessionConfig.defaultEmptySessionConfig();
         }
 
         @NonNull
@@ -171,13 +199,31 @@ public interface CameraControlInternal extends CameraControl {
         public ListenableFuture<Void> setLinearZoom(float linearZoom) {
             return Futures.immediateFuture(null);
         }
+
+        @Override
+        public void addInteropConfig(@NonNull Config config) {
+        }
+
+        @Override
+        public void clearInteropConfig() {
+        }
+
+        @NonNull
+        @Override
+        public Config getInteropConfig() {
+            return null;
+        }
     };
 
     /** Listener called when CameraControlInternal need to notify event. */
     interface ControlUpdateCallback {
 
-        /** Called when CameraControlInternal has updated session configuration. */
-        void onCameraControlUpdateSessionConfig(@NonNull SessionConfig sessionConfig);
+        /**
+         * Called when CameraControlInternal has updated session configuration.
+         *
+         * <p>The latest SessionConfig can be obtained by calling {@link #getSessionConfig()}.
+         */
+        void onCameraControlUpdateSessionConfig();
 
         /** Called when CameraControlInternal need to send capture requests. */
         void onCameraControlCaptureRequests(@NonNull List<CaptureConfig> captureConfigs);

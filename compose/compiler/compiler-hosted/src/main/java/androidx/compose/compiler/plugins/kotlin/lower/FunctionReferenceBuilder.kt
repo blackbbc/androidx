@@ -16,14 +16,14 @@
 
 package androidx.compose.compiler.plugins.kotlin.lower
 
-import org.jetbrains.kotlin.backend.common.ir.addFakeOverridesViaIncorrectHeuristic
+import org.jetbrains.kotlin.backend.common.ir.addFakeOverrides
 import org.jetbrains.kotlin.backend.common.ir.copyTo
 import org.jetbrains.kotlin.backend.common.ir.createImplicitParameterDeclarationWithWrappedDescriptor
 import org.jetbrains.kotlin.backend.common.ir.moveBodyTo
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.backend.jvm.JvmLoweredDeclarationOrigin
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
-import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.ir.builders.IrGeneratorContext
 import org.jetbrains.kotlin.ir.builders.declarations.addConstructor
 import org.jetbrains.kotlin.ir.builders.declarations.addFunction
@@ -37,7 +37,6 @@ import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.declarations.copyAttributes
-import org.jetbrains.kotlin.ir.declarations.impl.IrClassImpl
 import org.jetbrains.kotlin.ir.descriptors.IrBuiltIns
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
@@ -66,9 +65,9 @@ class FunctionReferenceBuilder(
     private val superMethod =
         functionSuperClass.functions.single { it.owner.modality == Modality.ABSTRACT }
 
-    private val functionReferenceClass = buildClass {
+    private val functionReferenceClass = generatorContext.irFactory.buildClass {
         setSourceRange(irFunctionExpression)
-        visibility = Visibilities.LOCAL
+        visibility = DescriptorVisibilities.LOCAL
         origin = JvmLoweredDeclarationOrigin.LAMBDA_IMPL
         name = SpecialNames.NO_NAME_PROVIDED
     }.apply {
@@ -76,7 +75,7 @@ class FunctionReferenceBuilder(
         superTypes = listOfNotNull(superType)
         createImplicitParameterDeclarationWithWrappedDescriptor()
         copyAttributes(irFunctionExpression)
-        (this as IrClassImpl).metadata = irFunctionExpression.function.metadata
+        metadata = irFunctionExpression.function.metadata
     }
 
     fun build(): IrExpression = DeclarationIrBuilder(
@@ -86,7 +85,7 @@ class FunctionReferenceBuilder(
         irBlock(irFunctionExpression.startOffset, irFunctionExpression.endOffset) {
             val constructor = createConstructor()
             createInvokeMethod()
-            functionReferenceClass.addFakeOverridesViaIncorrectHeuristic()
+            functionReferenceClass.addFakeOverrides(irBuiltIns)
             +functionReferenceClass
             +irCall(constructor.symbol)
         }

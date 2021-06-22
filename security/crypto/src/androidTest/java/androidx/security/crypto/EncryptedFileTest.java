@@ -29,10 +29,9 @@ import androidx.test.filters.MediumTest;
 
 import com.google.crypto.tink.KeysetHandle;
 import com.google.crypto.tink.StreamingAead;
-import com.google.crypto.tink.config.TinkConfig;
 import com.google.crypto.tink.integration.android.AndroidKeysetManager;
-import com.google.crypto.tink.streamingaead.StreamingAeadFactory;
-import com.google.crypto.tink.streamingaead.StreamingAeadKeyTemplates;
+import com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKeyManager;
+import com.google.crypto.tink.streamingaead.StreamingAeadConfig;
 
 import org.junit.Assert;
 import org.junit.Before;
@@ -50,7 +49,6 @@ import java.security.KeyStore;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class EncryptedFileTest {
-
     private Context mContext;
     private MasterKey mMasterKey;
 
@@ -170,6 +168,7 @@ public class EncryptedFileTest {
 
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void testWriteReadEncryptedFileWithAlias() throws Exception {
         final String fileContent = "Don't tell anyone...";
@@ -299,6 +298,7 @@ public class EncryptedFileTest {
         Assert.assertTrue("Keyset should have existed.", containsKeyset);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void tinkTest() throws Exception {
         final String fileContent = "Don't tell anyone...";
@@ -315,17 +315,17 @@ public class EncryptedFileTest {
         outputStream.flush();
         outputStream.close();
 
-        TinkConfig.register();
+        StreamingAeadConfig.register();
         KeysetHandle streadmingAeadKeysetHandle = new AndroidKeysetManager.Builder()
-                .withKeyTemplate(StreamingAeadKeyTemplates.AES256_GCM_HKDF_4KB)
+                .withKeyTemplate(AesGcmHkdfStreamingKeyManager.aes256GcmHkdf4KBTemplate())
                 .withSharedPref(mContext,
                         "__androidx_security_crypto_encrypted_file_keyset__",
                         "__androidx_security_crypto_encrypted_file_pref__")
                 .withMasterKeyUri(KEYSTORE_PATH_URI + mMasterKey.getKeyAlias())
                 .build().getKeysetHandle();
 
-        StreamingAead streamingAead = StreamingAeadFactory.getPrimitive(
-                streadmingAeadKeysetHandle);
+        StreamingAead streamingAead = com.google.crypto.tink.streamingaead.StreamingAeadFactory
+                .getPrimitive(streadmingAeadKeysetHandle);
 
         FileInputStream fileInputStream = new FileInputStream(file);
         InputStream inputStream = streamingAead.newDecryptingStream(fileInputStream,

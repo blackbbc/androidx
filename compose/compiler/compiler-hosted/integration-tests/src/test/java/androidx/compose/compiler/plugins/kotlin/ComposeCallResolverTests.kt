@@ -34,13 +34,13 @@ class ComposeCallResolverTests : AbstractCodegenTest() {
         """
             import androidx.compose.runtime.*
 
-            @Composable val foo get() = 123
+            val foo @Composable get() = 123
 
             class A {
-                @Composable val bar get() = 123
+                val bar @Composable get() = 123
             }
 
-            @Composable val A.bam get() = 123
+            val A.bam @Composable get() = 123
 
             @Composable
             fun test() {
@@ -106,8 +106,8 @@ class ComposeCallResolverTests : AbstractCodegenTest() {
             import androidx.compose.runtime.*
 
             @Composable
-            fun test(children: @Composable () -> Unit) {
-                <call>children()
+            fun test(content: @Composable () -> Unit) {
+                <call>content()
             }
         """
     )
@@ -144,7 +144,7 @@ class ComposeCallResolverTests : AbstractCodegenTest() {
         """
             import androidx.compose.runtime.*
 
-            val x = Ambient.of<Int> { 123 }
+            val x = CompositionLocal.of<Int> { 123 }
 
             @Composable
             fun test() {
@@ -180,19 +180,19 @@ class ComposeCallResolverTests : AbstractCodegenTest() {
 
             class Density
 
-            val DensityAmbient = Ambient.of<Density>()
+            val DensityCompositionLocal = CompositionLocal.of<Density>()
 
             @Composable
-            fun ambientDensity() = ambient(DensityAmbient)
+            fun compositionLocalDensity() = compositionLocal(LocalDensity)
 
             @Composable
             fun WithDensity(block: @Composable DensityScope.() -> Unit) {
-                DensityScope(ambientDensity()).<call>block()
+                DensityScope(compositionLocalDensity()).<call>block()
             }
         """
     )
 
-    fun testInlineChildren() = assertInterceptions(
+    fun testInlineContent() = assertInterceptions(
         """
             import androidx.compose.runtime.*
             import android.widget.LinearLayout
@@ -201,11 +201,11 @@ class ComposeCallResolverTests : AbstractCodegenTest() {
 
             @Composable
             inline fun PointerInputWrapper(
-                crossinline children: @Composable () -> Unit
+                crossinline content: @Composable () -> Unit
             ) {
                 // Hide the internals of PointerInputNode
                 <call>Group {
-                    <call>children()
+                    <call>content()
                 }
             }
         """

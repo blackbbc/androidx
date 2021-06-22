@@ -19,6 +19,7 @@ package androidx.paging
 import androidx.paging.PagingSource.LoadResult.Error
 import androidx.paging.PagingSource.LoadResult.Page
 import androidx.testutils.DirectDispatcher
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.runBlocking
 
@@ -42,8 +43,11 @@ private class FakeSource<Value : Any>(
             IllegalArgumentException("This test source only supports initial load")
         )
     }
+
+    override fun getRefreshKey(state: PagingState<Any, Value>): Any? = null
 }
 
+@OptIn(DelicateCoroutinesApi::class)
 @Suppress("TestFunctionName", "DEPRECATION")
 fun StringPagedList(
     leadingNulls: Int,

@@ -1,3 +1,13 @@
-include ':gradle-plugin'
-include ':jetpad-integration'
-project(':jetpad-integration').projectDir = file('../buildSrc/jetpad-integration')
+enableFeaturePreview("VERSION_CATALOGS")
+
+dependencyResolutionManagement {
+    versionCatalogs {
+        libs {
+            from(files("../gradle/libs.versions.toml"))
+        }
+    }
+}
+
+include ":gradle-plugin"
+include ":jetpad-integration"
+project(":jetpad-integration").projectDir = file("../buildSrc/jetpad-integration")

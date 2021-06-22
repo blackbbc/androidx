@@ -38,9 +38,12 @@ public class DeviceQuirksLoader {
     static List<Quirk> loadQuirks() {
         final List<Quirk> quirks = new ArrayList<>();
 
-        // Load all device specific quirks
-        if (HuaweiMediaStoreLocationValidationQuirk.load()) {
-            quirks.add(new HuaweiMediaStoreLocationValidationQuirk());
+        if (ImageCaptureRotationOptionQuirk.load()) {
+            quirks.add(new ImageCaptureRotationOptionQuirk());
+        }
+
+        if (ImageCaptureWashedOutImageQuirk.load()) {
+            quirks.add(new ImageCaptureWashedOutImageQuirk());
         }
 
         return quirks;

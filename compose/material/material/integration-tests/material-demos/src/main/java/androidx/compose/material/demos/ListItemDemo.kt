@@ -16,9 +16,8 @@
 
 package androidx.compose.material.demos
 
-import androidx.compose.foundation.ScrollableColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.samples.ClickableListItems
 import androidx.compose.material.samples.OneLineListItems
 import androidx.compose.material.samples.OneLineRtlLtrListItems
 import androidx.compose.material.samples.ThreeLineListItems
@@ -26,28 +25,36 @@ import androidx.compose.material.samples.ThreeLineRtlLtrListItems
 import androidx.compose.material.samples.TwoLineListItems
 import androidx.compose.material.samples.TwoLineRtlLtrListItems
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.imageResource
 
 @Composable
 fun ListItemDemo() {
-    val icon24 = imageResource(R.drawable.ic_bluetooth)
-    val icon40 = imageResource(R.drawable.ic_account_box)
-    val icon56 = imageResource(R.drawable.ic_android)
-    val vectorIcon = Icons.Default.Call
-    ScrollableColumn {
-        OneLineListItems(icon24, icon40, icon56, vectorIcon)
-        TwoLineListItems(icon24, icon40)
-        ThreeLineListItems(icon24, vectorIcon)
+    LazyColumn {
+        item {
+            ClickableListItems()
+        }
+        item {
+            OneLineListItems()
+        }
+        item {
+            TwoLineListItems()
+        }
+        item {
+            ThreeLineListItems()
+        }
     }
 }
 
 @Composable
 fun MixedRtlLtrListItemDemo() {
-    val icon24 = imageResource(R.drawable.ic_bluetooth)
-    val icon40 = imageResource(R.drawable.ic_account_box)
-    ScrollableColumn {
-        OneLineRtlLtrListItems(icon24, icon40)
-        TwoLineRtlLtrListItems(icon40)
-        ThreeLineRtlLtrListItems(icon40)
+    LazyColumn {
+        item {
+            OneLineRtlLtrListItems()
+        }
+        item {
+            TwoLineRtlLtrListItems()
+        }
+        item {
+            ThreeLineRtlLtrListItems()
+        }
     }
 }

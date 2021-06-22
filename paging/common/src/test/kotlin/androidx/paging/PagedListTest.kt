@@ -21,11 +21,14 @@ import androidx.paging.LoadType.REFRESH
 import androidx.testutils.TestDispatcher
 import androidx.testutils.TestExecutor
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
+import java.util.concurrent.Executor
+import kotlin.concurrent.thread
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -46,6 +49,8 @@ class PagedListTest {
                     )
                     else -> throw NotImplementedError("Test should fail if we get here")
                 }
+
+            override fun getRefreshKey(state: PagingState<Int, String>): Int? = null
         }
     }
 
@@ -53,10 +58,18 @@ class PagedListTest {
 
     @Test
     fun createLegacy() {
+        val slowFetchExecutor = Executor {
+            // just be slow to ensure `build()` really waited on fetch to complete.
+            // but still run it on another thread to ensure we are not blocking the test here
+            thread {
+                Thread.sleep(1000)
+                it.run()
+            }
+        }
         @Suppress("DEPRECATION")
         val pagedList = PagedList.Builder(TestPositionalDataSource(ITEMS), 100)
             .setNotifyExecutor(TestExecutor())
-            .setFetchExecutor(TestExecutor())
+            .setFetchExecutor(slowFetchExecutor)
             .build()
         // if build succeeds without flushing an executor, success!
         assertEquals(ITEMS, pagedList)
@@ -69,6 +82,8 @@ class PagedListTest {
                 override suspend fun load(params: LoadParams<Int>): LoadResult<Int, String> {
                     throw IllegalStateException()
                 }
+
+                override fun getRefreshKey(state: PagingState<Int, String>): Int? = null
             }
             assertFailsWith<IllegalStateException> {
                 @Suppress("DEPRECATION")
@@ -76,8 +91,8 @@ class PagedListTest {
                     pagingSource,
                     null,
                     testCoroutineScope,
-                    DirectDispatcher,
-                    DirectDispatcher,
+                    Dispatchers.Default,
+                    Dispatchers.IO,
                     null,
                     Config(10),
                     0
@@ -94,6 +109,8 @@ class PagedListTest {
                 override suspend fun load(params: LoadParams<Int>): LoadResult<Int, String> {
                     return LoadResult.Error(exception)
                 }
+
+                override fun getRefreshKey(state: PagingState<Int, String>): Int? = null
             }
 
             // create doesn't differentiate between throw vs error runnable, which is why
@@ -104,8 +121,8 @@ class PagedListTest {
                     pagingSource,
                     null,
                     testCoroutineScope,
-                    DirectDispatcher,
-                    DirectDispatcher,
+                    Dispatchers.Default,
+                    Dispatchers.IO,
                     null,
                     Config(10),
                     0
@@ -121,14 +138,13 @@ class PagedListTest {
                 key = null,
                 loadSize = 10,
                 placeholdersEnabled = false,
-                pageSize = 10
             )
         ) as PagingSource.LoadResult.Page
 
         @Suppress("DEPRECATION")
         val pagedList = PagedList.Builder(pagingSource, initialPage, config)
-            .setNotifyDispatcher(DirectDispatcher)
-            .setFetchDispatcher(DirectDispatcher)
+            .setNotifyDispatcher(Dispatchers.Default)
+            .setFetchDispatcher(Dispatchers.IO)
             .build()
 
         assertEquals(pagingSource, pagedList.pagingSource)

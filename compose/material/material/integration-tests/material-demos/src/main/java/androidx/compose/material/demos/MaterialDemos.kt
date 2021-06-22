@@ -23,10 +23,10 @@ import androidx.compose.material.samples.AlertDialogSample
 import androidx.compose.material.samples.BackdropScaffoldSample
 import androidx.compose.material.samples.BottomDrawerSample
 import androidx.compose.material.samples.CustomAlertDialogSample
-import androidx.compose.material.samples.EmphasisSample
 import androidx.compose.material.samples.ModalBottomSheetSample
 import androidx.compose.material.samples.ModalDrawerSample
 import androidx.compose.material.samples.BottomSheetScaffoldSample
+import androidx.compose.material.samples.ContentAlphaSample
 import androidx.compose.material.samples.ScaffoldWithBottomBarAndCutout
 import androidx.compose.material.samples.ScaffoldWithCoroutinesSnackbar
 import androidx.compose.material.samples.ScaffoldWithSimpleSnackbar
@@ -44,8 +44,15 @@ val MaterialDemos = DemoCategory(
         ),
         ComposableDemo("App Bars") { AppBarDemo() },
         ComposableDemo("Backdrop") { BackdropScaffoldSample() },
+        ComposableDemo("Badge") { BadgeDemo() },
         ComposableDemo("Bottom Navigation") { BottomNavigationDemo() },
-        ComposableDemo("Bottom Sheet") { BottomSheetScaffoldSample() },
+        DemoCategory(
+            "Bottom Sheets",
+            listOf(
+                ComposableDemo("Bottom Sheet") { BottomSheetScaffoldSample() },
+                ComposableDemo("Modal Bottom Sheet") { ModalBottomSheetSample() },
+            )
+        ),
         ComposableDemo("Buttons & FABs") { ButtonDemo() },
         DemoCategory(
             "Navigation drawer",
@@ -55,7 +62,7 @@ val MaterialDemos = DemoCategory(
             )
         ),
         ComposableDemo("Elevation") { ElevationDemo() },
-        ComposableDemo("Emphasis") { EmphasisSample() },
+        ComposableDemo("Content alpha") { ContentAlphaSample() },
         DemoCategory(
             "ListItems",
             listOf(
@@ -72,7 +79,6 @@ val MaterialDemos = DemoCategory(
                 ActivityDemo("Dynamic Theme", DynamicThemeActivity::class)
             )
         ),
-        ComposableDemo("Modal bottom sheet") { ModalBottomSheetSample() },
         ComposableDemo("Progress Indicators") { ProgressIndicatorDemo() },
         DemoCategory(
             "Scaffold",
@@ -91,7 +97,8 @@ val MaterialDemos = DemoCategory(
             "TextFields",
             listOf(
                 ComposableDemo("FilledTextField/OutlinedTextField") { MaterialTextFieldDemo() },
-                ComposableDemo("Multiple text fields") { TextFieldsDemo() }
+                ComposableDemo("Multiple text fields") { TextFieldsDemo() },
+                ComposableDemo("Alignment inside text fields") { VerticalAlignmentsInTextField() }
             )
         )
     )

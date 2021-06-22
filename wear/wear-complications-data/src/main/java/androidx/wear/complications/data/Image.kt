@@ -133,30 +133,3 @@ public class SmallImage internal constructor(
         setBurnInProtectionSmallImage(ambientImage)
     }
 }
-
-/**
- * An image that is expected to fill a large part of the watch face, large enough to be
- * shown as a background.
- *
- * The image may not be shown when the watch is not active to save power or avoid burn in.
- *
- * @param[image] the image itself
- */
-public class BackgroundImage internal constructor(
-    public val image: Icon
-) {
-    /**
-     * Builder for [BackgroundImage].
-     *
-     * @param[image] the [Icon] representing the image
-     */
-    public class Builder(private val image: Icon) {
-        /** Builds a [BackgroundImage]. */
-        public fun build(): BackgroundImage = BackgroundImage(image)
-    }
-
-    /** Adds a [BackgroundImage] to a builder for [WireComplicationData]. */
-    internal fun addToWireComplicationData(builder: WireComplicationDataBuilder) = builder.apply {
-        setLargeImage(image)
-    }
-}

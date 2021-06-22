@@ -17,14 +17,13 @@
 package androidx.compose.runtime.samples
 
 import androidx.annotation.Sampled
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 
 @Sampled
-@Composable
 fun simpleImmutableClass() {
     @Immutable
     data class Person(val name: String, val phoneNumber: String)

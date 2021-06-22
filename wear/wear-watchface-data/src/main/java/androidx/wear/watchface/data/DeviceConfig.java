@@ -34,13 +34,9 @@ import androidx.versionedparcelable.VersionedParcelize;
  * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
-@VersionedParcelize
+@VersionedParcelize(allowSerialization = true)
 @SuppressLint("BanParcelableUsage") // TODO(b/169214666): Remove Parcelable
 public final class DeviceConfig implements VersionedParcelable, Parcelable {
-    public static final int SCREEN_SHAPE_ROUND = 1;
-
-    /** This includes square screens. */
-    public static final int SCREEN_SHAPE_RECTANGULAR = 2;
 
     @ParcelField(1)
     boolean mHasLowBitAmbient;
@@ -48,9 +44,11 @@ public final class DeviceConfig implements VersionedParcelable, Parcelable {
     @ParcelField(2)
     boolean mHasBurnInProtection;
 
-    /** Should be one of {@link #SCREEN_SHAPE_ROUND} or {@link #SCREEN_SHAPE_RECTANGULAR}. */
-    @ParcelField(3)
-    int mScreenShape;
+    @ParcelField(4)
+    long mAnalogPreviewReferenceTimeMillis;
+
+    @ParcelField(5)
+    long mDigitalPreviewReferenceTimeMillis;
 
     /** Used by VersionedParcelable. */
     DeviceConfig() {}
@@ -58,10 +56,12 @@ public final class DeviceConfig implements VersionedParcelable, Parcelable {
     public DeviceConfig(
             boolean hasLowBitAmbient,
             boolean hasBurnInProtection,
-            int screenShape) {
+            long analogPreviewReferenceTimeMillis,
+            long digitalPreviewReferenceTimeMillis) {
         mHasLowBitAmbient = hasLowBitAmbient;
         mHasBurnInProtection = hasBurnInProtection;
-        mScreenShape = screenShape;
+        mAnalogPreviewReferenceTimeMillis = analogPreviewReferenceTimeMillis;
+        mDigitalPreviewReferenceTimeMillis = digitalPreviewReferenceTimeMillis;
     }
 
     public boolean getHasLowBitAmbient() {
@@ -72,8 +72,12 @@ public final class DeviceConfig implements VersionedParcelable, Parcelable {
         return mHasBurnInProtection;
     }
 
-    public int getScreenShape() {
-        return mScreenShape;
+    public long getAnalogPreviewReferenceTimeMillis() {
+        return mAnalogPreviewReferenceTimeMillis;
+    }
+
+    public long getDigitalPreviewReferenceTimeMillis() {
+        return mDigitalPreviewReferenceTimeMillis;
     }
 
     @Override

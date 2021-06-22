@@ -22,7 +22,9 @@ import androidx.build.studioType
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.internal.tasks.userinput.UserInputHandler
+import org.gradle.api.plugins.ExtraPropertiesExtension
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.gradle.internal.service.ServiceRegistry
@@ -59,15 +61,29 @@ abstract class StudioTask : DefaultTask() {
     @get:Internal
     protected open val installParentDir: File = project.rootDir
 
+    @Suppress("UnstableApiUsage") // For use of VersionCatalog
+    private val studioVersion by lazy {
+        val libs = project.extensions.getByType(
+            VersionCatalogsExtension::class.java
+        ).find("libs").get()
+        fun getVersion(key: String): String {
+            val version = libs.findVersion(key)
+            return if (version.isPresent) {
+                version.get().requiredVersion
+            } else {
+                throw GradleException("Could not find a version for `$key`")
+            }
+        }
+        getVersion("androidStudio")
+    }
+
     /**
      * Directory name (not path) that Studio will be unzipped into.
      */
     private val studioDirectoryName: String
         get() {
             val osName = StudioPlatformUtilities.osName
-            with(StudioVersions) {
-                return "android-studio-ide-$ideaMajorVersion.$studioBuildNumber-$osName"
-            }
+            return "android-studio-$studioVersion-$osName"
         }
 
     /**
@@ -115,11 +131,6 @@ abstract class StudioTask : DefaultTask() {
         File("$studioInstallationDir/STUDIOW_LICENSE_ACCEPTED")
     }
 
-    /**
-     * Allows for the patching of a Studio installation (including replacing plugins).
-     * TODO: Consider removing after Studio has switched to Kotlin 1.4
-     * b/162414740
-     */
     @get:Internal
     protected open val studioPatcher = NoopStudioPatcher
 
@@ -133,14 +144,14 @@ abstract class StudioTask : DefaultTask() {
             studioInstallationDir.parentFile.deleteRecursively()
             // Create installation directory and any needed parent directories
             studioInstallationDir.mkdirs()
-            studioArchiveCreator(project, StudioVersions, studioArchiveName, studioArchivePath)
+            studioArchiveCreator(project, studioVersion, studioArchiveName, studioArchivePath)
             println("Extracting archive...")
             extractStudioArchive()
             with(platformUtilities) { updateJvmHeapSize() }
             // Finish install process
             successfulInstallFile.createNewFile()
         }
-        val successfulStudioPatch = File("$studioInstallationDir/PATCH_SUCCESSFUL")
+        val successfulStudioPatch = File("$studioInstallationDir/PLUGIN_PATCH_SUCCESSFUL")
         if (!successfulStudioPatch.exists()) {
             studioPatcher(this, project, studioInstallationDir)
             // Finish patch process
@@ -235,7 +246,7 @@ abstract class StudioTask : DefaultTask() {
  */
 open class RootStudioTask : StudioTask() {
     override val studioArchiveCreator = UrlArchiveCreator
-    override val studioPatcher: StudioPatcher = KotlinStudioPatcher
+    override val studioPatcher: StudioPatcher = PerformancePluginStudioPatcher
     override val ideaProperties get() = projectRoot.resolve("development/studio/idea.properties")
 }
 
@@ -243,11 +254,17 @@ open class RootStudioTask : StudioTask() {
  * Task for launching studio in a playground project
  */
 open class PlaygroundStudioTask : RootStudioTask() {
+    @get:Internal
+    val supportRootFolder = (project.rootProject.property("ext") as ExtraPropertiesExtension)
+        .let { it.get("supportRootFolder") as File }
+
     /**
      * Playground projects have only 1 setup so there is no need to specify the project list.
      */
     override val requiresProjectList get() = false
-    override val installParentDir get() = projectRoot.resolve("..")
-    override val ideaProperties get() = projectRoot.resolve("../playground-common/idea.properties")
-    override val vmOptions get() = projectRoot.resolve("../playground-common/studio.vmoptions")
+    override val installParentDir get() = supportRootFolder
+    override val ideaProperties
+        get() = supportRootFolder.resolve("../playground-common/idea.properties")
+    override val vmOptions
+        get() = supportRootFolder.resolve("../playground-common/studio.vmoptions")
 }

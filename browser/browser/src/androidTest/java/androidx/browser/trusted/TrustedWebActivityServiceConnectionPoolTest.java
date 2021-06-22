@@ -45,7 +45,6 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @RunWith(AndroidJUnit4.class)
 @MediumTest
@@ -80,6 +79,7 @@ public class TrustedWebActivityServiceConnectionPoolTest {
         mManager.unbindAllConnections();
     }
 
+    @Ignore("Test disabled due to flakiness, see b/182415874")
     @Test
     public void testConnection() {
         final AtomicBoolean connected = new AtomicBoolean();
@@ -117,18 +117,5 @@ public class TrustedWebActivityServiceConnectionPoolTest {
         } catch (InterruptedException e) {
             fail();
         }
-    }
-
-    @Ignore("Test disabled due to flakiness, see b/153851530")
-    @Test
-    public void testMultipleExecutions() {
-        final AtomicInteger count = new AtomicInteger();
-
-        mManager.connect(GOOD_SCOPE, mTrustedPackages, android.os.AsyncTask.THREAD_POOL_EXECUTOR)
-                .addListener(count::incrementAndGet, android.os.AsyncTask.THREAD_POOL_EXECUTOR);
-        mManager.connect(GOOD_SCOPE, mTrustedPackages, android.os.AsyncTask.THREAD_POOL_EXECUTOR)
-                .addListener(count::incrementAndGet, android.os.AsyncTask.THREAD_POOL_EXECUTOR);
-
-        PollingCheck.waitFor(() -> count.get() == 2);
     }
 }

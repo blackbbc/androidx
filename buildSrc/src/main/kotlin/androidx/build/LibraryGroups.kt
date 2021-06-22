@@ -38,7 +38,6 @@ object LibraryGroups {
     val CAR_APP = LibraryGroup("androidx.car.app", LibraryVersions.CAR_APP)
     val COLLECTION = LibraryGroup("androidx.collection", LibraryVersions.COLLECTION)
     val CONCURRENT = LibraryGroup("androidx.concurrent", LibraryVersions.FUTURES)
-    val CONTENTACCESS = LibraryGroup("androidx.contentaccess", LibraryVersions.CONTENTACCESS)
     val CONTENTPAGER = LibraryGroup("androidx.contentpager", LibraryVersions.CONTENTPAGER)
     val COORDINATORLAYOUT = LibraryGroup("androidx.coordinatorlayout", LibraryVersions.COORDINATORLAYOUT)
     val CORE = LibraryGroup("androidx.core", null)
@@ -49,15 +48,16 @@ object LibraryGroups {
     val DRAWERLAYOUT = LibraryGroup("androidx.drawerlayout", LibraryVersions.DRAWERLAYOUT)
     val DYNAMICANIMATION = LibraryGroup("androidx.dynamicanimation", null)
     val EMOJI = LibraryGroup("androidx.emoji", null)
+    val EMOJI2 = LibraryGroup("androidx.emoji2", LibraryVersions.EMOJI2)
     val ENTERPRISE = LibraryGroup("androidx.enterprise", LibraryVersions.ENTERPRISE)
     val EXIFINTERFACE = LibraryGroup("androidx.exifinterface", LibraryVersions.EXIFINTERFACE)
     val FRAGMENT = LibraryGroup("androidx.fragment", LibraryVersions.FRAGMENT)
     val GRIDLAYOUT = LibraryGroup("androidx.gridlayout", LibraryVersions.GRIDLAYOUT)
+    val HEALTH = LibraryGroup("androidx.health", null)
     val HEIFWRITER = LibraryGroup("androidx.heifwriter", LibraryVersions.HEIFWRITER)
     val HILT = LibraryGroup("androidx.hilt", null)
     val INSPECTION = LibraryGroup("androidx.inspection", LibraryVersions.INSPECTION)
     val INSPECTION_EXTENSIONS = LibraryGroup("androidx.inspection.extensions", LibraryVersions.SQLITE_INSPECTOR)
-    val IPC = LibraryGroup("androidx.ipc", LibraryVersions.IPC)
     val INTERPOLATOR = LibraryGroup("androidx.interpolator", LibraryVersions.INTERPOLATOR)
     val JETIFIER = LibraryGroup("com.android.tools.build.jetifier", null)
     val LEANBACK = LibraryGroup("androidx.leanback", null)
@@ -74,41 +74,46 @@ object LibraryGroups {
     val PERCENTLAYOUT = LibraryGroup("androidx.percentlayout", LibraryVersions.PERCENTLAYOUT)
     val PREFERENCE = LibraryGroup("androidx.preference", LibraryVersions.PREFERENCE)
     val PRINT = LibraryGroup("androidx.print", LibraryVersions.PRINT)
+    val PROFILEINSTALLER = LibraryGroup("androidx.profileinstaller", LibraryVersions.PROFILEINSTALLER)
     val RECOMMENDATION = LibraryGroup("androidx.recommendation", LibraryVersions.RECOMMENDATION)
     val RECYCLERVIEW = LibraryGroup("androidx.recyclerview", null)
     val REMOTECALLBACK = LibraryGroup("androidx.remotecallback", LibraryVersions.REMOTECALLBACK)
+    val RESOURCEINSPECTION = LibraryGroup("androidx.resourceinspection", LibraryVersions.RESOURCEINSPECTION)
     val ROOM = LibraryGroup("androidx.room", LibraryVersions.ROOM)
     val STARTUP = LibraryGroup("androidx.startup", LibraryVersions.STARTUP)
     val SAVEDSTATE = LibraryGroup("androidx.savedstate", LibraryVersions.SAVEDSTATE)
     val SECURITY = LibraryGroup("androidx.security", null)
-    val SERIALIZATION = LibraryGroup("androidx.serialization", LibraryVersions.SERIALIZATION)
     val SHARETARGET = LibraryGroup("androidx.sharetarget", LibraryVersions.SHARETARGET)
     val SLICE = LibraryGroup("androidx.slice", null)
     val SLIDINGPANELAYOUT = LibraryGroup("androidx.slidingpanelayout", LibraryVersions.SLIDINGPANELAYOUT)
     val SQLITE = LibraryGroup("androidx.sqlite", LibraryVersions.SQLITE)
     val SWIPEREFRESHLAYOUT = LibraryGroup("androidx.swiperefreshlayout", LibraryVersions.SWIPEREFRESHLAYOUT)
     val TESTSCREENSHOT = LibraryGroup("androidx.test.screenshot", LibraryVersions.TESTSCREENSHOT)
+    val TEXT = LibraryGroup("androidx.text", LibraryVersions.TEXT)
     val TEXTCLASSIFIER = LibraryGroup("androidx.textclassifier", LibraryVersions.TEXTCLASSIFIER)
     val TRACING = LibraryGroup("androidx.tracing", LibraryVersions.TRACING)
     val TRANSITION = LibraryGroup("androidx.transition", LibraryVersions.TRANSITION)
     val TVPROVIDER = LibraryGroup("androidx.tvprovider", LibraryVersions.TVPROVIDER)
-    val UI = LibraryGroup("androidx.ui", null)
     val VECTORDRAWABLE = LibraryGroup("androidx.vectordrawable", null)
     val VERSIONEDPARCELABLE = LibraryGroup("androidx.versionedparcelable", null)
     val VIEWPAGER = LibraryGroup("androidx.viewpager", LibraryVersions.VIEWPAGER)
     val VIEWPAGER2 = LibraryGroup("androidx.viewpager2", LibraryVersions.VIEWPAGER2)
     val WEAR = LibraryGroup("androidx.wear", null)
+    val WEAR_COMPOSE = LibraryGroup("androidx.wear.compose", LibraryVersions.WEAR_COMPOSE)
+    val WEAR_TILES = LibraryGroup("androidx.wear.tiles", LibraryVersions.WEAR_TILES)
     val WEBKIT = LibraryGroup("androidx.webkit", LibraryVersions.WEBKIT)
     val WINDOW = LibraryGroup("androidx.window", null)
     val WORK = LibraryGroup("androidx.work", LibraryVersions.WORK)
 
     object Compose {
-        val ANIMATION = LibraryGroup("androidx.compose.animation", null)
-        val COMPILER = LibraryGroup("androidx.compose.compiler", null)
-        val FOUNDATION = LibraryGroup("androidx.compose.foundation", null)
-        val MATERIAL = LibraryGroup("androidx.compose.material", null)
-        val RUNTIME = LibraryGroup("androidx.compose.runtime", null)
-        val UI = LibraryGroup("androidx.compose.ui", null)
+        private val group = System.getenv("COMPOSE_CUSTOM_GROUP") ?: "androidx.compose"
+        val ANIMATION = LibraryGroup("$group.animation", LibraryVersions.COMPOSE)
+        val COMPILER = LibraryGroup("$group.compiler", LibraryVersions.COMPOSE)
+        val DESKTOP = LibraryGroup("$group.desktop", LibraryVersions.COMPOSE)
+        val FOUNDATION = LibraryGroup("$group.foundation", LibraryVersions.COMPOSE)
+        val MATERIAL = LibraryGroup("$group.material", LibraryVersions.COMPOSE)
+        val RUNTIME = LibraryGroup("$group.runtime", LibraryVersions.COMPOSE)
+        val UI = LibraryGroup("$group.ui", LibraryVersions.COMPOSE)
     }
 }
 
@@ -116,6 +121,13 @@ object LibraryGroups {
  * This object contains the library group, as well as whether libraries
  * in this group are all required to have the same development version.
  */
-data class LibraryGroup(val group: String = "unspecified", val forcedVersion: Version?) {
+data class LibraryGroup(
+    val group: String = "unspecified",
+    val forcedVersion: Version?,
+) : java.io.Serializable {
     val requireSameVersion = (forcedVersion != null)
+
+    companion object {
+        private const val serialVersionUID = 345435634564L
+    }
 }

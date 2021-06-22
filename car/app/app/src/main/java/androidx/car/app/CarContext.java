@@ -20,10 +20,11 @@ import static android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_C
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY;
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
-import static androidx.car.app.utils.CommonUtils.TAG;
+import static androidx.car.app.utils.LogTags.TAG;
 
 import static java.util.Objects.requireNonNull;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
@@ -38,27 +39,37 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.OnBackPressedDispatcher;
 import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.StringDef;
+import androidx.car.app.annotations.RequiresCarApi;
+import androidx.car.app.constraints.ConstraintManager;
+import androidx.car.app.hardware.CarHardwareManager;
+import androidx.car.app.navigation.NavigationManager;
+import androidx.car.app.notification.CarPendingIntent;
 import androidx.car.app.utils.RemoteUtils;
 import androidx.car.app.utils.ThreadUtils;
+import androidx.car.app.versioning.CarAppApiLevel;
+import androidx.car.app.versioning.CarAppApiLevels;
+import androidx.core.content.ContextCompat;
+import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
 import androidx.lifecycle.LifecycleOwner;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.security.InvalidParameterException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.Executor;
 
-// TODO(rampara): Uncomment on addition of navigation module
-//import androidx.car.app.navigation.NavigationManager;
-
-// TODO(rampara): Replace code tags with links on addition of model module.
 /**
  * The CarContext class is a {@link ContextWrapper} subclass accessible to your {@link
  * CarAppService} and {@link Screen} instances, which provides access to car services such as the
  * {@link ScreenManager} for managing the screen stack, the {@link AppManager} for general
- * app-related functionality such as accessing a surface for drawing your navigation app’s map, and
- * the {@code NavigationManager} used by turn-by-turn navigation apps to communicate navigation
+ * app-related functionality such as accessing a surface for drawing your navigation app's map, and
+ * the {@link NavigationManager} used by turn-by-turn navigation apps to communicate navigation
  * metadata and other navigation-related events with the host. See Access the navigation templates
  * for a comprehensive list of library functionality available to navigation apps.
  *
@@ -84,49 +95,88 @@ public class CarContext extends ContextWrapper {
      *
      * @hide
      */
-    @StringDef({APP_SERVICE, CAR_SERVICE, NAVIGATION_SERVICE, SCREEN_MANAGER_SERVICE})
+    @StringDef({APP_SERVICE, CAR_SERVICE, NAVIGATION_SERVICE, SCREEN_SERVICE, CONSTRAINT_SERVICE,
+            HARDWARE_SERVICE})
     @Retention(RetentionPolicy.SOURCE)
+    @RestrictTo(LIBRARY)
     public @interface CarServiceType {
     }
 
     /** Manages all app events such as invalidating the UI, showing a toast, etc. */
-    public static final String APP_SERVICE = "app_manager";
+    public static final String APP_SERVICE = "app";
 
     /**
      * Manages all navigation events such as starting navigation when focus is granted, abandoning
      * navigation when focus is lost, etc.
      */
-    public static final String NAVIGATION_SERVICE = "navigation_manager";
+    public static final String NAVIGATION_SERVICE = "navigation";
 
     /** Manages the screens of the app, including the screen stack. */
-    public static final String SCREEN_MANAGER_SERVICE = "screen_manager";
+    public static final String SCREEN_SERVICE = "screen";
+
+    /** Manages constraints for the app as enforced by the connected host. */
+    @RequiresCarApi(2)
+    public static final String CONSTRAINT_SERVICE = "constraints";
 
     /**
      * Internal usage only. Top level binder to host.
      */
     public static final String CAR_SERVICE = "car";
 
+    /** Manages access to androidx.car.app.hardware properties, sensors and actions. */
+    @RequiresCarApi(3)
+    public static final String HARDWARE_SERVICE = "hardware";
+
     /**
      * Key for including a IStartCarApp in the notification {@link Intent}, for starting the app
      * if it has not been opened yet.
      */
-    public static final String START_CAR_APP_BINDER_KEY = "StartCarAppBinderKey";
+    public static final String EXTRA_START_CAR_APP_BINDER_KEY = "androidx.car.app.extra"
+            + ".START_CAR_APP_BINDER_KEY";
 
     /**
      * Standard action for navigating to a location.
      *
-     * <p>Used as the {@link Intent}'s action for starting a navigation via {@link #startCarApp}.
+     * <p>Used as the {@link Intent}'s action for starting a navigation via
+     * {@link #startCarApp(Intent)}.
      */
-    public static final String ACTION_NAVIGATE =
-            "androidx.car.app.action.NAVIGATE";
+    public static final String ACTION_NAVIGATE = "androidx.car.app.action.NAVIGATE";
+
+    /**
+     * Action for requesting permissions on the car app activity.
+     */
+    static final String REQUEST_PERMISSIONS_ACTION = "androidx.car.app.action.REQUEST_PERMISSIONS";
+
+    /**
+     * Key for string array extra for permissions to request.
+     */
+    static final String EXTRA_PERMISSIONS_KEY = "androidx.car.app.action.EXTRA_PERMISSIONS_KEY";
+
+    /**
+     * Key for binder extra for permission result callback.
+     */
+    static final String EXTRA_ON_REQUEST_PERMISSIONS_RESULT_LISTENER_KEY =
+            "androidx.car.app.action.EXTRA_ON_REQUEST_PERMISSIONS_RESULT_LISTENER_KEY";
+
+    /**
+     * Holds an exception to be thrown when accessing {@link CarHardwareManager} if there is an
+     * error during initialization.
+     */
+    @Nullable
+    private final IllegalStateException mCarHardwareManagerException;
 
     private final AppManager mAppManager;
-    // TODO(rampara): Uncomment on addition of navigation module
-    //  private final NavigationManager navigationManager;
+    private final NavigationManager mNavigationManager;
     private final ScreenManager mScreenManager;
+    private final ConstraintManager mConstraintManager;
+    private final CarHardwareManager mCarHardwareManager;
     private final OnBackPressedDispatcher mOnBackPressedDispatcher;
-
     private final HostDispatcher mHostDispatcher;
+    private final Lifecycle mLifecycle;
+
+    /** API level, updated once host connection handshake is completed. */
+    @CarAppApiLevel
+    private int mCarAppApiLevel = CarAppApiLevels.UNKNOWN;
 
     /** @hide */
     @NonNull
@@ -135,7 +185,6 @@ public class CarContext extends ContextWrapper {
         return new CarContext(lifecycle, new HostDispatcher());
     }
 
-    // TODO(rampara): Replace code tags with links on addition of model module.
     /**
      * Provides a car service by name.
      *
@@ -147,17 +196,20 @@ public class CarContext extends ContextWrapper {
      *   <dt>{@link #APP_SERVICE}
      *   <dd>An {@link AppManager} for communication between the app and the host.
      *   <dt>{@link #NAVIGATION_SERVICE}
-     *   <dd>A {@code NavigationManager} for management of navigation updates.
-     *   <dt>{@link #SCREEN_MANAGER_SERVICE}
+     *   <dd>A {@link NavigationManager} for management of navigation updates.
+     *   <dt>{@link #SCREEN_SERVICE}
      *   <dd>A {@link ScreenManager} for management of {@link Screen}s.
      * </dl>
      *
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
+     *
      * @param name The name of the car service requested. This should be one of
      *             {@link #APP_SERVICE},
-     *             {@link #NAVIGATION_SERVICE} or {@link #SCREEN_MANAGER_SERVICE}.
-     * @return The car service instance.
-     * @throws IllegalArgumentException if {@code name} does not refer to a valid car service.
-     * @throws NullPointerException     if {@code name} is {@code null}.
+     *             {@link #NAVIGATION_SERVICE} or {@link #SCREEN_SERVICE}
+     * @return The car service instance
+     * @throws IllegalArgumentException if {@code name} does not refer to a valid car service
+     * @throws NullPointerException     if {@code name} is {@code null}
      */
     // This is kept for the testing library.
     @NonNull
@@ -165,30 +217,37 @@ public class CarContext extends ContextWrapper {
         switch (requireNonNull(name)) {
             case APP_SERVICE:
                 return mAppManager;
-            // TODO(rampara): Uncomment on addition of navigation module
-//      case NAVIGATION_SERVICE:
-//        return navigationManager;
-            case SCREEN_MANAGER_SERVICE:
+            case NAVIGATION_SERVICE:
+                return mNavigationManager;
+            case SCREEN_SERVICE:
                 return mScreenManager;
+            case CONSTRAINT_SERVICE:
+                return mConstraintManager;
+            case HARDWARE_SERVICE:
+                if (mCarHardwareManagerException != null) {
+                    throw mCarHardwareManagerException;
+                }
+                return mCarHardwareManager;
             default: // fall out
         }
 
         throw new IllegalArgumentException(
-                "The name '" + name + "' does not correspond to a car service.");
+                "The name '" + name + "' does not correspond to a car service");
     }
 
-    // TODO(rampara): Replace code tags with links on addition of model module.
     /**
      * Returns the a car service, by class.
      *
-     * <p>Currently supported classes are: {@link AppManager}, {@code NavigationManager}, {@link
+     * <p>Currently supported classes are: {@link AppManager}, {@link NavigationManager}, {@link
      * ScreenManager}.
      *
-     * @param serviceClass the class of the requested service.
-     * @return The car service instance.
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
+     *
+     * @param serviceClass the class of the requested service
      * @throws IllegalArgumentException if {@code serviceClass} is not the class of a supported car
-     *                                  service.
-     * @throws NullPointerException     if {@code serviceClass} is {@code null}.
+     *                                  service
+     * @throws NullPointerException     if {@code serviceClass} is {@code null}
      */
     @NonNull
     public <T> T getCarService(@NonNull Class<T> serviceClass) {
@@ -198,11 +257,14 @@ public class CarContext extends ContextWrapper {
     /**
      * Gets the name of the car service that is represented by the specified class.
      *
-     * @param serviceClass the class of the requested service.
-     * @return the car service name to use with {@link #getCarService(String)}.
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
+     *
+     * @param serviceClass the class of the requested service
+     * @return the car service name to use with {@link #getCarService(String)}
      * @throws IllegalArgumentException if {@code serviceClass} is not the class of a supported car
-     *                                  service.
-     * @throws NullPointerException     if {@code serviceClass} is {@code null}.
+     *                                  service
+     * @throws NullPointerException     if {@code serviceClass} is {@code null}
      * @see #getCarService
      */
     @NonNull
@@ -210,22 +272,24 @@ public class CarContext extends ContextWrapper {
     public String getCarServiceName(@NonNull Class<?> serviceClass) {
         if (requireNonNull(serviceClass).isInstance(mAppManager)) {
             return APP_SERVICE;
-            // TODO(rampara): Uncomment on addition of navigation module
-//    } else if (serviceClass.isInstance(navigationManager)) {
-//      return NAVIGATION_SERVICE;
+        } else if (serviceClass.isInstance(mNavigationManager)) {
+            return NAVIGATION_SERVICE;
         } else if (serviceClass.isInstance(mScreenManager)) {
-            return SCREEN_MANAGER_SERVICE;
+            return SCREEN_SERVICE;
+        } else if (serviceClass.isInstance(mConstraintManager)) {
+            return CONSTRAINT_SERVICE;
+        } else if (serviceClass.isInstance(mCarHardwareManager)) {
+            return HARDWARE_SERVICE;
         }
 
-        throw new IllegalArgumentException("The class does not correspond to a car service.");
+        throw new IllegalArgumentException("The class does not correspond to a car service");
     }
 
     /**
      * Starts a car app on the car screen.
      *
-     * <p>The target application will get the {@link Intent} via
-     * {@link CarAppService#onCreateScreen}
-     * or {@link CarAppService#onNewIntent}.
+     * <p>The target application will get the {@link Intent} via {@link Session#onCreateScreen}
+     * or {@link Session#onNewIntent}.
      *
      * <p>Supported {@link Intent}s:
      *
@@ -248,23 +312,25 @@ public class CarContext extends ContextWrapper {
      *       method will throw a {@link SecurityException}.
      * </dl>
      *
-     * @param intent the {@link Intent} to send to the target application.
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
+     *
+     * @param intent the {@link Intent} to send to the target application
      * @throws SecurityException         if the app attempts to start a different app explicitly or
-     *                                   does not
-     *                                   have permissions for the requested action.
-     * @throws InvalidParameterException if {@code intent} does not meet the criteria defined.
-     * @throws NullPointerException      if {@code intent} is {@code null}.
+     *                                   does not have permissions for the requested action
+     * @throws HostException             if the remote call fails
+     * @throws NullPointerException      if {@code intent} is {@code null}
      */
     public void startCarApp(@NonNull Intent intent) {
         requireNonNull(intent);
 
         mHostDispatcher.dispatch(
                 CarContext.CAR_SERVICE,
-                (ICarHost host) -> {
+                "startCarApp", (ICarHost host) -> {
                     host.startCarApp(intent);
                     return null;
-                },
-                "startCarApp");
+                }
+        );
     }
 
     /**
@@ -273,16 +339,19 @@ public class CarContext extends ContextWrapper {
      * <p>Use this method if the app has received a broadcast due to a notification action.
      *
      * @param notificationIntent the {@link Intent} that the app received via broadcast due to a
-     *                           user taking an action on a notification in the car.
+     *                           user taking an action on a notification in the car
      * @param appIntent          the {@link Intent} to use for starting the car app. See {@link
      *                           #startCarApp(Intent)} for the documentation on valid
-     *                           {@link Intent}s.
+     *                           {@link Intent}s
      * @throws InvalidParameterException if {@code notificationIntent} is not an {@link Intent}
      *                                   received from a broadcast, due to an action taken by the
-     *                                   user in the car.
+     *                                   user in the car
      * @throws NullPointerException      if either {@code notificationIntent} or {@code appIntent
-     *                                   } are {@code null}.
+     *                                   } are {@code null}
+     * @deprecated use {@link CarPendingIntent#getCarApp(Context, int, Intent, int)} to create
+     * the pending intent for the notification action.  This API will NOT work for Automotive OS.
      */
+    @Deprecated
     public static void startCarApp(@NonNull Intent notificationIntent, @NonNull Intent appIntent) {
         requireNonNull(notificationIntent);
         requireNonNull(appIntent);
@@ -290,7 +359,7 @@ public class CarContext extends ContextWrapper {
         IBinder binder = null;
         Bundle extras = notificationIntent.getExtras();
         if (extras != null) {
-            binder = extras.getBinder(START_CAR_APP_BINDER_KEY);
+            binder = extras.getBinder(EXTRA_START_CAR_APP_BINDER_KEY);
         }
         if (binder == null) {
             throw new IllegalArgumentException("Notification intent missing expected extra");
@@ -298,30 +367,33 @@ public class CarContext extends ContextWrapper {
 
         IStartCarApp startCarAppInterface = requireNonNull(IStartCarApp.Stub.asInterface(binder));
 
-        RemoteUtils.call(
-                () -> {
+        RemoteUtils.dispatchCallToHost(
+                "startCarApp from notification", () -> {
                     startCarAppInterface.startCarApp(appIntent);
                     return null;
-                },
-                "startCarApp from notification");
+                }
+        );
     }
 
     /**
      * Requests to finish the car app.
      *
-     * <p>Call this when your app is done and should be closed.
+     * <p>Call this when your app is done and should be closed. The {@link Session} corresponding
+     * to this {@link CarContext} will become {@code State.DESTROYED}.
      *
-     * <p>At some point after this call, {@link CarAppService#onCarAppFinished} will be called, and
-     * eventually the OS will destroy your {@link CarAppService}.
+     * <p>At some point after this call, the OS will destroy your {@link CarAppService}.
+     *
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
      */
     public void finishCarApp() {
         mHostDispatcher.dispatch(
                 CarContext.CAR_SERVICE,
-                (ICarHost host) -> {
+                "finish", (ICarHost host) -> {
                     host.finish();
                     return null;
-                },
-                "finish");
+                }
+        );
     }
 
     /**
@@ -331,7 +403,10 @@ public class CarContext extends ContextWrapper {
      * determines that conditions warrant it, as signaled by the value returned by this method.
      *
      * <p>Whenever the dark mode status changes, you will receive a call to {@link
-     * CarAppService#onCarConfigurationChanged}.
+     * Session#onCarConfigurationChanged}.
+     *
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
      */
     public boolean isDarkMode() {
         return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
@@ -361,6 +436,119 @@ public class CarContext extends ContextWrapper {
     }
 
     /**
+     * Retrieves the API level negotiated with the host.
+     *
+     * <p>API levels are used during client and host connection handshake to negotiate a common set
+     * of elements that both processes can understand. Different devices might have different host
+     * versions. Each of these hosts will support a range of API levels, as a way to provide
+     * backwards compatibility.
+     *
+     * <p>Applications can also provide forward compatibility, by declaring support for a
+     * {@link AppInfo#getMinCarAppApiLevel()} lower than {@link AppInfo#getLatestCarAppApiLevel()}.
+     * See {@link AppInfo#getMinCarAppApiLevel()} for more details.
+     *
+     * <p>Clients must ensure no elements annotated with a {@link RequiresCarApi} value higher
+     * than returned by this method is used at runtime.
+     *
+     * <p>Refer to {@link RequiresCarApi} description for more details on how to
+     * implement forward compatibility.
+     *
+     * <p><b>This method should not be called until the {@link Lifecycle.State} of the context's
+     * {@link Session} is at least {@link Lifecycle.State#CREATED}</b>.
+     *
+     * @return a value between {@link AppInfo#getMinCarAppApiLevel()} and
+     * {@link AppInfo#getLatestCarAppApiLevel()}. In case of incompatibility, the host will
+     * disconnect from the service before completing the handshake
+     * @throws IllegalStateException if invoked before the connection handshake with the host has
+     *                               been completed (for example, before
+     *                               {@link Session#onCreateScreen(Intent)})
+     */
+    @CarAppApiLevel
+    public int getCarAppApiLevel() {
+        if (mCarAppApiLevel == CarAppApiLevels.UNKNOWN) {
+            throw new IllegalStateException("Car App API level hasn't been established yet");
+        }
+        return mCarAppApiLevel;
+    }
+
+    /**
+     * Requests the provided {@code permissions} from the user, calling the provided {@code
+     * listener} in the main thread.
+     *
+     * @see CarContext#requestPermissions(List, Executor, OnRequestPermissionsListener)=
+     */
+    public void requestPermissions(@NonNull List<String> permissions,
+            @NonNull OnRequestPermissionsListener listener) {
+        requestPermissions(permissions, ContextCompat.getMainExecutor(this), listener);
+    }
+
+    /**
+     * Requests the provided {@code permissions} from the user.
+     *
+     * <p>When the result is available, the {@code listener} provided will be called using the
+     * {@link Executor} provided.
+     *
+     * <p>This method should be called using a
+     * {@link androidx.car.app.model.ParkedOnlyOnClickListener}.
+     *
+     * <p>If this method is called while the host deems it is unsafe (for example, when the user
+     * is driving), the permission(s) will not be requested from the user.
+     *
+     * <p>If the {@link Session} is destroyed before the user accepts or rejects the permissions,
+     * the callback will not be executed.
+     *
+     * <h4>Platform Considerations</h4>
+     *
+     * Using this method allows the app to work across all platforms supported by the library with
+     * the same API (e.g. Android Auto on mobile devices and Android Automotive OS on native car
+     * heads unit). On a mobile platform, this method will start an activity that will display the
+     * platform's permissions UI over it. You can choose to not
+     * use this method and instead implement your own activity and code to request the
+     * permissions in that platform. On Automotive OS however, distraction-optimized activities
+     * other than {@link androidx.car.app.activity.CarAppActivity} are not allowed and may be
+     * rejected during app submission. See {@link androidx.car.app.activity.CarAppActivity} for
+     * more details.
+     *
+     * @param permissions the runtime permissions to request from the user
+     * @param executor    the executor that will be used for calling the {@code callback} provided
+     * @param listener    listener that will be notified when the user takes action on the
+     *                    permission request
+     * @throws NullPointerException if any of {@code executor}, {@code permissions} or
+     *                              {@code callback} are {@code null}
+     */
+    public void requestPermissions(@NonNull List<String> permissions,
+            @NonNull /* @CallbackExecutor */ Executor executor,
+            @NonNull OnRequestPermissionsListener listener) {
+        requireNonNull(executor);
+        requireNonNull(permissions);
+        requireNonNull(listener);
+
+        ComponentName appActivityComponent = new ComponentName(this, CarAppInternalActivity.class);
+
+        Lifecycle lifecycle = mLifecycle;
+        Bundle extras = new Bundle(2);
+        extras.putBinder(EXTRA_ON_REQUEST_PERMISSIONS_RESULT_LISTENER_KEY,
+                new IOnRequestPermissionsListener.Stub() {
+                    @Override
+                    public void onRequestPermissionsResult(String[] approvedPermissions,
+                            String[] rejectedPermissions) {
+                        if (lifecycle.getCurrentState().isAtLeast(Lifecycle.State.CREATED)) {
+                            List<String> approved = Arrays.asList(approvedPermissions);
+                            List<String> rejected = Arrays.asList(rejectedPermissions);
+                            executor.execute(() -> listener.onRequestPermissionsResult(approved,
+                                    rejected));
+                        }
+                    }
+                }.asBinder());
+        extras.putStringArray(EXTRA_PERMISSIONS_KEY, permissions.toArray(new String[0]));
+        Intent intent =
+                new Intent(REQUEST_PERMISSIONS_ACTION).setComponent(appActivityComponent)
+                        .putExtras(extras)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+    }
+
+    /**
      * Copies the fields from the provided {@link Configuration} into the {@link Configuration}
      * contained in this object.
      *
@@ -372,13 +560,27 @@ public class CarContext extends ContextWrapper {
     void onCarConfigurationChanged(@NonNull Configuration configuration) {
         ThreadUtils.checkMainThread();
 
-        Log.d(TAG,
-                "Car configuration changed, configuration: " + configuration + ", displayMetrics: "
-                        + getResources().getDisplayMetrics());
+        if (Log.isLoggable(TAG, Log.DEBUG)) {
+            Log.d(TAG,
+                    "Car configuration changed, configuration: " + configuration
+                            + ", displayMetrics: "
+                            + getResources().getDisplayMetrics());
+        }
 
         getResources()
                 .updateConfiguration(requireNonNull(configuration),
                         getResources().getDisplayMetrics());
+    }
+
+    /**
+     * Updates context information based on the information provided during connection handshake
+     *
+     * @hide
+     */
+    @RestrictTo(LIBRARY)
+    @MainThread
+    void updateHandshakeInfo(HandshakeInfo handshakeInfo) {
+        mCarAppApiLevel = handshakeInfo.getHostCarAppApiLevel();
     }
 
     /**
@@ -399,8 +601,7 @@ public class CarContext extends ContextWrapper {
         ThreadUtils.checkMainThread();
 
         // If this is the first time attaching the base, actually attach it, otherwise, just
-        // update the
-        // configuration.
+        // update the configuration.
         if (getBaseContext() == null) {
             // Create the virtual display with the proper dimensions.
             VirtualDisplay display =
@@ -433,14 +634,6 @@ public class CarContext extends ContextWrapper {
 
     /** @hide */
     @RestrictTo(LIBRARY_GROUP) // Restrict to testing library
-    @MainThread
-    void resetHosts() {
-        ThreadUtils.checkMainThread();
-        mHostDispatcher.resetHosts();
-    }
-
-    /** @hide */
-    @RestrictTo(LIBRARY_GROUP) // Restrict to testing library
     @SuppressWarnings({
             "argument.type.incompatible",
             "method.invocation.invalid"
@@ -448,12 +641,41 @@ public class CarContext extends ContextWrapper {
     protected CarContext(@NonNull Lifecycle lifecycle, @NonNull HostDispatcher hostDispatcher) {
         super(null);
 
-        this.mHostDispatcher = hostDispatcher;
-        mAppManager = AppManager.create(this, hostDispatcher);
-        // TODO(rampara): Uncomment on addition of navigation module
-        //navigationManager = NavigationManager.create(hostDispatcher);
+        mHostDispatcher = hostDispatcher;
+        mAppManager = AppManager.create(this, hostDispatcher, lifecycle);
+        mNavigationManager = NavigationManager.create(this, hostDispatcher, lifecycle);
         mScreenManager = ScreenManager.create(this, lifecycle);
+        mConstraintManager = ConstraintManager.create(this, hostDispatcher);
+
+        // Try to instantiate a CarHardwareManager.
+        CarHardwareManager carHardwareManager = null;
+        IllegalStateException carHardwareManagerException = null;
+        try {
+            carHardwareManager = CarHardwareManager.create(this, hostDispatcher);
+            if (carHardwareManager == null) {
+                carHardwareManagerException = new IllegalStateException("CarHardwareManager not "
+                        + "configured. Did you forget to add a dependency on automotive or "
+                        + "projected artifacts?");
+            }
+        } catch (IllegalStateException e) {
+            carHardwareManager = new CarHardwareManager() { };
+            carHardwareManagerException = e;
+        }
+        mCarHardwareManager = carHardwareManager;
+        mCarHardwareManagerException = carHardwareManagerException;
+
         mOnBackPressedDispatcher =
                 new OnBackPressedDispatcher(() -> getCarService(ScreenManager.class).pop());
+        mLifecycle = lifecycle;
+
+        LifecycleObserver observer = new DefaultLifecycleObserver() {
+            @Override
+            public void onDestroy(@NonNull LifecycleOwner owner) {
+                hostDispatcher.resetHosts();
+                owner.getLifecycle().removeObserver(this);
+            }
+        };
+
+        lifecycle.addObserver(observer);
     }
 }

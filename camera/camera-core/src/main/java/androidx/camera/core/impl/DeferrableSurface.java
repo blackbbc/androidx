@@ -36,12 +36,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * A class for creating and tracking use of a {@link Surface} in an asynchronous manner.
  *
  * <p>Once the deferrable surface has been closed via {@link #close()} and is no longer in
- * use ({@link #decrementUseCount() has been called equal to the number of times to
- * {@link #incrementUseCount()}, then the surface is considered terminated.
+ * use ({@link #decrementUseCount()} has been called equal to the number of times to
+ * {@link #incrementUseCount()}), then the surface is considered terminated.
  *
- * <p>Resources managed by this class can be safely cleaned up upon completion of the {
- *
- * @link ListenableFuture} returned by {@link #getTerminationFuture()}.
+ * <p>Resources managed by this class can be safely cleaned up upon completion of the
+ * {@link ListenableFuture} returned by {@link #getTerminationFuture()}.
  */
 public abstract class DeferrableSurface {
 
@@ -85,10 +84,10 @@ public abstract class DeferrableSurface {
     private static final boolean DEBUG = Logger.isDebugEnabled(TAG);
 
     // Debug only, used to track total count of surfaces in use.
-    private static AtomicInteger sUsedCount = new AtomicInteger(0);
+    private static final AtomicInteger USED_COUNT = new AtomicInteger(0);
     // Debug only, used to track total count of surfaces, including those not in use. Will be
     // decremented once surface is cleaned.
-    private static AtomicInteger sTotalCount = new AtomicInteger(0);
+    private static final AtomicInteger TOTAL_COUNT = new AtomicInteger(0);
 
     // Lock used for accessing states.
     private final Object mLock = new Object();
@@ -116,20 +115,24 @@ public abstract class DeferrableSurface {
         });
 
         if (Logger.isDebugEnabled(TAG)) {
-            printGlobalDebugCounts("Surface created", sTotalCount.incrementAndGet(),
-                    sUsedCount.get());
+            printGlobalDebugCounts("Surface created", TOTAL_COUNT.incrementAndGet(),
+                    USED_COUNT.get());
 
             String creationStackTrace = Log.getStackTraceString(new Exception());
             mTerminationFuture.addListener(() -> {
                 try {
                     mTerminationFuture.get();
-                    printGlobalDebugCounts("Surface terminated", sTotalCount.decrementAndGet(),
-                            sUsedCount.get());
+                    printGlobalDebugCounts("Surface terminated", TOTAL_COUNT.decrementAndGet(),
+                            USED_COUNT.get());
                 } catch (Exception e) {
                     Logger.e(TAG, "Unexpected surface termination for " + DeferrableSurface.this
                             + "\nStack Trace:\n" + creationStackTrace);
-                    throw new IllegalArgumentException("DeferrableSurface terminated with "
-                            + "unexpected exception.", e);
+                    synchronized (mLock) {
+                        throw new IllegalArgumentException(String.format(
+                                "DeferrableSurface %s [closed: %b, use_count: %s] terminated with"
+                                        + " unexpected exception.",
+                                DeferrableSurface.this, mClosed, mUseCount), e);
+                    }
                 }
             }, CameraXExecutors.directExecutor());
         }
@@ -206,8 +209,8 @@ public abstract class DeferrableSurface {
 
             if (Logger.isDebugEnabled(TAG)) {
                 if (mUseCount == 1) {
-                    printGlobalDebugCounts("New surface in use", sTotalCount.get(),
-                            sUsedCount.incrementAndGet());
+                    printGlobalDebugCounts("New surface in use", TOTAL_COUNT.get(),
+                            USED_COUNT.incrementAndGet());
                 }
                 Logger.d(TAG, "use count+1, useCount=" + mUseCount + " " + this);
             }
@@ -277,8 +280,8 @@ public abstract class DeferrableSurface {
                         + " " + this);
 
                 if (mUseCount == 0) {
-                    printGlobalDebugCounts("Surface no longer in use", sTotalCount.get(),
-                            sUsedCount.decrementAndGet());
+                    printGlobalDebugCounts("Surface no longer in use", TOTAL_COUNT.get(),
+                            USED_COUNT.decrementAndGet());
                 }
             }
         }

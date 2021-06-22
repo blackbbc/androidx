@@ -17,9 +17,11 @@
 package androidx.compose.ui.samples
 
 import androidx.annotation.Sampled
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
@@ -27,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 
 @Sampled
@@ -53,4 +56,17 @@ fun PainterModifierSample() {
                 .background(color = Color.Yellow)
                 .paint(CustomPainter())
     ) { /** intentionally empty **/ }
+}
+
+@Sampled
+@Composable
+fun PainterResourceSample() {
+    // Sample showing how to render a Painter based on a different resource (vector vs png)
+    // Here a Vector asset is used in the portrait orientation, however, a png is used instead
+    // in the landscape orientation based on the res/drawable and res/drawable-land-hdpi folders
+    Image(
+        painterResource(R.drawable.ic_vector_or_png),
+        contentDescription = null,
+        modifier = Modifier.requiredSize(50.dp)
+    )
 }

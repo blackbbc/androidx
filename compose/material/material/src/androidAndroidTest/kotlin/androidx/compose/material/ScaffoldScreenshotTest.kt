@@ -17,7 +17,6 @@
 package androidx.compose.material
 
 import android.os.Build
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,12 +27,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Providers
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.testutils.assertAgainstGolden
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LayoutDirectionAmbient
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.LayoutDirection
@@ -41,7 +41,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.AndroidXScreenshotTestRule
-import androidx.test.screenshot.assertAgainstGolden
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,7 +48,6 @@ import org.junit.runner.RunWith
 @LargeTest
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
-@OptIn(ExperimentalMaterialApi::class)
 class ScaffoldScreenshotTest {
 
     @get:Rule
@@ -585,7 +583,7 @@ class ScaffoldScreenshotTest {
     ) {
         // Capture and compare screenshots
         composeTestRule.onNodeWithTag(Tag)
-            .captureToBitmap()
+            .captureToImage()
             .assertAgainstGolden(screenshotRule, goldenIdentifier)
     }
 }
@@ -603,7 +601,6 @@ class ScaffoldScreenshotTest {
  * @param rtl whether to set [LayoutDirection.Rtl] as the [LayoutDirection] for this Scaffold and
  * its content
  */
-@OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun ScreenshotScaffold(
     showTopAppBar: Boolean,
@@ -626,7 +623,7 @@ private fun ScreenshotScaffold(
             val cutoutShape = if (fabCutout) CircleShape else null
             BottomAppBar(cutoutShape = cutoutShape) {
                 IconButton(onClick = {}) {
-                    Icon(Icons.Filled.Menu)
+                    Icon(Icons.Filled.Menu, null)
                 }
             }
         }
@@ -648,7 +645,7 @@ private fun ScreenshotScaffold(
     val fab = @Composable {
         if (showFab) {
             FloatingActionButton(
-                icon = { Icon(Icons.Filled.Favorite) },
+                content = { Icon(Icons.Filled.Favorite, null) },
                 onClick = {}
             )
         }
@@ -656,12 +653,12 @@ private fun ScreenshotScaffold(
 
     val layoutDirection = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    Providers(LayoutDirectionAmbient provides layoutDirection) {
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
         Box(
             Modifier
                 .fillMaxSize(0.5f)
                 .wrapContentSize()
-                .semantics(mergeAllDescendants = true) {}
+                .semantics(mergeDescendants = true) {}
                 .testTag(Tag)
         ) {
             Scaffold(
@@ -671,7 +668,7 @@ private fun ScreenshotScaffold(
                 floatingActionButton = fab,
                 floatingActionButtonPosition = fabPosition,
                 isFloatingActionButtonDocked = dockedFab,
-                bodyContent = { innerPadding ->
+                content = { innerPadding ->
                     Box(
                         modifier = Modifier
                             .padding(innerPadding)

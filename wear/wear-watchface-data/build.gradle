@@ -17,9 +17,6 @@
 import androidx.build.LibraryGroups
 import androidx.build.LibraryVersions
 import androidx.build.Publish
-import androidx.build.RunApiTasks
-
-import static androidx.build.dependencies.DependenciesKt.*
 
 plugins {
     id("AndroidXPlugin")
@@ -31,7 +28,7 @@ dependencies {
     api("androidx.annotation:annotation:1.1.0")
     api("androidx.versionedparcelable:versionedparcelable:1.1.0")
     api(project(":wear:wear-complications-data"))
-    api(KOTLIN_STDLIB)
+    api(libs.kotlinStdlib)
 
     implementation("androidx.core:core:1.1.0")
     annotationProcessor(project(":versionedparcelable:versionedparcelable-compiler"))
@@ -39,11 +36,19 @@ dependencies {
 
 android {
     defaultConfig {
-        minSdkVersion 28
+        minSdkVersion 25
+        testInstrumentationRunner("androidx.test.runner.AndroidJUnitRunner")
     }
+
+    sourceSets.androidTest.assets.srcDirs +=
+            project.rootDir.absolutePath + "/../../golden/wear/wear-watchface"
 
     buildFeatures {
         aidl = true
+    }
+
+    buildTypes.all {
+        consumerProguardFiles "proguard-rules.pro"
     }
 }
 
@@ -53,5 +58,5 @@ androidx {
     mavenGroup = LibraryGroups.WEAR
     mavenVersion = LibraryVersions.WEAR_WATCHFACE_DATA
     inceptionYear = "2020"
-    description = "Android Wear Watchface Data"
+    description = "Android Wear Watchface hidden AIDL implementaion details"
 }

@@ -16,7 +16,11 @@
 
 package androidx.compose.ui.layout
 
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.platform.InspectorValueInfo
+import androidx.compose.ui.platform.debugInspectorInfo
 
 /**
  * Invoke [onGloballyPositioned] with the [LayoutCoordinates] of the element when the
@@ -24,37 +28,39 @@ import androidx.compose.ui.Modifier
  * Note that it will be called **after** a composition when the coordinates are finalized.
  *
  * Usage example:
- * @sample androidx.compose.ui.samples.onGloballyPositionedSample
+ * @sample androidx.compose.ui.samples.OnGloballyPositioned
  */
-inline fun Modifier.onGloballyPositioned(
-    crossinline onGloballyPositioned: (LayoutCoordinates) -> Unit
-) = this.then(object : OnGloballyPositionedModifier {
+@Stable
+fun Modifier.onGloballyPositioned(
+    onGloballyPositioned: (LayoutCoordinates) -> Unit
+) = this.then(
+    OnGloballyPositionedModifierImpl(
+        callback = onGloballyPositioned,
+        inspectorInfo = debugInspectorInfo {
+            name = "onGloballyPositioned"
+            properties["onGloballyPositioned"] = onGloballyPositioned
+        }
+    )
+)
+
+private class OnGloballyPositionedModifierImpl(
+    val callback: (LayoutCoordinates) -> Unit,
+    inspectorInfo: InspectorInfo.() -> Unit
+) : OnGloballyPositionedModifier, InspectorValueInfo(inspectorInfo) {
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
-        onGloballyPositioned(coordinates)
+        callback(coordinates)
     }
-})
 
-@Deprecated(
-    "Use onGloballyPositioned() instead",
-    replaceWith = ReplaceWith("this.onGloballyPositioned(onPositioned)")
-)
-fun Modifier.onPositioned(
-    onPositioned: (LayoutCoordinates) -> Unit
-) = onGloballyPositioned(onPositioned)
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is OnGloballyPositionedModifierImpl) return false
 
-@Deprecated(
-    "Use OnGloballyPositionedModifier instead",
-    replaceWith = ReplaceWith("onGlobalPositionChangedModifier")
-)
-interface OnPositionedModifier : OnGloballyPositionedModifier {
-    override fun onGloballyPositioned(coordinates: LayoutCoordinates) = onPositioned(coordinates)
-    /**
-     * Called with the final LayoutCoordinates of the Layout after measuring.
-     * Note that it will be called after a composition when the coordinates are finalized.
-     * The position in the modifier chain makes no difference in either
-     * the [LayoutCoordinates] argument or when the [onPositioned] is called.
-     */
-    fun onPositioned(coordinates: LayoutCoordinates)
+        return callback == other.callback
+    }
+
+    override fun hashCode(): Int {
+        return callback.hashCode()
+    }
 }
 
 /**
@@ -63,7 +69,7 @@ interface OnPositionedModifier : OnGloballyPositionedModifier {
  * Note that it will be called after a composition when the coordinates are finalized.
  *
  * Usage example:
- * @sample androidx.compose.ui.samples.onGloballyPositionedSample
+ * @sample androidx.compose.ui.samples.OnGloballyPositioned
  */
 interface OnGloballyPositionedModifier : Modifier.Element {
     /**

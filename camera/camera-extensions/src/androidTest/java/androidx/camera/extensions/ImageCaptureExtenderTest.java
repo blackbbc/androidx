@@ -49,9 +49,10 @@ import androidx.camera.core.ImageCapture;
 import androidx.camera.core.impl.CameraRepository;
 import androidx.camera.core.impl.CaptureProcessor;
 import androidx.camera.core.internal.CameraUseCaseAdapter;
-import androidx.camera.extensions.ExtensionsManager.EffectMode;
 import androidx.camera.extensions.impl.CaptureStageImpl;
 import androidx.camera.extensions.impl.ImageCaptureExtenderImpl;
+import androidx.camera.extensions.internal.ExtensionVersion;
+import androidx.camera.extensions.internal.Version;
 import androidx.camera.extensions.util.ExtensionsTestUtil;
 import androidx.camera.testing.CameraAvailabilityUtil;
 import androidx.camera.testing.CameraUtil;
@@ -77,6 +78,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @RunWith(AndroidJUnit4.class)
+@SuppressWarnings("deprecation")
 public class ImageCaptureExtenderTest {
     private static final String EXTENSION_AVAILABLE_CAMERA_ID = "0";
 
@@ -330,7 +332,7 @@ public class ImageCaptureExtenderTest {
     final class FakeImageCaptureExtender extends ImageCaptureExtender {
         FakeImageCaptureExtender(ImageCapture.Builder builder,
                 ImageCaptureExtenderImpl impl) {
-            init(builder, impl, EffectMode.NORMAL);
+            init(builder, impl, ExtensionMode.NONE);
         }
     }
 
