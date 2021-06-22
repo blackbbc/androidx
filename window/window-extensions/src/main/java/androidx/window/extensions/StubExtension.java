@@ -16,7 +16,7 @@
 
 package androidx.window.extensions;
 
-import android.content.Context;
+import android.app.Activity;
 
 import androidx.annotation.NonNull;
 
@@ -29,8 +29,7 @@ import java.util.Set;
  */
 abstract class StubExtension implements ExtensionInterface {
     private ExtensionCallback mExtensionCallback;
-    private final Set<Context> mWindowLayoutChangeListenerContexts = new HashSet<>();
-    private boolean mDeviceStateChangeListenerRegistered;
+    private final Set<Activity> mWindowLayoutChangeListenerContexts = new HashSet<>();
 
     @Override
     public void setExtensionCallback(@NonNull ExtensionCallback callback) {
@@ -38,44 +37,31 @@ abstract class StubExtension implements ExtensionInterface {
     }
 
     @Override
-    public void onWindowLayoutChangeListenerAdded(@NonNull Context context) {
-        mWindowLayoutChangeListenerContexts.add(context);
+    public void onWindowLayoutChangeListenerAdded(@NonNull Activity activity) {
+        mWindowLayoutChangeListenerContexts.add(activity);
         onListenersChanged();
     }
 
     @Override
-    public void onWindowLayoutChangeListenerRemoved(@NonNull Context context) {
-        mWindowLayoutChangeListenerContexts.remove(context);
+    public void onWindowLayoutChangeListenerRemoved(@NonNull Activity activity) {
+        mWindowLayoutChangeListenerContexts.remove(activity);
         onListenersChanged();
     }
 
-    @Override
-    public void onDeviceStateListenersChanged(boolean isEmpty) {
-        mDeviceStateChangeListenerRegistered = !isEmpty;
-        onListenersChanged();
-    }
-
-    protected void updateDeviceState(@NonNull ExtensionDeviceState newState) {
-        if (mExtensionCallback != null) {
-            mExtensionCallback.onDeviceStateChanged(newState);
-        }
-    }
-
-    protected void updateWindowLayout(@NonNull Context context,
+    protected void updateWindowLayout(@NonNull Activity activity,
             @NonNull ExtensionWindowLayoutInfo newLayout) {
         if (mExtensionCallback != null) {
-            mExtensionCallback.onWindowLayoutChanged(context, newLayout);
+            mExtensionCallback.onWindowLayoutChanged(activity, newLayout);
         }
     }
 
     @NonNull
-    protected Set<Context> getWindowsListeningForLayoutChanges() {
+    protected Set<Activity> getWindowsListeningForLayoutChanges() {
         return mWindowLayoutChangeListenerContexts;
     }
 
     protected boolean hasListeners() {
-        return !mWindowLayoutChangeListenerContexts.isEmpty()
-                || mDeviceStateChangeListenerRegistered;
+        return !mWindowLayoutChangeListenerContexts.isEmpty();
     }
 
     /** Notification to the OEM level that the registered listeners changed. */

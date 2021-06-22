@@ -30,12 +30,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.sqlite.SQLiteAccessPermException;
 import android.database.sqlite.SQLiteCantOpenDatabaseException;
+import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteDatabaseCorruptException;
 import android.database.sqlite.SQLiteDatabaseLockedException;
 import android.database.sqlite.SQLiteTableLockedException;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.VisibleForTesting;
 import androidx.work.Configuration;
@@ -104,6 +106,7 @@ public class ForceStopRunnable implements Runnable {
                     | SQLiteDatabaseCorruptException
                     | SQLiteDatabaseLockedException
                     | SQLiteTableLockedException
+                    | SQLiteConstraintException
                     | SQLiteAccessPermException exception) {
                 mRetryCount++;
                 if (mRetryCount >= MAX_ATTEMPTS) {
@@ -146,12 +149,20 @@ public class ForceStopRunnable implements Runnable {
         // Cancelling of Jobs on force-stop was introduced in N-MR1 (SDK 25).
         // Even though API 23, 24 are probably safe, OEMs may choose to do
         // something different.
-        PendingIntent pendingIntent = getPendingIntent(mContext, FLAG_NO_CREATE);
-        if (pendingIntent == null) {
-            setAlarm(mContext);
+        try {
+            PendingIntent pendingIntent = getPendingIntent(mContext, FLAG_NO_CREATE);
+            if (pendingIntent == null) {
+                setAlarm(mContext);
+                return true;
+            } else {
+                return false;
+            }
+        } catch (SecurityException exception) {
+            // Setting Alarms on some devices fails due to OEM introduced bugs in AlarmManager.
+            // When this happens, there is not much WorkManager can do, other can reschedule
+            // everything.
+            Logger.get().warning(TAG, "Ignoring security exception", exception);
             return true;
-        } else {
-            return false;
         }
     }
 
@@ -308,7 +319,7 @@ public class ForceStopRunnable implements Runnable {
         private static final String TAG = Logger.tagWithPrefix("ForceStopRunnable$Rcvr");
 
         @Override
-        public void onReceive(Context context, Intent intent) {
+        public void onReceive(@NonNull Context context, @Nullable Intent intent) {
             // Our alarm somehow got triggered, so make sure we reschedule it.  This should really
             // never happen because we set it so far in the future.
             if (intent != null) {

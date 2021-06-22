@@ -16,7 +16,7 @@
 
 package androidx.window.extensions;
 
-import android.content.Context;
+import android.app.Activity;
 
 import androidx.annotation.NonNull;
 
@@ -38,25 +38,15 @@ public interface ExtensionInterface {
 
     /**
      * Notifies extension that a listener for display feature layout changes was registered for the
-     * given activity context.
-     *
-     * @param context an instance of {@link android.app.Activity}
+     * given {@link Activity} context.
      */
-    void onWindowLayoutChangeListenerAdded(@NonNull Context context);
+    void onWindowLayoutChangeListenerAdded(@NonNull Activity activity);
 
     /**
      * Notifies extension that a listener for display feature layout changes was removed for the
-     * given activity context.
-     *
-     * @param context an instance of {@link android.app.Activity}
+     * given {@link Activity} context.
      */
-    void onWindowLayoutChangeListenerRemoved(@NonNull Context context);
-
-    /**
-     * Notifies the extension that a device state change listener was updated.
-     * @param isEmpty flag indicating if the list of device state change listeners is empty.
-     */
-    void onDeviceStateListenersChanged(boolean isEmpty);
+    void onWindowLayoutChangeListenerRemoved(@NonNull Activity activity);
 
     /**
      * Callback that will be registered with the WindowManager library, and that the extension
@@ -64,18 +54,10 @@ public interface ExtensionInterface {
      */
     interface ExtensionCallback {
         /**
-         * Called by extension when the device state changes. Initial value should be provided
-         * through this callback as soon as possible after the first device state change listener
-         * was added and the Extension was notified via
-         * {@link #onDeviceStateListenersChanged(boolean)}.
-         */
-        void onDeviceStateChanged(@NonNull ExtensionDeviceState newDeviceState);
-
-        /**
          * Called by extension when the feature layout inside the window changes. Initial value
          * should be provided as soon as possible.
          */
-        void onWindowLayoutChanged(@NonNull Context context,
+        void onWindowLayoutChanged(@NonNull Activity activity,
                 @NonNull ExtensionWindowLayoutInfo newLayout);
     }
 }

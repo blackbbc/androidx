@@ -37,8 +37,8 @@ import android.widget.Spinner;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
 import androidx.annotation.VisibleForTesting;
-import androidx.annotation.experimental.UseExperimental;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraInfoUnavailableException;
 import androidx.camera.core.CameraSelector;
@@ -50,6 +50,7 @@ import androidx.camera.core.MeteringPointFactory;
 import androidx.camera.core.Preview;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.core.ViewPort;
+import androidx.camera.lifecycle.ExperimentalUseCaseGroupLifecycle;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
@@ -68,7 +69,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class PreviewViewFragment extends Fragment {
 
     /** Scale types of ImageView that map to the PreviewView scale types. */
-    private static final ImageView.ScaleType[] IMAGE_VIEW_SCALE_TYPES =
+    // Synthetic access
+    static final ImageView.ScaleType[] IMAGE_VIEW_SCALE_TYPES =
             {ImageView.ScaleType.FIT_CENTER, ImageView.ScaleType.FIT_CENTER,
                     ImageView.ScaleType.FIT_CENTER, ImageView.ScaleType.FIT_START,
                     ImageView.ScaleType.FIT_CENTER, ImageView.ScaleType.FIT_END};
@@ -92,6 +94,10 @@ public class PreviewViewFragment extends Fragment {
     @SuppressWarnings("WeakerAccess")
     Preview mPreview;
 
+    // Synthetic access
+    @SuppressWarnings("WeakerAccess")
+    ProcessCameraProvider mCameraProvider;
+
     public PreviewViewFragment() {
         super(R.layout.fragment_preview_view);
     }
@@ -107,12 +113,19 @@ public class PreviewViewFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         mPreviewView = view.findViewById(R.id.preview_view);
         mPreviewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
-
+        mPreviewView.addOnLayoutChangeListener(
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom)
+                        -> {
+                    if (mCameraProvider != null) {
+                        bindPreview(mCameraProvider);
+                    }
+                });
         mBlurBitmap = new BlurBitmap(requireContext());
         Futures.addCallback(mCameraProviderFuture, new FutureCallback<ProcessCameraProvider>() {
             @Override
             public void onSuccess(@Nullable ProcessCameraProvider cameraProvider) {
                 Preconditions.checkNotNull(cameraProvider);
+                mCameraProvider = cameraProvider;
                 mPreview = new Preview.Builder()
                         .setTargetRotation(view.getDisplay().getRotation())
                         .setTargetName("Preview")
@@ -154,7 +167,7 @@ public class PreviewViewFragment extends Fragment {
         }
     }
 
-    @UseExperimental(markerClass = ExperimentalUseCaseGroup.class)
+    @OptIn(markerClass = ExperimentalUseCaseGroup.class)
     void setUpTargetRotationButton(@NonNull final ProcessCameraProvider cameraProvider,
             @NonNull final View rootView) {
         Button button = rootView.findViewById(R.id.target_rotation);
@@ -182,7 +195,8 @@ public class PreviewViewFragment extends Fragment {
         });
     }
 
-    void updateTargetRotationButtonText(Button rotationButton) {
+    @SuppressLint("SetTextI18n")
+    void updateTargetRotationButtonText(final @NonNull Button rotationButton) {
         switch (mPreview.getTargetRotation()) {
             case Surface.ROTATION_0:
                 rotationButton.setText("ROTATION_0");
@@ -225,7 +239,7 @@ public class PreviewViewFragment extends Fragment {
             // Get extra option for setting initial camera direction
             boolean isCameraDirectionValid = false;
             String cameraDirectionString = null;
-            Bundle bundle = getActivity().getIntent().getExtras();
+            Bundle bundle = requireActivity().getIntent().getExtras();
             if (bundle != null) {
                 cameraDirectionString = bundle.getString(INTENT_EXTRA_CAMERA_DIRECTION);
                 isCameraDirectionValid =
@@ -315,8 +329,10 @@ public class PreviewViewFragment extends Fragment {
     }
 
     @SuppressWarnings("WeakerAccess")
-    @UseExperimental(markerClass = ExperimentalUseCaseGroup.class)
-    @SuppressLint("UnsafeExperimentalUsageError")
+    // ExperimentalUseCaseGroupLifecycle is removed and has to be replaced with
+    // ExperimentalUseCaseGroup when the dependency to camera-lifecycle is updated to alpha
+    // versions.
+    @OptIn(markerClass = {ExperimentalUseCaseGroup.class, ExperimentalUseCaseGroupLifecycle.class})
     void bindPreview(@NonNull ProcessCameraProvider cameraProvider) {
         if (mPreview == null) {
             return;
@@ -330,6 +346,7 @@ public class PreviewViewFragment extends Fragment {
         setUpFocusAndMetering(camera);
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void setUpFocusAndMetering(@NonNull final Camera camera) {
         mPreviewView.setOnTouchListener((view, motionEvent) -> {
             switch (motionEvent.getAction()) {
@@ -414,7 +431,7 @@ public class PreviewViewFragment extends Fragment {
     // like TextureView.SurfaceTextureListener#onSurfaceTextureUpdated but it will require to add
     // API in PreviewView which is not a good idea. And we use OnPreDrawListener instead of
     // OnDrawListener because OnDrawListener is not invoked on some low API level devices.
-    private ViewTreeObserver.OnPreDrawListener mOnPreDrawListener = () -> {
+    private final ViewTreeObserver.OnPreDrawListener mOnPreDrawListener = () -> {
         if (mPreviewUpdatingLatch != null) {
             mPreviewUpdatingLatch.countDown();
         }
@@ -439,5 +456,5 @@ public class PreviewViewFragment extends Fragment {
     void setPreviewUpdatingLatch(@NonNull CountDownLatch previewUpdatingLatch) {
         mPreviewUpdatingLatch = previewUpdatingLatch;
     }
-    // end region
+    // endregion
 }

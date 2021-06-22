@@ -21,11 +21,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus
-import androidx.compose.ui.focus.ExperimentalFocus
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyPress
@@ -36,11 +36,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
+@OptIn(ExperimentalComposeUiApi::class)
 @RunWith(JUnit4::class)
-@OptIn(
-    ExperimentalFocus::class,
-    ExperimentalKeyInput::class
-)
 class ShortcutsTest {
     @get:Rule
     val rule = createComposeRule()
@@ -48,16 +45,16 @@ class ShortcutsTest {
     @Test
     fun shortcuts_triggered() {
         val focusRequester = FocusRequester()
-        var triggeredShortcut = false
+        var triggered = 0
         rule.setContent {
             Box(
                 modifier = Modifier
                     .size(10.dp, 10.dp)
                     .focusRequester(focusRequester)
-                    .focus()
+                    .focusTarget()
                     .shortcuts {
                         on(Key.MetaLeft + Key.Enter) {
-                            triggeredShortcut = true
+                            triggered += 1
                         }
                     }
             )
@@ -78,8 +75,18 @@ class ShortcutsTest {
             )
         )
 
+        rule.onRoot().performKeyPress(
+            keyTypedEvent(Key.Enter)
+        )
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.MetaLeft, KeyEventType.KeyUp
+            )
+        )
+
         rule.runOnIdle {
-            Truth.assertThat(triggeredShortcut).isTrue()
+            Truth.assertThat(triggered).isEqualTo(1)
             Truth.assertThat(firstKeyConsumed).isFalse()
             Truth.assertThat(secondKeyConsumed).isTrue()
         }
@@ -95,7 +102,7 @@ class ShortcutsTest {
                 modifier = Modifier
                     .size(10.dp, 10.dp)
                     .focusRequester(focusRequester)
-                    .focus()
+                    .focusTarget()
                     .shortcuts {
                         if (setShortcuts) {
                             on(Key.Enter) {
@@ -139,6 +146,136 @@ class ShortcutsTest {
 
         rule.runOnIdle {
             Truth.assertThat(triggered).isEqualTo(1)
+        }
+    }
+
+    @Test
+    fun shortcuts_priority() {
+        val focusRequester = FocusRequester()
+        var enterTriggered = 0
+        var shortcutTriggered = 0
+        rule.setContent {
+            Box(
+                modifier = Modifier
+                    .size(10.dp, 10.dp)
+                    .focusRequester(focusRequester)
+                    .focusTarget()
+                    .shortcuts {
+                        on(Key.Enter) {
+                            enterTriggered += 1
+                        }
+
+                        on(Key.ShiftLeft + Key.Enter) {
+                            shortcutTriggered += 1
+                        }
+                    }
+            )
+        }
+
+        rule.runOnIdle {
+            focusRequester.requestFocus()
+        }
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.ShiftLeft, KeyEventType.KeyDown
+            )
+        )
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.Enter, KeyEventType.KeyDown
+            )
+        )
+
+        rule.runOnIdle {
+            Truth.assertThat(enterTriggered).isEqualTo(0)
+            Truth.assertThat(shortcutTriggered).isEqualTo(1)
+        }
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.Enter, KeyEventType.KeyUp
+            )
+        )
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.ShiftLeft, KeyEventType.KeyUp
+            )
+        )
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.Enter, KeyEventType.KeyDown
+            )
+        )
+
+        rule.runOnIdle {
+            Truth.assertThat(enterTriggered).isEqualTo(1)
+            Truth.assertThat(shortcutTriggered).isEqualTo(1)
+        }
+    }
+
+    @Test
+    fun shortcuts_multiple() {
+        val focusRequester = FocusRequester()
+        var aTriggered = 0
+        var cTriggered = 0
+        rule.setContent {
+            Box(
+                modifier = Modifier
+                    .size(10.dp, 10.dp)
+                    .focusRequester(focusRequester)
+                    .focusTarget()
+                    .shortcuts {
+                        on(Key.MetaLeft + Key.A) {
+                            aTriggered += 1
+                        }
+
+                        on(Key.MetaLeft + Key.C) {
+                            cTriggered += 1
+                        }
+                    }
+            )
+        }
+
+        rule.runOnIdle {
+            focusRequester.requestFocus()
+        }
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.MetaLeft, KeyEventType.KeyDown
+            )
+        )
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.C, KeyEventType.KeyDown
+            )
+        )
+
+        rule.runOnIdle {
+            Truth.assertThat(aTriggered).isEqualTo(0)
+            Truth.assertThat(cTriggered).isEqualTo(1)
+        }
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.C, KeyEventType.KeyUp
+            )
+        )
+
+        rule.onRoot().performKeyPress(
+            keyEvent(
+                Key.A, KeyEventType.KeyDown
+            )
+        )
+
+        rule.runOnIdle {
+            Truth.assertThat(aTriggered).isEqualTo(1)
+            Truth.assertThat(cTriggered).isEqualTo(1)
         }
     }
 }

@@ -21,13 +21,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.testutils.assertAgainstGolden
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.down
-import androidx.compose.ui.test.isInMutuallyExclusiveGroup
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.move
 import androidx.compose.ui.test.onNodeWithTag
@@ -37,7 +39,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.AndroidXScreenshotTestRule
-import androidx.test.screenshot.assertAgainstGolden
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +46,7 @@ import org.junit.runner.RunWith
 @MediumTest
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+@OptIn(ExperimentalTestApi::class)
 class RadioButtonScreenshotTest {
 
     @get:Rule
@@ -89,6 +91,11 @@ class RadioButtonScreenshotTest {
         rule.onNodeWithTag(wrapperTestTag).performGesture {
             down(center)
         }
+
+        // Ripples are drawn on the RenderThread, not the main (UI) thread, so we can't wait for
+        // synchronization. Instead just wait until after the ripples are finished animating.
+        Thread.sleep(300)
+
         assertSelectableAgainstGolden("radioButton_pressed")
     }
 
@@ -124,16 +131,20 @@ class RadioButtonScreenshotTest {
             }
         }
 
-        rule.clockTestRule.pauseClock()
+        rule.mainClock.autoAdvance = false
 
-        rule.onNode(isInMutuallyExclusiveGroup())
+        rule.onNode(isSelectable())
             // split click into (down) and (move, up) to enforce a composition in between
             .performGesture { down(center) }
             .performGesture { move(); up() }
 
-        rule.waitForIdle()
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle() // Wait for measure
+        rule.mainClock.advanceTimeBy(milliseconds = 80)
 
-        rule.clockTestRule.advanceClock(60)
+        // Ripples are drawn on the RenderThread, not the main (UI) thread, so we can't wait for
+        // synchronization. Instead just wait until after the ripples are finished animating.
+        Thread.sleep(300)
 
         assertSelectableAgainstGolden("radioButton_animateToSelected")
     }
@@ -150,16 +161,20 @@ class RadioButtonScreenshotTest {
             }
         }
 
-        rule.clockTestRule.pauseClock()
+        rule.mainClock.autoAdvance = false
 
-        rule.onNode(isInMutuallyExclusiveGroup())
+        rule.onNode(isSelectable())
             // split click into (down) and (move, up) to enforce a composition in between
             .performGesture { down(center) }
             .performGesture { move(); up() }
 
-        rule.waitForIdle()
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle() // Wait for measure
+        rule.mainClock.advanceTimeBy(milliseconds = 80)
 
-        rule.clockTestRule.advanceClock(60)
+        // Ripples are drawn on the RenderThread, not the main (UI) thread, so we can't wait for
+        // synchronization. Instead just wait until after the ripples are finished animating.
+        Thread.sleep(300)
 
         assertSelectableAgainstGolden("radioButton_animateToNotSelected")
     }
@@ -167,7 +182,7 @@ class RadioButtonScreenshotTest {
     private fun assertSelectableAgainstGolden(goldenName: String) {
         // TODO: replace with find(isInMutuallyExclusiveGroup()) after b/157687898 is fixed
         rule.onNodeWithTag(wrapperTestTag)
-            .captureToBitmap()
+            .captureToImage()
             .assertAgainstGolden(screenshotRule, goldenName)
     }
 }

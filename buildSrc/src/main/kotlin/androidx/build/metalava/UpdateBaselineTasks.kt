@@ -16,8 +16,8 @@
 
 package androidx.build.metalava
 
-import androidx.build.checkapi.ApiLocation
 import androidx.build.checkapi.ApiBaselinesLocation
+import androidx.build.checkapi.ApiLocation
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
@@ -44,17 +44,21 @@ abstract class UpdateApiLintBaselineTask @Inject constructor(
     @get:Input
     abstract val baselines: Property<ApiBaselinesLocation>
 
+    @get:Input
+    abstract val targetsJavaConsumers: Property<Boolean>
+
     @OutputFile
     fun getApiLintBaseline(): File = baselines.get().apiLintFile
 
     @TaskAction
     fun updateBaseline() {
-        check(bootClasspath.isNotEmpty()) { "Android boot classpath not set." }
+        check(bootClasspath.files.isNotEmpty()) { "Android boot classpath not set." }
         val baselineFile = baselines.get().apiLintFile
-        val checkArgs = project.getGenerateApiArgs(
+        val checkArgs = getGenerateApiArgs(
             bootClasspath, dependencyClasspath,
-            sourcePaths.filter { it.exists() }, null, GenerateApiMode.PublicApi,
-            ApiLintMode.CheckBaseline(baselineFile), manifestPath.orNull?.asFile?.absolutePath
+            sourcePaths.files.filter { it.exists() }, null, GenerateApiMode.PublicApi,
+            ApiLintMode.CheckBaseline(baselineFile, targetsJavaConsumers.get()),
+            manifestPath.orNull?.asFile?.absolutePath
         )
         val args = checkArgs + getCommonBaselineUpdateArgs(baselineFile)
 
@@ -102,7 +106,7 @@ abstract class IgnoreApiChangesTask @Inject constructor(
 
     @TaskAction
     fun exec() {
-        check(bootClasspath.isNotEmpty()) { "Android boot classpath not set." }
+        check(bootClasspath.files.isNotEmpty()) { "Android boot classpath not set." }
 
         updateBaseline(
             api.get().publicApiFile,
@@ -157,13 +161,13 @@ abstract class IgnoreApiChangesTask @Inject constructor(
 }
 
 private fun getCommonBaselineUpdateArgs(
-    bootClasspath: Collection<File>,
+    bootClasspath: FileCollection,
     dependencyClasspath: FileCollection,
     baselineFile: File
 ): MutableList<String> {
     val args = mutableListOf(
         "--classpath",
-        (bootClasspath + dependencyClasspath.files).joinToString(File.pathSeparator)
+        (bootClasspath.files + dependencyClasspath.files).joinToString(File.pathSeparator)
     )
     args += getCommonBaselineUpdateArgs(baselineFile)
     return args

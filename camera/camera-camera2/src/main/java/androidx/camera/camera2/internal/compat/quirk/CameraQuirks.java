@@ -53,6 +53,12 @@ public class CameraQuirks {
         if (AspectRatioLegacyApi21Quirk.load(cameraCharacteristicsCompat)) {
             quirks.add(new AspectRatioLegacyApi21Quirk());
         }
+        if (JpegHalCorruptImageQuirk.load(cameraCharacteristicsCompat)) {
+            quirks.add(new JpegHalCorruptImageQuirk());
+        }
+        if (CamcorderProfileResolutionQuirk.load(cameraCharacteristicsCompat)) {
+            quirks.add(new CamcorderProfileResolutionQuirk(cameraCharacteristicsCompat));
+        }
         return new Quirks(quirks);
     }
 }

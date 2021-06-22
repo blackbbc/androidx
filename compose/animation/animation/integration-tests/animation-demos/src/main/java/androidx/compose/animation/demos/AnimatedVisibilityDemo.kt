@@ -33,17 +33,18 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.Button
 import androidx.compose.material.Checkbox
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -54,6 +55,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlin.math.max
+import kotlin.math.min
 
 @Composable
 fun AnimatedVisibilityDemo() {
@@ -68,58 +71,66 @@ fun AnimatedVisibilityDemo() {
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun AnimatedItems(animateContentSize: Boolean) {
-    var counter by remember { mutableStateOf(0) }
-    Box(
-        Modifier.padding(bottom = 20.dp)
-    ) {
-        Button(
-            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
-            onClick = {
-                counter = (counter + 1) % 12
-            }
+    var itemNum by remember { mutableStateOf(0) }
+    Column {
+        Row(
+            Modifier.fillMaxWidth().padding(20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Click Me")
+            Button(onClick = { itemNum = min((itemNum + 1), 6) }) {
+                Text("Add")
+            }
+            Button(onClick = { itemNum = max((itemNum - 1), 0) }) {
+                Text("Remove")
+            }
         }
-
-        val modifier = if (animateContentSize) Modifier.animateContentSize() else Modifier
-        Column(
-            Modifier.background(Color.LightGray).fillMaxWidth().then(modifier)
+        Box(
+            Modifier.padding(bottom = 20.dp)
         ) {
-            val itemNum = if (counter >= 7) 12 - counter else counter
 
-            AnimatedVisibility(visible = itemNum > 0) {
-                Item(
-                    pastelColors[0],
-                    "Expand Vertically + Fade In\nShrink " +
-                        "Vertically + Fade Out\n(Column Default)"
-                )
-            }
-            HorizontalTransition(visible = itemNum > 1) {
-                Item(pastelColors[1], "Expand Horizontally\nShrink Horizontally")
-            }
-            SlideTransition(visible = itemNum > 2) {
-                Item(
-                    pastelColors[2],
-                    "Slide In Horizontally + Fade In\nSlide Out Horizontally + " +
-                        "Fade Out"
-                )
-            }
-            AnimatedVisibility(
-                visible = itemNum > 3,
-                enter = expandVertically(),
-                exit = shrinkVertically()
+            val modifier = if (animateContentSize) Modifier.animateContentSize() else Modifier
+            Column(
+                Modifier.background(Color.LightGray).fillMaxWidth().then(modifier)
             ) {
-                Item(pastelColors[3], "Expand Vertically\nShrink Vertically")
-            }
-            FadeTransition(visible = itemNum > 4) {
-                Item(pastelColors[4], "Fade In\nFade Out")
-            }
-            FullyLoadedTransition(visible = itemNum > 5) {
-                Item(
-                    pastelColors[0],
-                    "Expand Vertically + Fade In + Slide In Vertically\n" +
-                        "Shrink Vertically + Fade Out + Slide Out Vertically"
-                )
+
+                Column(
+                    Modifier.background(Color.LightGray).fillMaxWidth().then(modifier)
+                ) {
+                    AnimatedVisibility(visible = itemNum > 0) {
+                        Item(
+                            pastelColors[0],
+                            "Expand Vertically + Fade In\nShrink " +
+                                "Vertically + Fade Out\n(Column Default)"
+                        )
+                    }
+                    HorizontalTransition(visible = itemNum > 1) {
+                        Item(pastelColors[1], "Expand Horizontally\nShrink Horizontally")
+                    }
+                    SlideTransition(visible = itemNum > 2) {
+                        Item(
+                            pastelColors[2],
+                            "Slide In Horizontally + Fade In\nSlide Out Horizontally + " +
+                                "Fade Out"
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = itemNum > 3,
+                        enter = expandVertically(),
+                        exit = shrinkVertically()
+                    ) {
+                        Item(pastelColors[3], "Expand Vertically\nShrink Vertically")
+                    }
+                    FadeTransition(visible = itemNum > 4) {
+                        Item(pastelColors[4], "Fade In\nFade Out")
+                    }
+                    FullyLoadedTransition(visible = itemNum > 5) {
+                        Item(
+                            pastelColors[0],
+                            "Expand Vertically + Fade In + Slide In Vertically\n" +
+                                "Shrink Vertically + Fade Out + Slide Out Vertically"
+                        )
+                    }
+                }
             }
         }
     }
@@ -127,7 +138,7 @@ fun AnimatedItems(animateContentSize: Boolean) {
 
 @Composable
 fun Item(color: Color, text: String = "") {
-    Box(Modifier.height(80.dp).fillMaxWidth().background(color)) {
+    Box(Modifier.requiredHeight(80.dp).fillMaxWidth().background(color)) {
         Text(
             text,
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp)
@@ -148,7 +159,7 @@ fun AnimateContentSizeOption(state: MutableState<Boolean>) {
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun HorizontalTransition(visible: Boolean, children: @Composable () -> Unit) {
+fun HorizontalTransition(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = expandHorizontally(
@@ -162,40 +173,40 @@ fun HorizontalTransition(visible: Boolean, children: @Composable () -> Unit) {
             // Set the end width for the shrink animation to a quarter of the full width.
             targetWidth = { fullWidth -> fullWidth / 10 },
             // Overwrites the default animation with tween for this shrink animation.
-            animSpec = tween(durationMillis = 400)
+            animationSpec = tween(durationMillis = 400)
         ) + fadeOut()
     ) {
-        children()
+        content()
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun SlideTransition(visible: Boolean, children: @Composable () -> Unit) {
+fun SlideTransition(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = slideInHorizontally(
             // Offsets the content by 1/3 of its width to the left, and slide towards right
             initialOffsetX = { fullWidth -> -fullWidth / 3 },
             // Overwrites the default animation with tween for this slide animation.
-            animSpec = tween(durationMillis = 200)
+            animationSpec = tween(durationMillis = 200)
         ) + fadeIn(
             // Overwrites the default animation with tween
-            animSpec = tween(durationMillis = 200)
+            animationSpec = tween(durationMillis = 200)
         ),
         exit = slideOutHorizontally(
             // Overwrites the ending position of the slide-out to 200 (pixels) to the right
             targetOffsetX = { 200 },
-            animSpec = spring(stiffness = Spring.StiffnessHigh)
+            animationSpec = spring(stiffness = Spring.StiffnessHigh)
         ) + fadeOut()
     ) {
-        children()
+        content()
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun FadeTransition(visible: Boolean, children: @Composable () -> Unit) {
+fun FadeTransition(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(
@@ -204,16 +215,16 @@ fun FadeTransition(visible: Boolean, children: @Composable () -> Unit) {
         ),
         exit = fadeOut(
             // Overwrites the default animation with tween
-            animSpec = tween(durationMillis = 250)
+            animationSpec = tween(durationMillis = 250)
         )
     ) {
-        children()
+        content()
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun FullyLoadedTransition(visible: Boolean, children: @Composable () -> Unit) {
+fun FullyLoadedTransition(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
         enter = slideInVertically(
@@ -225,6 +236,6 @@ fun FullyLoadedTransition(visible: Boolean, children: @Composable () -> Unit) {
         ) + fadeIn(initialAlpha = 0.3f),
         exit = slideOutVertically() + shrinkVertically() + fadeOut()
     ) {
-        children()
+        content()
     }
 }

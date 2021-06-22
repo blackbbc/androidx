@@ -17,23 +17,21 @@
 package androidx.compose.ui.demos.gestures
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.gesture.doubleTapGestureFilter
-import androidx.compose.ui.gesture.longPressGestureFilter
-import androidx.compose.ui.gesture.pressIndicatorGestureFilter
-import androidx.compose.ui.gesture.tapGestureFilter
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 
 /**
@@ -63,7 +61,7 @@ fun NestedPressingDemo() {
 @Composable
 private fun PressableContainer(
     modifier: Modifier = Modifier,
-    children: @Composable () -> Unit = {}
+    content: @Composable () -> Unit = {}
 ) {
     val defaultColor = DefaultBackgroundColor
     val pressedColor = PressedColor
@@ -100,15 +98,28 @@ private fun PressableContainer(
 
     val gestureDetectors =
         Modifier
-            .pressIndicatorGestureFilter(onStart, onStop, onStop)
-            .tapGestureFilter(onTap)
-            .doubleTapGestureFilter(onDoubleTap)
-            .longPressGestureFilter(onLongPress)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        onStart.invoke(it)
+                        val success = tryAwaitRelease()
+                        if (success) onStop.invoke() else onStop.invoke()
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = onTap,
+                    onDoubleTap = onDoubleTap,
+                    onLongPress = onLongPress
+                )
+            }
+
     Box(
         modifier
             .then(gestureDetectors)
             .background(color)
             .border(BorderStroke(2.dp, BorderColor))
             .padding(2.dp)
-    ) { children() }
+    ) { content() }
 }

@@ -17,11 +17,11 @@
 package androidx.compose.material.samples
 
 import androidx.annotation.Sampled
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.ExtendedFloatingActionButton
 import androidx.compose.material.FloatingActionButton
 import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.Composable
@@ -31,7 +31,7 @@ import androidx.compose.ui.Modifier
 @Composable
 fun SimpleFab() {
     FloatingActionButton(onClick = { /*do something*/ }) {
-        Icon(Icons.Filled.Favorite)
+        Icon(Icons.Filled.Favorite, contentDescription = "Localized description")
     }
 }
 
@@ -47,7 +47,7 @@ fun SimpleExtendedFabNoIcon() {
 @Composable
 fun SimpleExtendedFabWithIcon() {
     ExtendedFloatingActionButton(
-        icon = { Icon(Icons.Filled.Favorite) },
+        icon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
         text = { Text("ADD TO BASKET") },
         onClick = { /*do something*/ }
     )
@@ -57,7 +57,7 @@ fun SimpleExtendedFabWithIcon() {
 @Composable
 fun FluidExtendedFab() {
     ExtendedFloatingActionButton(
-        icon = { Icon(Icons.Filled.Favorite) },
+        icon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
         text = { Text("FLUID FAB") },
         onClick = { /*do something*/ },
         modifier = Modifier.fillMaxWidth()

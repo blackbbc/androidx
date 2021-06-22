@@ -18,13 +18,15 @@ package androidx.compose.material
 import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.selection.ToggleableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.testutils.assertAgainstGolden
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.down
 import androidx.compose.ui.test.isToggleable
@@ -37,7 +39,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.AndroidXScreenshotTestRule
-import androidx.test.screenshot.assertAgainstGolden
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +46,7 @@ import org.junit.runner.RunWith
 @MediumTest
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+@OptIn(ExperimentalTestApi::class)
 class CheckboxScreenshotTest {
 
     @get:Rule
@@ -154,16 +156,16 @@ class CheckboxScreenshotTest {
             }
         }
 
-        rule.clockTestRule.pauseClock()
+        rule.mainClock.autoAdvance = false
 
         rule.onNode(isToggleable())
             // split click into (down) and (move, up) to enforce a composition in between
             .performGesture { down(center) }
             .performGesture { move(); up() }
 
-        rule.waitForIdle()
-
-        rule.clockTestRule.advanceClock(60)
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle() // Wait for measure
+        rule.mainClock.advanceTimeBy(milliseconds = 80)
 
         assertToggeableAgainstGolden("checkbox_animateToChecked")
     }
@@ -181,16 +183,16 @@ class CheckboxScreenshotTest {
             }
         }
 
-        rule.clockTestRule.pauseClock()
+        rule.mainClock.autoAdvance = false
 
         rule.onNode(isToggleable())
             // split click into (down) and (move, up) to enforce a composition in between
             .performGesture { down(center) }
             .performGesture { move(); up() }
 
-        rule.waitForIdle()
-
-        rule.clockTestRule.advanceClock(60)
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle() // Wait for measure
+        rule.mainClock.advanceTimeBy(milliseconds = 80)
 
         assertToggeableAgainstGolden("checkbox_animateToUnchecked")
     }
@@ -198,7 +200,7 @@ class CheckboxScreenshotTest {
     private fun assertToggeableAgainstGolden(goldenName: String) {
         // TODO: replace with find(isToggeable()) after b/157687898 is fixed
         rule.onNodeWithTag(wrapperTestTag)
-            .captureToBitmap()
+            .captureToImage()
             .assertAgainstGolden(screenshotRule, goldenName)
     }
 }

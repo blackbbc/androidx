@@ -18,25 +18,28 @@ package androidx.compose.material.icons
 
 import android.graphics.Bitmap
 import android.os.Build
+import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.preferredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Composition
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.vector.VectorAsset
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.platform.ContextAmbient
-import androidx.compose.ui.platform.DensityAmbient
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.filters.LargeTest
@@ -64,7 +67,7 @@ const val XmlTestTag = "Xml"
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
 @RunWith(Parameterized::class)
 class IconComparisonTest(
-    private val iconSublist: List<Pair<KProperty0<VectorAsset>, String>>,
+    private val iconSublist: List<Pair<KProperty0<ImageVector>, String>>,
     private val debugParameterName: String
 ) {
 
@@ -97,15 +100,14 @@ class IconComparisonTest(
     private val matcher = MSSIMMatcher(threshold = 0.99)
 
     @Test
-    fun compareVectorAssets() {
+    fun compareImageVectors() {
         iconSublist.forEach { (property, drawableName) ->
-            var xmlVector: VectorAsset? = null
+            var xmlVector: ImageVector? = null
             val programmaticVector = property.get()
-            var composition: Composition? = null
 
             rule.activityRule.scenario.onActivity {
-                composition = it.setContent {
-                    xmlVector = drawableName.toVectorAsset()
+                it.setContent {
+                    xmlVector = drawableName.toImageVector()
                     DrawVectors(programmaticVector, xmlVector!!)
                 }
             }
@@ -114,50 +116,115 @@ class IconComparisonTest(
 
             val iconName = property.javaGetter!!.declaringClass.canonicalName!!
 
-            // The XML inflated VectorAsset doesn't have a name, and we set a name in the
-            // programmatic VectorAsset. This doesn't affect how the VectorAsset is drawn, so we
+            // The XML inflated ImageVector doesn't have a name, and we set a name in the
+            // programmatic ImageVector. This doesn't affect how the ImageVector is drawn, so we
             // make sure the names match so the comparison does not fail.
             xmlVector = xmlVector!!.copy(name = programmaticVector.name)
 
-            assertVectorAssetsAreEqual(xmlVector!!, programmaticVector, iconName)
+            assertImageVectorsAreEqual(xmlVector!!, programmaticVector, iconName)
 
             matcher.assertBitmapsAreEqual(
-                rule.onNodeWithTag(XmlTestTag).captureToBitmap(),
-                rule.onNodeWithTag(ProgrammaticTestTag).captureToBitmap(),
+                rule.onNodeWithTag(XmlTestTag).captureToImage().asAndroidBitmap(),
+                rule.onNodeWithTag(ProgrammaticTestTag).captureToImage().asAndroidBitmap(),
                 iconName
             )
 
             // Dispose between composing each pair of icons to ensure correctness
-            rule.runOnUiThread {
-                composition?.dispose()
+            rule.activityRule.scenario.onActivity {
+                it.setContentView(View(it))
             }
         }
     }
 }
 
 /**
- * @return the [VectorAsset] matching the drawable with [this] name.
+ * Helper method to copy the existing [ImageVector] modifying the name
+ * for use in equality checks.
  */
-@Composable
-private fun String.toVectorAsset(): VectorAsset {
-    val context = ContextAmbient.current
-    val resId = context.resources.getIdentifier(this, "drawable", context.packageName)
-    return vectorResource(resId)
+private fun ImageVector.copy(name: String): ImageVector {
+    val builder = ImageVector.Builder(
+        name, defaultWidth, defaultHeight, viewportWidth, viewportHeight, tintColor, tintBlendMode
+    )
+    val root = this.root
+    // Stack of vector groups and current child index being traversed
+    val stack = ArrayList<Pair<Int, VectorGroup>>()
+    stack.add(Pair(0, root))
+
+    while (!stack.isEmpty()) {
+        val current = stack[stack.size - 1]
+        var currentIndex = current.first
+        var currentGroup = current.second
+        while (currentIndex < currentGroup.size) {
+            val vectorNode = currentGroup[currentIndex]
+            when (vectorNode) {
+                is VectorGroup -> {
+                    // keep track of the current index to continue parsing groups
+                    // when we eventually "pop" the stack of groups
+                    stack.add(Pair(currentIndex + 1, currentGroup))
+                    builder.addGroup(
+                        name = vectorNode.name,
+                        rotate = vectorNode.rotation,
+                        pivotX = vectorNode.pivotX,
+                        pivotY = vectorNode.pivotY,
+                        scaleX = vectorNode.scaleX,
+                        scaleY = vectorNode.scaleY,
+                        translationX = vectorNode.translationX,
+                        translationY = vectorNode.translationY,
+                        clipPathData = vectorNode.clipPathData
+                    )
+                    currentGroup = vectorNode
+                    currentIndex = 0
+                }
+                is VectorPath -> {
+                    builder.addPath(
+                        name = vectorNode.name,
+                        pathData = vectorNode.pathData,
+                        pathFillType = vectorNode.pathFillType,
+                        fill = vectorNode.fill,
+                        fillAlpha = vectorNode.fillAlpha,
+                        stroke = vectorNode.stroke,
+                        strokeAlpha = vectorNode.strokeAlpha,
+                        strokeLineWidth = vectorNode.strokeLineWidth,
+                        strokeLineCap = vectorNode.strokeLineCap,
+                        strokeLineJoin = vectorNode.strokeLineJoin,
+                        strokeLineMiter = vectorNode.strokeLineMiter,
+                        trimPathStart = vectorNode.trimPathStart,
+                        trimPathEnd = vectorNode.trimPathEnd,
+                        trimPathOffset = vectorNode.trimPathOffset
+                    )
+                }
+            }
+            currentIndex++
+        }
+        // "pop" the most recent group after we have examined each of the children
+        stack.removeAt(stack.size - 1)
+    }
+    return builder.build()
 }
 
 /**
- * Compares two [VectorAsset]s and ensures that they are deeply equal, comparing all children
+ * @return the [ImageVector] matching the drawable with [this] name.
+ */
+@Composable
+private fun String.toImageVector(): ImageVector {
+    val context = LocalContext.current
+    val resId = context.resources.getIdentifier(this, "drawable", context.packageName)
+    return ImageVector.vectorResource(resId)
+}
+
+/**
+ * Compares two [ImageVector]s and ensures that they are deeply equal, comparing all children
  * recursively.
  */
-private fun assertVectorAssetsAreEqual(
-    xmlVector: VectorAsset,
-    programmaticVector: VectorAsset,
+private fun assertImageVectorsAreEqual(
+    xmlVector: ImageVector,
+    programmaticVector: ImageVector,
     iconName: String
 ) {
     try {
         Truth.assertThat(programmaticVector).isEqualTo(xmlVector)
     } catch (e: AssertionError) {
-        val message = "VectorAsset comparison failed for $iconName\n" + e.localizedMessage
+        val message = "ImageVector comparison failed for $iconName\n" + e.localizedMessage
         throw AssertionError(message, e)
     }
 }
@@ -208,14 +275,14 @@ private fun MSSIMMatcher.assertBitmapsAreEqual(
  * [XmlTestTag] for [programmaticVector] and [xmlVector].
  */
 @Composable
-private fun DrawVectors(programmaticVector: VectorAsset, xmlVector: VectorAsset) {
+private fun DrawVectors(programmaticVector: ImageVector, xmlVector: ImageVector) {
     Box {
         // Ideally these icons would be 24 dp, but due to density changes across devices we test
         // against in CI, on some devices using DP here causes there to be anti-aliasing issues.
         // Using ipx directly ensures that we will always have a consistent layout / drawing
         // story, so anti-aliasing should be identical.
-        val layoutSize = with(DensityAmbient.current) {
-            Modifier.preferredSize(72.toDp())
+        val layoutSize = with(LocalDensity.current) {
+            Modifier.size(72.toDp())
         }
         Row(Modifier.align(Alignment.Center)) {
             Box(

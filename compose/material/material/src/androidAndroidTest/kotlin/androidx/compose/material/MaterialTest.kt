@@ -17,27 +17,28 @@
 package androidx.compose.material
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.preferredSizeIn
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
-import androidx.compose.ui.node.ExperimentalLayoutNodeApi
-import androidx.compose.ui.platform.AndroidOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsEqualTo
-import androidx.compose.ui.test.assertIsEqualTo
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getAlignmentLinePosition
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 
-fun ComposeTestRule.setMaterialContent(
+fun ComposeContentTestRule.setMaterialContent(
     modifier: Modifier = Modifier,
     composable: @Composable () -> Unit
 ) {
@@ -61,39 +62,9 @@ fun SemanticsNodeInteraction.getLastBaselinePosition() = getAlignmentLinePositio
 fun SemanticsNodeInteraction.assertIsSquareWithSize(expectedSize: Dp) =
     assertWidthIsEqualTo(expectedSize).assertHeightIsEqualTo(expectedSize)
 
-fun SemanticsNodeInteraction.assertWidthFillsRoot(): SemanticsNodeInteraction {
-    val node = fetchSemanticsNode("Failed to assertWidthFillsScreen")
-    @OptIn(ExperimentalLayoutNodeApi::class)
-    val owner = node.componentNode.owner as AndroidOwner
-    val rootViewWidth = owner.view.width
+fun ComposeTestRule.rootWidth(): Dp = onRoot().getUnclippedBoundsInRoot().width
 
-    with(owner.density) {
-        node.boundsInRoot.width.toDp().assertIsEqualTo(rootViewWidth.toDp())
-    }
-    return this
-}
-
-fun ComposeTestRule.rootWidth(): Dp {
-    val nodeInteraction = onRoot()
-    val node = nodeInteraction.fetchSemanticsNode("Failed to get screen width")
-    @OptIn(ExperimentalLayoutNodeApi::class)
-    val owner = node.componentNode.owner as AndroidOwner
-
-    return with(owner.density) {
-        owner.view.width.toDp()
-    }
-}
-
-fun ComposeTestRule.rootHeight(): Dp {
-    val nodeInteraction = onRoot()
-    val node = nodeInteraction.fetchSemanticsNode("Failed to get screen height")
-    @OptIn(ExperimentalLayoutNodeApi::class)
-    val owner = node.componentNode.owner as AndroidOwner
-
-    return with(owner.density) {
-        owner.view.height.toDp()
-    }
-}
+fun ComposeTestRule.rootHeight(): Dp = onRoot().getUnclippedBoundsInRoot().height
 
 /**
  * Constant to emulate very big but finite constraints
@@ -101,23 +72,23 @@ fun ComposeTestRule.rootHeight(): Dp {
 val BigTestMaxWidth = 5000.dp
 val BigTestMaxHeight = 5000.dp
 
-fun ComposeTestRule.setMaterialContentForSizeAssertions(
+fun ComposeContentTestRule.setMaterialContentForSizeAssertions(
     parentMaxWidth: Dp = BigTestMaxWidth,
     parentMaxHeight: Dp = BigTestMaxHeight,
     // TODO : figure out better way to make it flexible
-    children: @Composable () -> Unit
+    content: @Composable () -> Unit
 ): SemanticsNodeInteraction {
     setContent {
         MaterialTheme {
             Surface {
                 Box {
                     Box(
-                        Modifier.preferredSizeIn(
+                        Modifier.sizeIn(
                             maxWidth = parentMaxWidth,
                             maxHeight = parentMaxHeight
                         ).testTag("containerForSizeAssertion")
                     ) {
-                        children()
+                        content()
                     }
                 }
             }

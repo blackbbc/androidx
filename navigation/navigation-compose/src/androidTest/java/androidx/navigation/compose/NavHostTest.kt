@@ -16,23 +16,39 @@
 
 package androidx.navigation.compose
 
-import android.net.Uri
+import android.annotation.SuppressLint
+import android.content.Context
+import android.os.Bundle
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.Button
+import androidx.compose.material.Text
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.savedinstancestate.rememberSavedInstanceState
-import androidx.compose.ui.platform.ContextAmbient
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSavedStateRegistryOwner
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.core.net.toUri
-import androidx.navigation.NavDestination
-import androidx.navigation.NavDestinationBuilder
-import androidx.navigation.NavGraph
-import androidx.navigation.NavGraphBuilder
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation.contains
 import androidx.navigation.NavHostController
+import androidx.navigation.plusAssign
 import androidx.navigation.testing.TestNavHostController
+import androidx.savedstate.SavedStateRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.internal.runner.junit4.statement.UiThreadStatement.runOnUiThread
+import androidx.testutils.TestNavigator
+import androidx.testutils.test
+import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import org.junit.Rule
 import org.junit.Test
@@ -48,7 +64,7 @@ class NavHostTest {
     fun testSingleDestinationSet() {
         lateinit var navController: NavHostController
         composeTestRule.setContent {
-            navController = TestNavHostController(ContextAmbient.current)
+            navController = createNavController(LocalContext.current)
 
             NavHost(navController, startDestination = "first") {
                 test("first")
@@ -64,7 +80,7 @@ class NavHostTest {
     fun testNavigate() {
         lateinit var navController: NavHostController
         composeTestRule.setContent {
-            navController = TestNavHostController(ContextAmbient.current)
+            navController = createNavController(LocalContext.current)
 
             NavHost(navController, startDestination = "first") {
                 test("first")
@@ -81,16 +97,62 @@ class NavHostTest {
         }
 
         assertWithMessage("second destination should be current")
-            .that(
-                navController.currentDestination?.hasDeepLink(Uri.parse(createRoute("second")))
-            ).isTrue()
+            .that(navController.currentDestination?.route).isEqualTo("second")
+    }
+
+    @Test
+    fun testNavigateOutsideStateChange() {
+        lateinit var navController: NavHostController
+        val text = "myButton"
+        var counter = 0
+        composeTestRule.setContent {
+            navController = rememberNavController()
+            var state by remember { mutableStateOf(0) }
+            Column(Modifier.fillMaxSize()) {
+                NavHost(navController, startDestination = "first") {
+                    composable("first") { }
+                    composable("second") { }
+                }
+                Button(
+                    onClick = {
+                        state++
+                        counter = state
+                    }
+                ) {
+                    Text(text)
+                }
+            }
+        }
+
+        assertWithMessage("Destination should be added to the graph")
+            .that("first" in navController.graph)
+            .isTrue()
+
+        composeTestRule.runOnIdle {
+            navController.navigate("second")
+        }
+
+        composeTestRule.runOnIdle {
+            assertWithMessage("second destination should be current")
+                .that(navController.currentDestination?.route).isEqualTo("second")
+        }
+
+        composeTestRule.onNodeWithText(text)
+            .performClick()
+
+        composeTestRule.runOnIdle {
+            // ensure our click listener was fired
+            assertThat(counter).isEqualTo(1)
+            assertWithMessage("second destination should be current")
+                .that(navController.currentDestination?.route).isEqualTo("second")
+        }
     }
 
     @Test
     fun testPop() {
         lateinit var navController: TestNavHostController
         composeTestRule.setContent {
-            navController = TestNavHostController(ContextAmbient.current)
+            navController = createNavController(LocalContext.current)
 
             NavHost(navController, startDestination = "first") {
                 test("first")
@@ -104,10 +166,7 @@ class NavHostTest {
         }
 
         assertWithMessage("First destination should be current")
-            .that(
-                navController.currentDestination?.hasDeepLink(createRoute("first").toUri())
-            )
-            .isTrue()
+            .that(navController.currentDestination?.route).isEqualTo("first")
     }
 
     @Test
@@ -116,8 +175,10 @@ class NavHostTest {
         lateinit var state: MutableState<String>
         composeTestRule.setContent {
             state = remember { mutableStateOf("first") }
-
-            navController = TestNavHostController(ContextAmbient.current)
+            val context = LocalContext.current
+            // added to avoid lint error b/184349025
+            @SuppressLint("RememberReturnType")
+            navController = remember { createNavController(context) }
 
             NavHost(navController, startDestination = state.value) {
                 test("first")
@@ -130,10 +191,89 @@ class NavHostTest {
         }
 
         composeTestRule.runOnIdle {
-            assertWithMessage("Second destination should be current")
-                .that(
-                    navController.currentDestination?.hasDeepLink(createRoute("second").toUri())
-                ).isTrue()
+            assertWithMessage("First destination should be current")
+                .that(navController.currentDestination?.route).isEqualTo("first")
+        }
+    }
+
+    @Test
+    fun testSameControllerAfterDisposingNavHost() {
+        lateinit var navController: TestNavHostController
+        lateinit var state: MutableState<Int>
+        composeTestRule.setContent {
+            val context = LocalContext.current
+            state = remember { mutableStateOf(0) }
+            // added to avoid lint error b/184349025
+            @SuppressLint("RememberReturnType")
+            navController = remember { createNavController(context) }
+            if (state.value == 0) {
+                NavHost(navController, startDestination = "first") {
+                    test("first")
+                }
+            }
+        }
+
+        runOnUiThread {
+            // dispose the NavHost
+            state.value = 1
+        }
+
+        // wait for recompose without NavHost then recompose with the NavHost
+        composeTestRule.runOnIdle {
+            state.value = 0
+        }
+
+        composeTestRule.runOnIdle {
+            assertWithMessage("First destination should be current")
+                .that(navController.currentDestination?.route).isEqualTo("first")
+        }
+    }
+
+    @Test
+    fun testViewModelSavedAfterConfigChange() {
+        lateinit var navController: NavHostController
+        lateinit var state: MutableState<Int>
+        lateinit var viewModel: TestViewModel
+        var savedState: Bundle? = null
+        composeTestRule.setContent {
+            val context = LocalContext.current
+            state = remember { mutableStateOf(0) }
+            navController = if (savedState == null) {
+                rememberNavController()
+            } else {
+                NavHostController(context).apply {
+                    restoreState(savedState)
+                    setViewModelStore(LocalViewModelStoreOwner.current!!.viewModelStore)
+                    navigatorProvider.addNavigator(ComposeNavigator())
+                }
+            }
+            if (state.value == 0) {
+                NavHost(navController, startDestination = "first") {
+                    composable("first") {
+                        val provider = ViewModelProvider(it)
+                        viewModel = provider.get("key", TestViewModel::class.java)
+                    }
+                }
+            }
+        }
+        val savedViewModel: TestViewModel = viewModel
+        savedViewModel.value = "testing"
+        savedState = navController.saveState()
+
+        runOnUiThread {
+            // dispose the NavHost
+            state.value = 1
+        }
+
+        // wait for recompose without NavHost then recompose with the NavHost
+        composeTestRule.runOnIdle {
+            state.value = 0
+        }
+
+        composeTestRule.runOnIdle {
+            assertWithMessage("First destination should be current")
+                .that(navController.currentDestination?.route).isEqualTo("first")
+            assertThat(savedViewModel.value).isEqualTo(viewModel.value)
         }
     }
 
@@ -147,7 +287,7 @@ class NavHostTest {
 
             NavHost(navController, startDestination = "First") {
                 composable("First") {
-                    numberOnScreen1 = rememberSavedInstanceState { increment++ }
+                    numberOnScreen1 = rememberSaveable { increment++ }
                 }
                 composable("Second") {}
             }
@@ -184,7 +324,7 @@ class NavHostTest {
                 composable("First") {
                 }
                 composable("Second") {
-                    numberOnScreen2 = rememberSavedInstanceState { increment++ }
+                    numberOnScreen2 = rememberSaveable { increment++ }
                 }
             }
         }
@@ -211,17 +351,44 @@ class NavHostTest {
                 .isEqualTo(1)
         }
     }
+
+    @Test
+    fun savedStateRegistryOwnerTest() {
+        lateinit var registry1: SavedStateRegistry
+        lateinit var registry2: SavedStateRegistry
+        lateinit var navController: NavHostController
+        composeTestRule.setContent {
+            navController = rememberNavController()
+
+            NavHost(navController, startDestination = "First") {
+                composable("First") {
+                    registry1 = LocalSavedStateRegistryOwner.current.savedStateRegistry
+                }
+                composable("Second") {
+                    registry2 = LocalSavedStateRegistryOwner.current.savedStateRegistry
+                }
+            }
+        }
+
+        composeTestRule.runOnIdle {
+            navController.navigate("Second")
+        }
+
+        composeTestRule.runOnIdle {
+            assertWithMessage("Each entry should have its own SavedStateRegistry")
+                .that(registry1)
+                .isNotEqualTo(registry2)
+        }
+    }
+
+    private fun createNavController(context: Context): TestNavHostController {
+        val navController = TestNavHostController(context)
+        val navigator = TestNavigator()
+        navController.navigatorProvider += navigator
+        return navController
+    }
 }
 
-private inline fun NavGraphBuilder.test(
-    route: String,
-    builder: NavDestinationBuilder<NavDestination>.() -> Unit = { deepLink(createRoute(route)) }
-) = test(createRoute(route).hashCode(), builder)
-
-operator fun NavGraph.contains(
-    route: String
-): Boolean = findNode(createRoute(route).hashCode()) != null
-
-private fun TestNavHostController.setCurrentDestination(
-    route: String
-) = setCurrentDestination(createRoute(route).hashCode())
+class TestViewModel : ViewModel() {
+    var value: String = "nothing"
+}

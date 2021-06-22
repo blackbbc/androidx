@@ -16,52 +16,79 @@
 
 package androidx.compose.ui.node
 
-import androidx.compose.ui.DrawCacheModifier
-import androidx.compose.ui.DrawModifier
+import androidx.compose.ui.draw.BuildDrawCacheParams
+import androidx.compose.ui.draw.DrawCacheModifier
+import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
-import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.toSize
 
-@OptIn(ExperimentalLayoutNodeApi::class)
 internal class ModifiedDrawNode(
     wrapped: LayoutNodeWrapper,
     drawModifier: DrawModifier
 ) : DelegatingLayoutNodeWrapper<DrawModifier>(wrapped, drawModifier), OwnerScope {
 
-    private val cacheDrawModifier: DrawCacheModifier? =
-        if (drawModifier is DrawCacheModifier) {
-            drawModifier
-        } else {
-            null
-        }
+    private var cacheDrawModifier: DrawCacheModifier? = updateCacheDrawModifier()
+
+    private val buildCacheParams: BuildDrawCacheParams = object : BuildDrawCacheParams {
+        // b/173669932 we should not cache this here, however, on subsequent modifier updates
+        // the density provided via layoutNode.density becomes 1
+        override val density = layoutNode.density
+
+        override val layoutDirection: LayoutDirection get() = layoutNode.layoutDirection
+
+        override val size: Size get() = measuredSize.toSize()
+    }
 
     // Flag to determine if the cache should be re-built
     private var invalidateCache = true
 
     // Callback used to build the drawing cache
     private val updateCache = {
-        val size: Size = measuredSize.toSize()
-        cacheDrawModifier?.onBuildCache(size, layoutNode.mDrawScope)
+        // b/173669932 figure out why layoutNode.mDrawScope density is 1 after observation updates
+        // and use that here instead of the cached density we get in the constructor
+        cacheDrawModifier?.onBuildCache(buildCacheParams)
         invalidateCache = false
     }
 
-    override var measureResult: MeasureResult
-        get() = super.measureResult
+    // Intentionally returning DrawCacheModifier not generic Modifier type
+    // to make sure that we are updating the current DrawCacheModifier in the
+    // event that a new DrawCacheModifier is provided
+    // Suppressing insepctorinfo as relying on the inspector info for
+    // DrawCacheModifier
+    @Suppress(
+        "ModifierInspectorInfo",
+        "ModifierFactoryReturnType",
+        "ModifierFactoryExtensionFunction"
+    )
+    private fun updateCacheDrawModifier(): DrawCacheModifier? {
+        val current = modifier
+        return if (current is DrawCacheModifier) {
+            current
+        } else {
+            null
+        }
+    }
+
+    override var modifier: DrawModifier
+        get() = super.modifier
         set(value) {
-            if (super.measuredSize.width != value.width ||
-                super.measuredSize.height != value.height
-            ) {
-                invalidateCache = true
-            }
-            super.measureResult = value
+            super.modifier = value
+            cacheDrawModifier = updateCacheDrawModifier()
+            invalidateCache = true
         }
 
+    override fun onMeasureResultChanged(width: Int, height: Int) {
+        super.onMeasureResultChanged(width, height)
+        invalidateCache = true
+    }
+
     // This is not thread safe
-    override fun draw(canvas: Canvas) {
+    override fun performDraw(canvas: Canvas) {
         val size = measuredSize.toSize()
         if (cacheDrawModifier != null && invalidateCache) {
-            layoutNode.owner?.observeReads(
+            layoutNode.requireOwner().snapshotObserver.observeReads(
                 this,
                 onCommitAffectingModifiedDrawNode,
                 updateCache
@@ -69,12 +96,10 @@ internal class ModifiedDrawNode(
         }
 
         val drawScope = layoutNode.mDrawScope
-        withPositionTranslation(canvas) {
-            drawScope.draw(canvas, size, wrapped) {
-                with(drawScope) {
-                    with(modifier) {
-                        draw()
-                    }
+        drawScope.draw(canvas, size, wrapped) {
+            with(drawScope) {
+                with(modifier) {
+                    draw()
                 }
             }
         }
@@ -87,10 +112,8 @@ internal class ModifiedDrawNode(
         private val onCommitAffectingModifiedDrawNode: (ModifiedDrawNode) -> Unit =
             { modifiedDrawNode ->
                 if (modifiedDrawNode.isValid) {
-                    // Note this intentionally does not invalidate the layer as Owner implementations
-                    // already observe and invalidate the layer on state changes. Instead just
-                    // mark the cache dirty so that it will be re-created on the next draw
                     modifiedDrawNode.invalidateCache = true
+                    modifiedDrawNode.invalidateLayer()
                 }
             }
     }

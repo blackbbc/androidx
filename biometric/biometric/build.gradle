@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import static androidx.build.dependencies.DependenciesKt.*
 import androidx.build.LibraryGroups
 import androidx.build.Publish
 
@@ -26,7 +25,7 @@ plugins {
 dependencies {
     // Public API dependencies
     api("androidx.annotation:annotation:1.1.0")
-    api("androidx.core:core:1.3.1")
+    api("androidx.core:core:1.3.2")
     api("androidx.fragment:fragment:1.2.5")
 
     // Internal dependencies
@@ -35,36 +34,30 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-core:2.2.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.2.0")
 
-    testImplementation(ANDROIDX_TEST_CORE)
-    testImplementation(ANDROIDX_TEST_RUNNER)
-    testImplementation(JUNIT)
-    testImplementation(MOCKITO_CORE)
-    testImplementation(ROBOLECTRIC)
-    testImplementation(TRUTH)
+    testImplementation(libs.testCore)
+    testImplementation(libs.testRunner)
+    testImplementation(libs.junit)
+    testImplementation(libs.mockitoCore)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.truth)
 
-    androidTestImplementation(ANDROIDX_TEST_CORE)
-    androidTestImplementation(ANDROIDX_TEST_EXT_JUNIT)
-    androidTestImplementation(ANDROIDX_TEST_RULES)
-    androidTestImplementation(ANDROIDX_TEST_RUNNER)
-    androidTestImplementation(DEXMAKER_MOCKITO, libs.exclude_bytebuddy)
-    androidTestImplementation(MOCKITO_CORE, libs.exclude_bytebuddy)
-    androidTestImplementation(TRUTH)
+    androidTestImplementation(libs.testCore)
+    androidTestImplementation(libs.testExtJunit)
+    androidTestImplementation(libs.testRules)
+    androidTestImplementation(libs.testRunner)
+    androidTestImplementation(libs.dexmakerMockito, excludes.bytebuddy)
+    androidTestImplementation(libs.mockitoCore, excludes.bytebuddy)
+    androidTestImplementation(libs.truth)
 }
 
 android {
     aaptOptions {
-        noCompress 'ttf'
+        noCompress "ttf"
     }
 
     buildTypes.all {
-        consumerProguardFiles 'proguard-rules.pro'
+        consumerProguardFiles "proguard-rules.pro"
     }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_7
-        targetCompatibility JavaVersion.VERSION_1_7
-    }
-
     testOptions.unitTests.includeAndroidResources = true
 }
 

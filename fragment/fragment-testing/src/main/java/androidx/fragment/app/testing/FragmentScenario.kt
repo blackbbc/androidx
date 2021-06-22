@@ -35,6 +35,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import java.io.Closeable
 
 @Deprecated(
     "Superseded by launchFragment that takes an initialState",
@@ -228,7 +229,7 @@ public inline fun <reified F : Fragment, T : Any> FragmentScenario<F>.withFragme
  * If your testing Fragment has a dependency to specific theme such as `Theme.AppCompat`,
  * use the theme ID parameter in [launch] method.
  *
- * @param <F> The Fragment class being tested
+ * @param F The Fragment class being tested
  *
  * @see ActivityScenario a scenario API for Activity
  */
@@ -236,7 +237,7 @@ public class FragmentScenario<F : Fragment> private constructor(
     @Suppress("MemberVisibilityCanBePrivate") /* synthetic access */
     internal val fragmentClass: Class<F>,
     private val activityScenario: ActivityScenario<EmptyFragmentActivity>
-) {
+) : Closeable {
 
     /**
      * An empty activity inheriting FragmentActivity. This Activity is used to host Fragment in
@@ -396,6 +397,14 @@ public class FragmentScenario<F : Fragment> private constructor(
             action.perform(requireNotNull(fragmentClass.cast(fragment)))
         }
         return this
+    }
+
+    /**
+     * Finishes the managed fragments and cleans up device's state. This method blocks execution
+     * until the host activity becomes [Lifecycle.State.DESTROYED].
+     */
+    public override fun close() {
+        activityScenario.close()
     }
 
     public companion object {
@@ -574,6 +583,9 @@ public class FragmentScenario<F : Fragment> private constructor(
             factory: FragmentFactory?,
             @IdRes containerViewId: Int
         ): FragmentScenario<F> {
+            require(initialState != Lifecycle.State.DESTROYED) {
+                "Cannot set initial Lifecycle state to $initialState for FragmentScenario"
+            }
             val componentName = ComponentName(
                 ApplicationProvider.getApplicationContext(),
                 EmptyFragmentActivity::class.java

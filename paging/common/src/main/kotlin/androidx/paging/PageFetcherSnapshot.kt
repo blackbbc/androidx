@@ -29,26 +29,20 @@ import androidx.paging.PagingSource.LoadResult
 import androidx.paging.PagingSource.LoadResult.Page
 import androidx.paging.PagingSource.LoadResult.Page.Companion.COUNT_UNDEFINED
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BroadcastChannel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.BUFFERED
-import kotlinx.coroutines.channels.Channel.Factory.CONFLATED
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.runningReduce
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -64,7 +58,8 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
     private val retryFlow: Flow<Unit>,
     private val triggerRemoteRefresh: Boolean = false,
     val remoteMediatorConnection: RemoteMediatorConnection<Key, Value>? = null,
-    private val invalidate: () -> Unit = {}
+    private val previousPagingState: PagingState<Key, Value>? = null,
+    private val invalidate: () -> Unit = {},
 ) {
     init {
         require(config.jumpThreshold == COUNT_UNDEFINED || pagingSource.jumpingSupported) {
@@ -73,9 +68,8 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
         }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val hintChannel = BroadcastChannel<ViewportHint>(CONFLATED)
-    private var lastHint: ViewportHint? = null
+    private val hintSharedFlow = MutableSharedFlow<ViewportHint>(replay = 1)
+    private var lastHint: ViewportHint.Access? = null
 
     private val pageEventChCollected = AtomicBoolean(false)
     private val pageEventCh = Channel<PageEvent<Value>>(BUFFERED)
@@ -83,7 +77,6 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
 
     private val pageEventChannelFlowJob = Job()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     val pageEventFlow: Flow<PageEvent<Value>> = cancelableChannelFlow(pageEventChannelFlowJob) {
         check(pageEventChCollected.compareAndSet(false, true)) {
             "Attempt to collect twice from pageEventFlow, which is an illegal operation. Did you " +
@@ -107,7 +100,7 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
         // Wrap collection behind a RendezvousChannel to prevent the RetryChannel from buffering
         // retry signals.
         val retryChannel = Channel<Unit>(Channel.RENDEZVOUS)
-        launch { retryFlow.collect { retryChannel.offer(it) } }
+        launch { retryFlow.collect { retryChannel.trySend(it) } }
 
         // Start collection on retry signals.
         launch {
@@ -156,7 +149,9 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
 
         if (triggerRemoteRefresh) {
             remoteMediatorConnection?.let {
-                val pagingState = stateHolder.withLock { state -> state.currentPagingState(null) }
+                val pagingState = previousPagingState ?: stateHolder.withLock { state ->
+                    state.currentPagingState(null)
+                }
                 it.requestLoad(REFRESH, pagingState)
             }
         }
@@ -184,41 +179,32 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
                     "Cannot retry APPEND / PREPEND load on PagingSource without ViewportHint"
                 }
 
-                @OptIn(ExperimentalCoroutinesApi::class)
-                hintChannel.offer(viewportHint)
+                hintSharedFlow.tryEmit(viewportHint)
             }
         }
     }
 
     fun accessHint(viewportHint: ViewportHint) {
-        lastHint = viewportHint
-        @OptIn(ExperimentalCoroutinesApi::class)
-        hintChannel.offer(viewportHint)
+        if (viewportHint is ViewportHint.Access) {
+            lastHint = viewportHint
+        }
+
+        hintSharedFlow.tryEmit(viewportHint)
     }
 
     fun close() {
         pageEventChannelFlowJob.cancel()
     }
 
-    suspend fun refreshKeyInfo(): PagingState<Key, Value>? {
-        return stateHolder.withLock { state ->
-            lastHint?.let { lastHint ->
-                if (state.pages.isEmpty()) {
-                    // Default to initialKey if no pages loaded.
-                    null
-                } else {
-                    state.currentPagingState(lastHint)
-                }
-            }
-        }
+    suspend fun currentPagingState(): PagingState<Key, Value> {
+        return stateHolder.withLock { state -> state.currentPagingState(lastHint) }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     private fun CoroutineScope.startConsumingHints() {
         // Pseudo-tiling via invalidation on jumps.
         if (config.jumpThreshold != COUNT_UNDEFINED) {
             launch {
-                hintChannel.asFlow()
+                hintSharedFlow
                     .filter { hint ->
                         hint.presentedItemsBefore * -1 > config.jumpThreshold ||
                             hint.presentedItemsAfter * -1 > config.jumpThreshold
@@ -240,15 +226,14 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
 
     /**
      * Maps a [Flow] of generation ids from [PageFetcherSnapshotState] to [ViewportHint]s from
-     * [hintChannel] with back-pressure handling via conflation by prioritizing hints which
+     * [hintSharedFlow] with back-pressure handling via conflation by prioritizing hints which
      * either update presenter state or those that would load the most items.
      *
      * @param loadType [PREPEND] or [APPEND]
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun Flow<Int>.collectAsGenerationalViewportHints(
         loadType: LoadType
-    ) = flatMapLatest { generationId ->
+    ) = simpleFlatMapLatest { generationId ->
         // Reset state to Idle and setup a new flow for consuming incoming load hints.
         // Subsequent generationIds are normally triggered by cancellation.
         stateHolder.withLock { state ->
@@ -256,20 +241,19 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
             // direction. In the case of the terminal page getting dropped, a new
             // generationId will be sent after load state is updated to Idle.
             if (state.sourceLoadStates.get(loadType) == NotLoading.Complete) {
-                return@flatMapLatest flowOf()
+                return@simpleFlatMapLatest flowOf()
             } else if (state.sourceLoadStates.get(loadType) !is Error) {
                 state.setSourceLoadState(loadType, NotLoading.Incomplete)
             }
         }
 
-        @OptIn(FlowPreview::class)
-        hintChannel.asFlow()
+        hintSharedFlow
             // Prevent infinite loop when competing PREPEND / APPEND cancel each other
             .drop(if (generationId == 0) 0 else 1)
             .map { hint -> GenerationalViewportHint(generationId, hint) }
     }
         // Prioritize new hints that would load the maximum number of items.
-        .runningReduce { previous, next ->
+        .simpleRunningReduce { previous, next ->
             if (next.shouldPrioritizeOver(previous, loadType)) next else previous
         }
         .conflate()
@@ -282,7 +266,6 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
         key = key,
         loadSize = if (loadType == REFRESH) config.initialLoadSize else config.pageSize,
         placeholdersEnabled = config.enablePlaceholders,
-        pageSize = config.pageSize
     )
 
     private suspend fun doInitialLoad() {
@@ -301,19 +284,13 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
                     if (result.prevKey == null) {
                         state.setSourceLoadState(
                             type = PREPEND,
-                            newState = when (remoteMediatorConnection) {
-                                null -> NotLoading.Complete
-                                else -> NotLoading.Incomplete
-                            }
+                            newState = NotLoading.Complete
                         )
                     }
                     if (result.nextKey == null) {
                         state.setSourceLoadState(
                             type = APPEND,
-                            newState = when (remoteMediatorConnection) {
-                                null -> NotLoading.Complete
-                                else -> NotLoading.Incomplete
-                            }
+                            newState = NotLoading.Complete
                         )
                     }
                 }
@@ -368,15 +345,31 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
         stateHolder.withLock { state ->
             when (loadType) {
                 PREPEND -> {
-                    val firstPageIndex =
+                    var firstPageIndex =
                         state.initialPageIndex + generationalHint.hint.originalPageOffsetFirst - 1
+
+                    // If the pages before the first page in presenter have been dropped in
+                    // fetcher, then we cannot count them towards loadedItems.
+                    if (firstPageIndex > state.pages.lastIndex) {
+                        itemsLoaded += config.pageSize * (firstPageIndex - state.pages.lastIndex)
+                        firstPageIndex = state.pages.lastIndex
+                    }
+
                     for (pageIndex in 0..firstPageIndex) {
                         itemsLoaded += state.pages[pageIndex].data.size
                     }
                 }
                 APPEND -> {
-                    val lastPageIndex =
+                    var lastPageIndex =
                         state.initialPageIndex + generationalHint.hint.originalPageOffsetLast + 1
+
+                    // If the pages after the last page in presenter have been dropped in
+                    // fetcher, then we cannot count them towards loadedItems.
+                    if (lastPageIndex < 0) {
+                        itemsLoaded += config.pageSize * -lastPageIndex
+                        lastPageIndex = 0
+                    }
+
                     for (pageIndex in lastPageIndex..state.pages.lastIndex) {
                         itemsLoaded += state.pages[pageIndex].data.size
                     }
@@ -507,9 +500,7 @@ internal class PageFetcherSnapshot<Key : Any, Value : Any>(
         }
     }
 
-    private suspend fun PageFetcherSnapshotState<Key, Value>.setLoading(
-        loadType: LoadType
-    ) {
+    private suspend fun PageFetcherSnapshotState<Key, Value>.setLoading(loadType: LoadType) {
         if (setSourceLoadState(loadType, Loading)) {
             pageEventCh.send(
                 LoadStateUpdate(loadType, fromMediator = false, Loading)
@@ -578,6 +569,9 @@ internal fun GenerationalViewportHint.shouldPrioritizeOver(
     return when {
         // Prioritize hints from new generations, which increments after dropping.
         generationId > previous.generationId -> true
+        // Prioritize Access hints over Initialize hints
+        previous.hint is ViewportHint.Initial && hint is ViewportHint.Access -> true
+        hint is ViewportHint.Initial && previous.hint is ViewportHint.Access -> false
         // Prioritize hints from most recent presenter state
         hint.originalPageOffsetFirst != previous.hint.originalPageOffsetFirst -> true
         hint.originalPageOffsetLast != previous.hint.originalPageOffsetLast -> true

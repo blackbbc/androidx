@@ -16,12 +16,13 @@
 package androidx.compose.material
 
 import android.os.Build
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.testutils.assertAgainstGolden
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.down
 import androidx.compose.ui.test.hasClickAction
@@ -34,7 +35,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.screenshot.AndroidXScreenshotTestRule
-import androidx.test.screenshot.assertAgainstGolden
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,6 +42,7 @@ import org.junit.runner.RunWith
 @MediumTest
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+@OptIn(ExperimentalTestApi::class)
 class ButtonScreenshotTest {
 
     @get:Rule
@@ -59,7 +60,7 @@ class ButtonScreenshotTest {
         }
 
         rule.onNode(hasClickAction())
-            .captureToBitmap()
+            .captureToImage()
             .assertAgainstGolden(screenshotRule, "button_default")
     }
 
@@ -72,30 +73,35 @@ class ButtonScreenshotTest {
         }
 
         rule.onNodeWithText("Button")
-            .captureToBitmap()
+            .captureToImage()
             .assertAgainstGolden(screenshotRule, "button_disabled")
     }
 
     @Test
     fun ripple() {
+        rule.mainClock.autoAdvance = false
+
         rule.setMaterialContent {
-            Box(Modifier.size(200.dp, 100.dp).wrapContentSize()) {
+            Box(Modifier.requiredSize(200.dp, 100.dp).wrapContentSize()) {
                 Button(onClick = { }) { }
             }
         }
-
-        rule.clockTestRule.pauseClock()
 
         // Start ripple
         rule.onNode(hasClickAction())
             .performGesture { down(center) }
 
-        // Let ripple propagate
+        // Advance past the tap timeout
+        rule.mainClock.advanceTimeBy(100)
+
         rule.waitForIdle()
-        rule.clockTestRule.advanceClock(50)
+        // Ripples are drawn on the RenderThread, not the main (UI) thread, so we can't
+        // properly wait for synchronization. Instead just wait until after the ripples are
+        // finished animating.
+        Thread.sleep(300)
 
         rule.onRoot()
-            .captureToBitmap()
+            .captureToImage()
             .assertAgainstGolden(screenshotRule, "button_ripple")
     }
 }

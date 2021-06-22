@@ -13,12 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+// @exportToFramework:skipFile()
 package androidx.appsearch.app;
+
+import android.annotation.SuppressLint;
 
 import androidx.annotation.NonNull;
 
 import com.google.common.util.concurrent.ListenableFuture;
+
+import java.io.Closeable;
+import java.util.Set;
 
 /**
  * Represents a connection to an AppSearch storage system where {@link GenericDocument}s can be
@@ -26,10 +31,10 @@ import com.google.common.util.concurrent.ListenableFuture;
  *
  * All implementations of this interface must be thread safe.
  */
-public interface AppSearchSession {
+public interface AppSearchSession extends Closeable {
 
     /**
-     * Sets the schema being used by documents provided to the {@link #putDocuments} method.
+     * Sets the schema that will be used by documents provided to the {@link #putDocuments} method.
      *
      * <p>The schema provided here is compared to the stored copy of the schema previously supplied
      * to {@link #setSchema}, if any, to determine how to treat existing documents. The following
@@ -59,25 +64,44 @@ public interface AppSearchSession {
      *     <li>Adding a
      *         {@link AppSearchSchema.PropertyConfig#CARDINALITY_REQUIRED REQUIRED} property.
      * </ul>
-     * <p>Supplying a schema with such changes will, by default, result in this call returning an
-     * {@link AppSearchResult} with a code of {@link AppSearchResult#RESULT_INVALID_SCHEMA} and an
-     * error message describing the incompatibility. In this case the previously set schema will
-     * remain active.
+     * <p>Supplying a schema with such changes will, by default, result in this call completing its
+     * future with an {@link androidx.appsearch.exceptions.AppSearchException} with a code of
+     * {@link AppSearchResult#RESULT_INVALID_SCHEMA} and a message describing the incompatibility.
+     * In this case the previously set schema will remain active.
      *
      * <p>If you need to make non-backwards-compatible changes as described above, you can set the
      * {@link SetSchemaRequest.Builder#setForceOverride} method to {@code true}. In this case,
-     * instead of returning an {@link AppSearchResult} with the
+     * instead of completing its future with an
+     * {@link androidx.appsearch.exceptions.AppSearchException} with the
      * {@link AppSearchResult#RESULT_INVALID_SCHEMA} error code, all documents which are not
      * compatible with the new schema will be deleted and the incompatible schema will be applied.
      *
      * <p>It is a no-op to set the same schema as has been previously set; this is handled
      * efficiently.
      *
+     * <p>By default, documents are visible on platform surfaces. To opt out, call {@code
+     * SetSchemaRequest.Builder#setPlatformSurfaceable} with {@code surfaceable} as false. Any
+     * visibility settings apply only to the schemas that are included in the {@code request}.
+     * Visibility settings for a schema type do not apply or persist across
+     * {@link SetSchemaRequest}s.
+     *
      * @param request The schema update request.
      * @return The pending result of performing this operation.
      */
+    // TODO(b/169883602): Change @code references to @link when setPlatformSurfaceable APIs are
+    //  exposed.
     @NonNull
-    ListenableFuture<AppSearchResult<Void>> setSchema(@NonNull SetSchemaRequest request);
+    ListenableFuture<Void> setSchema(@NonNull SetSchemaRequest request);
+
+    /**
+     * Retrieves the schema most recently successfully provided to {@link #setSchema}.
+     *
+     * @return The pending result of performing this operation.
+     */
+    // This call hits disk; async API prevents us from treating these calls as properties.
+    @SuppressLint("KotlinPropertyAccess")
+    @NonNull
+    ListenableFuture<Set<AppSearchSchema>> getSchema();
 
     /**
      * Indexes documents into AppSearch.
@@ -170,20 +194,28 @@ public interface AppSearchSession {
 
     /**
      * Removes {@link GenericDocument}s from the index by Query. Documents will be removed if they
-     * match the query expression in given namespaces and schemaTypes.
+     * match the {@code queryExpression} in given namespaces and schemaTypes which is set via
+     * {@link SearchSpec.Builder#addNamespace} and {@link SearchSpec.Builder#addSchemaType}.
      *
-     * <p> An empty query matches all documents.
+     * <p> An empty {@code queryExpression} matches all documents.
      *
-     * <p> An empty set of namespaces or of schemaTypes matches all namespaces or schemaTypes in
+     * <p> An empty set of namespaces or schemaTypes matches all namespaces or schemaTypes in
      * the current database.
      *
      * @param queryExpression Query String to search.
-     * @param searchSpec Spec containing schemaTypes, namespaces and query expression
-     *                   indicates how document will be removed. All specific about how to
-     *                   scoring, ordering, snippeting and resulting will be ignored.
+     * @param searchSpec      Spec containing schemaTypes, namespaces and query expression
+     *                        indicates how document will be removed. All specific about how to
+     *                        scoring, ordering, snippeting and resulting will be ignored.
      * @return The pending result of performing this operation.
      */
     @NonNull
-    ListenableFuture<AppSearchResult<Void>> removeByQuery(
+    ListenableFuture<Void> removeByQuery(
             @NonNull String queryExpression, @NonNull SearchSpec searchSpec);
+
+    /**
+     * Closes the {@link AppSearchSession} to persist all schema and document updates, additions,
+     * and deletes to disk.
+     */
+    @Override
+    void close();
 }

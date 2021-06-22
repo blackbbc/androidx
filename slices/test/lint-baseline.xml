@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="5" by="lint 4.2.0-alpha06" client="gradle" variant="debug" version="4.2.0-alpha06">
+<issues format="6" by="lint 7.1.0-alpha02" type="baseline" client="cli" name="Lint" variant="all" version="7.1.0-alpha02">
 
     <issue
         id="UnknownNullness"
@@ -8,7 +8,7 @@
         errorLine2="                  ~~~">
         <location
             file="src/main/java/androidx/slice/test/SampleSliceProvider.java"
-            line="129"
+            line="157"
             column="19"/>
     </issue>
 
@@ -19,7 +19,7 @@
         errorLine2="                             ~~~~~~">
         <location
             file="src/main/java/androidx/slice/test/SampleSliceProvider.java"
-            line="129"
+            line="157"
             column="30"/>
     </issue>
 
@@ -30,7 +30,7 @@
         errorLine2="                                          ~~~~~~~">
         <location
             file="src/main/java/androidx/slice/test/SampleSliceProvider.java"
-            line="129"
+            line="157"
             column="43"/>
     </issue>
 
@@ -41,7 +41,7 @@
         errorLine2="           ~~~~~">
         <location
             file="src/main/java/androidx/slice/test/SampleSliceProvider.java"
-            line="149"
+            line="177"
             column="12"/>
     </issue>
 
@@ -52,7 +52,7 @@
         errorLine2="                  ~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/slice/test/SampleSliceProvider.java"
-            line="658"
+            line="861"
             column="19"/>
     </issue>
 
@@ -63,7 +63,7 @@
         errorLine2="                                ~~~~~~~">
         <location
             file="src/main/java/androidx/slice/test/SliceBroadcastReceiver.java"
-            line="43"
+            line="47"
             column="33"/>
     </issue>
 
@@ -74,7 +74,7 @@
         errorLine2="                                                 ~~~~~~">
         <location
             file="src/main/java/androidx/slice/test/SliceBroadcastReceiver.java"
-            line="43"
+            line="47"
             column="50"/>
     </issue>
 

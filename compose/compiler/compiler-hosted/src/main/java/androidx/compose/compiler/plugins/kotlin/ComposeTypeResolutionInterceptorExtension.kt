@@ -33,7 +33,7 @@ import org.jetbrains.kotlin.types.expressions.ExpressionTypingContext
 /**
  * If a lambda is marked as `@Composable`, then the inferred type should become `@Composable`
  */
-@Suppress("INVISIBLE_REFERENCE", "EXPERIMENTAL_IS_NOT_ENABLED")
+@Suppress("INVISIBLE_REFERENCE", "EXPERIMENTAL_IS_NOT_ENABLED", "IllegalExperimentalApiUsage")
 @OptIn(org.jetbrains.kotlin.extensions.internal.InternalNonStableExtensionPoints::class)
 open class ComposeTypeResolutionInterceptorExtension : TypeResolutionInterceptorExtension {
 
@@ -50,6 +50,7 @@ open class ComposeTypeResolutionInterceptorExtension : TypeResolutionInterceptor
             // If the expected type has an @Composable annotation then the literal function
             // expression should infer a an @Composable annotation
             context.trace.record(INFERRED_COMPOSABLE_DESCRIPTOR, descriptor, true)
+            return descriptor.annotateAsComposable(context.scope.ownerDescriptor.module)
         }
         val arg = getArgumentDescriptor(expression.functionLiteral, context.trace.bindingContext)
 

@@ -19,20 +19,25 @@ package androidx.wear.watchface
 import androidx.annotation.UiThread
 
 /**
- * An observable UI thread only data holder class.
+ * An observable UI thread only data holder class (see [Observer]).
  *
- * @param <T> The type of data hold by this instance
+ * @param T The type of data held by this instance.
+ * @param _value The initial value or `null` if there isn't an initial value.
  */
-public open class ObservableWatchData<T : Any> protected constructor(internal var _value: T?) {
+public sealed class ObservableWatchData<T : Any> constructor(internal var _value: T?) {
 
     private var iterating = false
     private val observers = ArrayList<Observer<T>>()
     private val toBeRemoved = HashSet<Observer<T>>()
 
     /** Whether or not this ObservableWatchData contains a value. */
+    @UiThread
     public fun hasValue(): Boolean = _value != null
 
-    /** Returns the value contained within this ObservableWatchData or default if there isn't one. */
+    /**
+     * Returns the value contained within this ObservableWatchData or default if there isn't one.
+     */
+    @UiThread
     public fun getValueOr(default: T): T = if (_value != null) {
         _value!!
     } else {
@@ -65,9 +70,9 @@ public open class ObservableWatchData<T : Any> protected constructor(internal va
         }
 
     /**
-     * Adds the given observer to the observers list. The events are dispatched on the ui thread.
-     * If there's any data held within the ObservableWatchData it will be immediately delivered to the
-     * observer.
+     * Adds the given [Observer] to the observers list. If [hasValue] would return true then
+     * [Observer.onChanged] will be called. Subsequently [Observer.onChanged] will also be called
+     * any time [value] changes. All of these callbacks are assumed to occur on the UI thread.
      */
     @UiThread
     public fun addObserver(observer: Observer<T>) {
@@ -91,27 +96,34 @@ public open class ObservableWatchData<T : Any> protected constructor(internal va
             observers.remove(observer)
         }
     }
-}
 
-/**
- * [ObservableWatchData] which publicly exposes [setValue(T)] method
- *
- * @param <T> The type of data hold by this instance
- */
-@SuppressWarnings("WeakerAccess")
-public class MutableObservableWatchData<T : Any>(initialValue: T?) :
-    ObservableWatchData<T>(initialValue) {
-    public constructor() : this(null)
+    override fun toString(): String {
+        return if (hasValue()) {
+            value.toString()
+        } else {
+            "<unset>"
+        }
+    }
 
     /**
-     * Mutable observable value. Assigning a different value will trigger [Observer.onChanged]
-     * callbacks.
+     * [ObservableWatchData] which publicly exposes [setValue(T)] method.
+     *
+     * @param T The type of data held by this instance
      */
-    override var value: T
-        @UiThread
-        get() = _value!!
-        @UiThread
-        public set(v) {
-            super.value = v
-        }
+    public class MutableObservableWatchData<T : Any>(initialValue: T?) :
+        ObservableWatchData<T>(initialValue) {
+        public constructor() : this(null)
+
+        /**
+         * Mutable observable value. Assigning a different value will trigger [Observer.onChanged]
+         * callbacks.
+         */
+        override var value: T
+            @UiThread
+            get() = _value!!
+            @UiThread
+            public set(v) {
+                super.value = v
+            }
+    }
 }

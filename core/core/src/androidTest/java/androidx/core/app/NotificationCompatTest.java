@@ -27,6 +27,8 @@ import static androidx.core.app.NotificationCompat.GROUP_ALERT_SUMMARY;
 import static androidx.core.app.NotificationCompat.GROUP_KEY_SILENT;
 import static androidx.core.app.NotificationTester.assertNotificationEquals;
 
+import static com.google.common.truth.Truth.assertThat;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -42,13 +44,16 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.drawable.Icon;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.support.v4.BaseInstrumentationTestCase;
 import android.widget.RemoteViews;
 
@@ -60,6 +65,7 @@ import androidx.core.content.LocusIdCompat;
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.graphics.drawable.IconCompat;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.FlakyTest;
 import androidx.test.filters.SdkSuppress;
 import androidx.test.filters.SmallTest;
 
@@ -222,6 +228,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         assertEquals("testSubText", NotificationCompat.getSubText(n));
     }
 
+    @FlakyTest(bugId = 190533219)
     @Test
     public void testActions() {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext);
@@ -550,6 +557,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         assertNotificationEquals(original, recovered);
     }
 
+    @FlakyTest(bugId = 190533219)
     @Test
     public void testNotificationBuilder_createContentView() {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, "channelId");
@@ -559,11 +567,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         RemoteViews standardView = builder.createContentView();
         assertNotNull(standardView);
         String layoutName = mContext.getResources().getResourceName(standardView.getLayoutId());
-        if (Build.VERSION.SDK_INT >= 21) {
-            assertEquals("android:layout/notification_template_material_base", layoutName);
-        } else {
-            assertEquals("android:layout/notification_template_base", layoutName);
-        }
+        assertThat(layoutName).startsWith("android:layout/notification_template_");
 
         // If we set a custom view, it should be returned if there's no style
         RemoteViews customRemoteViews = new RemoteViews(mContext.getPackageName(),
@@ -588,7 +592,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         assertNotSame(customRemoteViews, decoratedCustomView);
         layoutName = mContext.getResources().getResourceName(decoratedCustomView.getLayoutId());
         if (Build.VERSION.SDK_INT >= 24) {
-            assertEquals("android:layout/notification_template_material_base", layoutName);
+            assertThat(layoutName).startsWith("android:layout/notification_template_");
         } else {
             // AndroidX is providing a decorated style not available on these platforms natively
             // NOTE: this is the 'big' one because androidx has only one template, but hides
@@ -603,8 +607,9 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, "channelId");
         assertNull(builder.getBigContentView());
 
-        // The view will be null if there are no actions
-        assertNull(builder.createBigContentView());
+        // NOTE: starting in S, the bigContentView will exist even without actions.
+        // Once we have a VERSION_CODE for S, this *might* be worth asserting.
+        // assertNull(builder.createBigContentView());
 
         // Add an action so that we start getting the view
         builder.addAction(new NotificationCompat.Action(null, "action", null));
@@ -619,11 +624,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         RemoteViews standardView = builder.createBigContentView();
         assertNotNull(standardView);
         String layoutName = mContext.getResources().getResourceName(standardView.getLayoutId());
-        if (Build.VERSION.SDK_INT >= 21) {
-            assertEquals("android:layout/notification_template_material_big_base", layoutName);
-        } else {
-            assertEquals("android:layout/notification_template_big_base", layoutName);
-        }
+        assertThat(layoutName).startsWith("android:layout/notification_template_");
 
         // If we set a custom view, it should be returned if there's no style
         RemoteViews customRemoteViews = new RemoteViews(mContext.getPackageName(),
@@ -648,7 +649,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         assertNotSame(customRemoteViews, decoratedCustomView);
         layoutName = mContext.getResources().getResourceName(decoratedCustomView.getLayoutId());
         if (Build.VERSION.SDK_INT >= 24) {
-            assertEquals("android:layout/notification_template_material_big_base", layoutName);
+            assertThat(layoutName).startsWith("android:layout/notification_template_");
         } else {
             // AndroidX is providing a decorated style not available on these platforms natively
             String packageName = mContext.getPackageName();
@@ -677,7 +678,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         RemoteViews standardView = builder.createHeadsUpContentView();
         assertNotNull(standardView);
         String layoutName = mContext.getResources().getResourceName(standardView.getLayoutId());
-        assertEquals("android:layout/notification_template_material_big_base", layoutName);
+        assertThat(layoutName).startsWith("android:layout/notification_template_");
 
         // If we set a custom view, it should be returned if there's no style
         RemoteViews customRemoteViews = new RemoteViews(mContext.getPackageName(),
@@ -702,7 +703,7 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         assertNotSame(customRemoteViews, decoratedCustomView);
         layoutName = mContext.getResources().getResourceName(decoratedCustomView.getLayoutId());
         if (Build.VERSION.SDK_INT >= 24) {
-            assertEquals("android:layout/notification_template_material_big_base", layoutName);
+            assertThat(layoutName).startsWith("android:layout/notification_template_");
         } else {
             // AndroidX is providing a decorated style not available on these platforms natively
             String packageName = mContext.getPackageName();
@@ -1341,6 +1342,112 @@ public class NotificationCompatTest extends BaseInstrumentationTestCase<TestActi
         assertEquals(Color.BLUE, n.ledARGB);
         assertEquals(100, n.ledOnMS);
         assertEquals(100, n.ledOffMS);
+    }
+
+    @SdkSuppress(minSdkVersion = 16)
+    @Test
+    public void testBigPictureStyle_withNullBigLargeIcon() {
+        Bitmap bitmap = BitmapFactory.decodeResource(mContext.getResources(),
+                R.drawable.notification_bg_low_pressed);
+        Notification n = new NotificationCompat.Builder(mContext, "channelId")
+                .setSmallIcon(1)
+                .setStyle(new NotificationCompat.BigPictureStyle()
+                        .bigPicture(bitmap)
+                        .bigLargeIcon(null)
+                        .setBigContentTitle("Big Content Title")
+                        .setSummaryText("Summary Text"))
+                .build();
+        // Extras are not populated before KITKAT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            Bundle extras = NotificationCompat.getExtras(n);
+            assertNotNull(extras);
+            assertTrue(extras.containsKey(NotificationCompat.EXTRA_LARGE_ICON_BIG));
+            assertNull(extras.get(NotificationCompat.EXTRA_LARGE_ICON_BIG));
+        }
+    }
+
+    @SdkSuppress(minSdkVersion = 24)
+    @Test
+    public void testBigPictureStyle_isRecovered() {
+        Bitmap bitmap = BitmapFactory.decodeResource(mContext.getResources(),
+                R.drawable.notification_bg_low_pressed);
+        Notification n = new NotificationCompat.Builder(mContext, "channelId")
+                .setSmallIcon(1)
+                .setStyle(new NotificationCompat.BigPictureStyle()
+                        .bigPicture(bitmap)
+                        .bigLargeIcon(bitmap)
+                        .setBigContentTitle("Big Content Title")
+                        .setSummaryText("Summary Text"))
+                .build();
+        Notification.Builder builder = Notification.Builder.recoverBuilder(mContext, n);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Notification.Style style = builder.getStyle();
+            assertNotNull(style);
+            assertSame(Notification.BigPictureStyle.class, style.getClass());
+        }
+        builder.getExtras().remove(Notification.EXTRA_LARGE_ICON_BIG);
+        Icon icon = builder.build().extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG);
+        assertNotNull(icon);
+    }
+
+    @SdkSuppress(minSdkVersion = 19)
+    @Test
+    public void testBigPictureStyle_recoverStyleWithBitmap() {
+        Bitmap bitmap = BitmapFactory.decodeResource(mContext.getResources(),
+                R.drawable.notification_bg_low_pressed);
+        Notification n = new Notification.Builder(mContext)
+                .setSmallIcon(1)
+                .setStyle(new Notification.BigPictureStyle()
+                        .bigPicture(bitmap)
+                        .bigLargeIcon(bitmap)
+                        .setBigContentTitle("Big Content Title")
+                        .setSummaryText("Summary Text"))
+                .build();
+        Parcelable firstBuiltIcon = n.extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            assertSame(Icon.class, firstBuiltIcon.getClass());
+            assertEquals(Icon.TYPE_BITMAP, ((Icon) firstBuiltIcon).getType());
+        } else {
+            assertSame(Bitmap.class, firstBuiltIcon.getClass());
+        }
+
+        Style style = Style.extractStyleFromNotification(n);
+        assertNotNull(style);
+        assertSame(NotificationCompat.BigPictureStyle.class, style.getClass());
+        n = new NotificationCompat.Builder(mContext, "channelId")
+                .setSmallIcon(1)
+                .setStyle(style)
+                .build();
+        Parcelable rebuiltIcon = n.extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            assertSame(Icon.class, rebuiltIcon.getClass());
+            assertEquals(Icon.TYPE_BITMAP, ((Icon) rebuiltIcon).getType());
+        } else {
+            assertSame(Bitmap.class, rebuiltIcon.getClass());
+        }
+    }
+
+    @SdkSuppress(minSdkVersion = 23)
+    @Test
+    public void testBigPictureStyle_recoverStyleWithResIcon() {
+        Notification n = new Notification.Builder(mContext)
+                .setSmallIcon(1)
+                .setStyle(new Notification.BigPictureStyle()
+                        .bigLargeIcon(Icon.createWithResource(mContext,
+                                R.drawable.notification_template_icon_bg)))
+                .build();
+        Icon firstBuiltIcon = n.extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG);
+        assertEquals(Icon.TYPE_RESOURCE, firstBuiltIcon.getType());
+
+        Style style = Style.extractStyleFromNotification(n);
+        assertNotNull(style);
+        assertSame(NotificationCompat.BigPictureStyle.class, style.getClass());
+        n = new NotificationCompat.Builder(mContext, "channelId")
+                .setSmallIcon(1)
+                .setStyle(style)
+                .build();
+        Icon rebuiltIcon = n.extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG);
+        assertEquals(Icon.TYPE_RESOURCE, rebuiltIcon.getType());
     }
 
     @SdkSuppress(minSdkVersion = 16)

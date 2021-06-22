@@ -27,16 +27,18 @@ import android.view.Surface;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
 import androidx.camera.camera2.impl.Camera2ImplConfig;
 import androidx.camera.camera2.impl.CameraEventCallbacks;
 import androidx.camera.camera2.internal.compat.params.OutputConfigurationCompat;
 import androidx.camera.camera2.internal.compat.params.SessionConfigurationCompat;
+import androidx.camera.camera2.internal.compat.workaround.StillCaptureFlow;
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.Logger;
 import androidx.camera.core.impl.CameraCaptureCallback;
 import androidx.camera.core.impl.CaptureConfig;
 import androidx.camera.core.impl.Config;
 import androidx.camera.core.impl.DeferrableSurface;
-import androidx.camera.core.impl.DeferrableSurfaces;
 import androidx.camera.core.impl.MutableOptionsBundle;
 import androidx.camera.core.impl.OptionsBundle;
 import androidx.camera.core.impl.SessionConfig;
@@ -118,6 +120,7 @@ final class CaptureSession {
     @SuppressWarnings("WeakerAccess") /* synthetic accessor */
     @GuardedBy("mStateLock")
     CallbackToFutureAdapter.Completer<Void> mReleaseCompleter;
+    final StillCaptureFlow mStillCaptureFlow = new StillCaptureFlow();
 
     /**
      * Constructor for CaptureSession.
@@ -257,6 +260,7 @@ final class CaptureSession {
         }
     }
 
+    @OptIn(markerClass = ExperimentalCamera2Interop.class)
     @NonNull
     private ListenableFuture<Void> openCaptureSession(@NonNull List<Surface> configuredSurfaces,
             @NonNull SessionConfig sessionConfig, @NonNull CameraDevice cameraDevice) {
@@ -268,15 +272,6 @@ final class CaptureSession {
                     return Futures.immediateFailedFuture(new IllegalStateException(
                             "openCaptureSession() should not be possible in state: " + mState));
                 case GET_SURFACE:
-                    // Attempt to increase the usage count of all the configured deferrable
-                    // surfaces before adding them to the session.
-                    try {
-                        DeferrableSurfaces.incrementAll(mConfiguredDeferrableSurfaces);
-                    } catch (DeferrableSurface.SurfaceClosedException e) {
-                        mConfiguredDeferrableSurfaces.clear();
-                        return Futures.immediateFailedFuture(e);
-                    }
-
                     // Establishes the mapping of DeferrableSurface to Surface. Capture request
                     // will use this mapping to get the Surface from DeferrableSurface.
                     mConfiguredSurfaceMap.clear();
@@ -338,7 +333,7 @@ final class CaptureSession {
                     }
 
                     return mSynchronizedCaptureSessionOpener.openCaptureSession(cameraDevice,
-                            sessionConfigCompat);
+                            sessionConfigCompat, mConfiguredDeferrableSurfaces);
                 default:
                     return Futures.immediateFailedFuture(new CancellationException(
                             "openCaptureSession() not execute in state: " + mState));
@@ -411,6 +406,7 @@ final class CaptureSession {
      * <p>Once a session is released it can no longer be opened again. After the session is released
      * all method calls on it do nothing.
      */
+    @SuppressWarnings("ObjectToString")
     ListenableFuture<Void> release(boolean abortInFlightCaptures) {
         synchronized (mStateLock) {
             switch (mState) {
@@ -474,16 +470,6 @@ final class CaptureSession {
         return Futures.immediateFuture(null);
     }
 
-    // Notify the surface is detached from current capture session.
-    @GuardedBy("mStateLock")
-    void clearConfiguredSurfaces() {
-        DeferrableSurfaces.decrementAll(mConfiguredDeferrableSurfaces);
-
-        // Clears the mConfiguredDeferrableSurfaces to prevent from duplicate
-        // decrement calls.
-        mConfiguredDeferrableSurfaces.clear();
-    }
-
     /**
      * Issues capture requests.
      *
@@ -539,8 +525,6 @@ final class CaptureSession {
         mState = State.RELEASED;
         mSynchronizedCaptureSession = null;
 
-        clearConfiguredSurfaces();
-
         if (mReleaseCompleter != null) {
             mReleaseCompleter.set(null);
             mReleaseCompleter = null;
@@ -550,7 +534,7 @@ final class CaptureSession {
     /**
      * Sets the {@link CaptureRequest} so that the camera will start producing data.
      *
-     * <p>Will skip setting requests if there are no surfaces since it is illegal to do so.
+     * <p>It will stop running repeating if there are no surfaces.
      */
     @SuppressWarnings("WeakerAccess") /* synthetic accessor */
     @GuardedBy("mStateLock")
@@ -563,6 +547,15 @@ final class CaptureSession {
         CaptureConfig captureConfig = mSessionConfig.getRepeatingCaptureConfig();
         if (captureConfig.getSurfaces().isEmpty()) {
             Logger.d(TAG, "Skipping issueRepeatingCaptureRequests for no surface.");
+            try {
+                // At least from Android L, framework will ignore the stopRepeating() if
+                // there is no ongoing repeating request, so it should be safe to always call
+                // stopRepeating() without checking if there is a repeating request.
+                mSynchronizedCaptureSession.stopRepeating();
+            } catch (CameraAccessException e) {
+                Logger.e(TAG, "Unable to access camera: " + e.getMessage());
+                Thread.dumpStack();
+            }
             return;
         }
 
@@ -621,6 +614,7 @@ final class CaptureSession {
         try {
             CameraBurstCaptureCallback callbackAggregator = new CameraBurstCaptureCallback();
             List<CaptureRequest> captureRequests = new ArrayList<>();
+            boolean isStillCapture = false;
             Logger.d(TAG, "Issuing capture request.");
             for (CaptureConfig captureConfig : captureConfigs) {
                 if (captureConfig.getSurfaces().isEmpty()) {
@@ -645,6 +639,9 @@ final class CaptureSession {
                     continue;
                 }
 
+                if (captureConfig.getTemplateType() == CameraDevice.TEMPLATE_STILL_CAPTURE) {
+                    isStillCapture = true;
+                }
                 CaptureConfig.Builder captureConfigBuilder = CaptureConfig.Builder.from(
                         captureConfig);
 
@@ -680,6 +677,18 @@ final class CaptureSession {
             }
 
             if (!captureRequests.isEmpty()) {
+                if (mStillCaptureFlow
+                        .shouldStopRepeatingBeforeCapture(captureRequests, isStillCapture)) {
+                    mSynchronizedCaptureSession.stopRepeating();
+                    callbackAggregator.setCaptureSequenceCallback(
+                            (session, sequenceId, isAborted) -> {
+                                synchronized (mStateLock) {
+                                    if (mState == State.OPENED) {
+                                        issueRepeatingCaptureRequests();
+                                    }
+                                }
+                            });
+                }
                 mSynchronizedCaptureSession.captureBurstRequests(captureRequests,
                         callbackAggregator);
             } else {
@@ -857,13 +866,13 @@ final class CaptureSession {
         }
 
         @Override
-        public void onClosed(@NonNull SynchronizedCaptureSession session) {
+        public void onSessionFinished(@NonNull SynchronizedCaptureSession session) {
             synchronized (mStateLock) {
                 if (mState == State.UNINITIALIZED) {
                     throw new IllegalStateException(
-                            "onClosed() should not be possible in state: " + mState);
+                            "onSessionFinished() should not be possible in state: " + mState);
                 }
-                Logger.d(TAG, "CameraCaptureSession.onClosed()");
+                Logger.d(TAG, "onSessionFinished()");
 
                 finishClose();
             }
@@ -877,7 +886,6 @@ final class CaptureSession {
                     case INITIALIZED:
                     case GET_SURFACE:
                     case OPENED:
-                    case RELEASED:
                         throw new IllegalStateException(
                                 "onConfigureFailed() should not be possible in state: " + mState);
                     case OPENING:
@@ -888,6 +896,9 @@ final class CaptureSession {
                         // trigger StateCallback.onClosed(). It has to complete the close flow
                         // internally. Check b/147402661 for detail.
                         finishClose();
+                        break;
+                    case RELEASED:
+                        Logger.d(TAG, "ConfigureFailed callback after change to RELEASED state");
                         break;
                 }
                 Logger.e(TAG, "CameraCaptureSession.onConfigureFailed() " + mState);

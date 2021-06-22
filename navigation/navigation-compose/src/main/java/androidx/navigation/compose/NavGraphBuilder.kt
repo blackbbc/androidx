@@ -32,17 +32,13 @@ import androidx.navigation.get
  */
 public fun NavGraphBuilder.composable(
     route: String,
-    arguments: List<NamedNavArgument> = listOf(),
-    deepLinks: List<NavDeepLink> = listOf(),
+    arguments: List<NamedNavArgument> = emptyList(),
+    deepLinks: List<NavDeepLink> = emptyList(),
     content: @Composable (NavBackStackEntry) -> Unit
 ) {
     addDestination(
         ComposeNavigator.Destination(provider[ComposeNavigator::class], content).apply {
-            val internalRoute = createRoute(route)
-            addDeepLink(internalRoute)
-            val argument = navArgument(KEY_ROUTE) { defaultValue = route }
-            addArgument(argument.component1(), argument.component2())
-            id = internalRoute.hashCode()
+            this.route = route
             arguments.forEach { (argumentName, argument) ->
                 addArgument(argumentName, argument)
             }

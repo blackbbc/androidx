@@ -22,24 +22,65 @@ import androidx.compose.integration.demos.common.DemoCategory
 val AnimationDemos = DemoCategory(
     "Animation",
     listOf(
-        ComposableDemo("Animate multi-dimensional prop") { MultiDimensionalAnimationDemo() },
-        ComposableDemo("Animate") { SingleValueAnimationDemo() },
-        ComposableDemo("Animated scrolling") { FancyScrollingDemo() },
-        ComposableDemo("Animate Content Size") { AnimateContentSizeDemo() },
-        ComposableDemo("Animate Visibility Demo") { AnimatedVisibilityDemo() },
-        ComposableDemo("Animate Visibility Lazy Column Demo") {
-            AnimatedVisibilityLazyColumnDemo()
-        },
-        ComposableDemo("Cross Fade") { CrossfadeDemo() },
-        ComposableDemo("Enter/Exit Transition Demo") { EnterExitTransitionDemo() },
-        ComposableDemo("Gesture based animation") { GestureBasedAnimationDemo() },
-        ComposableDemo("Manual animation clock") { AnimatableSeekBarDemo() },
-        ComposableDemo("Repeating rotation") { RepeatedRotationDemo() },
-        ComposableDemo("Spring back scrolling") { SpringBackScrollingDemo() },
-        ComposableDemo("State animation with interruptions") {
-            StateAnimationWithInterruptionsDemo()
-        },
-        ComposableDemo("State based ripple") { StateBasedRippleDemo() },
-        ComposableDemo("Swipe to dismiss") { SwipeToDismissDemo() }
+        DemoCategory(
+            "State Transition Demos",
+            listOf(
+                ComposableDemo("Double tap to like") { DoubleTapToLikeDemo() },
+                ComposableDemo("Gesture based animation") { GestureBasedAnimationDemo() },
+                ComposableDemo("Infinite transition") { InfiniteTransitionDemo() },
+                ComposableDemo("Multi-dimensional prop") { MultiDimensionalAnimationDemo() },
+                ComposableDemo("Repeating rotation") { RepeatedRotationDemo() },
+            )
+        ),
+        DemoCategory(
+            "Layout Animation Demos",
+            listOf(
+                ComposableDemo("Animate Content Size") { AnimateContentSizeDemo() },
+                ComposableDemo("Animate Increment/Decrement") { AnimateIncrementDecrementDemo() },
+                ComposableDemo("Animate Visibility Demo") { AnimatedVisibilityDemo() },
+                ComposableDemo("Animate Visibility Lazy Column Demo") {
+                    AnimatedVisibilityLazyColumnDemo()
+                },
+                ComposableDemo("Cross Fade") { CrossfadeDemo() },
+                ComposableDemo("Modifier.animateEnterExit Demo") { AnimateEnterExitDemo() },
+                ComposableDemo("Nested Menu") { NestedMenuDemo() },
+                ComposableDemo("Shrine Cart") { ShrineCartDemo() },
+                ComposableDemo("Screen Transition") { ScreenTransitionDemo() },
+            )
+        ),
+        DemoCategory(
+            "Suspend Animation Demos",
+            listOf(
+                ComposableDemo("Animated scrolling") { FancyScrollingDemo() },
+                ComposableDemo("animateColorAsState") { SingleValueAnimationDemo() },
+                ComposableDemo("Follow the tap") { SuspendAnimationDemo() },
+                ComposableDemo("Infinitely Animating") { InfiniteAnimationDemo() },
+                ComposableDemo("Spring back scrolling") { SpringBackScrollingDemo() },
+                ComposableDemo("Swipe to dismiss") { SwipeToDismissDemo() },
+            )
+        ),
+
+        DemoCategory(
+            "⛔ DO NOT ENTER ⛔",
+            listOf(
+                ComposableDemo("AnimatedContent alignment/slideInto") {
+                    InspectionSlideInContentVariedSizes()
+                },
+                ComposableDemo("Enter/ExitTransition Combo") { InspectionEnterExitCombination() },
+                ComposableDemo("AnimatedVisibility with Content Size Change") {
+                    InspectionAnimatedVisibilityContentSizeChange()
+                },
+            )
+        ),
+
+        DemoCategory(
+            "\uD83C\uDF89 Fun Demos",
+            listOf(
+                ComposableDemo("Animated clock") { AnimatedClockDemo() },
+                ComposableDemo("Animated dots") { AnimatedDotsDemo() },
+                ComposableDemo("Game of fling") { FlingGame() },
+                ComposableDemo("Spring chain") { SpringChainDemo() },
+            )
+        )
     )
 )

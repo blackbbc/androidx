@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastMap
 import kotlin.math.max
 
 /**
@@ -215,9 +216,9 @@ class MultiParagraph(
         this.didExceedMaxLines = didExceedMaxLines
         this.paragraphInfoList = paragraphInfoList
         this.width = width
-        this.placeholderRects = paragraphInfoList.flatMap { paragraphInfo ->
+        this.placeholderRects = paragraphInfoList.fastFlatMap { paragraphInfo ->
             with(paragraphInfo) {
-                paragraph.placeholderRects.map { it?.toGlobal() }
+                paragraph.placeholderRects.fastMap { it?.toGlobal() }
             }
         }.let {
             // When paragraphs get ellipsized, the size of this list will be smaller than
@@ -258,9 +259,9 @@ class MultiParagraph(
         val paragraphIndex = findParagraphByIndex(paragraphInfoList, start)
         val path = Path()
 
-        paragraphInfoList.drop(paragraphIndex)
-            .takeWhile { it.startIndex < end }
-            .filterNot { it.startIndex == it.endIndex }
+        paragraphInfoList.fastDrop(paragraphIndex)
+            .fastTakeWhile { it.startIndex < end }
+            .fastFilterNot { it.startIndex == it.endIndex }
             .fastForEach {
                 with(it) {
                     path.addPath(
@@ -545,39 +546,22 @@ class MultiParagraph(
     /**
      * Returns the end offset of the given line
      *
-     * If ellipsis happens on the given line, this returns the end of text since ellipsized
-     * characters are counted into the same line.
+     * Characters being ellipsized are treated as invisible characters. So that if visibleEnd is
+     * false, it will return line end including the ellipsized characters and vice verse.
      *
      * @param lineIndex the line number
+     * @param visibleEnd if true, the returned line end will not count trailing whitespaces or
+     * linefeed characters. Otherwise, this function will return the logical line end. By default
+     * it's false.
      * @return an exclusive end offset of the line.
-     * @see getLineVisibleEnd
      */
-    fun getLineEnd(lineIndex: Int): Int {
+    fun getLineEnd(lineIndex: Int, visibleEnd: Boolean = false): Int {
         requireLineIndexInRange(lineIndex)
 
         val paragraphIndex = findParagraphByLineIndex(paragraphInfoList, lineIndex)
 
         return with(paragraphInfoList[paragraphIndex]) {
-            paragraph.getLineEnd(lineIndex.toLocalLineIndex()).toGlobalIndex()
-        }
-    }
-
-    /**
-     * Returns the end of visible offset of the given line.
-     *
-     * If no ellipsis happens on the given line, this returns the line end offset with excluding
-     * trailing whitespaces.
-     * If ellipsis happens on the given line, this returns the offset that ellipsis started, i.e.
-     * the exclusive not ellipsized last character.
-     * @param lineIndex a 0 based line index
-     * @return an exclusive line end offset that is visible on the display
-     * @see getLineEnd
-     */
-    fun getLineVisibleEnd(lineIndex: Int): Int {
-        requireLineIndexInRange(lineIndex)
-        val paragraphIndex = findParagraphByLineIndex(paragraphInfoList, lineIndex)
-        return with(paragraphInfoList[paragraphIndex]) {
-            paragraph.getLineEnd(lineIndex.toLocalLineIndex()).toGlobalIndex()
+            paragraph.getLineEnd(lineIndex.toLocalLineIndex(), visibleEnd).toGlobalIndex()
         }
     }
 

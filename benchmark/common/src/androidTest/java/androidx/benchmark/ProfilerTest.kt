@@ -16,9 +16,11 @@
 
 package androidx.benchmark
 
+import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
+import org.junit.Assume
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,9 +31,9 @@ import kotlin.test.assertTrue
 
 @MediumTest
 @RunWith(AndroidJUnit4::class)
-class ProfilerTest {
+public class ProfilerTest {
     @Test
-    fun getByName() {
+    public fun getByName() {
         assertSame(MethodSampling, Profiler.getByName("MethodSampling"))
         assertSame(MethodTracing, Profiler.getByName("MethodTracing"))
         assertSame(ConnectedAllocation, Profiler.getByName("ConnectedAllocation"))
@@ -48,6 +50,10 @@ class ProfilerTest {
         profiler: Profiler,
         file: File
     ) {
+        Assume.assumeFalse(
+            "Workaround native crash on API 21 in CI, see b/173662168",
+            profiler == MethodTracing && Build.VERSION.SDK_INT == Build.VERSION_CODES.LOLLIPOP,
+        )
         val deletedSuccessfully: Boolean
         try {
             file.delete() // clean up, if previous run left this behind
@@ -63,15 +69,15 @@ class ProfilerTest {
     }
 
     @Test
-    fun methodSampling() = verifyProfiler(
+    public fun methodSampling(): Unit = verifyProfiler(
         profiler = MethodSampling,
-        file = File(Arguments.testOutputDir, "test-methodSampling.trace")
+        file = Outputs.testOutputFile("test-methodSampling.trace")
     )
 
     @Test
-    fun methodTracing() = verifyProfiler(
+    public fun methodTracing(): Unit = verifyProfiler(
         profiler = MethodTracing,
-        file = File(Arguments.testOutputDir, "test-methodTracing.trace")
+        file = Outputs.testOutputFile("test-methodTracing.trace")
     )
 
     @Ignore(
@@ -80,7 +86,7 @@ class ProfilerTest {
     )
     @SdkSuppress(minSdkVersion = 28)
     @Test
-    fun methodSamplingSimpleperf() = verifyProfiler(
+    public fun methodSamplingSimpleperf(): Unit = verifyProfiler(
         profiler = MethodSamplingSimpleperf,
         file = File("/data/data/androidx.benchmark.test/simpleperf_data/test.data")
     )

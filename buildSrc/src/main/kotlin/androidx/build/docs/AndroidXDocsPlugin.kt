@@ -18,6 +18,8 @@ package androidx.build.docs
 
 import androidx.build.SupportConfig
 import androidx.build.addToBuildOnServer
+import androidx.build.dackka.DackkaTask
+import androidx.build.dependencies.KOTLIN_VERSION
 import androidx.build.doclava.DacOptions
 import androidx.build.doclava.DoclavaTask
 import androidx.build.doclava.GENERATE_DOCS_CONFIG
@@ -27,6 +29,7 @@ import androidx.build.dokka.Dokka
 import androidx.build.getBuildId
 import androidx.build.getCheckoutRoot
 import androidx.build.getDistributionDirectory
+import androidx.build.getKeystore
 import androidx.build.gradle.getByType
 import com.android.build.api.attributes.BuildTypeAttr
 import com.android.build.gradle.LibraryExtension
@@ -74,6 +77,14 @@ class AndroidXDocsPlugin : Plugin<Project> {
                     val libraryExtension = project.extensions.getByType<LibraryExtension>()
                     libraryExtension.compileSdkVersion = SupportConfig.COMPILE_SDK_VERSION
                     libraryExtension.buildToolsVersion = SupportConfig.BUILD_TOOLS_VERSION
+
+                    // Use a local debug keystore to avoid build server issues.
+                    val debugSigningConfig = libraryExtension.signingConfigs.getByName("debug")
+                    debugSigningConfig.storeFile = project.getKeystore()
+                    libraryExtension.buildTypes.all { buildType ->
+                        // Sign all the builds (including release) with debug key
+                        buildType.signingConfig = debugSigningConfig
+                    }
                 }
             }
         }
@@ -93,6 +104,19 @@ class AndroidXDocsPlugin : Plugin<Project> {
             docsSourcesConfiguration
         )
 
+        val unzippedSourcesForDackka = File(project.buildDir, "unzippedSourcesForDackka")
+        val unzipSourcesForDackkaTask = configureDackkaUnzipTask(
+            unzippedSourcesForDackka,
+            docsSourcesConfiguration
+        )
+
+        configureDackka(
+            unzippedSourcesForDackka,
+            unzipSourcesForDackkaTask,
+            unzippedSamplesSources,
+            unzipSamplesTask,
+            dependencyClasspath
+        )
         configureDokka(
             unzippedDocsSources,
             unzipDocsTask,
@@ -132,6 +156,7 @@ class AndroidXDocsPlugin : Plugin<Project> {
                             it.exclude("**/META-INF/**")
                             it.exclude("**/OWNERS")
                             it.exclude("**/package.html")
+                            it.exclude("**/*.md")
                         }
                     }
                 }
@@ -143,6 +168,35 @@ class AndroidXDocsPlugin : Plugin<Project> {
             task.filter { line ->
                 regex.replace(line, "{@link $1attr#$3}")
             }
+        }
+    }
+
+    /**
+     * Creates and configures a task that will build a list of select sources, defined by
+     * [dackkaDirsToProcess], and places them in [destinationDirectory].
+     *
+     * This is a modified version of [configureUnzipTask], customized for Dackka usage.
+     */
+    private fun configureDackkaUnzipTask(
+        destinationDirectory: File,
+        docsConfiguration: Configuration
+    ): TaskProvider<Sync> {
+        return project.tasks.register("unzipSourcesForDackka", Sync::class.java) { task ->
+            val sources = docsConfiguration.incoming.artifactView { }.files
+
+            @Suppress("UnstableApiUsage")
+            task.from(
+                sources.elements.map { jars ->
+                    jars.map {
+                        project.zipTree(it).matching {
+                            dackkaDirsToProcess.forEach { dir ->
+                                it.include(dir)
+                            }
+                        }
+                    }
+                }
+            )
+            task.into(destinationDirectory)
         }
     }
 
@@ -209,6 +263,15 @@ class AndroidXDocsPlugin : Plugin<Project> {
         val docsRuntimeClasspath = project.configurations.create("docs-runtime-classpath") {
             it.setResolveClasspathForUsage(Usage.JAVA_RUNTIME)
         }
+        listOf(docsCompileClasspath, docsRuntimeClasspath).forEach { config ->
+            config.resolutionStrategy {
+                it.eachDependency { details ->
+                    if (details.requested.group == "org.jetbrains.kotlin") {
+                        details.useVersion(KOTLIN_VERSION)
+                    }
+                }
+            }
+        }
         dependencyClasspath = docsCompileClasspath.incoming.artifactView {
             it.attributes.attribute(
                 Attribute.of("artifactType", String::class.java),
@@ -220,6 +283,61 @@ class AndroidXDocsPlugin : Plugin<Project> {
                 "android-classes"
             )
         }.files
+    }
+
+    private fun configureDackka(
+        unzippedDocsSources: File,
+        unzipDocsTask: TaskProvider<Sync>,
+        unzippedSamplesSources: File,
+        unzipSamplesTask: TaskProvider<Sync>,
+        dependencyClasspath: FileCollection
+    ) {
+        val generatedDocsDir = project.file("${project.buildDir}/dackkaDocs")
+
+        val dackkaConfiguration = project.configurations.create("dackka").apply {
+            dependencies.add(project.dependencies.create(DACKKA_DEPENDENCY))
+        }
+
+        val dackkaTask = project.tasks.register("dackkaDocs", DackkaTask::class.java) { task ->
+            task.apply {
+                dependsOn(dackkaConfiguration)
+                dependsOn(unzipDocsTask)
+                dependsOn(unzipSamplesTask)
+
+                description = "Generates reference documentation using a Google devsite Dokka" +
+                    " plugin. Places docs in $generatedDocsDir"
+                group = JavaBasePlugin.DOCUMENTATION_GROUP
+
+                dackkaClasspath.from(project.files(dackkaConfiguration))
+                destinationDir = generatedDocsDir
+                samplesDir = unzippedSamplesSources
+                sourcesDir = unzippedDocsSources
+                docsProjectDir = File(project.rootDir, "docs-public")
+                dependenciesClasspath = androidJarFile(project) + dependencyClasspath
+            }
+        }
+
+        val zipTask = project.tasks.register("zipDackkaDocs", Zip::class.java) { task ->
+            task.apply {
+                dependsOn(dackkaTask)
+                from(generatedDocsDir)
+
+                val baseName = "dackka-$docsType-docs"
+                val buildId = getBuildId()
+                archiveBaseName.set(baseName)
+                archiveVersion.set(buildId)
+                destinationDirectory.set(project.getDistributionDirectory())
+                group = JavaBasePlugin.DOCUMENTATION_GROUP
+
+                val filePath = "${project.getDistributionDirectory().canonicalPath}/"
+                val fileName = "$baseName-$buildId.zip"
+                val destinationFile = filePath + fileName
+                description = "Zips Java and Kotlin documentation (generated via Dackka in the" +
+                    " style of d.android.com) into $destinationFile"
+            }
+        }
+
+        project.addToBuildOnServer(zipTask)
     }
 
     private fun configureDokka(
@@ -283,7 +401,7 @@ class AndroidXDocsPlugin : Plugin<Project> {
                 val filePath = "${project.getDistributionDirectory().canonicalPath}/"
                 val fileName = "$baseName-$buildId.zip"
                 val destinationFile = filePath + fileName
-                description = "Zips Java documentation (generated via Doclava in the " +
+                description = "Zips Kotlin documentation (generated via Dokka in the " +
                     "style of d.android.com) into $destinationFile"
             }
         }
@@ -301,9 +419,7 @@ class AndroidXDocsPlugin : Plugin<Project> {
         doclavaConfiguration.dependencies.add(project.dependencies.create(DOCLAVA_DEPENDENCY))
         doclavaConfiguration.dependencies.add(
             project.dependencies.create(
-                project.files(
-                    SupportConfig.getJavaToolsJarPath()
-                )
+                project.files(System.getenv("JAVA_TOOLS_JAR"))
             )
         )
 
@@ -328,8 +444,6 @@ class AndroidXDocsPlugin : Plugin<Project> {
             it.apply {
                 dependsOn(unzipDocsTask)
                 dependsOn(generateSdkApiTask)
-                // Doclava does not know how to parse Kotlin files.
-                exclude("**/*.kt")
                 group = JavaBasePlugin.DOCUMENTATION_GROUP
                 description = "Generates Java documentation in the style of d.android.com. To " +
                     "generate offline docs use \'-PofflineDocs=true\' parameter.  Places the " +
@@ -339,7 +453,7 @@ class AndroidXDocsPlugin : Plugin<Project> {
                 destinationDir = destDir
                 classpath = androidJarFile(project) + dependencyClasspath
                 checksConfig = GENERATE_DOCS_CONFIG
-                coreJavadocOptions {
+                extraArgumentsBuilder.apply({
                     addStringOption(
                         "templatedir",
                         "${project.getCheckoutRoot()}/external/doclava/res/assets/templates-sdk"
@@ -349,27 +463,30 @@ class AndroidXDocsPlugin : Plugin<Project> {
                         "samplesdir",
                         "${project.rootDir}/samples"
                     )
-                    addMultilineMultiValueOption("federate").value = listOf(
+                    addStringOption(
+                        "federate",
                         listOf("Android", "https://developer.android.com")
                     )
-                    addMultilineMultiValueOption("federationapi").value = listOf(
-                        listOf("Android", generateSdkApiTask.get().apiFile?.absolutePath)
+                    addStringOption(
+                        "federationapi",
+                        listOf(
+                            "Android",
+                            generateSdkApiTask.get().apiFile?.absolutePath.toString()
+                        )
                     )
-                    addMultilineMultiValueOption("hdf").value = listOf(
-                        listOf("android.whichdoc", "online"),
-                        listOf("android.hasSamples", "true"),
-                        listOf("dac", "true")
-                    )
+                    addStringOption("hdf", listOf("android.whichdoc", "online"))
+                    addStringOption("hdf", listOf("android.hasSamples", "true"))
+                    addStringOption("hdf", listOf("dac", "true"))
 
                     // Specific to reference docs.
                     if (!offline) {
                         addStringOption("toroot", "/")
-                        addBooleanOption("devsite", true)
-                        addBooleanOption("yamlV2", true)
+                        addOption("devsite")
+                        addOption("yamlV2")
                         addStringOption("dac_libraryroot", dacOptions.libraryroot)
                         addStringOption("dac_dataname", dacOptions.dataname)
                     }
-                }
+                })
                 it.source(project.fileTree(unzippedDocsSources))
             }
         }
@@ -442,7 +559,25 @@ abstract class SourcesVariantRule : ComponentMetadataRule {
     }
 }
 
+private const val DACKKA_DEPENDENCY = "com.google.devsite:dackka:0.0.6"
 private const val DOCLAVA_DEPENDENCY = "com.android:doclava:1.0.6"
+
+// Allowlist for directories that should be processed by Dackka
+private val dackkaDirsToProcess = listOf(
+    "androidx/annotation/**",
+    "androidx/benchmark/**",
+    "androidx/biometric/**",
+    "androidx/collection/**",
+    "androidx/compose/**",
+    "androidx/datastore/**",
+    "androidx/lifecycle/**",
+    "androidx/navigation/**",
+    "androidx/paging/**",
+    "androidx/room/**",
+    "androidx/wear/**",
+    "androidx/window/**",
+    "androidx/work/**"
+)
 
 private val hiddenPackages = listOf(
     "androidx.camera.camera2.impl",

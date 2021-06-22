@@ -16,41 +16,37 @@
 
 package androidx.compose.ui.node
 
-import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.Placeable
-import androidx.compose.ui.focus.ExperimentalFocus
-import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.input.pointer.PointerInputFilter
 import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.platform.nativeClass
+import androidx.compose.ui.semantics.SemanticsWrapper
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.util.nativeClass
 
 /**
  * [LayoutNodeWrapper] with default implementations for methods.
  */
-@OptIn(ExperimentalLayoutNodeApi::class)
 internal open class DelegatingLayoutNodeWrapper<T : Modifier.Element>(
     override var wrapped: LayoutNodeWrapper,
     open var modifier: T
 ) : LayoutNodeWrapper(wrapped.layoutNode) {
-    override val providedAlignmentLines: Set<AlignmentLine>
-        get() = wrapped.providedAlignmentLines
-
-    private var _isAttached = false
-    override val isAttached: Boolean
-        get() = _isAttached && layoutNode.isAttached()
-
     override val measureScope: MeasureScope get() = wrapped.measureScope
 
     /**
      * Indicates that this modifier is used in [wrappedBy] also.
      */
     var isChained = false
+
+    // This is used by LayoutNode to mark LayoutNodeWrappers that are going to be reused
+    // because they match the modifier instance.
+    var toBeReusedForSameModifier = false
 
     init {
         wrapped.wrappedBy = this
@@ -68,23 +64,38 @@ internal open class DelegatingLayoutNodeWrapper<T : Modifier.Element>(
         }
     }
 
-    override fun draw(canvas: Canvas) {
-        withPositionTranslation(canvas) {
-            wrapped.draw(canvas)
-        }
+    override fun performDraw(canvas: Canvas) {
+        wrapped.draw(canvas)
     }
 
     override fun hitTest(
-        pointerPositionRelativeToScreen: Offset,
+        pointerPosition: Offset,
         hitPointerInputFilters: MutableList<PointerInputFilter>
     ) {
-        wrapped.hitTest(pointerPositionRelativeToScreen, hitPointerInputFilters)
+        if (withinLayerBounds(pointerPosition)) {
+            val positionInWrapped = wrapped.fromParentPosition(pointerPosition)
+            wrapped.hitTest(positionInWrapped, hitPointerInputFilters)
+        }
     }
 
-    override fun get(line: AlignmentLine): Int = wrapped[line]
+    override fun hitTestSemantics(
+        pointerPosition: Offset,
+        hitSemanticsWrappers: MutableList<SemanticsWrapper>
+    ) {
+        if (withinLayerBounds(pointerPosition)) {
+            val positionInWrapped = wrapped.fromParentPosition(pointerPosition)
+            wrapped.hitTestSemantics(positionInWrapped, hitSemanticsWrappers)
+        }
+    }
 
-    override fun placeAt(position: IntOffset) {
-        this.position = position
+    override fun calculateAlignmentLine(alignmentLine: AlignmentLine) = wrapped[alignmentLine]
+
+    override fun placeAt(
+        position: IntOffset,
+        zIndex: Float,
+        layerBlock: (GraphicsLayerScope.() -> Unit)?
+    ) {
+        super.placeAt(position, zIndex, layerBlock)
 
         // The wrapper only runs their placement block to obtain our position, which allows them
         // to calculate the offset of an alignment line we have already provided a position for.
@@ -101,7 +112,7 @@ internal open class DelegatingLayoutNodeWrapper<T : Modifier.Element>(
         }
     }
 
-    override fun performMeasure(constraints: Constraints): Placeable {
+    override fun measure(constraints: Constraints): Placeable = performingMeasure(constraints) {
         val placeable = wrapped.measure(constraints)
         measureResult = object : MeasureResult {
             override val width: Int = wrapped.measureResult.width
@@ -132,10 +143,9 @@ internal open class DelegatingLayoutNodeWrapper<T : Modifier.Element>(
         return lastFocusWrapper
     }
 
-    @OptIn(ExperimentalFocus::class)
-    override fun propagateFocusStateChange(focusState: FocusState) {
-        wrappedBy?.propagateFocusStateChange(focusState)
-    }
+    override fun findPreviousNestedScrollWrapper() = wrappedBy?.findPreviousNestedScrollWrapper()
+
+    override fun findNextNestedScrollWrapper() = wrapped.findNextNestedScrollWrapper()
 
     override fun findPreviousKeyInputWrapper() = wrappedBy?.findPreviousKeyInputWrapper()
 
@@ -155,12 +165,4 @@ internal open class DelegatingLayoutNodeWrapper<T : Modifier.Element>(
     override fun maxIntrinsicHeight(width: Int) = wrapped.maxIntrinsicHeight(width)
 
     override val parentData: Any? get() = wrapped.parentData
-
-    override fun attach() {
-        _isAttached = true
-    }
-
-    override fun detach() {
-        _isAttached = false
-    }
 }

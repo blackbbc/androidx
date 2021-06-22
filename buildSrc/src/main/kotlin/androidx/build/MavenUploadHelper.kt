@@ -16,6 +16,7 @@
 
 package androidx.build
 
+import androidx.build.AndroidXComposePlugin.Companion.isMultiplatformEnabled
 import com.android.build.gradle.LibraryPlugin
 import groovy.util.Node
 import org.gradle.api.GradleException
@@ -30,7 +31,9 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.tasks.GenerateModuleMetadata
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.create
-import org.gradle.kotlin.dsl.getByName
+import org.gradle.kotlin.dsl.findByType
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinAndroidTarget
 import java.io.File
 
 fun Project.configureMavenArtifactUpload(extension: AndroidXExtension) {
@@ -59,24 +62,23 @@ private fun Project.configureComponent(
             publications {
                 if (appliesJavaGradlePluginPlugin()) {
                     // The 'java-gradle-plugin' will also add to the 'pluginMaven' publication
-                    it.create<MavenPublication>("pluginMaven").pom { pom ->
-                        addInformativeMetadata(pom, extension)
-                        tweakDependenciesMetadata(extension, pom)
-                    }
+                    it.create<MavenPublication>("pluginMaven")
                     tasks.getByName("publishPluginMavenPublicationToMavenRepository").doFirst {
                         removePreviouslyUploadedArchives(androidxGroup)
                     }
                 } else {
                     it.create<MavenPublication>("maven") {
                         from(component)
-                        pom { pom ->
-                            addInformativeMetadata(pom, extension)
-                            tweakDependenciesMetadata(extension, pom)
-                        }
                     }
                     tasks.getByName("publishMavenPublicationToMavenRepository").doFirst {
                         removePreviouslyUploadedArchives(androidxGroup)
                     }
+                }
+            }
+            publications.withType(MavenPublication::class.java).all {
+                it.pom { pom ->
+                    addInformativeMetadata(extension, pom)
+                    tweakDependenciesMetadata(extension, pom)
                 }
             }
         }
@@ -97,6 +99,24 @@ private fun Project.configureComponent(
                 )
             }
         }
+
+        if (isMultiplatformEnabled()) {
+            configureMultiplatformPublication()
+        }
+    }
+}
+
+private fun Project.configureMultiplatformPublication() {
+    val multiplatformExtension = extensions.findByType<KotlinMultiplatformExtension>() ?: return
+
+    // publishMavenPublicationToMavenRepository will produce conflicting artifacts with the same
+    // name as the artifacts producing by publishKotlinMultiplatformPublicationToMavenRepository
+    project.tasks.findByName("publishMavenPublicationToMavenRepository")?.enabled = false
+
+    multiplatformExtension.targets.all { target ->
+        if (target is KotlinAndroidTarget) {
+            target.publishAllLibraryVariants()
+        }
     }
 }
 
@@ -108,7 +128,7 @@ private fun Project.validateCoordinatesAndGetGroup(extension: AndroidXExtension)
         ?: throw Exception("You must specify mavenGroup for $name project")
     val strippedGroupId = mavenGroup.substringAfterLast(".")
     if (mavenGroup.startsWith("androidx") && !name.startsWith(strippedGroupId)) {
-        throw Exception("Your artifactId must start with $strippedGroupId! (currently is $name)")
+        throw Exception("Your artifactId must start with '$strippedGroupId'. (currently is $name)")
     }
     return mavenGroup
 }
@@ -127,15 +147,16 @@ private fun Project.removePreviouslyUploadedArchives(group: String) {
     projectArchiveDir.deleteRecursively()
 }
 
-private fun Project.addInformativeMetadata(pom: MavenPom, extension: AndroidXExtension) {
+private fun Project.addInformativeMetadata(extension: AndroidXExtension, pom: MavenPom) {
     pom.name.set(provider { extension.name })
     pom.description.set(provider { extension.description })
     pom.url.set(
         provider {
-            "https://developer.android.com/jetpack/androidx/releases/" +
+            fun defaultUrl() = "https://developer.android.com/jetpack/androidx/releases/" +
                 extension.mavenGroup!!.group.removePrefix("androidx.")
                     .replace(".", "-") +
                 "#" + extension.project.version()
+            getAlternativeProjectUrl() ?: defaultUrl()
         }
     )
     pom.inceptionYear.set(provider { extension.inceptionYear })

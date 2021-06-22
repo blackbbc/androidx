@@ -15,10 +15,10 @@ BuilderSetStyle: androidx.compose.ui.text.AnnotatedString.Builder#pushStyle(andr
     Builder methods names should use setFoo() / addFoo() / clearFoo() style: method androidx.compose.ui.text.AnnotatedString.Builder.pushStyle(androidx.compose.ui.text.ParagraphStyle)
 BuilderSetStyle: androidx.compose.ui.text.AnnotatedString.Builder#pushStyle(androidx.compose.ui.text.SpanStyle):
     Builder methods names should use setFoo() / addFoo() / clearFoo() style: method androidx.compose.ui.text.AnnotatedString.Builder.pushStyle(androidx.compose.ui.text.SpanStyle)
+BuilderSetStyle: androidx.compose.ui.text.AnnotatedString.Builder#pushTtsAnnotation(androidx.compose.ui.text.TtsAnnotation):
+    Builder methods names should use setFoo() / addFoo() / clearFoo() style: method androidx.compose.ui.text.AnnotatedString.Builder.pushTtsAnnotation(androidx.compose.ui.text.TtsAnnotation)
 BuilderSetStyle: androidx.compose.ui.text.AnnotatedString.Builder#toAnnotatedString():
     Builder methods names should use setFoo() / addFoo() / clearFoo() style: method androidx.compose.ui.text.AnnotatedString.Builder.toAnnotatedString()
-BuilderSetStyle: androidx.compose.ui.text.AnnotatedString.Builder#toString():
-    Builder methods names should use setFoo() / addFoo() / clearFoo() style: method androidx.compose.ui.text.AnnotatedString.Builder.toString()
 
 
 GetterOnBuilder: androidx.compose.ui.text.AnnotatedString.Builder#getLength():
@@ -35,6 +35,12 @@ MissingBuildMethod: androidx.compose.ui.text.AnnotatedString.Builder:
 
 MissingNullability: androidx.compose.ui.text.style.BaselineShift#toString-impl(float):
     Missing nullability on method `toString-impl` return
+
+
+NullableCollection: androidx.compose.ui.text.SpanStyle#getLocaleList():
+    Return type of method androidx.compose.ui.text.SpanStyle.getLocaleList() is a nullable collection (`androidx.compose.ui.text.intl.LocaleList`); must be non-null
+NullableCollection: androidx.compose.ui.text.TextStyle#getLocaleList():
+    Return type of method androidx.compose.ui.text.TextStyle.getLocaleList() is a nullable collection (`androidx.compose.ui.text.intl.LocaleList`); must be non-null
 
 
 SetterReturnsThis: androidx.compose.ui.text.AnnotatedString.Builder#addStringAnnotation(String, String, int, int):

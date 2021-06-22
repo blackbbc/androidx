@@ -30,7 +30,6 @@ import androidx.camera.core.ImageCapture.ImageCaptureRequest
 import androidx.camera.core.ImageCapture.ImageCaptureRequestProcessor
 import androidx.camera.core.ImageCapture.ImageCaptureRequestProcessor.ImageCaptor
 import androidx.camera.core.impl.CameraFactory
-import androidx.camera.core.impl.CameraThreadConfig
 import androidx.camera.core.impl.CaptureConfig
 import androidx.camera.core.impl.SessionConfig
 import androidx.camera.core.impl.TagBundle
@@ -65,12 +64,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.internal.DoNotInstrument
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowLooper
+import java.io.File
 import java.util.ArrayDeque
 import java.util.Collections
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.jvm.Throws
 
 private const val MAX_IMAGES = 3
 
@@ -80,7 +79,7 @@ private const val MAX_IMAGES = 3
 @RunWith(RobolectricTestRunner::class)
 @DoNotInstrument
 @Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
-class ImageCaptureTest {
+public class ImageCaptureTest {
 
     private lateinit var callbackHandler: Handler
     private lateinit var callbackThread: HandlerThread
@@ -99,11 +98,11 @@ class ImageCaptureTest {
 
     @Before
     @Throws(ExecutionException::class, InterruptedException::class)
-    fun setUp() {
+    public fun setUp() {
         val camera = FakeCamera()
 
         val cameraFactoryProvider =
-            CameraFactory.Provider { _: Context?, _: CameraThreadConfig? ->
+            CameraFactory.Provider { _, _, _ ->
                 val cameraFactory = FakeCameraFactory()
                 cameraFactory.insertDefaultBackCamera(camera.cameraInfoInternal.cameraId) {
                     camera
@@ -126,14 +125,24 @@ class ImageCaptureTest {
 
     @After
     @Throws(ExecutionException::class, InterruptedException::class)
-    fun tearDown() {
+    public fun tearDown() {
         CameraX.shutdown().get()
         fakeImageReaderProxy = null
         callbackThread.quitSafely()
     }
 
     @Test
-    fun reverseHorizontalIsSet_flagReturnsTrue() {
+    public fun metadataNotSet_createsNewMetadataInstance() {
+        val options = ImageCapture.OutputFileOptions.Builder(File("fake_path")).build()
+        options.metadata.isReversedHorizontal = true
+
+        val anotherOption = ImageCapture.OutputFileOptions.Builder(File("fake_path")).build()
+
+        assertThat(anotherOption.metadata.isReversedHorizontal).isFalse()
+    }
+
+    @Test
+    public fun reverseHorizontalIsSet_flagReturnsTrue() {
         val metadata = ImageCapture.Metadata()
         assertThat(metadata.isReversedHorizontalSet).isFalse()
 
@@ -142,7 +151,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun captureImageWithViewPort_isSet() {
+    public fun captureImageWithViewPort_isSet() {
         // Arrange
         val imageCapture = bindImageCapture(
             ViewPort.Builder(Rational(1, 1), Surface.ROTATION_0).build()
@@ -168,7 +177,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun capturedImageValidAfterRemoved() {
+    public fun capturedImageValidAfterRemoved() {
         // Arrange
         val imageCapture = bindImageCapture(
             ViewPort.Builder(Rational(1, 1), Surface.ROTATION_0).build()
@@ -190,7 +199,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun capturedImageSize_isEqualToSurfaceSize() {
+    public fun capturedImageSize_isEqualToSurfaceSize() {
         // Act/arrange.
         val imageCapture = bindImageCapture()
 
@@ -207,7 +216,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun imageCaptureRequestProcessor_canSendRequest() {
+    public fun imageCaptureRequestProcessor_canSendRequest() {
         // Arrange.
         val requestProcessor = ImageCaptureRequestProcessor(MAX_IMAGES, createSuccessImageCaptor())
         val request = createImageCaptureRequest()
@@ -220,7 +229,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun imageCaptureRequestProcessor_canSendMultipleRequests() {
+    public fun imageCaptureRequestProcessor_canSendMultipleRequests() {
         // Arrange.
         val requestProcessor = ImageCaptureRequestProcessor(MAX_IMAGES, createSuccessImageCaptor())
         for (i in 0 until MAX_IMAGES) {
@@ -235,7 +244,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun imageCaptureRequestProcessor_onlyAllowOneRequestProcessing() {
+    public fun imageCaptureRequestProcessor_onlyAllowOneRequestProcessing() {
         // Arrange.
         // Create an ImageCaptor that won't complete the future.
         val captorFutureRef = AtomicReference<ResolvableFuture<ImageProxy>?>()
@@ -273,7 +282,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun imageCaptureRequestProcessor_unableToProcessNextWhenOverMaxImages() {
+    public fun imageCaptureRequestProcessor_unableToProcessNextWhenOverMaxImages() {
         // Arrange.
         val requestProcessor = ImageCaptureRequestProcessor(MAX_IMAGES, createSuccessImageCaptor())
 
@@ -308,7 +317,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun imageCaptureRequestProcessor_canCancelRequests() {
+    public fun imageCaptureRequestProcessor_canCancelRequests() {
         // Arrange.
         // Create an ImageCaptor that won't complete the future.
         val captorFutureRef = AtomicReference<ResolvableFuture<ImageProxy>?>()
@@ -337,7 +346,7 @@ class ImageCaptureTest {
     }
 
     @Test
-    fun imageCaptureRequestProcessor_requestFail() {
+    public fun imageCaptureRequestProcessor_requestFail() {
         // Arrange.
         val errorMsg = "Capture failed."
         val throwable = RuntimeException(errorMsg)

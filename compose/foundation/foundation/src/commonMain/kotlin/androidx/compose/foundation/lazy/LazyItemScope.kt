@@ -24,35 +24,51 @@ import androidx.compose.ui.unit.Constraints
  * Receiver scope being used by the item content parameter of LazyColumn/Row.
  */
 @Stable
+@LazyScopeMarker
 interface LazyItemScope {
     /**
      * Have the content fill the [Constraints.maxWidth] and [Constraints.maxHeight] of the parent
      * measurement constraints by setting the [minimum width][Constraints.minWidth] to be equal to the
-     * [maximum width][Constraints.maxWidth] and the [minimum height][Constraints.minHeight] to be
-     * equal to the [maximum height][Constraints.maxHeight].
+     * [maximum width][Constraints.maxWidth] multiplied by [fraction] and the [minimum
+     * height][Constraints.minHeight] to be equal to the [maximum height][Constraints.maxHeight]
+     * multiplied by [fraction]. Note that, by default, the [fraction] is 1, so the modifier will
+     * make the content fill the whole available space. [fraction] must be between `0` and `1`.
      *
      * Regular [Modifier.fillMaxSize] can't work inside the scrolling layouts as the items are
      * measured with [Constraints.Infinity] as the constraints for the main axis.
      */
-    fun Modifier.fillParentMaxSize(): Modifier
+    fun Modifier.fillParentMaxSize(
+        /*@FloatRange(from = 0.0, to = 1.0)*/
+        fraction: Float = 1f
+    ): Modifier
 
     /**
      * Have the content fill the [Constraints.maxWidth] of the parent measurement constraints
      * by setting the [minimum width][Constraints.minWidth] to be equal to the
-     * [maximum width][Constraints.maxWidth].
+     * [maximum width][Constraints.maxWidth] multiplied by [fraction]. Note that, by default, the
+     * [fraction] is 1, so the modifier will make the content fill the whole parent width.
+     * [fraction] must be between `0` and `1`.
      *
      * Regular [Modifier.fillMaxWidth] can't work inside the scrolling horizontally layouts as the
      * items are measured with [Constraints.Infinity] as the constraints for the main axis.
      */
-    fun Modifier.fillParentMaxWidth(): Modifier
+    fun Modifier.fillParentMaxWidth(
+        /*@FloatRange(from = 0.0, to = 1.0)*/
+        fraction: Float = 1f
+    ): Modifier
 
     /**
      * Have the content fill the [Constraints.maxHeight] of the incoming measurement constraints
      * by setting the [minimum height][Constraints.minHeight] to be equal to the
-     * [maximum height][Constraints.maxHeight].
+     * [maximum height][Constraints.maxHeight] multiplied by [fraction]. Note that, by default, the
+     * [fraction] is 1, so the modifier will make the content fill the whole parent height.
+     * [fraction] must be between `0` and `1`.
      *
      * Regular [Modifier.fillMaxHeight] can't work inside the scrolling vertically layouts as the
      * items are measured with [Constraints.Infinity] as the constraints for the main axis.
      */
-    fun Modifier.fillParentMaxHeight(): Modifier
+    fun Modifier.fillParentMaxHeight(
+        /*@FloatRange(from = 0.0, to = 1.0)*/
+        fraction: Float = 1f
+    ): Modifier
 }

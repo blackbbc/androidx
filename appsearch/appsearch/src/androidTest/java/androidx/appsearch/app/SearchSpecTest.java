@@ -16,60 +16,35 @@
 
 package androidx.appsearch.app;
 
-import static com.google.common.truth.Truth.assertThat;
+import static androidx.appsearch.app.AppSearchSchema.PropertyConfig.INDEXING_TYPE_PREFIXES;
+import static androidx.appsearch.app.AppSearchSchema.PropertyConfig.TOKENIZER_TYPE_PLAIN;
 
-import static org.junit.Assert.assertThrows;
+import static com.google.common.truth.Truth.assertThat;
 
 import android.os.Bundle;
 
+import androidx.appsearch.annotation.AppSearchDocument;
+
+import com.google.common.collect.ImmutableSet;
+
 import org.junit.Test;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 public class SearchSpecTest {
-    @Test
-    public void buildSearchSpecWithoutTermMatchType() {
-        assertThrows(RuntimeException.class, () -> new SearchSpec.Builder()
-                .addSchema("testSchemaType")
-                .build());
-    }
-
-    @Test
-    public void testBuildSearchSpec() {
-        SearchSpec searchSpec = new SearchSpec.Builder()
-                .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
-                .addNamespace("namespace1", "namespace2")
-                .addSchema("schemaTypes1", "schemaTypes2")
-                .setSnippetCount(5)
-                .setSnippetCountPerProperty(10)
-                .setMaxSnippetSize(15)
-                .setNumPerPage(42)
-                .setOrder(SearchSpec.ORDER_ASCENDING)
-                .setRankingStrategy(SearchSpec.RANKING_STRATEGY_DOCUMENT_SCORE)
-                .build();
-
-        assertThat(searchSpec.getTermMatch()).isEqualTo(SearchSpec.TERM_MATCH_PREFIX);
-        assertThat(searchSpec.getNamespaces())
-                .containsExactly("namespace1", "namespace2").inOrder();
-        assertThat(searchSpec.getSchemas())
-                .containsExactly("schemaTypes1", "schemaTypes2").inOrder();
-        assertThat(searchSpec.getSnippetCount()).isEqualTo(5);
-        assertThat(searchSpec.getSnippetCountPerProperty()).isEqualTo(10);
-        assertThat(searchSpec.getMaxSnippetSize()).isEqualTo(15);
-        assertThat(searchSpec.getNumPerPage()).isEqualTo(42);
-        assertThat(searchSpec.getOrder()).isEqualTo(SearchSpec.ORDER_ASCENDING);
-        assertThat(searchSpec.getRankingStrategy())
-                .isEqualTo(SearchSpec.RANKING_STRATEGY_DOCUMENT_SCORE);
-    }
 
     @Test
     public void testGetBundle() {
         SearchSpec searchSpec = new SearchSpec.Builder()
                 .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
                 .addNamespace("namespace1", "namespace2")
-                .addSchema("schemaTypes1", "schemaTypes2")
+                .addSchemaType("schemaTypes1", "schemaTypes2")
                 .setSnippetCount(5)
                 .setSnippetCountPerProperty(10)
                 .setMaxSnippetSize(15)
-                .setNumPerPage(42)
+                .setResultCountPerPage(42)
                 .setOrder(SearchSpec.ORDER_ASCENDING)
                 .setRankingStrategy(SearchSpec.RANKING_STRATEGY_DOCUMENT_SCORE)
                 .build();
@@ -89,4 +64,58 @@ public class SearchSpecTest {
         assertThat(bundle.getInt(SearchSpec.RANKING_STRATEGY_FIELD))
                 .isEqualTo(SearchSpec.RANKING_STRATEGY_DOCUMENT_SCORE);
     }
+
+    @Test
+    public void testGetProjectionTypePropertyMasks() {
+        SearchSpec searchSpec = new SearchSpec.Builder()
+                .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
+                .addProjection("TypeA", "field1", "field2.subfield2")
+                .addProjection("TypeB", "field7")
+                .addProjection("TypeC")
+                .build();
+
+        Map<String, List<String>> typePropertyPathMap = searchSpec.getProjections();
+        assertThat(typePropertyPathMap.keySet())
+                .containsExactly("TypeA", "TypeB", "TypeC");
+        assertThat(typePropertyPathMap.get("TypeA")).containsExactly("field1", "field2.subfield2");
+        assertThat(typePropertyPathMap.get("TypeB")).containsExactly("field7");
+        assertThat(typePropertyPathMap.get("TypeC")).isEmpty();
+    }
+
+    @Test
+    public void testGetRankingStrategy() {
+        SearchSpec searchSpec = new SearchSpec.Builder()
+                .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
+                .setRankingStrategy(SearchSpec.RANKING_STRATEGY_RELEVANCE_SCORE)
+                .build();
+        assertThat(searchSpec.getRankingStrategy()).isEqualTo(
+                SearchSpec.RANKING_STRATEGY_RELEVANCE_SCORE);
+    }
+
+// @exportToFramework:startStrip()
+    @AppSearchDocument
+    static class King extends Card {
+        @AppSearchDocument.Uri
+        String mUri;
+
+        @AppSearchDocument.Property
+                (indexingType = INDEXING_TYPE_PREFIXES, tokenizerType = TOKENIZER_TYPE_PLAIN)
+        String mString;
+    }
+
+    static class Card {}
+
+    @Test
+    public void testAddSchemaByDataClass_byCollection() throws Exception {
+        Set<Class<King>> cardClassSet = ImmutableSet.of(King.class);
+        SearchSpec searchSpec = new SearchSpec.Builder()
+                .setTermMatch(SearchSpec.TERM_MATCH_PREFIX)
+                .addSchemaByDataClass(cardClassSet)
+                .build();
+
+        Bundle bundle = searchSpec.getBundle();
+        assertThat(bundle.getStringArrayList(SearchSpec.SCHEMA_TYPE_FIELD)).containsExactly(
+                "King");
+    }
+// @exportToFramework:endStrip()
 }

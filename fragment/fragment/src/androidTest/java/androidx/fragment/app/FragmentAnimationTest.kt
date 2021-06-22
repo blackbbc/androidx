@@ -588,6 +588,8 @@ class FragmentAnimationTest {
             .commit()
         activityRule.executePendingTransactions(fm1)
 
+        assertThat(fragment2.startAnimationLatch.await(1000, TimeUnit.MILLISECONDS)).isTrue()
+
         fm1.popBackStack()
         activityRule.executePendingTransactions(fm1)
 
@@ -753,6 +755,114 @@ class FragmentAnimationTest {
         }
     }
 
+    @Test
+    fun removingFragmentAnimationChange() {
+        waitForAnimationReady()
+        val fm = activityRule.activity.supportFragmentManager
+
+        val fragment1 = AnimationFragment()
+        fm.beginTransaction()
+            .setReorderingAllowed(true)
+            .add(R.id.fragmentContainer, fragment1, "fragment1")
+            .addToBackStack("fragment1")
+            .commit()
+        activityRule.waitForExecution()
+
+        val fragment2 = AnimationFragment()
+
+        fm.beginTransaction()
+            .setReorderingAllowed(true)
+            .setCustomAnimations(ENTER, EXIT, POP_ENTER, POP_EXIT)
+            .replace(R.id.fragmentContainer, fragment2, "fragment2")
+            .addToBackStack("fragment2")
+            .commit()
+
+        activityRule.waitForExecution()
+
+        activityRule.runOnUiThread {
+            fm.popBackStack("fragment1", 0)
+
+            val fragment3 = AnimationFragment()
+
+            fm.beginTransaction()
+                .setReorderingAllowed(true)
+                .setCustomAnimations(ENTER, EXIT, POP_ENTER, POP_EXIT)
+                .replace(R.id.fragmentContainer, fragment3, "fragment3")
+                .addToBackStack("fragment3")
+                .commit()
+        }
+
+        activityRule.waitForExecution()
+
+        activityRule.runOnUiThread {
+            assertThat(fragment2.loadedAnimation).isEqualTo(EXIT)
+        }
+    }
+
+    @Test
+    fun removePopExitAnimation() {
+        waitForAnimationReady()
+        val fm = activityRule.activity.supportFragmentManager
+        val fragment1 = AnimationFragment()
+        val fragment2 = AnimationFragment()
+
+        fm.beginTransaction()
+            .setReorderingAllowed(true)
+            .setCustomAnimations(ENTER, EXIT, POP_ENTER, POP_EXIT)
+            .add(R.id.fragmentContainer, fragment1, "fragment1")
+            .addToBackStack("fragment1")
+            .commit()
+        activityRule.waitForExecution()
+
+        activityRule.runOnUiThread {
+            fm.popBackStack()
+            fm.beginTransaction()
+                .setReorderingAllowed(true)
+                .setCustomAnimations(ENTER, EXIT, POP_ENTER, POP_EXIT)
+                .replace(R.id.fragmentContainer, fragment2, "fragment2")
+                .addToBackStack("fragment2")
+                .commit()
+        }
+        activityRule.waitForExecution()
+
+        assertThat(fragment1.loadedAnimation).isEqualTo(EXIT)
+    }
+
+    @Test
+    fun removePopExitAnimationWithSetPrimaryNavigation() {
+        waitForAnimationReady()
+        val fm = activityRule.activity.supportFragmentManager
+        val fragment1 = AnimationFragment()
+        val fragment2 = AnimationFragment()
+
+        fm.beginTransaction()
+            .setReorderingAllowed(true)
+            .setCustomAnimations(ENTER, EXIT, POP_ENTER, POP_EXIT)
+            .add(R.id.fragmentContainer, fragment1, "fragment1")
+            .setPrimaryNavigationFragment(fragment1)
+            .addToBackStack("fragment1")
+            .commit()
+        activityRule.waitForExecution()
+
+        fm.beginTransaction()
+            .setReorderingAllowed(true)
+            .setCustomAnimations(ENTER, EXIT, POP_ENTER, POP_EXIT)
+            .replace(R.id.fragmentContainer, fragment2, "fragment2")
+            .setPrimaryNavigationFragment(fragment2)
+            .addToBackStack("fragment2")
+            .commit()
+        activityRule.waitForExecution()
+
+        assertThat(fragment1.loadedAnimation).isEqualTo(EXIT)
+        assertThat(fragment2.loadedAnimation).isEqualTo(ENTER)
+
+        fm.popBackStack()
+        activityRule.waitForExecution()
+
+        assertThat(fragment1.loadedAnimation).isEqualTo(POP_ENTER)
+        assertThat(fragment2.loadedAnimation).isEqualTo(POP_EXIT)
+    }
+
     private fun assertEnterPopExit(fragment: AnimationFragment) {
         assertFragmentAnimation(fragment, 1, true, ENTER)
 
@@ -802,7 +912,10 @@ class FragmentAnimationTest {
         assertThat(fragment.animation).isNotNull()
         assertThat(fragment.animation!!.waitForEnd(1000)).isTrue()
         assertThat(fragment.animation?.hasStarted()!!).isTrue()
-        assertThat(fragment.nextAnim).isEqualTo(0)
+        assertThat(fragment.enterAnim).isEqualTo(0)
+        assertThat(fragment.exitAnim).isEqualTo(0)
+        assertThat(fragment.popEnterAnim).isEqualTo(0)
+        assertThat(fragment.popExitAnim).isEqualTo(0)
     }
 
     private fun assertPostponed(fragment: AnimationFragment, expectedAnimators: Int) {
@@ -840,6 +953,7 @@ class FragmentAnimationTest {
         var animation: Animation? = null
         var enter: Boolean = false
         var resourceId: Int = 0
+        var loadedAnimation = 0
 
         override fun onCreateAnimation(transit: Int, enter: Boolean, nextAnim: Int): Animation? {
             if (nextAnim == 0 ||
@@ -847,6 +961,7 @@ class FragmentAnimationTest {
             ) {
                 return null
             }
+            loadedAnimation = nextAnim
             numAnimators++
             animation = TranslateAnimation(-10f, 0f, 0f, 0f)
             (animation as TranslateAnimation).duration = 1
@@ -868,7 +983,7 @@ class FragmentAnimationTest {
         var exitStartCount = 0
         var exitRepeatCount = 0
         var exitEndCount = 0
-        val startAnimationLatch = CountDownLatch(1)
+        lateinit var startAnimationLatch: CountDownLatch
         val enterLatch = CountDownLatch(1)
         val exitLatch = CountDownLatch(1)
 
@@ -900,6 +1015,7 @@ class FragmentAnimationTest {
                 return null
             }
             val anim = AnimationUtils.loadAnimation(activity, nextAnim)
+            startAnimationLatch = CountDownLatch(1)
             if (anim != null) {
                 if (repeat) {
                     anim.repeatCount = 1

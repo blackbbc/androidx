@@ -37,18 +37,17 @@ internal class PointerInputDelegatingWrapper(
         }
 
     override fun hitTest(
-        pointerPositionRelativeToScreen: Offset,
+        pointerPosition: Offset,
         hitPointerInputFilters: MutableList<PointerInputFilter>
     ) {
-        if (isGlobalPointerInBounds(pointerPositionRelativeToScreen)) {
+        if (isPointerInBounds(pointerPosition) && withinLayerBounds(pointerPosition)) {
             // If the pointer is in bounds, we hit the pointer input filter, so add it!
             hitPointerInputFilters.add(modifier.pointerInputFilter)
-        }
 
-        // Also, keep looking to see if we also might hit any children.
-        super.hitTest(
-            pointerPositionRelativeToScreen,
-            hitPointerInputFilters
-        )
+            // Also, keep looking to see if we also might hit any children.
+            // This avoids checking layer bounds twice as when we call super.hitTest()
+            val positionInWrapped = wrapped.fromParentPosition(pointerPosition)
+            wrapped.hitTest(positionInWrapped, hitPointerInputFilters)
+        }
     }
 }

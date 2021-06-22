@@ -149,6 +149,7 @@ public class WorkerWrapper implements Runnable {
                         TAG,
                         String.format("Didn't find WorkSpec for id %s", mWorkSpecId));
                 resolve(false);
+                mWorkDatabase.setTransactionSuccessful();
                 return;
             }
 
@@ -191,6 +192,7 @@ public class WorkerWrapper implements Runnable {
                     // This is not a problem for JobScheduler because we will only reschedule
                     // work if JobScheduler is unaware of a jobId.
                     resolve(true);
+                    mWorkDatabase.setTransactionSuccessful();
                     return;
                 }
             }
@@ -432,9 +434,8 @@ public class WorkerWrapper implements Runnable {
             // Check to see if there is more work to be done. If there is no more work, then
             // disable RescheduleReceiver. Using a transaction here, as there could be more than
             // one thread looking at the list of eligible WorkSpecs.
-            List<String> unfinishedWork = mWorkDatabase.workSpecDao().getAllUnfinishedWork();
-            boolean noMoreWork = unfinishedWork == null || unfinishedWork.isEmpty();
-            if (noMoreWork) {
+            boolean hasUnfinishedWork = mWorkDatabase.workSpecDao().hasUnfinishedWork();
+            if (!hasUnfinishedWork) {
                 PackageManagerHelper.setComponentEnabled(
                         mAppContext, RescheduleReceiver.class, false);
             }

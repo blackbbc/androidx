@@ -18,37 +18,54 @@ package androidx.compose.ui.input.key
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.focus.findActiveFocusNode
 import androidx.compose.ui.node.ModifiedKeyInputNode
+import androidx.compose.ui.platform.debugInspectorInfo
 
 /**
  * Adding this [modifier][Modifier] to the [modifier][Modifier] parameter of a component will
- * allow it to intercept hardware key events.
+ * allow it to intercept hardware key events when it (or one of its children) is focused.
  *
  * @param onKeyEvent This callback is invoked when the user interacts with the hardware keyboard.
  * While implementing this callback, return true to stop propagation of this event. If you return
- * false, the key event will be sent to this [keyInputFilter]'s parent.
+ * false, the key event will be sent to this [onKeyEvent]'s parent.
+ *
+ * @sample androidx.compose.ui.samples.KeyEventSample
  */
-@ExperimentalKeyInput
-fun Modifier.keyInputFilter(onKeyEvent: (KeyEvent) -> Boolean): Modifier = composed {
+// TODO: b/191017532 remove Modifier.composed
+@Suppress("UnnecessaryComposedModifier")
+fun Modifier.onKeyEvent(onKeyEvent: (KeyEvent) -> Boolean): Modifier = composed(
+    inspectorInfo = debugInspectorInfo {
+        name = "onKeyEvent"
+        properties["onKeyEvent"] = onKeyEvent
+    }
+) {
     KeyInputModifier(onKeyEvent = onKeyEvent, onPreviewKeyEvent = null)
 }
 
 /**
  * Adding this [modifier][Modifier] to the [modifier][Modifier] parameter of a component will
- * allow it to intercept hardware key events.
+ * allow it to intercept hardware key events when it (or one of its children) is focused.
  *
  * @param onPreviewKeyEvent This callback is invoked when the user interacts with the hardware
  * keyboard. It gives ancestors of a focused component the chance to intercept a [KeyEvent].
  * Return true to stop propagation of this event. If you return false, the key event will be sent
- * to this [previewKeyInputFilter]'s child. If none of the children consume the event, it will be
- * sent back up to the root [keyInputFilter] using the onKeyEvent callback.
+ * to this [onPreviewKeyEvent]'s child. If none of the children consume the event, it will be
+ * sent back up to the root [KeyInputModifier] using the onKeyEvent callback.
+ *
+ * @sample androidx.compose.ui.samples.KeyEventSample
  */
-@ExperimentalKeyInput
-fun Modifier.previewKeyInputFilter(onPreviewKeyEvent: (KeyEvent) -> Boolean): Modifier = composed {
+// TODO: b/191017532 remove Modifier.composed
+@Suppress("UnnecessaryComposedModifier")
+fun Modifier.onPreviewKeyEvent(onPreviewKeyEvent: (KeyEvent) -> Boolean): Modifier = composed(
+    inspectorInfo = debugInspectorInfo {
+        name = "onPreviewKeyEvent"
+        properties["onPreviewKeyEvent"] = onPreviewKeyEvent
+    }
+) {
     KeyInputModifier(onKeyEvent = null, onPreviewKeyEvent = onPreviewKeyEvent)
 }
 
-@OptIn(ExperimentalKeyInput::class)
 internal class KeyInputModifier(
     val onKeyEvent: ((KeyEvent) -> Boolean)?,
     val onPreviewKeyEvent: ((KeyEvent) -> Boolean)?

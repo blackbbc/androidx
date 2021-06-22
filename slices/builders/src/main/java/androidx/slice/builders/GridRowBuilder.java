@@ -285,11 +285,12 @@ public class GridRowBuilder {
         @RestrictTo(LIBRARY)
         public static final int TYPE_OVERLAY = 3;
 
-        private List<Object> mObjects = new ArrayList<>();
-        private List<Integer> mTypes = new ArrayList<>();
-        private List<Boolean> mLoadings = new ArrayList<>();
+        private final List<Object> mObjects = new ArrayList<>();
+        private final List<Integer> mTypes = new ArrayList<>();
+        private final List<Boolean> mLoadings = new ArrayList<>();
         private CharSequence mCellDescription;
         private PendingIntent mContentIntent;
+        private SliceAction mSliceAction;
 
         /**
          * Create a builder which will construct a slice displayed as a cell in a grid.
@@ -453,6 +454,17 @@ public class GridRowBuilder {
         }
 
         /**
+         * Sets the SliceAction for the cell. It could be an action or a toggle button or a
+         * date/time picker. The actionTitle and icon image of the SliceAction will only be used
+         * when there is no other text or image in the cell.
+         */
+        @NonNull
+        public CellBuilder setSliceAction(@NonNull SliceAction action) {
+            mSliceAction = action;
+            return this;
+        }
+
+        /**
          * @hide
          */
         @RestrictTo(LIBRARY)
@@ -518,6 +530,15 @@ public class GridRowBuilder {
                 }
             }
             return null;
+        }
+
+        /**
+         * @hide
+         */
+        @RestrictTo(LIBRARY)
+        @Nullable
+        public SliceAction getSliceAction() {
+            return mSliceAction;
         }
     }
 }

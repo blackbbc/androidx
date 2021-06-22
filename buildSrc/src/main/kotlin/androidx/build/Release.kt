@@ -16,13 +16,13 @@
 package androidx.build
 
 import com.android.build.gradle.LibraryExtension
-import com.android.build.gradle.api.LibraryVariant
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Zip
+import org.gradle.plugin.devel.GradlePluginDevelopmentExtension
 import java.io.File
 import java.util.TreeSet
 
@@ -181,7 +181,7 @@ object Release {
         }
         val version = project.version
 
-        var zipTasks = listOf(
+        val zipTasks = listOf(
             getProjectZipTask(project),
             getGroupReleaseZipTask(project, mavenGroup),
             getGlobalFullZipTask(project)
@@ -193,9 +193,25 @@ object Release {
         )
         val publishTask = project.tasks.named("publish")
         zipTasks.forEach {
-            it.configure {
-                it.candidates.add(artifact)
-                it.dependsOn(publishTask)
+            it.configure { zipTask ->
+                zipTask.candidates.add(artifact)
+
+                // Add additional artifacts needed for Gradle Plugins
+                if (extension.type == LibraryType.GRADLE_PLUGIN) {
+                    project.extensions.getByType(
+                        GradlePluginDevelopmentExtension::class.java
+                    ).plugins.forEach { plugin ->
+                        zipTask.candidates.add(
+                            Artifact(
+                                mavenGroup = plugin.id,
+                                projectName = "${plugin.id}.gradle.plugin",
+                                version = version.toString()
+                            )
+                        )
+                    }
+                }
+
+                zipTask.dependsOn(publishTask)
             }
         }
     }
@@ -280,26 +296,20 @@ object Release {
     private fun getProjectZipTask(
         project: Project
     ): TaskProvider<GMavenZipTask> {
-        val taskName = "$PROJECT_ARCHIVE_ZIP_TASK_NAME"
-        val taskProvider: TaskProvider<GMavenZipTask> = project.maybeRegister(
-            name = taskName,
-            onConfigure = {
-                GMavenZipTask.ConfigAction(
-                    getParams(
-                        project = project,
-                        distDir = File(
-                            project.getDistributionDirectory(),
-                            PROJECT_ZIPS_FOLDER
-                        ),
-                        fileNamePrefix = project.projectZipPrefix()
-                    ).copy(
-                        includeMetadata = true
-                    )
-                ).execute(it)
-            },
-            onRegister = {
-            }
-        )
+        val taskProvider = project.tasks.register(
+            PROJECT_ARCHIVE_ZIP_TASK_NAME,
+            GMavenZipTask::class.java
+        ) {
+            GMavenZipTask.ConfigAction(
+                getParams(
+                    project = project,
+                    distDir = File(project.getDistributionDirectory(), PROJECT_ZIPS_FOLDER),
+                    fileNamePrefix = project.projectZipPrefix()
+                ).copy(
+                    includeMetadata = true
+                )
+            ).execute(it)
+        }
         project.addToBuildOnServer(taskProvider)
         return taskProvider
     }
@@ -308,7 +318,10 @@ object Release {
 /**
  * Let you configure a library variant associated with [Release.DEFAULT_PUBLISH_CONFIG]
  */
-fun LibraryExtension.defaultPublishVariant(config: (LibraryVariant) -> Unit) {
+@Suppress("DEPRECATION") // LibraryVariant
+fun LibraryExtension.defaultPublishVariant(
+    config: (com.android.build.gradle.api.LibraryVariant) -> Unit
+) {
     libraryVariants.all { variant ->
         if (variant.name == Release.DEFAULT_PUBLISH_CONFIG) {
             config(variant)
@@ -353,7 +366,7 @@ private fun getZipName(fileNamePrefix: String, mavenGroup: String): String {
 }
 
 fun Project.getProjectZipPath(): String {
-    return distSubdir() + Release.PROJECT_ZIPS_FOLDER + "/" +
+    return Release.PROJECT_ZIPS_FOLDER + "/" +
         // We pass in a "" because that mimics not passing the group to getParams() inside
         // the getProjectZipTask function
         getZipName(projectZipPrefix(), "") + "-${project.version}.zip"
@@ -361,6 +374,6 @@ fun Project.getProjectZipPath(): String {
 
 fun Project.getGroupZipPath():
     String {
-        return distSubdir() + Release.GROUP_ZIPS_FOLDER + "/" +
+        return Release.GROUP_ZIPS_FOLDER + "/" +
             getZipName(Release.GROUP_ZIP_PREFIX, project.group.toString()) + ".zip"
     }

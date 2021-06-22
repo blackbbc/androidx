@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2020 The Android Open Source Project
  *
@@ -23,6 +24,8 @@ import android.graphics.PointF
 import android.net.Uri
 import android.os.Build
 import android.view.Surface
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraX
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -32,10 +35,16 @@ import androidx.camera.core.impl.utils.futures.FutureCallback
 import androidx.camera.core.impl.utils.futures.Futures
 import androidx.camera.testing.CameraUtil
 import androidx.camera.testing.CoreAppTestUtil
+import androidx.camera.view.CameraController.TAP_TO_FOCUS_FAILED
+import androidx.camera.view.CameraController.TAP_TO_FOCUS_NOT_STARTED
+import androidx.camera.view.CameraController.TAP_TO_FOCUS_STARTED
+import androidx.camera.view.CameraController.TAP_TO_FOCUS_SUCCESSFUL
+import androidx.camera.view.CameraController.TAP_TO_FOCUS_UNSUCCESSFUL
 import androidx.camera.view.PreviewView
 import androidx.fragment.app.testing.FragmentScenario
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
+import androidx.test.annotation.UiThreadTest
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -43,11 +52,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiSelector
 import com.google.common.collect.ImmutableList
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import org.junit.After
 import org.junit.Assume
+import org.junit.Assume.assumeTrue
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExpectedException
@@ -70,13 +84,19 @@ class CameraControllerFragmentTest {
         // and B.
         private val RGB_SHIFTS = ImmutableList.of(/*R*/16, /*G*/ 8, /*B*/0)
         private const val COLOR_MASK = 0xFF
+
+        // The minimum luminance for comparing pictures. Arbitrarily chosen.
+        private const val MIN_LUMINANCE = 50F
+
+        @JvmField
+        val testCameraRule = CameraUtil.PreTestCamera()
     }
 
     @get:Rule
     val thrown: ExpectedException = ExpectedException.none()
 
     @get:Rule
-    val useCamera: TestRule = CameraUtil.grantCameraPermissionAndPreTest()
+    val useCamera: TestRule = CameraUtil.grantCameraPermissionAndPreTest(testCameraRule)
 
     @get:Rule
     val grantPermissionRule: GrantPermissionRule = GrantPermissionRule.grant(
@@ -85,19 +105,108 @@ class CameraControllerFragmentTest {
     )
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private lateinit var fragment: CameraControllerFragment
+    private lateinit var fragmentScenario: FragmentScenario<CameraControllerFragment>
+    private lateinit var uiDevice: UiDevice
 
     @Before
     fun setup() {
         // Clear the device UI and check if there is no dialog or lock screen on the top of the
         // window before start the test.
         CoreAppTestUtil.prepareDeviceUI(instrumentation)
+        fragmentScenario = createFragmentScenario()
+        fragment = fragmentScenario.getFragment()
+        uiDevice = UiDevice.getInstance(instrumentation)
+    }
+
+    @After
+    fun tearDown() {
+        if (::fragmentScenario.isInitialized) {
+            fragmentScenario.moveToState(Lifecycle.State.DESTROYED)
+            CameraX.shutdown().get(10, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
+    fun controllerBound_canGetCameraControl() {
+        fragment.assertPreviewIsStreaming()
+        instrumentation.runOnMainSync {
+            assertThat(fragment.cameraController.cameraControl).isNotNull()
+        }
+    }
+
+    @Test
+    fun onPreviewViewTapped_previewIsFocused() {
+        Assume.assumeFalse(
+            "Ignore Cuttlefish",
+            Build.MODEL.contains("Cuttlefish")
+        )
+        // Arrange: listens to LiveData updates.
+        fragment.assertPreviewIsStreaming()
+        val focused = Semaphore(0)
+        var started = false
+        var finalState = TAP_TO_FOCUS_NOT_STARTED
+        instrumentation.runOnMainSync {
+            fragment.cameraController.tapToFocusState.observe(
+                fragment,
+                {
+                    // Make sure the LiveData receives STARTED first and then another update.
+                    if (it == TAP_TO_FOCUS_STARTED) {
+                        started = true
+                        return@observe
+                    }
+                    if (started) {
+                        finalState = it
+                        focused.release()
+                    }
+                }
+            )
+        }
+
+        // Act: click PreviewView.
+        val previewViewId = "androidx.camera.integration.view:id/preview_view"
+        uiDevice.findObject(UiSelector().resourceId(previewViewId)).click()
+
+        // Assert: got a LiveData update
+        assertThat(focused.tryAcquire(6 /* focus time out is 5s */, TimeUnit.SECONDS)).isTrue()
+        assertThat(finalState).isAnyOf(
+            TAP_TO_FOCUS_SUCCESSFUL,
+            TAP_TO_FOCUS_FAILED,
+            TAP_TO_FOCUS_UNSUCCESSFUL
+        )
+    }
+
+    @Test
+    fun controllerBound_canGetCameraInfo() {
+        fragment.assertPreviewIsStreaming()
+        instrumentation.runOnMainSync {
+            assertThat(fragment.cameraController.cameraInfo).isNotNull()
+        }
+    }
+
+    @UiThreadTest
+    @Test
+    fun controllerNotBound_cameraInfoIsNull() {
+        fragment.previewView.controller = null
+        assertThat(fragment.cameraController.cameraInfo).isNull()
+    }
+
+    @Test
+    fun controllerHasCameraResult_sameAsUtilResult() {
+        fragment.assertPreviewIsStreaming()
+        instrumentation.runOnMainSync {
+            assertThat(fragment.cameraController.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA))
+                .isEqualTo(CameraUtil.hasCameraWithLensFacing(CameraSelector.LENS_FACING_BACK))
+            assertThat(fragment.cameraController.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA))
+                .isEqualTo(CameraUtil.hasCameraWithLensFacing(CameraSelector.LENS_FACING_FRONT))
+        }
     }
 
     @Test
     fun fragmentLaunch_cameraInitializationCompletes() {
         val semaphore = Semaphore(0)
         Futures.addCallback(
-            createFragmentScenario().getFragment().cameraController.initializationFuture,
+            fragment.cameraController.initializationFuture,
             object : FutureCallback<Void> {
                 override fun onSuccess(result: Void?) {
                     semaphore.release()
@@ -112,12 +221,11 @@ class CameraControllerFragmentTest {
 
     @Test
     fun fragmentLaunch_receiveAnalysisFrames() {
-        createFragmentScenario().getFragment().assertAnalysisStreaming(true)
+        fragment.assertAnalysisStreaming(true)
     }
 
     @Test
     fun imageAnalysisDisabled_isNotStreaming() {
-        val fragment = createFragmentScenario().getFragment()
         fragment.assertAnalysisStreaming(true)
 
         onView(withId(R.id.analysis_enabled)).perform(click())
@@ -127,7 +235,6 @@ class CameraControllerFragmentTest {
 
     @Test
     fun imageAnalysisDisabledAndEnabled_isStreaming() {
-        val fragment = createFragmentScenario().getFragment()
         fragment.assertAnalysisStreaming(true)
 
         onView(withId(R.id.analysis_enabled)).perform(click())
@@ -136,9 +243,9 @@ class CameraControllerFragmentTest {
         fragment.assertAnalysisStreaming(true)
     }
 
+    @Ignore
     @Test
     fun analyzerCleared_isNotStreaming() {
-        val fragment = createFragmentScenario().getFragment()
         fragment.assertAnalysisStreaming(true)
 
         instrumentation.runOnMainSync {
@@ -150,8 +257,6 @@ class CameraControllerFragmentTest {
 
     @Test
     fun canSetAnalysisImageDepth() {
-        // Arrange.
-        val fragment = createFragmentScenario().getFragment()
         var currentDepth = 0
 
         // Act.
@@ -170,9 +275,6 @@ class CameraControllerFragmentTest {
 
     @Test
     fun canSetAnalysisBackpressureStrategy() {
-        // Arrange.
-        val fragment = createFragmentScenario().getFragment()
-
         // Act.
         instrumentation.runOnMainSync {
             fragment.cameraController.imageAnalysisBackpressureStrategy =
@@ -188,6 +290,7 @@ class CameraControllerFragmentTest {
     }
 
     @Test
+    @Ignore
     fun capturedImage_sameAsPreviewSnapshot() {
         // TODO(b/147448711) Add back in once cuttlefish has correct user cropping functionality.
         Assume.assumeFalse(
@@ -196,7 +299,6 @@ class CameraControllerFragmentTest {
         )
 
         // Arrange.
-        val fragment = createFragmentScenario().getFragment()
         fragment.assertPreviewIsStreaming()
         // Scaled down images to 10x10 bitmap to normalize and reduce computation.
         val width = 10
@@ -235,6 +337,16 @@ class CameraControllerFragmentTest {
             Bitmap.createBitmap(captureBitmap, 0, 0, width, height, transformCapture, true)
 
         // Assert.
+        val captureLuminance = getLuminance(captureBitmap)
+        val previewLuminance = getLuminance(previewBitmap)
+        // Skip test if any of the picture is too dark. The phone is likely to be in a low light
+        // environment (e.g. in a unlit test box). In that case the noise is too high to be
+        // useful. The test will be skipped.
+        assumeTrue(
+            "Test skipped. Device most likely in low light environment.",
+            captureLuminance > MIN_LUMINANCE && previewLuminance > MIN_LUMINANCE
+        )
+
         val captureMoment = getRgbMoments(captureBitmap)
         val previewMoment = getRgbMoments(previewBitmap)
         // For a 10x10 image, we allow an 1px error. The 2 bitmaps are different due to
@@ -254,7 +366,6 @@ class CameraControllerFragmentTest {
 
     @Test
     fun fragmentLaunched_canTakePicture() {
-        val fragment = createFragmentScenario().getFragment()
         fragment.assertPreviewIsStreaming()
         fragment.assertCanTakePicture()
     }
@@ -263,8 +374,6 @@ class CameraControllerFragmentTest {
     fun captureDisabled_cannotTakePicture() {
         // Arrange.
         thrown.expectMessage("ImageCapture disabled")
-        val fragment = createFragmentScenario().getFragment()
-        fragment.assertPreviewIsStreaming()
 
         // Act.
         onView(withId(R.id.capture_enabled)).perform(click())
@@ -276,7 +385,6 @@ class CameraControllerFragmentTest {
     @Test
     fun captureDisabledAndEnabled_canTakePicture() {
         // Arrange.
-        val fragment = createFragmentScenario().getFragment()
         fragment.assertPreviewIsStreaming()
 
         // Act.
@@ -290,14 +398,12 @@ class CameraControllerFragmentTest {
 
     @Test
     fun previewViewRemoved_previewIsIdle() {
-        val fragment = createFragmentScenario().getFragment()
         onView(withId(R.id.remove_or_add)).perform(click())
         fragment.assertPreviewIsIdle()
     }
 
     @Test
     fun previewViewRemovedAndAdded_previewIsStreaming() {
-        val fragment = createFragmentScenario().getFragment()
         onView(withId(R.id.remove_or_add)).perform(click())
         onView(withId(R.id.remove_or_add)).perform(click())
         fragment.assertPreviewIsStreaming()
@@ -305,17 +411,32 @@ class CameraControllerFragmentTest {
 
     @Test
     fun cameraToggled_previewIsStreaming() {
-        val fragment = createFragmentScenario().getFragment()
         onView(withId(R.id.camera_toggle)).perform(click())
         fragment.assertPreviewIsStreaming()
     }
 
     @Test
     fun cameraToggled_canTakePicture() {
-        val fragment = createFragmentScenario().getFragment()
         onView(withId(R.id.camera_toggle)).perform(click())
         fragment.assertPreviewIsStreaming()
         fragment.assertCanTakePicture()
+    }
+
+    /**
+     * Calculates the 1st order moment (center of mass) of the R, G and B of the bitmap.
+     */
+    private fun getLuminance(bitmap: Bitmap): Float {
+        var totals = 0F
+        for (colorShift in RGB_SHIFTS) {
+            for (x in 0 until bitmap.width) {
+                for (y in 0 until bitmap.height) {
+                    val color = bitmap.getPixel(x, y)
+                    val colorComponent = color shr colorShift and COLOR_MASK
+                    totals += colorComponent
+                }
+            }
+        }
+        return totals / bitmap.width / bitmap.height / RGB_SHIFTS.size
     }
 
     /**
@@ -334,8 +455,14 @@ class CameraControllerFragmentTest {
                     totals[i] += colorComponent.toFloat()
                 }
             }
-            rgbMoments[i].x /= totals[i]
-            rgbMoments[i].y /= totals[i]
+            if (totals[i] == 0F) {
+                // Check for divide by 0 error.
+                rgbMoments[i].x = 0F
+                rgbMoments[i].y = 0F
+            } else {
+                rgbMoments[i].x /= totals[i]
+                rgbMoments[i].y /= totals[i]
+            }
         }
         return rgbMoments
     }
@@ -419,10 +546,7 @@ class CameraControllerFragmentTest {
         return FragmentScenario.launchInContainer(
             CameraControllerFragment::class.java, null, R.style.AppTheme,
             null
-        ).also {
-            it.moveToState(Lifecycle.State.CREATED)
-            it.moveToState(Lifecycle.State.RESUMED)
-        }
+        )
     }
 
     private fun FragmentScenario<CameraControllerFragment>.getFragment(): CameraControllerFragment {
@@ -458,11 +582,14 @@ class CameraControllerFragmentTest {
         val analysisStreaming = Semaphore(0)
         instrumentation.runOnMainSync {
             setWrappedAnalyzer {
-                it.close()
                 analysisStreaming.release()
             }
         }
-        assertThat(analysisStreaming.tryAcquire(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo(
+        // Wait for 2 analysis frames. It's necessary because even after the analyzer is removed on
+        // the main thread, there could already be a frame posted on user call back thread. For the
+        // default non-blocking mode, the max number of frame posted on user thread at the same
+        // time is 1. So we wait for one additional frame to make sure the analyzer has stopped.
+        assertThat(analysisStreaming.tryAcquire(2, TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo(
             streaming
         )
     }

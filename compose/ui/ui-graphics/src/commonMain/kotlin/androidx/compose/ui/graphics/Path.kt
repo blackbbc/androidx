@@ -22,8 +22,6 @@ import androidx.compose.ui.geometry.RoundRect
 
 expect fun Path(): Path
 
-expect class NativePathEffect
-
 /* expect class */ interface Path {
 
     /**
@@ -199,21 +197,8 @@ expect class NativePathEffect
     fun addRoundRect(roundRect: RoundRect)
 
     /**
-     * Add a round rectangle shape to the path from the given [RoundRect]
-     */
-    @Deprecated(
-        "Use addRoundRect(roundRect) instead",
-        ReplaceWith("addRoundRect(rrect)", "androidx.compose.ui.graphics")
-    )
-    fun addRRect(rrect: RoundRect) = addRoundRect(rrect)
-
-    /**
      * Adds a new subpath that consists of the given `path` offset by the given
      * `offset`.
-     *
-     * If `matrix4` is specified, the path will be transformed by this matrix
-     * after the matrix is translated by the given offset. The matrix is a 4x4
-     * matrix stored in column major order.
      */
     fun addPath(path: Path, offset: Offset = Offset.Zero)
 
@@ -226,18 +211,9 @@ expect class NativePathEffect
     /**
      * Clears the [Path] object of all subpaths, returning it to the
      * same state it had when it was created. The _current point_ is
-     * reset to the origin.
+     * reset to the origin. This does NOT change the fill-type setting.
      */
     fun reset()
-
-    /**
-     * Translates all the segments of every subpath by the given offset.
-     */
-    @Deprecated(
-        "Use translate(offset) instead",
-        ReplaceWith("translate(offset)", "androidx.compose.ui.graphics.Path")
-    )
-    fun shift(offset: Offset) = translate(offset)
 
     /**
      * Translates all the segments of every subpath by the given offset.

@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextGeometricTransform
 import androidx.compose.ui.text.style.lerp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -43,10 +44,10 @@ class SpanStyleTest {
         val style = SpanStyle()
 
         assertThat(style.color).isEqualTo(Color.Unspecified)
-        assertThat(style.fontSize.isInherit).isTrue()
+        assertThat(style.fontSize.isUnspecified).isTrue()
         assertThat(style.fontWeight).isNull()
         assertThat(style.fontStyle).isNull()
-        assertThat(style.letterSpacing.isInherit).isTrue()
+        assertThat(style.letterSpacing.isUnspecified).isTrue()
         assertThat(style.localeList).isNull()
         assertThat(style.background).isEqualTo(Color.Unspecified)
         assertThat(style.textDecoration).isNull()
@@ -172,7 +173,7 @@ class SpanStyleTest {
     }
 
     @Test
-    fun `merge with other's fontFamily is null should use this' fontFamily`() {
+    fun `merge with other's fontFamily is unspecified should use this' fontFamily`() {
         val style = SpanStyle(fontFamily = FontFamily.SansSerif)
 
         val newSpanStyle = style.merge(SpanStyle(fontFamily = null))
@@ -194,7 +195,7 @@ class SpanStyleTest {
     fun `merge with other's fontSize is null should use this' fontSize`() {
         val style = SpanStyle(fontSize = 3.5.sp)
 
-        val newSpanStyle = style.merge(SpanStyle(fontSize = TextUnit.Inherit))
+        val newSpanStyle = style.merge(SpanStyle(fontSize = TextUnit.Unspecified))
 
         assertThat(newSpanStyle.fontSize).isEqualTo(style.fontSize)
     }
@@ -286,10 +287,10 @@ class SpanStyleTest {
     }
 
     @Test
-    fun `merge with other's letterSpacing is null should use this' letterSpacing`() {
+    fun `merge with other's letterSpacing is unspecified should use this' letterSpacing`() {
         val style = SpanStyle(letterSpacing = 1.2.em)
 
-        val newSpanStyle = style.merge(SpanStyle(letterSpacing = TextUnit.Inherit))
+        val newSpanStyle = style.merge(SpanStyle(letterSpacing = TextUnit.Unspecified))
 
         assertThat(newSpanStyle.letterSpacing).isEqualTo(style.letterSpacing)
     }
@@ -413,7 +414,7 @@ class SpanStyleTest {
     }
 
     @Test
-    fun `lerp color with a and b are Unspecified`() {
+    fun `lerp color with a and b are unspecified`() {
         val style1 = SpanStyle(color = Color.Unspecified)
         val style2 = SpanStyle(color = Color.Unspecified)
 

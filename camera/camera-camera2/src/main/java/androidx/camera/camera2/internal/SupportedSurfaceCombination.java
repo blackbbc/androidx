@@ -38,6 +38,7 @@ import androidx.camera.camera2.internal.compat.CameraAccessExceptionCompat;
 import androidx.camera.camera2.internal.compat.CameraCharacteristicsCompat;
 import androidx.camera.camera2.internal.compat.CameraManagerCompat;
 import androidx.camera.camera2.internal.compat.workaround.ExcludedSupportedSizesContainer;
+import androidx.camera.camera2.internal.compat.workaround.ExtraSupportedSurfaceCombinationsContainer;
 import androidx.camera.camera2.internal.compat.workaround.TargetAspectRatio;
 import androidx.camera.core.AspectRatio;
 import androidx.camera.core.CameraUnavailableException;
@@ -75,9 +76,7 @@ final class SupportedSurfaceCombination {
     private static final Size MAX_PREVIEW_SIZE = new Size(1920, 1080);
     private static final Size DEFAULT_SIZE = new Size(640, 480);
     private static final Size ZERO_SIZE = new Size(0, 0);
-    private static final Size QUALITY_2160P_SIZE = new Size(3840, 2160);
     private static final Size QUALITY_1080P_SIZE = new Size(1920, 1080);
-    private static final Size QUALITY_720P_SIZE = new Size(1280, 720);
     private static final Size QUALITY_480P_SIZE = new Size(720, 480);
     private static final int ALIGN16 = 16;
     private static final Rational ASPECT_RATIO_4_3 = new Rational(4, 3);
@@ -90,6 +89,8 @@ final class SupportedSurfaceCombination {
     private final CamcorderProfileHelper mCamcorderProfileHelper;
     private final CameraCharacteristicsCompat mCharacteristics;
     private final ExcludedSupportedSizesContainer mExcludedSupportedSizesContainer;
+    private final ExtraSupportedSurfaceCombinationsContainer
+            mExtraSupportedSurfaceCombinationsContainer;
     private final int mHardwareLevel;
     private final boolean mIsSensorLandscapeResolution;
     private final Map<Integer, List<Size>> mExcludedSizeListCache = new HashMap<>();
@@ -107,6 +108,8 @@ final class SupportedSurfaceCombination {
         WindowManager windowManager =
                 (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         mExcludedSupportedSizesContainer = new ExcludedSupportedSizesContainer(cameraId);
+        mExtraSupportedSurfaceCombinationsContainer =
+                new ExtraSupportedSurfaceCombinationsContainer(cameraId);
 
         try {
             mCharacteristics = cameraManagerCompat.getCameraCharacteristicsCompat(mCameraId);
@@ -357,7 +360,14 @@ final class SupportedSurfaceCombination {
             outputSizes = getAllOutputSizesByFormat(imageFormat);
         }
         List<Size> outputSizeCandidates = new ArrayList<>();
-        Size maxSize = imageOutputConfig.getMaxResolution(getMaxOutputSizeByFormat(imageFormat));
+        Size maxSize = imageOutputConfig.getMaxResolution(null);
+        Size maxOutputSizeByFormat = getMaxOutputSizeByFormat(imageFormat);
+
+        // Set maxSize as the max resolution setting or the max supported output size for the
+        // image format, whichever is smaller.
+        if (maxSize == null || getArea(maxOutputSizeByFormat) < getArea(maxSize)) {
+            maxSize = maxOutputSizeByFormat;
+        }
 
         // Sort the output sizes. The Comparator result must be reversed to have a descending order
         // result.
@@ -431,7 +441,13 @@ final class SupportedSurfaceCombination {
 
             // Put available sizes into final result list by aspect ratio distance to target ratio.
             for (Rational rational : aspectRatios) {
-                supportedResolutions.addAll(aspectRatioSizeListMap.get(rational));
+                for (Size size : aspectRatioSizeListMap.get(rational)) {
+                    // A size may exist in multiple groups in mod16 condition. Keep only one in
+                    // the final list.
+                    if (!supportedResolutions.contains(size)) {
+                        supportedResolutions.add(size);
+                    }
+                }
             }
         }
 
@@ -561,19 +577,22 @@ final class SupportedSurfaceCombination {
 
         for (Size outputSize : sizes) {
             Rational matchedKey = null;
+
             for (Rational key : aspectRatioSizeListMap.keySet()) {
+                // Put the size into all groups that is matched in mod16 condition since a size
+                // may match multiple aspect ratio in mod16 algorithm.
                 if (hasMatchingAspectRatio(outputSize, key)) {
                     matchedKey = key;
-                    break;
+
+                    List<Size> sizeList = aspectRatioSizeListMap.get(matchedKey);
+                    if (!sizeList.contains(outputSize)) {
+                        sizeList.add(outputSize);
+                    }
                 }
             }
 
-            if (matchedKey != null) {
-                List<Size> sizeList = aspectRatioSizeListMap.get(matchedKey);
-                if (!sizeList.contains(outputSize)) {
-                    sizeList.add(outputSize);
-                }
-            } else {
+            // Create new item if no matching group is found.
+            if (matchedKey == null) {
                 aspectRatioSizeListMap.put(
                         new Rational(outputSize.getWidth(), outputSize.getHeight()),
                         new ArrayList<>(Collections.singleton(outputSize)));
@@ -1139,6 +1158,8 @@ final class SupportedSurfaceCombination {
         if (mHardwareLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3) {
             mSurfaceCombinations.addAll(getLevel3SupportedCombinationList());
         }
+
+        mSurfaceCombinations.addAll(mExtraSupportedSurfaceCombinationsContainer.get());
     }
 
     private void checkCustomization() {
@@ -1190,31 +1211,27 @@ final class SupportedSurfaceCombination {
      */
     @NonNull
     private Size getRecordSize() {
-        Size recordSize = QUALITY_480P_SIZE;
+        int cameraId;
 
         try {
-            int cameraId = Integer.parseInt(mCameraId);
-
-            // Check whether 2160P, 1080P, 720P, 480P are supported by CamcorderProfile
-            if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_2160P)) {
-                recordSize = QUALITY_2160P_SIZE;
-            } else if (mCamcorderProfileHelper.hasProfile(cameraId,
-                    CamcorderProfile.QUALITY_1080P)) {
-                recordSize = QUALITY_1080P_SIZE;
-            } else if (mCamcorderProfileHelper.hasProfile(cameraId,
-                    CamcorderProfile.QUALITY_720P)) {
-                recordSize = QUALITY_720P_SIZE;
-            } else if (mCamcorderProfileHelper.hasProfile(cameraId,
-                    CamcorderProfile.QUALITY_480P)) {
-                recordSize = QUALITY_480P_SIZE;
-            }
+            cameraId = Integer.parseInt(mCameraId);
         } catch (NumberFormatException e) {
             // The camera Id is not an integer because the camera may be a removable device. Use
             // StreamConfigurationMap to determine the RECORD size.
-            recordSize = getRecordSizeFromStreamConfigurationMap();
+            return getRecordSizeFromStreamConfigurationMap();
         }
 
-        return recordSize;
+        CamcorderProfile profile = null;
+
+        if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_HIGH)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_HIGH);
+        }
+
+        if (profile != null) {
+            return new Size(profile.videoFrameWidth, profile.videoFrameHeight);
+        }
+
+        return getRecordSizeByHasProfile(cameraId);
     }
 
     /**
@@ -1249,6 +1266,40 @@ final class SupportedSurfaceCombination {
         }
 
         return QUALITY_480P_SIZE;
+    }
+
+    /**
+     * Return the maximum supported video size for cameras by
+     * {@link CamcorderProfile#hasProfile(int, int)}.
+     *
+     * @return Maximum supported video size.
+     */
+    @NonNull
+    private Size getRecordSizeByHasProfile(int cameraId) {
+        Size recordSize = QUALITY_480P_SIZE;
+        CamcorderProfile profile = null;
+
+        // Check whether 4KDCI, 2160P, 2K, 1080P, 720P, 480P (sorted by size) are supported by
+        // CamcorderProfile
+        if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_4KDCI)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_4KDCI);
+        } else if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_2160P)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_2160P);
+        } else if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_2K)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_2K);
+        } else if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_1080P)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_1080P);
+        } else if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_720P)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_720P);
+        } else if (mCamcorderProfileHelper.hasProfile(cameraId, CamcorderProfile.QUALITY_480P)) {
+            profile = mCamcorderProfileHelper.get(cameraId, CamcorderProfile.QUALITY_480P);
+        }
+
+        if (profile != null) {
+            recordSize = new Size(profile.videoFrameWidth, profile.videoFrameHeight);
+        }
+
+        return recordSize;
     }
 
     @NonNull

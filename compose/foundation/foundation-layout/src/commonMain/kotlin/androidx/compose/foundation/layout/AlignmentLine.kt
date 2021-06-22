@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.debugInspectorInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isUnspecified
 import kotlin.math.max
 
 /**
@@ -110,8 +111,8 @@ fun Modifier.paddingFrom(
 @Stable
 fun Modifier.paddingFrom(
     alignmentLine: AlignmentLine,
-    before: TextUnit = TextUnit.Inherit,
-    after: TextUnit = TextUnit.Inherit
+    before: TextUnit = TextUnit.Unspecified,
+    after: TextUnit = TextUnit.Unspecified
 ): Modifier = this.then(
     AlignmentLineOffsetTextUnit(
         alignmentLine,
@@ -125,20 +126,6 @@ fun Modifier.paddingFrom(
         }
     )
 )
-
-@Stable
-@Deprecated(
-    "relativePaddingFrom was renamed to paddingFrom.",
-    ReplaceWith(
-        "paddingFrom(alignmentLine, before, after)",
-        "androidx.compose.foundation.layout.paddingFrom"
-    )
-)
-fun Modifier.relativePaddingFrom(
-    alignmentLine: AlignmentLine,
-    before: Dp = Dp.Unspecified,
-    after: Dp = Dp.Unspecified
-): Modifier = paddingFrom(alignmentLine, before, after)
 
 /**
  * A [Modifier] that positions the content in a layout such that the distance from the top
@@ -173,11 +160,11 @@ fun Modifier.paddingFromBaseline(top: Dp = Dp.Unspecified, bottom: Dp = Dp.Unspe
 @Stable
 @Suppress("ModifierInspectorInfo")
 fun Modifier.paddingFromBaseline(
-    top: TextUnit = TextUnit.Inherit,
-    bottom: TextUnit = TextUnit.Inherit
+    top: TextUnit = TextUnit.Unspecified,
+    bottom: TextUnit = TextUnit.Unspecified
 ) = this
-    .then(if (bottom != TextUnit.Inherit) paddingFrom(LastBaseline, after = bottom) else Modifier)
-    .then(if (top != TextUnit.Inherit) paddingFrom(FirstBaseline, before = top) else Modifier)
+    .then(if (!bottom.isUnspecified) paddingFrom(LastBaseline, after = bottom) else Modifier)
+    .then(if (!top.isUnspecified) paddingFrom(FirstBaseline, before = top) else Modifier)
 
 private class AlignmentLineOffsetDp(
     val alignmentLine: AlignmentLine,
@@ -233,8 +220,8 @@ private class AlignmentLineOffsetTextUnit(
     ): MeasureResult {
         return alignmentLineOffsetMeasure(
             alignmentLine,
-            if (before != TextUnit.Inherit) before.toDp() else Dp.Unspecified,
-            if (after != TextUnit.Inherit) after.toDp() else Dp.Unspecified,
+            if (!before.isUnspecified) before.toDp() else Dp.Unspecified,
+            if (!after.isUnspecified) after.toDp() else Dp.Unspecified,
             measurable,
             constraints
         )
@@ -279,10 +266,10 @@ private fun MeasureScope.alignmentLineOffsetMeasure(
     val axisMax = if (alignmentLine.horizontal) constraints.maxHeight else constraints.maxWidth
     // Compute padding required to satisfy the total before and after offsets.
     val paddingBefore =
-        ((if (before != Dp.Unspecified) before.toIntPx() else 0) - linePosition)
+        ((if (before != Dp.Unspecified) before.roundToPx() else 0) - linePosition)
             .coerceIn(0, axisMax - axis)
     val paddingAfter =
-        ((if (after != Dp.Unspecified) after.toIntPx() else 0) - axis + linePosition)
+        ((if (after != Dp.Unspecified) after.roundToPx() else 0) - axis + linePosition)
             .coerceIn(0, axisMax - axis - paddingBefore)
 
     val width = if (alignmentLine.horizontal) {

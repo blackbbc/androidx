@@ -1,156 +1,210 @@
 // Signature format: 4.0
 package androidx.wear.watchface.style {
 
-  public final class BooleanUserStyleCategory extends androidx.wear.watchface.style.UserStyleCategory {
-    ctor public BooleanUserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, boolean defaultValue, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers);
-    method public boolean getDefaultValue();
-  }
-
-  public static final class BooleanUserStyleCategory.BooleanOption extends androidx.wear.watchface.style.UserStyleCategory.Option {
-    ctor public BooleanUserStyleCategory.BooleanOption(boolean value);
-    method public boolean getValue();
-    property public final boolean value;
-  }
-
-  public final class ComplicationsUserStyleCategory extends androidx.wear.watchface.style.UserStyleCategory {
-    ctor public ComplicationsUserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationsOption> complicationConfig, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers);
-  }
-
-  public static final class ComplicationsUserStyleCategory.ComplicationOverlay {
-    method public android.graphics.RectF? getBounds();
-    method public int getComplicationId();
-    method public androidx.wear.complications.DefaultComplicationProviderPolicy? getDefaultProviderPolicy();
-    method public Integer? getDefaultProviderType();
-    method public int[]? getSupportedTypes();
-    method public Boolean? isEnabled();
-    property public final android.graphics.RectF? bounds;
-    property public final int complicationId;
-    property public final androidx.wear.complications.DefaultComplicationProviderPolicy? defaultProviderPolicy;
-    property public final Integer? defaultProviderType;
-    property public final Boolean? enabled;
-    property public final int[]? supportedTypes;
-  }
-
-  public static final class ComplicationsUserStyleCategory.ComplicationOverlay.Builder {
-    ctor public ComplicationsUserStyleCategory.ComplicationOverlay.Builder(int complicationId);
-    method public androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay build();
-    method public androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay.Builder setBounds(android.graphics.RectF bounds);
-    method public androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay.Builder setDefaultProviderPolicy(androidx.wear.complications.DefaultComplicationProviderPolicy? defaultComplicationProviderPolicy);
-    method public androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay.Builder setDefaultProviderType(int defaultComplicationProviderType);
-    method public androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay.Builder setEnabled(boolean enabled);
-    method public androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay.Builder setSupportedTypes(int[] supportedTypes);
-  }
-
-  public static final class ComplicationsUserStyleCategory.ComplicationsOption extends androidx.wear.watchface.style.UserStyleCategory.Option {
-    ctor public ComplicationsUserStyleCategory.ComplicationsOption(String id, CharSequence displayName, android.graphics.drawable.Icon? icon, java.util.Collection<androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay> complicationOverlays);
-    method public java.util.Collection<androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay> getComplicationOverlays();
-    method public CharSequence getDisplayName();
-    method public android.graphics.drawable.Icon? getIcon();
-    property public final java.util.Collection<androidx.wear.watchface.style.ComplicationsUserStyleCategory.ComplicationOverlay> complicationOverlays;
-    property public final CharSequence displayName;
-    property public final android.graphics.drawable.Icon? icon;
-  }
-
-  public final class DoubleRangeUserStyleCategory extends androidx.wear.watchface.style.UserStyleCategory {
-    ctor public DoubleRangeUserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, double minimumValue, double maximumValue, double defaultValue, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers);
-    method public double getDefaultValue();
-    method public double getMaximumValue();
-    method public double getMinimumValue();
-  }
-
-  public static final class DoubleRangeUserStyleCategory.DoubleRangeOption extends androidx.wear.watchface.style.UserStyleCategory.Option {
-    ctor public DoubleRangeUserStyleCategory.DoubleRangeOption(double value);
-    method public double getValue();
-    property public final double value;
-  }
-
-  public enum Layer {
-    enum_constant public static final androidx.wear.watchface.style.Layer BASE_LAYER;
-    enum_constant public static final androidx.wear.watchface.style.Layer COMPLICATIONS;
-    enum_constant public static final androidx.wear.watchface.style.Layer TOP_LAYER;
-  }
-
-  public class ListUserStyleCategory extends androidx.wear.watchface.style.UserStyleCategory {
-    ctor public ListUserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.ListUserStyleCategory.ListOption> options, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers, androidx.wear.watchface.style.ListUserStyleCategory.ListOption defaultOption);
-    ctor public ListUserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.ListUserStyleCategory.ListOption> options, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers);
-  }
-
-  public static final class ListUserStyleCategory.ListOption extends androidx.wear.watchface.style.UserStyleCategory.Option {
-    ctor public ListUserStyleCategory.ListOption(String id, CharSequence displayName, android.graphics.drawable.Icon? icon);
-    method public CharSequence getDisplayName();
-    method public android.graphics.drawable.Icon? getIcon();
-    property public final CharSequence displayName;
-    property public final android.graphics.drawable.Icon? icon;
-  }
-
-  public final class LongRangeUserStyleCategory extends androidx.wear.watchface.style.UserStyleCategory {
-    ctor public LongRangeUserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, long minimumValue, long maximumValue, long defaultValue, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers);
-    method public long getDefaultValue();
-    method public long getMaximumValue();
-    method public long getMinimumValue();
-  }
-
-  public static final class LongRangeUserStyleCategory.LongRangeOption extends androidx.wear.watchface.style.UserStyleCategory.Option {
-    ctor public LongRangeUserStyleCategory.LongRangeOption(long value);
-    method public long getValue();
-    property public final long value;
-  }
-
-  public final class UserStyle {
-    ctor public UserStyle(java.util.Map<androidx.wear.watchface.style.UserStyleCategory,? extends androidx.wear.watchface.style.UserStyleCategory.Option> selectedOptions);
-    method public java.util.Map<androidx.wear.watchface.style.UserStyleCategory,androidx.wear.watchface.style.UserStyleCategory.Option> getSelectedOptions();
-    property public final java.util.Map<androidx.wear.watchface.style.UserStyleCategory,androidx.wear.watchface.style.UserStyleCategory.Option> selectedOptions;
-  }
-
-  public abstract class UserStyleCategory {
-    ctor public UserStyleCategory(String id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<? extends androidx.wear.watchface.style.UserStyleCategory.Option> options, int defaultOptionIndex, java.util.Collection<? extends androidx.wear.watchface.style.Layer> affectsLayers);
-    method public final java.util.Collection<androidx.wear.watchface.style.Layer> getAffectsLayers();
-    method public final androidx.wear.watchface.style.UserStyleCategory.Option getDefaultOption();
-    method public final int getDefaultOptionIndex();
-    method public final CharSequence getDescription();
-    method public final CharSequence getDisplayName();
-    method public final android.graphics.drawable.Icon? getIcon();
-    method public final String getId();
-    method public androidx.wear.watchface.style.UserStyleCategory.Option getOptionForId(String optionId);
-    method public final java.util.List<androidx.wear.watchface.style.UserStyleCategory.Option> getOptions();
-    property public final java.util.Collection<androidx.wear.watchface.style.Layer> affectsLayers;
-    property public final int defaultOptionIndex;
-    property public final CharSequence description;
-    property public final CharSequence displayName;
-    property public final android.graphics.drawable.Icon? icon;
-    property public final String id;
-    property public final java.util.List<androidx.wear.watchface.style.UserStyleCategory.Option> options;
-  }
-
-  public abstract static class UserStyleCategory.Option {
-    ctor public UserStyleCategory.Option(String id);
-    method public final String getId();
-    property public final String id;
-    field public static final androidx.wear.watchface.style.UserStyleCategory.Option.Companion Companion;
-  }
-
-  public static final class UserStyleCategory.Option.Companion {
-  }
-
-  public final class UserStyleRepository {
-    ctor public UserStyleRepository(androidx.wear.watchface.style.UserStyleSchema schema);
-    method @UiThread public void addUserStyleListener(androidx.wear.watchface.style.UserStyleRepository.UserStyleListener userStyleListener);
+  public final class CurrentUserStyleRepository {
+    ctor public CurrentUserStyleRepository(androidx.wear.watchface.style.UserStyleSchema schema);
+    method @UiThread public void addUserStyleChangeListener(androidx.wear.watchface.style.CurrentUserStyleRepository.UserStyleChangeListener userStyleChangeListener);
     method public androidx.wear.watchface.style.UserStyleSchema getSchema();
     method @UiThread public androidx.wear.watchface.style.UserStyle getUserStyle();
-    method @UiThread public void removeUserStyleListener(androidx.wear.watchface.style.UserStyleRepository.UserStyleListener userStyleListener);
+    method @UiThread public void removeUserStyleChangeListener(androidx.wear.watchface.style.CurrentUserStyleRepository.UserStyleChangeListener userStyleChangeListener);
     method @UiThread public void setUserStyle(androidx.wear.watchface.style.UserStyle style);
     property public final androidx.wear.watchface.style.UserStyleSchema schema;
     property @UiThread public final androidx.wear.watchface.style.UserStyle userStyle;
   }
 
-  public static interface UserStyleRepository.UserStyleListener {
+  public static interface CurrentUserStyleRepository.UserStyleChangeListener {
     method @UiThread public void onUserStyleChanged(androidx.wear.watchface.style.UserStyle userStyle);
   }
 
+  public final class UserStyle {
+    ctor public UserStyle(java.util.Map<androidx.wear.watchface.style.UserStyleSetting,? extends androidx.wear.watchface.style.UserStyleSetting.Option> selectedOptions);
+    ctor public UserStyle(androidx.wear.watchface.style.UserStyle userStyle);
+    ctor public UserStyle(androidx.wear.watchface.style.UserStyleData userStyle, androidx.wear.watchface.style.UserStyleSchema styleSchema);
+    method public operator androidx.wear.watchface.style.UserStyleSetting.Option? get(androidx.wear.watchface.style.UserStyleSetting setting);
+    method public java.util.Map<androidx.wear.watchface.style.UserStyleSetting,androidx.wear.watchface.style.UserStyleSetting.Option> getSelectedOptions();
+    method public androidx.wear.watchface.style.UserStyleData toUserStyleData();
+    property public final java.util.Map<androidx.wear.watchface.style.UserStyleSetting,androidx.wear.watchface.style.UserStyleSetting.Option> selectedOptions;
+  }
+
+  public final class UserStyleData {
+    ctor public UserStyleData(java.util.Map<java.lang.String,byte[]> userStyleMap);
+    method public java.util.Map<java.lang.String,byte[]> getUserStyleMap();
+    property public final java.util.Map<java.lang.String,byte[]> userStyleMap;
+  }
+
   public final class UserStyleSchema {
-    ctor public UserStyleSchema(java.util.List<? extends androidx.wear.watchface.style.UserStyleCategory> userStyleCategories);
-    method public java.util.List<androidx.wear.watchface.style.UserStyleCategory> getUserStyleCategories();
-    property public final java.util.List<androidx.wear.watchface.style.UserStyleCategory> userStyleCategories;
+    ctor public UserStyleSchema(java.util.List<? extends androidx.wear.watchface.style.UserStyleSetting> userStyleSettings);
+    method public java.util.List<androidx.wear.watchface.style.UserStyleSetting> getUserStyleSettings();
+    property public final java.util.List<androidx.wear.watchface.style.UserStyleSetting> userStyleSettings;
+  }
+
+  public abstract sealed class UserStyleSetting {
+    method public final java.util.Collection<androidx.wear.watchface.style.WatchFaceLayer> getAffectedWatchFaceLayers();
+    method public final androidx.wear.watchface.style.UserStyleSetting.Option getDefaultOption();
+    method public final int getDefaultOptionIndex();
+    method public final CharSequence getDescription();
+    method public final CharSequence getDisplayName();
+    method public final android.graphics.drawable.Icon? getIcon();
+    method public final androidx.wear.watchface.style.UserStyleSetting.Id getId();
+    method public androidx.wear.watchface.style.UserStyleSetting.Option getOptionForId(byte[] optionId);
+    method public final java.util.List<androidx.wear.watchface.style.UserStyleSetting.Option> getOptions();
+    property public final java.util.Collection<androidx.wear.watchface.style.WatchFaceLayer> affectedWatchFaceLayers;
+    property public final androidx.wear.watchface.style.UserStyleSetting.Option defaultOption;
+    property public final int defaultOptionIndex;
+    property public final CharSequence description;
+    property public final CharSequence displayName;
+    property public final android.graphics.drawable.Icon? icon;
+    property public final androidx.wear.watchface.style.UserStyleSetting.Id id;
+    property public final java.util.List<androidx.wear.watchface.style.UserStyleSetting.Option> options;
+    field public static final androidx.wear.watchface.style.UserStyleSetting.Companion Companion;
+  }
+
+  public static final class UserStyleSetting.BooleanUserStyleSetting extends androidx.wear.watchface.style.UserStyleSetting {
+    ctor public UserStyleSetting.BooleanUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers, boolean defaultValue);
+    method public boolean getDefaultValue();
+  }
+
+  public static final class UserStyleSetting.BooleanUserStyleSetting.BooleanOption extends androidx.wear.watchface.style.UserStyleSetting.Option {
+    ctor public UserStyleSetting.BooleanUserStyleSetting.BooleanOption(boolean value);
+    method public boolean getValue();
+    property public final boolean value;
+  }
+
+  public static final class UserStyleSetting.Companion {
+  }
+
+  public static final class UserStyleSetting.ComplicationSlotsUserStyleSetting extends androidx.wear.watchface.style.UserStyleSetting {
+    ctor public UserStyleSetting.ComplicationSlotsUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotsOption> complicationConfig, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers, optional androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotsOption defaultOption);
+    ctor public UserStyleSetting.ComplicationSlotsUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotsOption> complicationConfig, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers);
+  }
+
+  public static final class UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay {
+    ctor public UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay(int complicationSlotId, optional Boolean? enabled, optional androidx.wear.complications.ComplicationSlotBounds? complicationSlotBounds, optional Integer? accessibilityTraversalIndex);
+    method public Integer? getAccessibilityTraversalIndex();
+    method public androidx.wear.complications.ComplicationSlotBounds? getComplicationSlotBounds();
+    method public int getComplicationSlotId();
+    method public Boolean? isEnabled();
+    property public final Integer? accessibilityTraversalIndex;
+    property public final androidx.wear.complications.ComplicationSlotBounds? complicationSlotBounds;
+    property public final int complicationSlotId;
+    property public final Boolean? enabled;
+  }
+
+  public static final class UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay.Builder {
+    ctor public UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay.Builder(int complicationSlotId);
+    method public androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay build();
+    method public androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay.Builder setAccessibilityTraversalIndex(int accessibilityTraversalIndex);
+    method public androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay.Builder setComplicationSlotBounds(androidx.wear.complications.ComplicationSlotBounds complicationSlotBounds);
+    method public androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay.Builder setEnabled(boolean enabled);
+  }
+
+  public static final class UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotsOption extends androidx.wear.watchface.style.UserStyleSetting.Option {
+    ctor public UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotsOption(androidx.wear.watchface.style.UserStyleSetting.Option.Id id, CharSequence displayName, android.graphics.drawable.Icon? icon, java.util.Collection<androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay> complicationSlotOverlays);
+    method public java.util.Collection<androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay> getComplicationSlotOverlays();
+    method public CharSequence getDisplayName();
+    method public android.graphics.drawable.Icon? getIcon();
+    property public final java.util.Collection<androidx.wear.watchface.style.UserStyleSetting.ComplicationSlotsUserStyleSetting.ComplicationSlotOverlay> complicationSlotOverlays;
+    property public final CharSequence displayName;
+    property public final android.graphics.drawable.Icon? icon;
+  }
+
+  public static final class UserStyleSetting.CustomValueUserStyleSetting extends androidx.wear.watchface.style.UserStyleSetting {
+    ctor public UserStyleSetting.CustomValueUserStyleSetting(java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers, byte[] defaultValue);
+  }
+
+  public static final class UserStyleSetting.CustomValueUserStyleSetting.CustomValueOption extends androidx.wear.watchface.style.UserStyleSetting.Option {
+    ctor public UserStyleSetting.CustomValueUserStyleSetting.CustomValueOption(byte[] customValue);
+    method public byte[] getCustomValue();
+    property public final byte[] customValue;
+  }
+
+  public static final class UserStyleSetting.DoubleRangeUserStyleSetting extends androidx.wear.watchface.style.UserStyleSetting {
+    ctor public UserStyleSetting.DoubleRangeUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, double minimumValue, double maximumValue, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers, double defaultValue);
+    method public double getDefaultValue();
+    method public double getMaximumValue();
+    method public double getMinimumValue();
+    property public final double defaultValue;
+    property public final double maximumValue;
+    property public final double minimumValue;
+  }
+
+  public static final class UserStyleSetting.DoubleRangeUserStyleSetting.DoubleRangeOption extends androidx.wear.watchface.style.UserStyleSetting.Option {
+    ctor public UserStyleSetting.DoubleRangeUserStyleSetting.DoubleRangeOption(double value);
+    method public double getValue();
+    property public final double value;
+  }
+
+  public static final class UserStyleSetting.Id {
+    ctor public UserStyleSetting.Id(String value);
+    method public String getValue();
+    property public final String value;
+    field public static final androidx.wear.watchface.style.UserStyleSetting.Id.Companion Companion;
+    field public static final int MAX_LENGTH = 40; // 0x28
+  }
+
+  public static final class UserStyleSetting.Id.Companion {
+  }
+
+  public static class UserStyleSetting.ListUserStyleSetting extends androidx.wear.watchface.style.UserStyleSetting {
+    ctor public UserStyleSetting.ListUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.UserStyleSetting.ListUserStyleSetting.ListOption> options, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers, optional androidx.wear.watchface.style.UserStyleSetting.ListUserStyleSetting.ListOption defaultOption);
+    ctor public UserStyleSetting.ListUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, java.util.List<androidx.wear.watchface.style.UserStyleSetting.ListUserStyleSetting.ListOption> options, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers);
+  }
+
+  public static final class UserStyleSetting.ListUserStyleSetting.ListOption extends androidx.wear.watchface.style.UserStyleSetting.Option {
+    ctor public UserStyleSetting.ListUserStyleSetting.ListOption(androidx.wear.watchface.style.UserStyleSetting.Option.Id id, CharSequence displayName, android.graphics.drawable.Icon? icon);
+    method public CharSequence getDisplayName();
+    method public android.graphics.drawable.Icon? getIcon();
+    property public final CharSequence displayName;
+    property public final android.graphics.drawable.Icon? icon;
+  }
+
+  public static final class UserStyleSetting.LongRangeUserStyleSetting extends androidx.wear.watchface.style.UserStyleSetting {
+    ctor public UserStyleSetting.LongRangeUserStyleSetting(androidx.wear.watchface.style.UserStyleSetting.Id id, CharSequence displayName, CharSequence description, android.graphics.drawable.Icon? icon, long minimumValue, long maximumValue, java.util.Collection<? extends androidx.wear.watchface.style.WatchFaceLayer> affectsWatchFaceLayers, long defaultValue);
+    method public long getDefaultValue();
+    method public long getMaximumValue();
+    method public long getMinimumValue();
+    property public final long defaultValue;
+    property public final long maximumValue;
+    property public final long minimumValue;
+  }
+
+  public static final class UserStyleSetting.LongRangeUserStyleSetting.LongRangeOption extends androidx.wear.watchface.style.UserStyleSetting.Option {
+    ctor public UserStyleSetting.LongRangeUserStyleSetting.LongRangeOption(long value);
+    method public long getValue();
+    property public final long value;
+  }
+
+  public abstract static class UserStyleSetting.Option {
+    ctor public UserStyleSetting.Option(androidx.wear.watchface.style.UserStyleSetting.Option.Id id);
+    method public final androidx.wear.watchface.style.UserStyleSetting.Option.Id getId();
+    property public final androidx.wear.watchface.style.UserStyleSetting.Option.Id id;
+    field public static final androidx.wear.watchface.style.UserStyleSetting.Option.Companion Companion;
+  }
+
+  public static final class UserStyleSetting.Option.Companion {
+  }
+
+  public static final class UserStyleSetting.Option.Id {
+    ctor public UserStyleSetting.Option.Id(byte[] value);
+    ctor public UserStyleSetting.Option.Id(String value);
+    method public byte[] getValue();
+    property public final byte[] value;
+    field public static final androidx.wear.watchface.style.UserStyleSetting.Option.Id.Companion Companion;
+    field public static final int MAX_LENGTH = 1024; // 0x400
+  }
+
+  public static final class UserStyleSetting.Option.Id.Companion {
+  }
+
+  public enum WatchFaceLayer {
+    enum_constant public static final androidx.wear.watchface.style.WatchFaceLayer BASE;
+    enum_constant public static final androidx.wear.watchface.style.WatchFaceLayer COMPLICATIONS;
+    enum_constant public static final androidx.wear.watchface.style.WatchFaceLayer COMPLICATIONS_OVERLAY;
+    field public static final java.util.Set<androidx.wear.watchface.style.WatchFaceLayer> ALL_WATCH_FACE_LAYERS;
+    field public static final androidx.wear.watchface.style.WatchFaceLayer.Companion Companion;
+  }
+
+  public static final class WatchFaceLayer.Companion {
   }
 
 }

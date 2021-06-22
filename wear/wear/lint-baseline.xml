@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="5" by="lint 4.2.0-alpha06" client="gradle" variant="debug" version="4.2.0-alpha06">
+<issues format="6" by="lint 7.1.0-alpha02" type="baseline" client="cli" name="Lint" variant="all" version="7.1.0-alpha02">
 
     <issue
         id="KotlinPropertyAccess"
@@ -24,7 +24,8 @@
         <location
             file="src/main/java/androidx/wear/widget/CircularProgressLayout.java"
             line="339"
-            column="17"/>
+            column="17"
+            message="Setter here"/>
     </issue>
 
     <issue
@@ -39,7 +40,8 @@
         <location
             file="src/main/java/androidx/wear/widget/drawer/PageIndicatorView.java"
             line="217"
-            column="17"/>
+            column="17"
+            message="Setter here"/>
     </issue>
 
     <issue
@@ -54,7 +56,8 @@
         <location
             file="src/main/java/androidx/wear/widget/drawer/PageIndicatorView.java"
             line="238"
-            column="17"/>
+            column="17"
+            message="Setter here"/>
     </issue>
 
     <issue
@@ -69,7 +72,8 @@
         <location
             file="src/main/java/androidx/wear/widget/drawer/PageIndicatorView.java"
             line="260"
-            column="17"/>
+            column="17"
+            message="Setter here"/>
     </issue>
 
     <issue
@@ -152,17 +156,6 @@
     <issue
         id="UnknownNullness"
         message="Unknown nullability; explicitly declare as `@Nullable` or `@NonNull` to improve Kotlin interoperability; see https://android.github.io/kotlin-guides/interop.html#nullability-annotations"
-        errorLine1="    public static &lt;T extends Activity> AmbientController attachAmbientSupport(T activity) {"
-        errorLine2="                                                                              ~">
-        <location
-            file="src/main/java/androidx/wear/ambient/AmbientMode.java"
-            line="250"
-            column="79"/>
-    </issue>
-
-    <issue
-        id="UnknownNullness"
-        message="Unknown nullability; explicitly declare as `@Nullable` or `@NonNull` to improve Kotlin interoperability; see https://android.github.io/kotlin-guides/interop.html#nullability-annotations"
         errorLine1="    public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args) {"
         errorLine2="                     ~~~~~~">
         <location
@@ -211,7 +204,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="100"
+            line="127"
             column="9"/>
     </issue>
 
@@ -222,7 +215,7 @@
         errorLine2="                                   ~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="116"
+            line="144"
             column="36"/>
     </issue>
 
@@ -233,7 +226,7 @@
         errorLine2="                         ~~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="183"
+            line="211"
             column="26"/>
     </issue>
 
@@ -244,7 +237,7 @@
         errorLine2="                         ~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="196"
+            line="224"
             column="26"/>
     </issue>
 
@@ -255,19 +248,8 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="252"
+            line="280"
             column="48"/>
-    </issue>
-
-    <issue
-        id="UnknownNullness"
-        message="Unknown nullability; explicitly declare as `@Nullable` or `@NonNull` to improve Kotlin interoperability; see https://android.github.io/kotlin-guides/interop.html#nullability-annotations"
-        errorLine1="    public static &lt;T extends FragmentActivity> AmbientController attach(T activity) {"
-        errorLine2="                                                                        ~">
-        <location
-            file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="252"
-            column="73"/>
     </issue>
 
     <issue
@@ -277,7 +259,7 @@
         errorLine2="                     ~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="268"
+            line="296"
             column="22"/>
     </issue>
 
@@ -288,7 +270,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="268"
+            line="296"
             column="37"/>
     </issue>
 
@@ -299,7 +281,7 @@
         errorLine2="                                                       ~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="268"
+            line="296"
             column="56"/>
     </issue>
 
@@ -310,7 +292,7 @@
         errorLine2="                                                                           ~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/ambient/AmbientModeSupport.java"
-            line="268"
+            line="296"
             column="76"/>
     </issue>
 
@@ -1168,7 +1150,7 @@
         errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="78"
+            line="54"
             column="36"/>
     </issue>
 
@@ -1179,7 +1161,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="86"
+            line="62"
             column="37"/>
     </issue>
 
@@ -1190,7 +1172,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="94"
+            line="69"
             column="33"/>
     </issue>
 
@@ -1201,7 +1183,7 @@
         errorLine2="                                   ~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="118"
+            line="81"
             column="36"/>
     </issue>
 
@@ -1212,7 +1194,7 @@
         errorLine2="                                   ~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="136"
+            line="99"
             column="36"/>
     </issue>
 
@@ -1223,7 +1205,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="136"
+            line="99"
             column="53"/>
     </issue>
 
@@ -1234,7 +1216,7 @@
         errorLine2="                                   ~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="151"
+            line="114"
             column="36"/>
     </issue>
 
@@ -1245,7 +1227,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="151"
+            line="114"
             column="53"/>
     </issue>
 
@@ -1256,7 +1238,7 @@
         errorLine2="                                   ~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="169"
+            line="130"
             column="36"/>
     </issue>
 
@@ -1267,7 +1249,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="169"
+            line="130"
             column="53"/>
     </issue>
 
@@ -1278,7 +1260,7 @@
         errorLine2="                            ~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="184"
+            line="136"
             column="29"/>
     </issue>
 
@@ -1289,7 +1271,7 @@
         errorLine2="                               ~~~~~~~~">
         <location
             file="src/main/java/androidx/wear/widget/SwipeDismissFrameLayout.java"
-            line="192"
+            line="145"
             column="32"/>
     </issue>
 

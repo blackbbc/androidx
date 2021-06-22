@@ -182,6 +182,7 @@ public abstract class SelectionTracker<K> {
     public abstract boolean deselect(@NonNull K key);
 
     /** @hide */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     protected abstract @NonNull AdapterDataObserver getAdapterDataObserver();
 
@@ -194,6 +195,7 @@ public abstract class SelectionTracker<K> {
      *                 work with the established anchor point to define selection ranges.
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     public abstract void startRange(int position);
 
@@ -210,6 +212,7 @@ public abstract class SelectionTracker<K> {
      *                               must have been started by a call to {@link #startRange(int)}.
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     public abstract void extendRange(int position);
 
@@ -220,6 +223,7 @@ public abstract class SelectionTracker<K> {
      *
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     public abstract void endRange();
 
@@ -227,6 +231,7 @@ public abstract class SelectionTracker<K> {
      * @return Whether or not there is a current range selection active.
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     public abstract boolean isRangeActive();
 
@@ -240,6 +245,7 @@ public abstract class SelectionTracker<K> {
      * @param position the anchor position. Must already be selected.
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     public abstract void anchorRange(int position);
 
@@ -249,6 +255,7 @@ public abstract class SelectionTracker<K> {
      * @param position the end point.
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     protected abstract void extendProvisionalRange(int position);
 
@@ -257,6 +264,7 @@ public abstract class SelectionTracker<K> {
      *
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     protected abstract void setProvisionalSelection(@NonNull Set<K> newSelection);
 
@@ -265,6 +273,7 @@ public abstract class SelectionTracker<K> {
      *
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     protected abstract void clearProvisionalSelection();
 
@@ -274,6 +283,7 @@ public abstract class SelectionTracker<K> {
      *
      * @hide
      */
+    @SuppressWarnings("HiddenAbstractMethod")
     @RestrictTo(LIBRARY)
     protected abstract void mergeProvisionalSelection();
 
@@ -384,13 +394,14 @@ public abstract class SelectionTracker<K> {
     }
 
     /**
-     * Builder is the primary mechanism for create a {@link SelectionTracker} that
+     * Builder is the primary mechanism for creating a {@link SelectionTracker} that
      * can be used with your RecyclerView. Once installed, users will be able to create and
-     * manipulate selection using a variety of intuitive techniques like tap, gesture,
-     * and mouse lasso.
+     * manipulate a selection of items in a RecyclerView instance using a variety of
+     * intuitive techniques like tap, gesture, and mouse-based band selection (aka 'lasso').
      *
      * <p>
      * Building a bare-bones instance:
+     *
      * <pre>SelectionTracker<Uri> tracker = new SelectionTracker.Builder<>(
      *        "my-uri-selection",
      *        recyclerView,
@@ -404,13 +415,12 @@ public abstract class SelectionTracker<K> {
      * <b>Restricting which items can be selected and limiting selection size</b>
      *
      * <p>
-     * {@link SelectionPredicate} provides a mechanism to restrict which Items can be selected,
-     * to limit the number of items that can be selected, as well as allowing the selection
-     * code to be placed into "single select" mode, which as the name indicates, constrains
-     * the selection size to a single item.
-     *
-     * <p>Configuring the tracker for single single selection support can be done
-     * by supplying {@link SelectionPredicates#createSelectSingleAnything()}.
+     * {@link SelectionPredicate} and
+     * {@link SelectionTracker.Builder#withSelectionPredicate(SelectionPredicate)}
+     * together provide a mechanism for restricting which items can be selected and
+     * limiting selection size. Use {@link SelectionPredicates#createSelectSingleAnything()}
+     * for single-selection, or write your own {@link SelectionPredicate} if other
+     * constraints are required.
      *
      * SelectionTracker<String> tracker = new SelectionTracker.Builder<>(
      *               "my-string-selection",
@@ -428,17 +438,17 @@ public abstract class SelectionTracker<K> {
      * <p>
      * Support for storage/persistence of selection must be configured and invoked manually
      * owing to its reliance on Activity lifecycle events.
-     * Failure to include support for selection storage would result in the active selection
-     * being lost when the Activity receives a configuration change (e.g. rotation)
-     * or when the application process is destroyed by the OS to reclaim resources.
-     * For this reason {@link StorageStrategy} is a required argument to obtain a {@link Builder}
+     * Failure to include support for selection storage will result in selection
+     * being lost when the Activity receives a configuration change (e.g. rotation),
+     * or when the application is paused or stopped. For this reason
+     * {@link StorageStrategy} is a required argument to obtain a {@link Builder}
      * instance.
      *
      * <p>
      * <b>Key Type</b>
      *
      * <p>
-     * Developers must decide on the key type used to identify selected items.
+     * A developer must decide on the key type used to identify selected items.
      * Support is provided for three types: {@link Parcelable}, {@link String}, and {@link Long}.
      *
      * <p>
@@ -459,6 +469,7 @@ public abstract class SelectionTracker<K> {
      *
      * See {@link StableIdKeyProvider} for important details and limitations (<i>and a suggestion
      * that you might just want to write your own {@link ItemKeyProvider}. It's easy!</i>)
+     * See the "Gotchas" selection below for details on selection size limits.
      *
      * <p>
      * Usage:
@@ -467,8 +478,6 @@ public abstract class SelectionTracker<K> {
      * private SelectionTracker<Uri> mTracker;
      *
      * public void onCreate(Bundle savedInstanceState) {
-     * // See above for details on constructing a SelectionTracker instance.
-     *
      * if (savedInstanceState != null) {
      * mTracker.onRestoreInstanceState(savedInstanceState);
      * }
@@ -486,6 +495,29 @@ public abstract class SelectionTracker<K> {
      *            {@link StorageStrategy#createStringStorage()},
      *            {@link StorageStrategy#createParcelableStorage(Class)},
      *            {@link StorageStrategy#createLongStorage()}
+     *
+     * <p>
+     * <b>Gotchas</b>
+     *
+     * <p>TransactionTooLargeException:
+     *
+     * <p>Many factors affect the maximum number of items that can be persisted when the application
+     * is paused or stopped. Unfortunately that number is not deterministic as it depends on the
+     * size of the key type used for selection, the number of selected items, and external demand
+     * on system resources. For that reason it is best to use the smallest viable key type,
+     * and to enforce a limit on the number of items that can be selected.
+     *
+     * <p>Furthermore the inability to persist a selection during a lifecycle event
+     * will result in a android.os.{@link android.os.TransactionTooLargeException}.
+     * See http://issuetracker.google.com/168706011 for details.
+     *
+     * <p>ItemTouchHelper
+     *
+     * <p>When using {@link SelectionTracker} along side an
+     * {@link androidx.recyclerview.widget.ItemTouchHelper} with the same RecyclerView instance
+     * the SelectionTracker instance must be created and installed before the ItemTouchHelper.
+     * Failure to do so will result in unintended selections during item drag operations,
+     * and possibly other situations.
      */
     public static final class Builder<K> {
 

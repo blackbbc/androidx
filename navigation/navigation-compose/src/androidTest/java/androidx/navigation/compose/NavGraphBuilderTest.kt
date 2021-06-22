@@ -17,15 +17,18 @@
 package androidx.navigation.compose
 
 import android.net.Uri
-import androidx.compose.ui.platform.ContextAmbient
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.net.toUri
+import androidx.navigation.contains
 import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.navDeepLink
+import androidx.navigation.navigation
 import androidx.navigation.testing.TestNavHostController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.Rule
 import org.junit.Test
@@ -44,7 +47,7 @@ class NavGraphBuilderTest {
         val key = "key"
         val arg = "myarg"
         composeTestRule.setContent {
-            navController = TestNavHostController(ContextAmbient.current)
+            navController = TestNavHostController(LocalContext.current)
             navController.navigatorProvider.addNavigator(ComposeNavigator())
 
             NavHost(navController, startDestination = firstRoute) {
@@ -66,7 +69,7 @@ class NavGraphBuilderTest {
         val key = "key"
         val defaultArg = "default"
         composeTestRule.setContent {
-            navController = TestNavHostController(ContextAmbient.current)
+            navController = TestNavHostController(LocalContext.current)
             navController.navigatorProvider.addNavigator(ComposeNavigator())
 
             NavHost(navController, startDestination = firstRoute) {
@@ -91,7 +94,7 @@ class NavGraphBuilderTest {
         val uriString = "https://www.example.com"
         val deeplink = NavDeepLinkRequest.Builder.fromUri(Uri.parse(uriString)).build()
         composeTestRule.setContent {
-            navController = TestNavHostController(ContextAmbient.current)
+            navController = TestNavHostController(LocalContext.current)
             navController.navigatorProvider.addNavigator(ComposeNavigator())
 
             NavHost(navController, startDestination = firstRoute) {
@@ -109,7 +112,52 @@ class NavGraphBuilderTest {
                 .isTrue()
         }
     }
+
+    @Test
+    fun testNavigationNestedStart() {
+        lateinit var navController: TestNavHostController
+        composeTestRule.setContent {
+            navController = TestNavHostController(LocalContext.current)
+            navController.navigatorProvider.addNavigator(ComposeNavigator())
+
+            NavHost(navController, startDestination = firstRoute) {
+                navigation(startDestination = secondRoute, route = firstRoute) {
+                    composable(secondRoute) { }
+                }
+            }
+        }
+
+        composeTestRule.runOnUiThread {
+            assertWithMessage("Destination should be added to the graph")
+                .that(firstRoute in navController.graph)
+                .isTrue()
+        }
+    }
+
+    @Test
+    fun testNavigationNestedInGraph() {
+        lateinit var navController: TestNavHostController
+        composeTestRule.setContent {
+            navController = TestNavHostController(LocalContext.current)
+            navController.navigatorProvider.addNavigator(ComposeNavigator())
+
+            NavHost(navController, startDestination = firstRoute) {
+                composable(firstRoute) { }
+                navigation(startDestination = thirdRoute, route = secondRoute) {
+                    composable(thirdRoute) { }
+                }
+            }
+        }
+
+        composeTestRule.runOnUiThread {
+            navController.navigate(secondRoute)
+            assertWithMessage("Destination should be added to the graph")
+                .that(secondRoute in navController.graph)
+                .isTrue()
+        }
+    }
 }
 
 private const val firstRoute = "first"
 private const val secondRoute = "second"
+private const val thirdRoute = "third"

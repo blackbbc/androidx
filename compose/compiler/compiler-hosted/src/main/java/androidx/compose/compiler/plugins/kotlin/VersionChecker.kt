@@ -20,34 +20,54 @@ import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstKind
+import org.jetbrains.kotlin.platform.jvm.isJvm
 
 class VersionChecker(val context: IrPluginContext) {
 
-    /**
-     * A table of version ints to version strings. This should be updated every time
-     * ComposeVersion.kt is updated.
-     */
-    private val versionTable = mapOf(
-        1600 to "0.1.0-dev16",
-        1700 to "1.0.0-alpha06",
-        1800 to "1.0.0-alpha07"
-    )
+    companion object {
+        /**
+         * A table of version ints to version strings. This should be updated every time
+         * ComposeVersion.kt is updated.
+         */
+        private val versionTable = mapOf(
+            1600 to "0.1.0-dev16",
+            1700 to "1.0.0-alpha06",
+            1800 to "1.0.0-alpha07",
+            1900 to "1.0.0-alpha08",
+            2000 to "1.0.0-alpha09",
+            2100 to "1.0.0-alpha10",
+            2200 to "1.0.0-alpha11",
+            2300 to "1.0.0-alpha12",
+            2400 to "1.0.0-alpha13",
+            2500 to "1.0.0-beta04",
+            2600 to "1.0.0-beta05",
+            2700 to "1.0.0-beta06",
+            2800 to "1.0.0-beta07",
+            2900 to "1.0.0-beta08",
+            3000 to "1.0.0-beta09",
+            3100 to "1.0.0-rc01",
+            4000 to "1.1.0-alpha01",
+        )
 
-    /**
-     * The minimum version int that this compiler is guaranteed to be compatible with. Typically
-     * this will match the version int that is in ComposeVersion.kt in the runtime.
-     */
-    private val minimumRuntimeVersionInt: Int = 1800
+        /**
+         * The minimum version int that this compiler is guaranteed to be compatible with. Typically
+         * this will match the version int that is in ComposeVersion.kt in the runtime.
+         */
+        private val minimumRuntimeVersionInt: Int = 4000
 
-    /**
-     * The maven version string of this compiler. This string should be updated before/after every
-     * release.
-     */
-    private val compilerVersion: String = "1.0.0-alpha07"
-    private val minimumRuntimeVersion: String
-        get() = versionTable[minimumRuntimeVersionInt] ?: "unknown"
+        /**
+         * The maven version string of this compiler. This string should be updated before/after every
+         * release.
+         */
+        val compilerVersion: String = "1.1.0-alpha01"
+        private val minimumRuntimeVersion: String
+            get() = versionTable[minimumRuntimeVersionInt] ?: "unknown"
+    }
 
     fun check() {
+        // version checker accesses bodies of the functions that are not deserialized in KLIB
+        if (!context.platform.isJvm()) return
+
         val versionClass = context.referenceClass(ComposeFqNames.ComposeVersion)
         if (versionClass == null) {
             // If the version class isn't present, it likely means that compose runtime isn't on the

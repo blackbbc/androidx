@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+// @exportToFramework:skipFile()
 package androidx.appsearch.localstorage;
 
 import androidx.annotation.NonNull;
@@ -45,13 +45,14 @@ class GlobalSearchSessionImpl implements GlobalSearchSession {
 
     @NonNull
     @Override
-    public SearchResults globalQuery(
+    public SearchResults query(
             @NonNull String queryExpression, @NonNull SearchSpec searchSpec) {
         Preconditions.checkNotNull(queryExpression);
         Preconditions.checkNotNull(searchSpec);
         return new SearchResultsImpl(
                 mAppSearchImpl,
                 mExecutorService,
+                /*packageName=*/ null,
                 /*databaseName=*/ null,
                 queryExpression,
                 searchSpec);

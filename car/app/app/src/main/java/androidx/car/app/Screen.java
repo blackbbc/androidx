@@ -17,12 +17,18 @@
 package androidx.car.app;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
+import static androidx.car.app.utils.LogTags.TAG;
 
 import static java.util.Objects.requireNonNull;
+
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
+import androidx.car.app.model.Template;
+import androidx.car.app.model.TemplateInfo;
+import androidx.car.app.model.TemplateWrapper;
 import androidx.car.app.utils.ThreadUtils;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.Lifecycle.Event;
@@ -30,17 +36,11 @@ import androidx.lifecycle.Lifecycle.State;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LifecycleRegistry;
 
-// TODO(rampara): Uncomment on addition of model module
-//import androidx.car.app.model.Template;
-//import androidx.car.app.model.TemplateInfo;
-//import androidx.car.app.model.TemplateWrapper;
-
-// TODO(rampara): Replace code tags with links on addition of model module.
 /**
- * A Screen has a {@link Lifecycle} and provides the mechanism for the app to send {@code Template}s
+ * A Screen has a {@link Lifecycle} and provides the mechanism for the app to send {@link Template}s
  * to display when the Screen is visible. Screen instances can also be pushed and popped to and from
- * a Screen stack, which ensures they adhere to the template flow restrictions (see {@code
- * #getTemplate} for more details on template flow).
+ * a Screen stack, which ensures they adhere to the template flow restrictions (see {@link
+ * #onGetTemplate} for more details on template flow).
  *
  * <p>The Screen class can be used to manage individual units of business logic within a car app. A
  * Screen is closely tied to the {@link CarAppService} it is a part of, and cannot be used without
@@ -50,21 +50,16 @@ import androidx.lifecycle.LifecycleRegistry;
  *
  * <p>Screen objects are not thread safe and all calls should be made from the same thread.
  */
+// This lint warning is triggered because this has a finish() API. Suppress because we are not
+// actually cleaning any held resources in that method.
 @SuppressWarnings("NotCloseable")
-// TODO(rampara): Implement AutoClosable and CloseGuard.
 public abstract class Screen implements LifecycleOwner {
-    /**
-     * A marker to use with {@link ScreenManager#popTo} when it should pop all the way to the root
-     * screen in the stack.
-     */
-    public static final String ROOT = "ROOT";
-
     private final CarContext mCarContext;
 
     @SuppressWarnings({"assignment.type.incompatible", "argument.type.incompatible"})
     private final LifecycleRegistry mLifecycleRegistry = new LifecycleRegistry(this);
 
-    private OnScreenResultCallback mOnScreenResultCallback = (obj) -> {
+    private OnScreenResultListener mOnScreenResultListener = (obj) -> {
     };
 
     @Nullable
@@ -77,41 +72,34 @@ public abstract class Screen implements LifecycleOwner {
      * A reference to the last template returned by this screen, or {@code null} if one has not been
      * returned yet.
      */
-    // TODO(rampara): Uncomment on addition of model module
-//    @Nullable
-//    private TemplateWrapper mTemplateWrapper;
+    @Nullable
+    private TemplateWrapper mTemplateWrapper;
 
-    // TODO(rampara): Uncomment on addition of model module
     /**
      * Whether to set the ID of the last template in the next template to be returned.
      *
-//     * @see #getTemplate
+     * @see #onGetTemplate
      */
-    @SuppressWarnings("UnusedVariable")
-    // TODO(rampara): Remove suppress annotation on commit of model modules.
     private boolean mUseLastTemplateId;
 
     protected Screen(@NonNull CarContext carContext) {
-        this.mCarContext = requireNonNull(carContext);
+        mCarContext = requireNonNull(carContext);
     }
 
-    // TODO(rampara): Replace code tags with links on addition of model module.
     /**
-     * Requests the current template to be invalidated, which eventually triggers a call to {@code
-     * #getTemplate} to get the new template to display.
+     * Requests the current template to be invalidated, which eventually triggers a call to {@link
+     * #onGetTemplate} to get the new template to display.
      *
      * <p>If the current {@link State} of this screen is not at least {@link State#STARTED}, then a
      * call to this method will have no effect.
      *
      * <p>After the call to invalidate is made, subsequent calls have no effect until the new
-     * template
-     * is returned by {@code #getTemplate}.
+     * template is returned by {@link #onGetTemplate}.
      *
-     * <p>To avoid race conditions with calls to {@code #getTemplate} you should call this method
-     * with
-     * the main thread.
+     * <p>To avoid race conditions with calls to {@link #onGetTemplate} you should call this method
+     * with the main thread.
      *
-     * @throws HostException if the remote call fails.
+     * @throws HostException if the remote call fails
      */
     public final void invalidate() {
         if (getLifecycle().getCurrentState().isAtLeast(State.STARTED)) {
@@ -132,7 +120,7 @@ public abstract class Screen implements LifecycleOwner {
     }
 
     /**
-     * Sets the {@code result} that will be sent to the {@link OnScreenResultCallback} that was
+     * Sets the {@code result} that will be sent to the {@link OnScreenResultListener} that was
      * given when pushing this screen onto the stack using {@link ScreenManager#pushForResult}.
      *
      * <p>Only the final {@code result} set will be sent.
@@ -140,11 +128,11 @@ public abstract class Screen implements LifecycleOwner {
      * <p>The {@code result} will be propagated when this screen is being destroyed. This can be due
      * to being removed from the stack or explicitly calling {@link #finish}.
      *
-     * @param result the value to send to the {@link OnScreenResultCallback} that was given when
+     * @param result the value to send to the {@link OnScreenResultListener} that was given when
      *               pushing this screen onto the stack using {@link ScreenManager#pushForResult}
      */
     public void setResult(@Nullable Object result) {
-        this.mResult = result;
+        mResult = result;
     }
 
     /**
@@ -156,7 +144,7 @@ public abstract class Screen implements LifecycleOwner {
      * ScreenManager#popTo}.
      */
     public void setMarker(@Nullable String marker) {
-        this.mMarker = marker;
+        mMarker = marker;
     }
 
     /**
@@ -170,7 +158,6 @@ public abstract class Screen implements LifecycleOwner {
         return mMarker;
     }
 
-    // TODO(rampara): Replace code tags with links on addition of model module.
     /**
      * Returns this screen's lifecycle.
      *
@@ -191,7 +178,7 @@ public abstract class Screen implements LifecycleOwner {
      *   <dt>{@link Event#ON_CREATE}
      *   <dd>The screen is in the process of being pushed to the screen stack, it is valid, but
      *       contents from it are not yet visible in the car screen. You should get a callback to
-     *       {@code #getTemplate} at a point after this call.
+     *       {@link #onGetTemplate} at a point after this call.
      *   <dt>{@link Event#ON_START}
      *   <dd>The template returned from this screen is visible in the car screen.
      *   <dt>{@link Event#ON_RESUME}
@@ -257,12 +244,13 @@ public abstract class Screen implements LifecycleOwner {
      *   <li>{@link androidx.car.app.model.MessageTemplate}
      * </ul>
      *
-     * If the 5 template quota is exhausted and the app attempts to send a new template, the host
-     * will display an error message to the user. Note that this limit applies to the number of
-     * templates, and not the number of screen instances in the stack. For example, if while in
-     * screen A an app sends 2 templates, and then pushes screen B, it can now send 3 more
-     * templates. Alternatively, if each screen is structured to send a single template, then the
-     * app can push 5 {@link Screen} instances onto the {@link ScreenManager} stack.
+     * <p><b>If the 5 template quota is exhausted and the app attempts to send a new template, the
+     * host will display an error message to the user before closing the app.</b> Note that this
+     * limit applies to the number of templates, and not the number of screen instances in the
+     * stack. For example, if while in screen A an app sends 2 templates, and then pushes screen
+     * B, it can now send 3 more templates. Alternatively, if each screen is structured to send a
+     * single template, then the app can push 5 {@link Screen} instances onto the
+     * {@link ScreenManager} stack.
      *
      * <p>There are special cases to these restrictions: template refreshes, back and reset
      * operations.
@@ -297,7 +285,7 @@ public abstract class Screen implements LifecycleOwner {
      * Certain {@link Template} classes have special semantics that signify the end of a task. For
      * example, the {@link androidx.car.app.navigation.model.NavigationTemplate} is a template
      * that is expected to stay on the screen and be refreshed with new turn-by-turn instructions
-     * for the user’s consumption. Upon reaching one of these templates, the host will reset the
+     * for the user's consumption. Upon reaching one of these templates, the host will reset the
      * template quota, treating that template as if it is the first step of a new task, thus
      * allowing the app to begin a new task. See the documentation of individual {@link Template}
      * classes to see which ones trigger a reset on the host.
@@ -309,14 +297,13 @@ public abstract class Screen implements LifecycleOwner {
      *
      * <p>See {@link androidx.car.app.notification.CarAppExtender} for details on notifications.
      */
-    // TODO(rampara): Uncomment on addition of model module
-//    @NonNull
-//    public abstract Template getTemplate();
-//
-//    /** Sets a {@link OnScreenResultCallback} for this {@link Screen}. */
-//    void setOnResultCallback(OnScreenResultCallback onScreenResultCallback) {
-//        this.mOnScreenResultCallback = onScreenResultCallback;
-//    }
+    @NonNull
+    public abstract Template onGetTemplate();
+
+    /** Sets a {@link OnScreenResultListener} for this {@link Screen}. */
+    void setOnScreenResultListener(OnScreenResultListener onScreenResultListener) {
+        mOnScreenResultListener = onScreenResultListener;
+    }
 
     /**
      * Dispatches lifecycle event for {@code event} on the main thread.
@@ -328,8 +315,14 @@ public abstract class Screen implements LifecycleOwner {
     void dispatchLifecycleEvent(Event event) {
         ThreadUtils.runOnMain(
                 () -> {
+                    State currentState = mLifecycleRegistry.getCurrentState();
+                    // Avoid handling further events if the screen is already marked as destroyed.
+                    if (!currentState.isAtLeast(State.INITIALIZED)) {
+                        return;
+                    }
+
                     if (event == Event.ON_DESTROY) {
-                        mOnScreenResultCallback.onScreenResult(mResult);
+                        mOnScreenResultListener.onScreenResult(mResult);
                     }
 
                     mLifecycleRegistry.handleLifecycleEvent(event);
@@ -337,12 +330,11 @@ public abstract class Screen implements LifecycleOwner {
     }
 
     /**
-     * Calls {@link #getTemplate} to get the next {@link Template} for the screen and returns it
+     * Calls {@link #onGetTemplate} to get the next {@link Template} for the screen and returns it
      * wrapped in a {@link TemplateWrapper}.
      *
      * <p>The {@link TemplateWrapper} attaches a unique ID to the wrapped template, which is used
-     * for
-     * implementing flow restrictions. The host keeps track of these IDs to detect push, pop, or
+     * for implementing flow restrictions. The host keeps track of these IDs to detect push, pop, or
      * refresh operations and handle the different cases accordingly. For example, when more than
      * a max limit of templates are pushed, the host may return an error.
      *
@@ -350,61 +342,62 @@ public abstract class Screen implements LifecycleOwner {
      * that is stamped with the same ID as the last template returned by this screen. This is
      * used to identify back (stack pop) operations.
      */
-    // TODO(rampara): Uncomment on addition of model module
-//    @NonNull
-//    TemplateWrapper getTemplateWrapper() {
-//        Template template = getTemplate();
-//
-//        TemplateWrapper wrapper;
-//        if (mUseLastTemplateId) {
-//            wrapper =
-//                    TemplateWrapper.wrap(
-//                            template, getLastTemplateInfo(
-//                                    requireNonNull(mTemplateWrapper)).getTemplateId());
-//        } else {
-//            wrapper = TemplateWrapper.wrap(template);
-//        }
-//        mUseLastTemplateId = false;
-//
-//        mTemplateWrapper = wrapper;
-//
-//        Log.d(TAG, "Returning " + template + " from screen " + this);
-//        return wrapper;
-//    }
+    @NonNull
+    TemplateWrapper getTemplateWrapper() {
+        Template template = onGetTemplate();
+
+        TemplateWrapper wrapper;
+        if (mUseLastTemplateId) {
+            wrapper =
+                    TemplateWrapper.wrap(
+                            template, getLastTemplateInfo(
+                                    requireNonNull(mTemplateWrapper)).getTemplateId());
+        } else {
+            wrapper = TemplateWrapper.wrap(template);
+        }
+        mUseLastTemplateId = false;
+
+        mTemplateWrapper = wrapper;
+
+        if (Log.isLoggable(TAG, Log.DEBUG)) {
+            Log.d(TAG, "Returning " + template + " from screen " + this);
+        }
+        return wrapper;
+    }
 
     /**
      * Returns the information for the template that was last returned by this screen.
      *
      * <p>If no templates have been returned from this screen yet, this will call
-     * {@link #getTemplate} to retrieve the {@link Template} and generate an info for it. This is
-     * used in the case where multiple screens are added before a {@link #getTemplate} method is
+     * {@link #onGetTemplate} to retrieve the {@link Template} and generate an info for it. This is
+     * used in the case where multiple screens are added before a {@link #onGetTemplate} method is
      * dispatched to the top screen, allowing to notify the host of the current stack of template
      * ids known to the client.
      */
-    // TODO(rampara): Uncomment on addition of model module
-//    @NonNull
-//    TemplateInfo getLastTemplateInfo() {
-//        if (mTemplateWrapper == null) {
-//            mTemplateWrapper = TemplateWrapper.wrap(getTemplate());
-//        }
-//        return new TemplateInfo(mTemplateWrapper.getTemplate(), mTemplateWrapper.getId());
-//    }
-//
-//    @NonNull
-//    private static TemplateInfo getLastTemplateInfo(TemplateWrapper lastTemplateWrapper) {
-//        return new TemplateInfo(lastTemplateWrapper.getTemplate(), lastTemplateWrapper.getId());
-//    }
+    @NonNull
+    TemplateInfo getLastTemplateInfo() {
+        if (mTemplateWrapper == null) {
+            mTemplateWrapper = TemplateWrapper.wrap(onGetTemplate());
+        }
+        return new TemplateInfo(mTemplateWrapper.getTemplate().getClass(),
+                mTemplateWrapper.getId());
+    }
 
-    // TODO(rampara): Replace code tags with links on addition of model module.
+    @NonNull
+    private static TemplateInfo getLastTemplateInfo(TemplateWrapper lastTemplateWrapper) {
+        return new TemplateInfo(lastTemplateWrapper.getTemplate().getClass(),
+                lastTemplateWrapper.getId());
+    }
+
     /**
-     * Denotes whether the next {@code Template} retrieved via {@code #getTemplate} should reuse the
-     * ID of the last {@code Template}.
+     * Denotes whether the next {@link Template} retrieved via {@link #onGetTemplate} should reuse
+     * the ID of the last {@link Template}.
      *
      * <p>When this is set to {@code true}, the host will considered the next template sent to be a
      * back operation, and will attempt to find the previous template that shares the same ID and
      * reset the task step to that point in time.
      */
     void setUseLastTemplateId(boolean useLastTemplateId) {
-        this.mUseLastTemplateId = useLastTemplateId;
+        mUseLastTemplateId = useLastTemplateId;
     }
 }

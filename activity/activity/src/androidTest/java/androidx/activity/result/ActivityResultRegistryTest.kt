@@ -310,6 +310,41 @@ class ActivityResultRegistryTest {
     }
 
     @Test
+    fun testUnregisterAfterSavedState() {
+        val lifecycleOwner = TestLifecycleOwner(Lifecycle.State.INITIALIZED)
+        var resultReturned = false
+        val activityResult = registry.register("key", lifecycleOwner, StartActivityForResult()) { }
+
+        activityResult.launch(null)
+
+        val savedState = Bundle()
+        registry.onSaveInstanceState(savedState)
+
+        registry.unregister("key")
+
+        val restoredRegistry = object : ActivityResultRegistry() {
+            override fun <I : Any?, O : Any?> onLaunch(
+                requestCode: Int,
+                contract: ActivityResultContract<I, O>,
+                input: I,
+                options: ActivityOptionsCompat?
+            ) {
+                dispatchResult(requestCode, RESULT_OK, Intent())
+            }
+        }
+
+        restoredRegistry.onRestoreInstanceState(savedState)
+
+        restoredRegistry.register("key", lifecycleOwner, StartActivityForResult()) {
+            resultReturned = true
+        }
+
+        lifecycleOwner.currentState = Lifecycle.State.STARTED
+
+        assertThat(resultReturned).isTrue()
+    }
+
+    @Test
     fun testOnRestoreInstanceState() {
         registry.register("key", StartActivityForResult()) {}
 
@@ -322,5 +357,63 @@ class ActivityResultRegistryTest {
     @Test
     fun testOnRestoreInstanceStateNoKeys() {
         registry.onRestoreInstanceState(Bundle())
+    }
+
+    @Test
+    fun testKeepKeyAfterLaunch() {
+        var code = 0
+        val noDispatchRegistry = object : ActivityResultRegistry() {
+            override fun <I : Any?, O : Any?> onLaunch(
+                requestCode: Int,
+                contract: ActivityResultContract<I, O>,
+                input: I,
+                options: ActivityOptionsCompat?
+            ) {
+                code = requestCode
+            }
+        }
+
+        val activityResult = noDispatchRegistry.register("key", StartActivityForResult()) { }
+
+        activityResult.launch(null)
+        activityResult.unregister()
+
+        var callbackExecuted = false
+        noDispatchRegistry.register("key", StartActivityForResult()) {
+            callbackExecuted = true
+        }
+
+        noDispatchRegistry.dispatchResult(code, RESULT_OK, Intent())
+
+        assertThat(callbackExecuted).isTrue()
+    }
+
+    @Test
+    fun testKeepKeyAfterLaunchDispatchResult() {
+        var code = 0
+        val noDispatchRegistry = object : ActivityResultRegistry() {
+            override fun <I : Any?, O : Any?> onLaunch(
+                requestCode: Int,
+                contract: ActivityResultContract<I, O>,
+                input: I,
+                options: ActivityOptionsCompat?
+            ) {
+                code = requestCode
+            }
+        }
+
+        val activityResult = noDispatchRegistry.register("key", StartActivityForResult()) { }
+
+        activityResult.launch(null)
+        activityResult.unregister()
+
+        var callbackExecuted = false
+        noDispatchRegistry.register("key", StartActivityForResult()) {
+            callbackExecuted = true
+        }
+
+        noDispatchRegistry.dispatchResult(code, ActivityResult(RESULT_OK, Intent()))
+
+        assertThat(callbackExecuted).isTrue()
     }
 }

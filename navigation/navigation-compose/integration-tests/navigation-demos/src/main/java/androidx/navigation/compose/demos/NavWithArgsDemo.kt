@@ -16,24 +16,23 @@
 
 package androidx.navigation.compose.demos
 
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Divider
+import androidx.compose.material.Text
 import androidx.compose.material.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.savedinstancestate.savedInstanceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.navigate
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.samples.Dashboard
 import androidx.navigation.compose.samples.NavigateButton
@@ -55,7 +54,7 @@ fun ProfileWithArgs(navController: NavController) {
     Column(Modifier.fillMaxSize().then(Modifier.padding(8.dp))) {
         Text(text = stringResource(Screen.Profile.resourceId))
         Divider(color = Color.Black)
-        val state = savedInstanceState(saver = TextFieldValue.Saver) { TextFieldValue() }
+        val state = rememberSaveable { mutableStateOf("") }
         Box {
             TextField(
                 value = state.value,
@@ -65,7 +64,7 @@ fun ProfileWithArgs(navController: NavController) {
         }
         Divider(color = Color.Black)
         NavigateButton("Dashboard with userId") {
-            navController.navigate(Screen.Dashboard.route + "?userId=" + state.value.text)
+            navController.navigate(Screen.Dashboard.route + "?userId=" + state.value)
         }
     }
 }

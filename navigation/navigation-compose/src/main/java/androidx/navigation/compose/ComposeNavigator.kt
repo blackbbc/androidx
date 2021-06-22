@@ -16,13 +16,18 @@
 
 package androidx.navigation.compose
 
-import android.os.Bundle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
-import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
 import androidx.navigation.Navigator
+import androidx.navigation.NavigatorState
+import androidx.navigation.compose.ComposeNavigator.Destination
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Navigator that navigates through [Composable]s. Every destination using this Navigator must
@@ -30,27 +35,42 @@ import androidx.navigation.Navigator
  * [composable].
  */
 @Navigator.Name("composable")
-public class ComposeNavigator : Navigator<ComposeNavigator.Destination>() {
+public class ComposeNavigator : Navigator<Destination>() {
+    private var attached by mutableStateOf(false)
+
+    /**
+     * Get the back stack from the [state]. NavHost will compose at least
+     * once (due to the use of [androidx.compose.runtime.DisposableEffect]) before
+     * the Navigator is attached, so we specifically return an empty flow if we
+     * aren't attached yet.
+     */
+    internal val backStack: StateFlow<List<NavBackStackEntry>> get() = if (attached) {
+        state.backStack
+    } else {
+        MutableStateFlow(emptyList())
+    }
+
+    override fun onAttach(state: NavigatorState) {
+        super.onAttach(state)
+        attached = true
+    }
 
     override fun navigate(
-        destination: Destination,
-        args: Bundle?,
+        entries: List<NavBackStackEntry>,
         navOptions: NavOptions?,
         navigatorExtras: Extras?
-    ): NavDestination? {
-        return destination
+    ) {
+        entries.forEach { entry ->
+            state.push(entry)
+        }
     }
 
     override fun createDestination(): Destination {
         return Destination(this) { }
     }
 
-    /**
-     * The back stack is managed entirely by the [NavHostController]. This returns `true` and
-     * passes control back to the NavController.
-     */
-    override fun popBackStack(): Boolean {
-        return true
+    override fun popBackStack(popUpTo: NavBackStackEntry, savedState: Boolean) {
+        state.pop(popUpTo, savedState)
     }
 
     /**
@@ -61,4 +81,8 @@ public class ComposeNavigator : Navigator<ComposeNavigator.Destination>() {
         navigator: ComposeNavigator,
         internal val content: @Composable (NavBackStackEntry) -> Unit
     ) : NavDestination(navigator)
+
+    internal companion object {
+        internal const val NAME = "composable"
+    }
 }

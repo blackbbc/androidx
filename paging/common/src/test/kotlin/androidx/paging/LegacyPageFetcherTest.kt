@@ -27,6 +27,7 @@ import androidx.paging.PagingSource.LoadParams.Refresh
 import androidx.paging.PagingSource.LoadResult
 import androidx.paging.PagingSource.LoadResult.Page
 import androidx.testutils.TestDispatcher
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -59,6 +60,8 @@ class LegacyPageFetcherTest {
                 itemsAfter = data.size - end
             )
         }
+
+        override fun getRefreshKey(state: PagingState<Int, String>): Int? = null
     }
 
     private fun rangeResult(start: Int, end: Int) = Page(
@@ -108,6 +111,7 @@ class LegacyPageFetcherTest {
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun createPager(
         consumer: MockConsumer,
         start: Int = 0,
@@ -122,7 +126,6 @@ class LegacyPageFetcherTest {
                     key = start,
                     loadSize = end - start,
                     placeholdersEnabled = config.enablePlaceholders,
-                    pageSize = config.pageSize
                 )
             )
         }
@@ -140,7 +143,7 @@ class LegacyPageFetcherTest {
             GlobalScope,
             config,
             pagingSource,
-            DirectDispatcher,
+            testDispatcher,
             testDispatcher,
             consumer,
             storage as LegacyPageFetcher.KeyProvider<Int>

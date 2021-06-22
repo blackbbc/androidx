@@ -20,6 +20,7 @@ import android.Manifest
 import android.util.Log
 import androidx.benchmark.BenchmarkState.Companion.ExperimentalExternalReport
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.FlakyTest
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.rule.GrantPermissionRule
@@ -36,11 +37,11 @@ import kotlin.test.assertFailsWith
 
 @LargeTest
 @RunWith(AndroidJUnit4::class)
-class BenchmarkStateTest {
+public class BenchmarkStateTest {
     private fun us2ns(ms: Long): Long = TimeUnit.MICROSECONDS.toNanos(ms)
 
     @get:Rule
-    val writePermissionRule =
+    public val writePermissionRule: GrantPermissionRule =
         GrantPermissionRule.grant(Manifest.permission.WRITE_EXTERNAL_STORAGE)!!
 
     /**
@@ -58,7 +59,8 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun validateMetrics() {
+    @FlakyTest(bugId = 187711141)
+    public fun validateMetrics() {
         val state = BenchmarkState()
         while (state.keepRunning()) {
             runAndSpin(durationUs = 300) {
@@ -88,7 +90,7 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun keepRunningMissingResume() {
+    public fun keepRunningMissingResume() {
         val state = BenchmarkState()
 
         assertEquals(true, state.keepRunning())
@@ -97,7 +99,7 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun pauseCalledTwice() {
+    public fun pauseCalledTwice() {
         val state = BenchmarkState()
 
         assertEquals(true, state.keepRunning())
@@ -107,7 +109,7 @@ class BenchmarkStateTest {
 
     @SdkSuppress(minSdkVersion = 24)
     @Test
-    fun priorityJitThread() {
+    public fun priorityJitThread() {
         assertEquals(
             "JIT priority should not yet be modified",
             ThreadPriority.JIT_INITIAL_PRIORITY,
@@ -128,7 +130,7 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun priorityBenchThread() {
+    public fun priorityBenchThread() {
         val initialPriority = ThreadPriority.get()
         assertNotEquals(
             "Priority should not be max",
@@ -172,12 +174,12 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun iterationCheck_simple() {
+    public fun iterationCheck_simple() {
         iterationCheck(checkingForThermalThrottling = true)
     }
 
     @Test
-    fun iterationCheck_withAllocations() {
+    public fun iterationCheck_withAllocations() {
         if (CpuInfo.locked ||
             IsolationActivity.sustainedPerformanceModeInUse ||
             Errors.isEmulator
@@ -191,7 +193,7 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun bundle() {
+    public fun bundle() {
         val bundle = BenchmarkState().apply {
             while (keepRunning()) {
                 // nothing, we're ignoring numbers
@@ -221,7 +223,7 @@ class BenchmarkStateTest {
     }
 
     @Test
-    fun notStarted() {
+    public fun notStarted() {
         val initialPriority = ThreadPriority.get()
         try {
             BenchmarkState().getReport().getStats("timeNs").median
@@ -229,12 +231,11 @@ class BenchmarkStateTest {
         } catch (e: IllegalStateException) {
             assertEquals(initialPriority, ThreadPriority.get())
             assertTrue(e.message!!.contains("wasn't started"))
-            assertTrue(e.message!!.contains("benchmarkRule.measureRepeated {}"))
         }
     }
 
     @Test
-    fun notFinished() {
+    public fun notFinished() {
         val initialPriority = ThreadPriority.get()
         try {
             BenchmarkState().run {
@@ -252,7 +253,7 @@ class BenchmarkStateTest {
     @Suppress("DEPRECATION")
     @UseExperimental(ExperimentalExternalReport::class)
     @Test
-    fun reportResult() {
+    public fun reportResult() {
         BenchmarkState.reportData(
             className = "className",
             testName = "testName",
@@ -262,12 +263,16 @@ class BenchmarkStateTest {
             thermalThrottleSleepSeconds = 0,
             repeatIterations = 1
         )
-        val expectedReport = BenchmarkState.Report(
+        val expectedReport = BenchmarkResult(
             className = "className",
             testName = "testName",
             totalRunTimeNs = 900000000,
-            data = listOf(listOf(100L, 200L, 300L)),
-            stats = listOf(Stats(longArrayOf(100, 200, 300), "timeNs")),
+            metrics = listOf(
+                MetricResult(
+                    name = "timeNs",
+                    data = longArrayOf(100, 200, 300)
+                )
+            ),
             repeatIterations = 1,
             thermalThrottleSleepSeconds = 0,
             warmupIterations = 1

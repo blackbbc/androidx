@@ -16,7 +16,6 @@
 
 package androidx.compose.material.demos
 
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentSize
@@ -24,6 +23,7 @@ import androidx.compose.material.DropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
@@ -36,7 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.Position
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -50,10 +50,11 @@ fun MenuDemo() {
                         object : Alignment {
                             override fun align(
                                 size: IntSize,
+                                space: IntSize,
                                 layoutDirection: LayoutDirection
                             ) = IntOffset(
-                                (size.width * i / 10f).roundToInt(),
-                                (size.height * j / 10f).roundToInt()
+                                (space.width * i / 10f).roundToInt(),
+                                (space.height * j / 10f).roundToInt()
                             )
                         }
                     )
@@ -75,21 +76,19 @@ fun MenuInstance(modifier: Modifier = Modifier) {
 
     var expanded by remember { mutableStateOf(false) }
 
-    val iconButton = @Composable {
+    Box(modifier) {
         IconButton(onClick = { expanded = true }) {
-            Icon(Icons.Default.MoreVert)
+            Icon(Icons.Default.MoreVert, null)
         }
-    }
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = { expanded = false },
-        toggle = iconButton,
-        dropdownOffset = Position(-12.dp, -12.dp),
-        toggleModifier = modifier
-    ) {
-        options.forEach {
-            DropdownMenuItem(onClick = {}) {
-                Text(it)
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            offset = DpOffset(24.dp, 0.dp),
+        ) {
+            options.forEach {
+                DropdownMenuItem(onClick = {}) {
+                    Text(it)
+                }
             }
         }
     }

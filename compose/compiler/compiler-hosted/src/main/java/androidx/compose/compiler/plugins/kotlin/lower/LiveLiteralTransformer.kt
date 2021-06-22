@@ -23,14 +23,15 @@ import org.jetbrains.kotlin.backend.common.ir.copyTo
 import org.jetbrains.kotlin.backend.common.ir.createParameterDeclarations
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.IrStatement
+import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
+import org.jetbrains.kotlin.ir.builders.declarations.IrFunctionBuilder
 import org.jetbrains.kotlin.ir.builders.declarations.addConstructor
 import org.jetbrains.kotlin.ir.builders.declarations.addFunction
 import org.jetbrains.kotlin.ir.builders.declarations.addGetter
 import org.jetbrains.kotlin.ir.builders.declarations.addProperty
-import org.jetbrains.kotlin.ir.builders.declarations.addSetter
 import org.jetbrains.kotlin.ir.builders.declarations.addValueParameter
 import org.jetbrains.kotlin.ir.builders.declarations.buildClass
 import org.jetbrains.kotlin.ir.builders.declarations.buildField
@@ -50,6 +51,7 @@ import org.jetbrains.kotlin.ir.declarations.IrAnnotationContainer
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
+import org.jetbrains.kotlin.ir.declarations.IrFactory
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
@@ -71,7 +73,7 @@ import org.jetbrains.kotlin.ir.expressions.IrEnumConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrLoop
 import org.jetbrains.kotlin.ir.expressions.IrSetField
-import org.jetbrains.kotlin.ir.expressions.IrSetVariable
+import org.jetbrains.kotlin.ir.expressions.IrSetValue
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrStringConcatenation
 import org.jetbrains.kotlin.ir.expressions.IrTry
@@ -86,11 +88,14 @@ import org.jetbrains.kotlin.ir.expressions.impl.IrExpressionBodyImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetObjectValueImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrStringConcatenationImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrVarargImpl
+import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
+import org.jetbrains.kotlin.ir.symbols.impl.IrSimpleFunctionSymbolImpl
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.DeepCopySymbolRemapper
+import org.jetbrains.kotlin.ir.util.SYNTHETIC_OFFSET
 import org.jetbrains.kotlin.ir.util.constructors
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.getPropertyGetter
@@ -151,6 +156,7 @@ import org.jetbrains.kotlin.resolve.BindingTrace
  */
 open class LiveLiteralTransformer(
     private val liveLiteralsEnabled: Boolean,
+    private val usePerFileEnabledFlag: Boolean,
     private val keyVisitor: DurableKeyVisitor,
     context: IrPluginContext,
     symbolRemapper: DeepCopySymbolRemapper,
@@ -186,12 +192,13 @@ open class LiveLiteralTransformer(
     private fun <T> siblings(key: String, block: () -> T) = keyVisitor.siblings(key, block)
     private fun <T> siblings(block: () -> T) = keyVisitor.siblings(block)
     private var liveLiteralsClass: IrClass? = null
+    private var liveLiteralsEnabledSymbol: IrSimpleFunctionSymbol? = null
     private var currentFile: IrFile? = null
 
-    private fun irGetLiveLiteralsClass(): IrExpression {
+    private fun irGetLiveLiteralsClass(startOffset: Int, endOffset: Int): IrExpression {
         return IrGetObjectValueImpl(
-            startOffset = UNDEFINED_OFFSET,
-            endOffset = UNDEFINED_OFFSET,
+            startOffset = startOffset,
+            endOffset = endOffset,
             type = liveLiteralsClass!!.defaultType,
             symbol = liveLiteralsClass!!.symbol
         )
@@ -232,35 +239,37 @@ open class LiveLiteralTransformer(
         putValueArgument(0, irConst(file))
     }
 
+    @OptIn(ObsoleteDescriptorBasedAPI::class)
     private fun irLiveLiteralGetter(
         key: String,
         literalValue: IrExpression,
-        literalType: IrType
+        literalType: IrType,
+        startOffset: Int
     ): IrSimpleFunction {
         val clazz = liveLiteralsClass!!
         val stateType = stateInterface.owner.typeWith(literalType).makeNullable()
         val stateGetValue = stateInterface.getPropertyGetter("value")!!
         val defaultProp = clazz.addProperty {
             name = Name.identifier(key)
-            visibility = Visibilities.PRIVATE
+            visibility = DescriptorVisibilities.PRIVATE
         }.also { p ->
-            p.backingField = buildField {
+            p.backingField = context.irFactory.buildField {
                 name = Name.identifier(key)
                 isStatic = true
                 type = literalType
-                visibility = Visibilities.PRIVATE
+                visibility = DescriptorVisibilities.PRIVATE
             }.also { f ->
                 f.correspondingPropertySymbol = p.symbol
                 f.parent = clazz
                 f.initializer = IrExpressionBodyImpl(
-                    literalValue.startOffset,
-                    literalValue.endOffset,
+                    SYNTHETIC_OFFSET,
+                    SYNTHETIC_OFFSET,
                     literalValue
                 )
             }
             p.addGetter {
                 returnType = literalType
-                visibility = Visibilities.PRIVATE
+                visibility = DescriptorVisibilities.PRIVATE
                 origin = IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR
             }.also { fn ->
                 val thisParam = clazz.thisReceiver!!.copyTo(fn)
@@ -272,13 +281,13 @@ open class LiveLiteralTransformer(
         }
         val stateProp = clazz.addProperty {
             name = Name.identifier("State\$$key")
-            visibility = Visibilities.PRIVATE
+            visibility = DescriptorVisibilities.PRIVATE
             isVar = true
         }.also { p ->
-            p.backingField = buildField {
+            p.backingField = context.irFactory.buildField {
                 name = Name.identifier("State\$$key")
                 type = stateType
-                visibility = Visibilities.PRIVATE
+                visibility = DescriptorVisibilities.PRIVATE
                 isStatic = true
             }.also { f ->
                 f.correspondingPropertySymbol = p.symbol
@@ -286,7 +295,7 @@ open class LiveLiteralTransformer(
             }
             p.addGetter {
                 returnType = stateType
-                visibility = Visibilities.PRIVATE
+                visibility = DescriptorVisibilities.PRIVATE
                 origin = IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR
             }.also { fn ->
                 val thisParam = clazz.thisReceiver!!.copyTo(fn)
@@ -297,7 +306,7 @@ open class LiveLiteralTransformer(
             }
             p.addSetter {
                 returnType = context.irBuiltIns.unitType
-                visibility = Visibilities.PRIVATE
+                visibility = DescriptorVisibilities.PRIVATE
                 origin = IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR
             }.also { fn ->
                 val thisParam = clazz.thisReceiver!!.copyTo(fn)
@@ -313,7 +322,7 @@ open class LiveLiteralTransformer(
             returnType = literalType
         ).also { fn ->
             val thisParam = fn.dispatchReceiverParameter!!
-            fn.annotations += irLiveLiteralInfoAnnotation(key, literalValue.startOffset)
+            fn.annotations += irLiveLiteralInfoAnnotation(key, startOffset)
             fn.body = DeclarationIrBuilder(context, fn.symbol).irBlockBody {
                 // if (!isLiveLiteralsEnabled) return defaultValueField
                 // val a = stateField
@@ -323,8 +332,14 @@ open class LiveLiteralTransformer(
                 //     c
                 // } else a
                 // return b.value
+                val condition = if (usePerFileEnabledFlag)
+                    irNot(
+                        irGet(builtIns.booleanType, irGet(thisParam), liveLiteralsEnabledSymbol!!)
+                    )
+                else
+                    irNot(irCall(isLiveLiteralsEnabled))
                 +irIf(
-                    condition = irNot(irCall(isLiveLiteralsEnabled)),
+                    condition = condition,
                     body = irReturn(
                         irGet(
                             literalType,
@@ -366,6 +381,8 @@ open class LiveLiteralTransformer(
                     UNDEFINED_OFFSET,
                     literalType,
                     stateGetValue,
+                    stateGetValue.owner.typeParameters.size,
+                    stateGetValue.owner.valueParameters.size,
                     IrStatementOrigin.FOR_LOOP_ITERATOR
                 ).apply {
                     dispatchReceiver = b
@@ -376,6 +393,7 @@ open class LiveLiteralTransformer(
         }
     }
 
+    @OptIn(ObsoleteDescriptorBasedAPI::class)
     override fun <T> visitConst(expression: IrConst<T>): IrExpression {
         when (expression.kind) {
             IrConstKind.Null -> return expression
@@ -415,8 +433,11 @@ open class LiveLiteralTransformer(
         // create the getter function on the live literals class
         val getter = irLiveLiteralGetter(
             key = key,
-            literalValue = expression.copy(),
-            literalType = expression.type
+            // Move the start/endOffsets to the call of the getter since we don't
+            // want to step into <clinit> in the debugger.
+            literalValue = expression.copyWithOffsets(UNDEFINED_OFFSET, UNDEFINED_OFFSET),
+            literalType = expression.type,
+            startOffset = expression.startOffset
         )
 
         // return a call to the getter in place of the constant
@@ -424,9 +445,11 @@ open class LiveLiteralTransformer(
             expression.startOffset,
             expression.endOffset,
             expression.type,
-            getter.symbol
+            getter.symbol,
+            getter.symbol.owner.typeParameters.size,
+            getter.symbol.owner.valueParameters.size
         ).apply {
-            dispatchReceiver = irGetLiveLiteralsClass()
+            dispatchReceiver = irGetLiveLiteralsClass(expression.startOffset, expression.endOffset)
         }
     }
 
@@ -449,10 +472,12 @@ open class LiveLiteralTransformer(
         val fileName = filePath.split('/').last()
         val keys = makeKeySet()
         return keyVisitor.root(keys) {
+            val prevEnabledSymbol = liveLiteralsEnabledSymbol
+            var nextEnabledSymbol: IrSimpleFunctionSymbol? = null
             val prevClass = liveLiteralsClass
-            val nextClass = buildClass {
+            val nextClass = context.irFactory.buildClass {
                 kind = ClassKind.OBJECT
-                visibility = Visibilities.INTERNAL
+                visibility = DescriptorVisibilities.INTERNAL
                 val shortName = PackagePartClassUtils.getFilePartShortName(fileName)
                 // the name of the LiveLiterals class is per-file, so we use the same name that
                 // the kotlin file class lowering produces, prefixed with `LiveLiterals$`.
@@ -477,10 +502,45 @@ open class LiveLiteralTransformer(
                         )
                     }
                 }
+
+                if (usePerFileEnabledFlag) {
+                    val enabledProp = it.addProperty {
+                        name = Name.identifier("enabled")
+                        visibility = DescriptorVisibilities.PRIVATE
+                    }.also { p ->
+                        p.backingField = context.irFactory.buildField {
+                            name = Name.identifier("enabled")
+                            isStatic = true
+                            type = builtIns.booleanType
+                            visibility = DescriptorVisibilities.PRIVATE
+                        }.also { f ->
+                            f.correspondingPropertySymbol = p.symbol
+                            f.parent = it
+                            f.initializer = IrExpressionBodyImpl(
+                                SYNTHETIC_OFFSET,
+                                SYNTHETIC_OFFSET,
+                                irConst(false)
+                            )
+                        }
+                        p.addGetter {
+                            returnType = builtIns.booleanType
+                            visibility = DescriptorVisibilities.PRIVATE
+                            origin = IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR
+                        }.also { fn ->
+                            val thisParam = it.thisReceiver!!.copyTo(fn)
+                            fn.dispatchReceiverParameter = thisParam
+                            fn.body = DeclarationIrBuilder(context, fn.symbol).irBlockBody {
+                                +irReturn(irGetField(irGet(thisParam), p.backingField!!))
+                            }
+                        }
+                    }
+                    nextEnabledSymbol = enabledProp.getter?.symbol
+                }
             }
             try {
                 liveLiteralsClass = nextClass
                 currentFile = declaration
+                liveLiteralsEnabledSymbol = nextEnabledSymbol
                 val file = super.visitFile(declaration)
                 // if there were no constants found in the entire file, then we don't need to
                 // create this class at all
@@ -490,6 +550,7 @@ open class LiveLiteralTransformer(
                 file
             } finally {
                 liveLiteralsClass = prevClass
+                liveLiteralsEnabledSymbol = prevEnabledSymbol
             }
         }
     }
@@ -745,7 +806,8 @@ open class LiveLiteralTransformer(
             // loops, so we avoid transforming the first statement in this case
             IrStatementOrigin.FOR_LOOP,
             IrStatementOrigin.FOR_LOOP_INNER_WHILE -> {
-                expression.statements[1] = expression.statements[1].transform(this, null)
+                expression.statements[1] =
+                    expression.statements[1].transform(this, null) as IrStatement
                 expression
             }
 //            IrStatementOrigin.SAFE_CALL
@@ -759,7 +821,7 @@ open class LiveLiteralTransformer(
         }
     }
 
-    override fun visitSetVariable(expression: IrSetVariable): IrExpression {
+    override fun visitSetValue(expression: IrSetValue): IrExpression {
         val owner = expression.symbol.owner
         val name = owner.name
         return when (owner.origin) {
@@ -768,7 +830,7 @@ open class LiveLiteralTransformer(
             IrDeclarationOrigin.FOR_LOOP_IMPLICIT_VARIABLE -> expression
             IrDeclarationOrigin.IR_TEMPORARY_VARIABLE -> expression
             IrDeclarationOrigin.FOR_LOOP_VARIABLE -> expression
-            else -> enter("set-$name") { super.visitSetVariable(expression) }
+            else -> enter("set-$name") { super.visitSetValue(expression) }
         }
     }
 
@@ -810,5 +872,25 @@ open class LiveLiteralTransformer(
             }
             declaration
         }
+    }
+
+    inline fun IrProperty.addSetter(builder: IrFunctionBuilder.() -> Unit = {}): IrSimpleFunction =
+        IrFunctionBuilder().run {
+            name = Name.special("<set-${this@addSetter.name}>")
+            builder()
+            context.irFactory.buildFunction(this).also { setter ->
+                this@addSetter.setter = setter
+                setter.parent = this@addSetter.parent
+            }
+        }
+
+    fun IrFactory.buildFunction(builder: IrFunctionBuilder): IrSimpleFunction = with(builder) {
+        createFunction(
+            startOffset, endOffset, origin,
+            IrSimpleFunctionSymbolImpl(),
+            name, visibility, modality, returnType,
+            isInline, isExternal, isTailrec, isSuspend, isOperator, isInfix, isExpect,
+            isFakeOverride, containerSource,
+        )
     }
 }

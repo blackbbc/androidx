@@ -22,13 +22,12 @@ import android.view.MotionEvent.ACTION_MOVE
 import android.view.MotionEvent.ACTION_UP
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.runtime.Recomposer
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.DensityAmbient
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.TestActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -43,6 +42,7 @@ import org.junit.runner.RunWith
 // hooked up to PointerInteropFilter correctly.
 @MediumTest
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalComposeUiApi::class)
 class PointerInteropFilterComposeHookupTest {
 
     private lateinit var root: View
@@ -63,13 +63,9 @@ class PointerInteropFilterComposeHookupTest {
     fun setup() {
         rule.activityRule.scenario.onActivity { activity ->
 
-            val parent = FrameLayout(activity).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                setContent(Recomposer.current()) {
-                    with(DensityAmbient.current) {
+            val parent = ComposeView(activity).apply {
+                setContent {
+                    with(LocalDensity.current) {
                         Box(
                             modifier = Modifier
                                 .spyGestureFilter {
@@ -79,13 +75,19 @@ class PointerInteropFilterComposeHookupTest {
                                     disallowInterceptRequester,
                                     motionEventCallback
                                 )
-                                .size(100f.toDp(), 100f.toDp())
+                                .requiredSize(100f.toDp(), 100f.toDp())
                         )
                     }
                 }
             }
 
-            activity.setContentView(parent)
+            activity.setContentView(
+                parent,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
             root = activity.findViewById(android.R.id.content)
         }
     }

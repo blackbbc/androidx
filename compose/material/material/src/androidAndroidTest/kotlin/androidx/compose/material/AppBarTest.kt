@@ -16,8 +16,6 @@
 
 package androidx.compose.material
 
-import androidx.compose.foundation.AmbientTextStyle
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -28,6 +26,7 @@ import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertLeftPositionInRootIsEqualTo
 import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -60,7 +59,7 @@ class AppBarTest {
                 TopAppBar(title = { Text("Title") })
             }
             .assertHeightIsEqualTo(appBarHeight)
-            .assertWidthFillsRoot()
+            .assertWidthIsEqualTo(rule.rootWidth())
     }
 
     @Test
@@ -154,7 +153,7 @@ class AppBarTest {
                 TopAppBar(
                     title = {
                         Text("App Bar Title")
-                        textStyle = AmbientTextStyle.current
+                        textStyle = LocalTextStyle.current
                         h6Style = MaterialTheme.typography.h6
                     }
                 )
@@ -171,7 +170,7 @@ class AppBarTest {
                 BottomAppBar {}
             }
             .assertHeightIsEqualTo(appBarHeight)
-            .assertWidthFillsRoot()
+            .assertWidthIsEqualTo(rule.rootWidth())
     }
 
     @Test
@@ -199,7 +198,7 @@ class AppBarTest {
      */
     private val FakeIcon = @Composable { modifier: Modifier ->
         IconButton(onClick = {}, modifier = modifier) {
-            Icon(ColorPainter(Color.Red))
+            Icon(ColorPainter(Color.Red), null)
         }
     }
 

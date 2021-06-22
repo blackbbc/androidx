@@ -106,15 +106,22 @@ val taskNamesKnownToDuplicateOutputs = setOf(
     "jarRelease",
     "jarDebug",
     "kotlinSourcesJar",
+    "releaseSourcesJar",
+    "sourceJarRelease",
     "lint",
     "lintFix",
     "lintVital",
     "sourceJar",
     // MPP plugin has issues with modules using withJava() clause, see b/158747039.
     "processTestResources",
+    "jvmTestProcessResources",
     "desktopTestProcessResources",
     "processResources",
-    "desktopProcessResources"
+    "jvmProcessResources",
+    "desktopProcessResources",
+    // https://github.com/square/wire/issues/1947
+    "generateDebugProtos",
+    "generateReleaseProtos",
 )
 
 // For this project and all subprojects, collects all tasks and creates a map keyed by their output files

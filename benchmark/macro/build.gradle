@@ -14,101 +14,85 @@
  * limitations under the License.
  */
 
-import static androidx.build.dependencies.DependenciesKt.*
 import androidx.build.LibraryGroups
 import androidx.build.Publish
+import androidx.build.SupportConfigKt
 
 plugins {
     id("AndroidXPlugin")
     id("com.android.library")
     id("kotlin-android")
+    id("com.squareup.wire")
 }
 
 android {
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
-    buildTypes {
-        debug {
-            minifyEnabled false
-            // Library project
-            shrinkResources false
-            proguardFiles getDefaultProguardFile(
-                    'proguard-android-optimize.txt'),
-                    'proguard-rules.pro'
-        }
-    }
     defaultConfig {
+        // 18 needed for UI automator. While 28 is a theoretical minimum for Perfetto, we
+        // currently leave this lower currently to enable optional usage.
         minSdkVersion 18
-        multiDexEnabled true
-        // testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        // Listener List
-        testInstrumentationRunnerArgument 'listener',
-                        'android.device.collectors.CpuUsageListener,' +
-                        'android.device.collectors.ProcLoadListener,' +
-                        'android.device.collectors.PerfettoListener,' +
-                        'android.device.collectors.AppStartupListener,' +
-                        'android.device.collectors.JankListener,' +
-                        'android.device.collectors.CrashListener,' +
-                        'android.device.collectors.ScreenshotOnFailureCollector,' +
-                        'android.device.collectors.LogcatOnFailureCollector,' +
-                        'android.device.collectors.IncidentReportListener,' +
-                        'android.device.collectors.TotalPssMetricListener'
+    }
+    sourceSets {
+        main.assets.srcDirs += new File(
+                SupportConfigKt.getPrebuiltsRoot(project),
+                "androidx/traceprocessor/trace_processor_shell"
+        )
+        main.assets.srcDirs += new File(
+                SupportConfigKt.getPrebuiltsRoot(project),
+                "androidx/traceprocessor/perfetto"
+        )
+        main.assets.srcDirs += new File(
+                SupportConfigKt.getPrebuiltsRoot(project),
+                "androidx/traceprocessor/traced"
+        )
+        main.assets.srcDirs += new File(
+                SupportConfigKt.getPrebuiltsRoot(project),
+                "androidx/traceprocessor/traced_probes"
+        )
+        androidTest.assets.srcDirs += new File(
+                SupportConfigKt.getPrebuiltsRoot(project),
+                "androidx/traceprocessor/testdata"
+        )
+    }
+}
 
-        // ProcLoadListener
-        testInstrumentationRunnerArgument 'procload-collector:proc-loadavg-interval', '2000'
-        testInstrumentationRunnerArgument 'procload-collector:proc-loadavg-threshold', '0.5'
-        testInstrumentationRunnerArgument 'procload-collector:proc-loadavg-timeout', '90000'
-
-        // CpuUsageListener
-        testInstrumentationRunnerArgument 'cpuusage-collector:disable_per_freq', 'true'
-        testInstrumentationRunnerArgument 'cpuusage-collector:disable_per_pkg', 'true'
-
-        // TotalPssMetricListener
-        testInstrumentationRunnerArgument 'totalpss-collector:process-names', 'androidx.ui.demos'
-
-        // JankListener (disable)
-        testInstrumentationRunnerArgument 'jank-listener:log', 'true'
-
-        // Microbenchmark runner configuration
-        testInstrumentationRunnerArgument 'iterations', '1'
+wire {
+    kotlin {}
+    sourcePath {
+        srcDir 'src/main/proto'
     }
 }
 
 dependencies {
-    api(JUNIT)
-    api(KOTLIN_STDLIB)
+    api(libs.junit)
+    api(libs.kotlinStdlib)
     api("androidx.annotation:annotation:1.1.0")
-    // TODO: remove, once we remove the minor usages in CrystalBall
-    implementation(GUAVA_ANDROID)
-    androidTestImplementation("com.android:collector-device-lib:0.1.0")
-    androidTestImplementation("com.android:collector-device-lib-platform:0.1.0")
-    androidTestImplementation("com.android:collector-helper-utilities:0.1.0")
-    androidTestImplementation("com.android:jank-helper:0.1.0")
-    androidTestImplementation("com.android:memory-helper:0.1.0")
-    androidTestImplementation("com.android:perfetto-helper:0.1.0")
-    androidTestImplementation("com.android:platform-test-composers:0.1.0")
-    androidTestImplementation("com.android:power-helper:0.1.0")
-    androidTestImplementation("com.android:simpleperf-helper:0.1.0")
-    androidTestImplementation("com.android:statsd-helper:0.1.0")
-    androidTestImplementation("com.android:system-metric-helper:0.1.0")
-    androidTestImplementation("com.android:test-composers:0.1.0")
-    androidTestImplementation("com.android:platform-test-rules:0.1.0")
-    androidTestImplementation("com.android:microbenchmark-device-lib:0.1.0")
-    androidTestImplementation("androidx.test:rules:1.3.0")
-    androidTestImplementation("androidx.test:runner:1.3.0")
-    implementation(ANDROIDX_TEST_EXT_JUNIT)
-    implementation(ANDROIDX_TEST_UIAUTOMATOR)
+
+    implementation(project(":benchmark:benchmark-common"))
+    implementation(project(":profileinstaller:profileinstaller"))
+    implementation(libs.testCore)
+    implementation(libs.testUiautomator)
+    implementation(libs.wireRuntime)
+
+    androidTestImplementation(project(":internal-testutils-ktx"))
+    androidTestImplementation(project(":tracing:tracing-ktx"))
+    androidTestImplementation(libs.testExtJunit)
+    androidTestImplementation(libs.testRules)
+    androidTestImplementation(libs.testRunner)
+    androidTestImplementation(libs.kotlinTest)
 }
 
 androidx {
     name = "Android Benchmark - Macrobenchmark"
-    publish = Publish.NONE
+    publish = Publish.SNAPSHOT_AND_RELEASE
     mavenGroup = LibraryGroups.BENCHMARK
     inceptionYear = "2020"
     description = "Android Benchmark - Macrobenchmark"
 }
+
+// Define a task dependency so the app is installed before we run macro benchmarks.
+tasks.getByPath(":benchmark:benchmark-macro-junit4:connectedCheck")
+        .dependsOn(
+                tasks.getByPath(
+                        ":benchmark:integration-tests:macrobenchmark-target:installRelease"
+                )
+        )

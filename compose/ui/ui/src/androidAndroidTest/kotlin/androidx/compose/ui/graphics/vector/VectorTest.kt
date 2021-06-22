@@ -21,12 +21,13 @@ import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.preferredHeight
-import androidx.compose.foundation.layout.preferredSize
-import androidx.compose.foundation.layout.preferredWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.testutils.assertPixels
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AtLeastSize
 import androidx.compose.ui.Modifier
@@ -35,11 +36,12 @@ import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
@@ -53,7 +55,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.concurrent.CountDownLatch
 
 @MediumTest
 @RunWith(AndroidJUnit4::class)
@@ -76,6 +77,22 @@ class VectorTest {
 
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
+    fun testVectorIntrinsicTint() {
+        rule.setContent {
+            val background = Modifier.paint(
+                createTestVectorPainter(200, Color.Magenta),
+                alignment = Alignment.Center
+            )
+            AtLeastSize(size = 200, modifier = background) {
+            }
+        }
+        takeScreenShot(200).apply {
+            assertEquals(getPixel(100, 100), Color.Magenta.toArgb())
+        }
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
     fun testVectorAlignment() {
         rule.setContent {
             VectorTint(minimumSize = 500, alignment = Alignment.BottomEnd)
@@ -89,26 +106,24 @@ class VectorTest {
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
     fun testVectorInvalidation() {
-        val latch1 = CountDownLatch(1)
-        val latch2 = CountDownLatch(1)
-        val testCase = VectorInvalidationTestCase(latch1)
+        val testCase = VectorInvalidationTestCase()
         rule.setContent {
-            testCase.createTestVector()
+            testCase.TestVector()
         }
 
-        latch1.await()
+        rule.waitUntil { testCase.measured }
         val size = testCase.vectorSize
         takeScreenShot(size).apply {
             assertEquals(Color.Blue.toArgb(), getPixel(5, size - 5))
             assertEquals(Color.White.toArgb(), getPixel(size - 5, 5))
         }
 
-        testCase.latch = latch2
+        testCase.measured = false
         rule.runOnUiThread {
             testCase.toggle()
         }
 
-        rule.waitForIdle()
+        rule.waitUntil { testCase.measured }
 
         takeScreenShot(size).apply {
             assertEquals(Color.White.toArgb(), getPixel(5, size - 5))
@@ -134,7 +149,7 @@ class VectorTest {
         // Make sure that if we are given the size of zero we should not crash and instead
         // act as a no-op
         rule.setContent {
-            Box(modifier = Modifier.preferredSize(0.dp).paint(createTestVectorPainter()))
+            Box(modifier = Modifier.size(0.dp).paint(createTestVectorPainter()))
         }
     }
 
@@ -142,7 +157,7 @@ class VectorTest {
     fun testVectorZeroWidthDoesNotCrash() {
         rule.setContent {
             Box(
-                modifier = Modifier.preferredWidth(0.dp).preferredHeight(100.dp).paint
+                modifier = Modifier.width(0.dp).height(100.dp).paint
                 (createTestVectorPainter())
             )
         }
@@ -152,7 +167,7 @@ class VectorTest {
     fun testVectorZeroHeightDoesNotCrash() {
         rule.setContent {
             Box(
-                modifier = Modifier.preferredWidth(50.dp).preferredHeight(0.dp).paint(
+                modifier = Modifier.width(50.dp).height(0.dp).paint(
                     createTestVectorPainter()
                 )
             )
@@ -175,13 +190,13 @@ class VectorTest {
 
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
-    fun testVectorAssetChangeOnStateChange() {
+    fun testImageVectorChangeOnStateChange() {
         val defaultWidth = 24.dp
         val defaultHeight = 24.dp
         val viewportWidth = 24f
         val viewportHeight = 24f
 
-        val icon1 = VectorAssetBuilder(
+        val icon1 = ImageVector.Builder(
             defaultWidth = defaultWidth,
             defaultHeight = defaultHeight,
             viewportWidth = viewportWidth,
@@ -197,7 +212,7 @@ class VectorTest {
                 }
             ).build()
 
-        val icon2 = VectorAssetBuilder(
+        val icon2 = ImageVector.Builder(
             defaultWidth = defaultWidth,
             defaultHeight = defaultHeight,
             viewportWidth = viewportWidth,
@@ -217,19 +232,20 @@ class VectorTest {
         rule.setContent {
             val clickState = remember { mutableStateOf(false) }
             Image(
-                asset = if (clickState.value) icon1 else icon2,
+                imageVector = if (clickState.value) icon1 else icon2,
+                contentDescription = null,
                 modifier = Modifier
                     .testTag(testTag)
-                    .preferredSize(icon1.defaultWidth, icon1.defaultHeight)
+                    .size(icon1.defaultWidth, icon1.defaultHeight)
                     .background(Color.Red)
                     .clickable { clickState.value = !clickState.value },
-                contentScale = ContentScale.FillHeight,
-                alignment = Alignment.TopStart
+                alignment = Alignment.TopStart,
+                contentScale = ContentScale.FillHeight
             )
         }
 
         rule.onNodeWithTag(testTag).apply {
-            captureToBitmap().apply {
+            captureToImage().asAndroidBitmap().apply {
                 assertEquals(Color.Red.toArgb(), getPixel(width - 2, 0))
                 assertEquals(Color.Red.toArgb(), getPixel(2, 0))
                 assertEquals(Color.Red.toArgb(), getPixel(width - 1, height - 2))
@@ -243,7 +259,7 @@ class VectorTest {
 
         rule.waitForIdle()
 
-        rule.onNodeWithTag(testTag).captureToBitmap().apply {
+        rule.onNodeWithTag(testTag).captureToImage().asAndroidBitmap().apply {
             assertEquals(Color.Black.toArgb(), getPixel(width - 2, 0))
             assertEquals(Color.Black.toArgb(), getPixel(2, 0))
             assertEquals(Color.Black.toArgb(), getPixel(width - 1, height - 2))
@@ -254,13 +270,85 @@ class VectorTest {
         }
     }
 
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun testVectorScaleNonUniformly() {
+        val defaultWidth = 24.dp
+        val defaultHeight = 24.dp
+        val testTag = "testTag"
+        rule.setContent {
+            val vectorPainter = rememberVectorPainter(
+                defaultWidth = defaultWidth,
+                defaultHeight = defaultHeight
+            ) { viewportWidth, viewportHeight ->
+                Path(
+                    fill = SolidColor(Color.Blue),
+                    pathData = PathData {
+                        lineTo(viewportWidth, 0f)
+                        lineTo(viewportWidth, viewportHeight)
+                        lineTo(0f, viewportHeight)
+                        close()
+                    }
+                )
+            }
+            Image(
+                painter = vectorPainter,
+                contentDescription = null,
+                modifier = Modifier
+                    .testTag(testTag)
+                    .size(defaultWidth * 7, defaultHeight * 3)
+                    .background(Color.Red),
+                contentScale = ContentScale.FillBounds
+            )
+        }
+
+        rule.onNodeWithTag(testTag).captureToImage().assertPixels { Color.Blue }
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun testVectorChangeSize() {
+        val size = mutableStateOf(200)
+        val color = mutableStateOf(Color.Magenta)
+
+        rule.setContent {
+            val background = Modifier.background(Color.Red).paint(
+                createTestVectorPainter(size.value, color.value),
+                alignment = Alignment.TopStart
+            )
+            AtLeastSize(size = 400, modifier = background) {
+            }
+        }
+
+        takeScreenShot(400).apply {
+            assertEquals(getPixel(100, 100), Color.Magenta.toArgb())
+            assertEquals(getPixel(300, 300), Color.Red.toArgb())
+        }
+
+        size.value = 400
+        color.value = Color.Cyan
+
+        takeScreenShot(400).apply {
+            assertEquals(getPixel(100, 100), Color.Cyan.toArgb())
+            assertEquals(getPixel(300, 300), Color.Cyan.toArgb())
+        }
+
+        size.value = 50
+        color.value = Color.Yellow
+
+        takeScreenShot(400).apply {
+            assertEquals(getPixel(10, 10), Color.Yellow.toArgb())
+            assertEquals(getPixel(100, 100), Color.Red.toArgb())
+            assertEquals(getPixel(300, 300), Color.Red.toArgb())
+        }
+    }
+
     @Composable
     private fun VectorTint(
         size: Int = 200,
         minimumSize: Int = size,
         alignment: Alignment = Alignment.Center
     ) {
-
         val background = Modifier.paint(
             createTestVectorPainter(size),
             colorFilter = ColorFilter.tint(Color.Cyan),
@@ -271,13 +359,16 @@ class VectorTest {
     }
 
     @Composable
-    private fun createTestVectorPainter(size: Int = 200): VectorPainter {
+    private fun createTestVectorPainter(
+        size: Int = 200,
+        tintColor: Color = Color.Unspecified
+    ): VectorPainter {
         val sizePx = size.toFloat()
-        val sizeDp = (size / DensityAmbient.current.density).dp
+        val sizeDp = (size / LocalDensity.current.density).dp
         return rememberVectorPainter(
             defaultWidth = sizeDp,
             defaultHeight = sizeDp,
-            children = { _, _ ->
+            content = { _, _ ->
                 Path(
                     pathData = PathData {
                         lineTo(sizePx, 0.0f)
@@ -287,7 +378,8 @@ class VectorTest {
                     },
                     fill = SolidColor(Color.Black)
                 )
-            }
+            },
+            tintColor = tintColor
         )
     }
 
@@ -298,7 +390,7 @@ class VectorTest {
         alignment: Alignment = Alignment.Center
     ) {
         val sizePx = size.toFloat()
-        val sizeDp = (size / DensityAmbient.current.density).dp
+        val sizeDp = (size / LocalDensity.current.density).dp
         val background = Modifier.paint(
             rememberVectorPainter(
                 defaultWidth = sizeDp,
@@ -351,7 +443,7 @@ class VectorTest {
         alignment: Alignment = Alignment.Center
     ) {
         val sizePx = size.toFloat()
-        val sizeDp = (size / DensityAmbient.current.density).dp
+        val sizeDp = (size / LocalDensity.current.density).dp
         val background = Modifier.paint(
             rememberVectorPainter(
                 defaultWidth = sizeDp,
@@ -386,7 +478,7 @@ class VectorTest {
     }
 
     private fun takeScreenShot(width: Int, height: Int = width): Bitmap {
-        val bitmap = rule.onRoot().captureToBitmap()
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
         Assert.assertEquals(width, bitmap.width)
         Assert.assertEquals(height, bitmap.height)
         return bitmap

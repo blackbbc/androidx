@@ -17,17 +17,18 @@
 package androidx.paging
 
 import androidx.lifecycle.testing.TestLifecycleOwner
+import androidx.paging.DiffingChangePayload.ITEM_TO_PLACEHOLDER
 import androidx.paging.ListUpdateEvent.Changed
 import androidx.paging.ListUpdateEvent.Inserted
 import androidx.paging.ListUpdateEvent.Moved
 import androidx.paging.ListUpdateEvent.Removed
 import androidx.paging.LoadState.Loading
 import androidx.paging.LoadState.NotLoading
-import androidx.paging.LoadType.REFRESH
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
+import androidx.test.filters.SdkSuppress
 import androidx.testutils.MainDispatcherRule
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 private class ListUpdateCapture : ListUpdateCallback {
+    private var lastEventsListIndex = -1
+
     val events = mutableListOf<ListUpdateEvent>()
 
     override fun onChanged(position: Int, count: Int, payload: Any?) {
@@ -65,6 +68,12 @@ private class ListUpdateCapture : ListUpdateCallback {
 
     override fun onRemoved(position: Int, count: Int) {
         events.add(Removed(position, count))
+    }
+
+    fun newEvents(): List<ListUpdateEvent> {
+        return events.drop(lastEventsListIndex + 1).also {
+            lastEventsListIndex = events.lastIndex
+        }
     }
 }
 
@@ -104,6 +113,7 @@ class AsyncPagingDataDifferTest {
         workerDispatcher = Dispatchers.Main
     )
 
+    @SdkSuppress(minSdkVersion = 21) // b/189492631
     @Test
     fun performDiff_fastPathLoadStates() = testScope.runBlockingTest {
         val loadEvents = mutableListOf<CombinedLoadStates>()
@@ -133,9 +143,10 @@ class AsyncPagingDataDifferTest {
         // empty previous list.
         assertEvents(
             listOf(
-                REFRESH to Loading,
-                REFRESH to NotLoading(endOfPaginationReached = false)
-            ).toCombinedLoadStatesLocal(),
+                localLoadStatesOf(),
+                localLoadStatesOf(refreshLocal = Loading),
+                localLoadStatesOf(refreshLocal = NotLoading(endOfPaginationReached = false)),
+            ),
             loadEvents
         )
         loadEvents.clear()
@@ -152,13 +163,14 @@ class AsyncPagingDataDifferTest {
                 localLoadStatesOf(
                     refreshLocal = NotLoading(endOfPaginationReached = false),
                     prependLocal = NotLoading(endOfPaginationReached = true),
-                    appendLocal = NotLoading(endOfPaginationReached = true)
-                )
+                    appendLocal = NotLoading(endOfPaginationReached = true),
+                ),
             ),
             actual = loadEvents
         )
     }
 
+    @SdkSuppress(minSdkVersion = 21) // b/189492631
     @Test
     fun performDiff_fastPathLoadStatesFlow() = testScope.runBlockingTest {
         val loadEvents = mutableListOf<CombinedLoadStates>()
@@ -190,9 +202,10 @@ class AsyncPagingDataDifferTest {
         // empty previous list.
         assertEvents(
             listOf(
-                REFRESH to Loading,
-                REFRESH to NotLoading(endOfPaginationReached = false)
-            ).toCombinedLoadStatesLocal(),
+                localLoadStatesOf(),
+                localLoadStatesOf(refreshLocal = Loading),
+                localLoadStatesOf(refreshLocal = NotLoading(endOfPaginationReached = false)),
+            ),
             loadEvents
         )
         loadEvents.clear()
@@ -209,8 +222,8 @@ class AsyncPagingDataDifferTest {
                 localLoadStatesOf(
                     refreshLocal = NotLoading(endOfPaginationReached = false),
                     prependLocal = NotLoading(endOfPaginationReached = true),
-                    appendLocal = NotLoading(endOfPaginationReached = true)
-                )
+                    appendLocal = NotLoading(endOfPaginationReached = true),
+                ),
             ),
             actual = loadEvents
         )
@@ -240,26 +253,40 @@ class AsyncPagingDataDifferTest {
             // Load REFRESH [50, 51]
             advanceUntilIdle()
 
-            // Load END [52] to fulfill prefetch distance
+            assertEvents(
+                listOf(
+                    Inserted(0, 100), // [(50 placeholders), 50, 51, (48 placeholders)]
+                ),
+                listUpdateCapture.newEvents()
+            )
+
+            // Load APPEND [52] to fulfill prefetch distance
             differ.getItem(51)
             advanceUntilIdle()
 
+            assertEvents(
+                // TODO(b/182510751): Every change event here should have payload.
+                listOf(
+                    Changed(52, 1, null), // [(50 placeholders), 50, 51, 52, (47 placeholders)]
+                ),
+                listUpdateCapture.newEvents()
+            )
+
             // Load REFRESH [51, 52]
-            // Load START [50] to fulfill prefetch distance of transformed index
+            // Load PREPEND [50] to fulfill prefetch distance of transformed index
             currentPagedSource!!.invalidate()
             advanceUntilIdle()
 
-            val expected = listOf(
-                Inserted(0, 100), // [(50 placeholders), 50, 51, (48 placeholders)]
-                Changed(52, 1, null), // [(50 placeholders), 50, 51, 52, (47 placeholders)]
-                Inserted(53, 0), // ignored
-                Inserted(0, 1), // [(51 placeholders), 50, 51, 52, (47 placeholders)]
-                Removed(51, 1), // [(51 placeholders), 51, 52, (47 placeholders)]
-                Changed(50, 1, null), // [(50 placeholders), 50, 51, 52, (47 placeholders)]
-                Inserted(0, 0) // ignored
+            assertEvents(
+                // TODO(b/182510751): Every change event here should have payload.
+                listOf(
+                    // refresh
+                    Changed(50, 1, ITEM_TO_PLACEHOLDER), // 50 got unloaded
+                    // fix prefetch, 50 got reloaded
+                    Changed(50, 1, null), // [(50 placeholders), 50, 51, 52, (47 placeholders)]
+                ),
+                listUpdateCapture.newEvents()
             )
-
-            assertEvents(expected, listUpdateCapture.events)
 
             job.cancel()
         }
@@ -344,6 +371,7 @@ class AsyncPagingDataDifferTest {
         }
     }
 
+    @SdkSuppress(minSdkVersion = 21) // b/189492631
     @Test
     fun submitData_guaranteesOrder() = testScope.runBlockingTest {
         val pager = Pager(config = PagingConfig(2, enablePlaceholders = false), initialKey = 50) {
@@ -423,6 +451,7 @@ class AsyncPagingDataDifferTest {
         }
     }
 
+    @SdkSuppress(minSdkVersion = 21) // b/189492631
     @Test
     fun submitData_doesNotCancelCollectionsCoroutine() = testScope.runBlockingTest {
         lateinit var source1: TestPagingSource
@@ -484,6 +513,7 @@ class AsyncPagingDataDifferTest {
         job2.cancelAndJoin()
     }
 
+    @SdkSuppress(minSdkVersion = 21) // b/189492631
     @Test
     fun loadStateFlowSynchronouslyUpdates() = testScope.runBlockingTest {
         var combinedLoadStates: CombinedLoadStates? = null
@@ -510,48 +540,21 @@ class AsyncPagingDataDifferTest {
 
         // Initial refresh
         advanceUntilIdle()
-        assertEquals(
-            CombinedLoadStates(
-                source = LoadStates(
-                    refresh = NotLoading(endOfPaginationReached = false),
-                    prepend = NotLoading(endOfPaginationReached = false),
-                    append = NotLoading(endOfPaginationReached = false)
-                )
-            ),
-            combinedLoadStates
-        )
+        assertEquals(localLoadStatesOf(), combinedLoadStates)
         assertEquals(10, itemCount)
         assertEquals(10, differ.itemCount)
 
         // Append
         differ.getItem(9)
         advanceUntilIdle()
-        assertEquals(
-            CombinedLoadStates(
-                source = LoadStates(
-                    refresh = NotLoading(endOfPaginationReached = false),
-                    prepend = NotLoading(endOfPaginationReached = false),
-                    append = NotLoading(endOfPaginationReached = false)
-                )
-            ),
-            combinedLoadStates
-        )
+        assertEquals(localLoadStatesOf(), combinedLoadStates)
         assertEquals(20, itemCount)
         assertEquals(20, differ.itemCount)
 
         // Prepend
         differ.getItem(0)
         advanceUntilIdle()
-        assertEquals(
-            CombinedLoadStates(
-                source = LoadStates(
-                    refresh = NotLoading(endOfPaginationReached = false),
-                    prepend = NotLoading(endOfPaginationReached = false),
-                    append = NotLoading(endOfPaginationReached = false)
-                )
-            ),
-            combinedLoadStates
-        )
+        assertEquals(localLoadStatesOf(), combinedLoadStates)
         assertEquals(30, itemCount)
         assertEquals(30, differ.itemCount)
 
@@ -584,52 +587,90 @@ class AsyncPagingDataDifferTest {
 
             // Initial refresh
             advanceUntilIdle()
-            assertEquals(
-                CombinedLoadStates(
-                    source = LoadStates(
-                        refresh = NotLoading(endOfPaginationReached = false),
-                        prepend = NotLoading(endOfPaginationReached = false),
-                        append = NotLoading(endOfPaginationReached = false)
-                    )
-                ),
-                combinedLoadStates
-            )
+            assertEquals(localLoadStatesOf(), combinedLoadStates)
             assertEquals(10, itemCount)
             assertEquals(10, differ.itemCount)
 
             // Append
             differ.getItem(9)
             advanceUntilIdle()
-            assertEquals(
-                CombinedLoadStates(
-                    source = LoadStates(
-                        refresh = NotLoading(endOfPaginationReached = false),
-                        prepend = NotLoading(endOfPaginationReached = false),
-                        append = NotLoading(endOfPaginationReached = false)
-                    )
-                ),
-                combinedLoadStates
-            )
+            assertEquals(localLoadStatesOf(), combinedLoadStates)
             assertEquals(20, itemCount)
             assertEquals(20, differ.itemCount)
 
             // Prepend
             differ.getItem(0)
             advanceUntilIdle()
-            assertEquals(
-                CombinedLoadStates(
-                    source = LoadStates(
-                        refresh = NotLoading(endOfPaginationReached = false),
-                        prepend = NotLoading(endOfPaginationReached = false),
-                        append = NotLoading(endOfPaginationReached = false)
-                    )
-                ),
-                combinedLoadStates
-            )
+            assertEquals(localLoadStatesOf(), combinedLoadStates)
             assertEquals(30, itemCount)
             assertEquals(30, differ.itemCount)
 
             job.cancel()
+        }
+    }
+
+    @Test
+    fun listUpdateCallbackSynchronouslyUpdates() = testScope.runBlockingTest {
+        pauseDispatcher {
+            // Keep track of .snapshot() result within each ListUpdateCallback
+            val initialSnapshot: ItemSnapshotList<Int> = ItemSnapshotList(0, 0, emptyList())
+            var onInsertedSnapshot = initialSnapshot
+            var onRemovedSnapshot = initialSnapshot
+
+            val listUpdateCallback = object : ListUpdateCallback {
+                lateinit var differ: AsyncPagingDataDiffer<Int>
+
+                override fun onChanged(position: Int, count: Int, payload: Any?) {
+                    // TODO: Trigger this callback so we can assert state at this point as well
+                }
+
+                override fun onMoved(fromPosition: Int, toPosition: Int) {
+                    // TODO: Trigger this callback so we can assert state at this point as well
+                }
+
+                override fun onInserted(position: Int, count: Int) {
+                    onInsertedSnapshot = differ.snapshot()
+                }
+
+                override fun onRemoved(position: Int, count: Int) {
+                    onRemovedSnapshot = differ.snapshot()
+                }
+            }
+
+            val differ = AsyncPagingDataDiffer(
+                diffCallback = object : DiffUtil.ItemCallback<Int>() {
+                    override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
+                        return oldItem == newItem
+                    }
+
+                    override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
+                        return oldItem == newItem
+                    }
+                },
+                updateCallback = listUpdateCallback,
+                mainDispatcher = Dispatchers.Main,
+                workerDispatcher = Dispatchers.Main,
+            ).also {
+                listUpdateCallback.differ = it
+            }
+
+            // Initial insert; this only triggers onInserted
+            differ.submitData(PagingData.from(listOf(0)))
+            advanceUntilIdle()
+
+            val firstList = ItemSnapshotList(0, 0, listOf(0))
+            assertEquals(firstList, differ.snapshot())
+            assertEquals(firstList, onInsertedSnapshot)
+            assertEquals(initialSnapshot, onRemovedSnapshot)
+
+            // Switch item to 1; this triggers onInserted + onRemoved
+            differ.submitData(PagingData.from(listOf(1)))
+            advanceUntilIdle()
+
+            val secondList = ItemSnapshotList(0, 0, listOf(1))
+            assertEquals(secondList, differ.snapshot())
+            assertEquals(secondList, onInsertedSnapshot)
+            assertEquals(secondList, onRemovedSnapshot)
         }
     }
 }

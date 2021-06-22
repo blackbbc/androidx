@@ -31,6 +31,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.util.Pair;
@@ -48,9 +49,11 @@ import androidx.camera.core.CameraX;
 import androidx.camera.core.CameraXConfig;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
+import androidx.camera.core.InitializationException;
 import androidx.camera.core.Preview;
 import androidx.camera.core.UseCase;
 import androidx.camera.core.VideoCapture;
+import androidx.camera.core.impl.CameraDeviceSurfaceManager;
 import androidx.camera.core.impl.ImageFormatConstants;
 import androidx.camera.core.impl.SurfaceCombination;
 import androidx.camera.core.impl.SurfaceConfig;
@@ -69,6 +72,7 @@ import androidx.camera.testing.fakes.FakeUseCase;
 import androidx.camera.testing.fakes.FakeUseCaseConfig;
 import androidx.test.core.app.ApplicationProvider;
 
+import org.apache.maven.artifact.ant.shaded.ReflectionUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -93,6 +97,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /** Robolectric test for {@link SupportedSurfaceCombination} class */
+@SuppressWarnings("deprecation")
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
 @Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
@@ -114,6 +119,7 @@ public final class SupportedSurfaceCombinationTest {
     private final Size mMod16Size = new Size(960, 544);
     private final CamcorderProfileHelper mMockCamcorderProfileHelper =
             Mockito.mock(CamcorderProfileHelper.class);
+    private final CamcorderProfile mMockCamcorderProfile = Mockito.mock(CamcorderProfile.class);
     private CameraManagerCompat mCameraManagerCompat;
 
     /**
@@ -161,13 +167,16 @@ public final class SupportedSurfaceCombinationTest {
 
     @Before
     @SuppressWarnings("deprecation") /* defaultDisplay */
-    public void setUp() {
+    public void setUp() throws IllegalAccessException {
         WindowManager windowManager =
                 (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
         Shadows.shadowOf(windowManager.getDefaultDisplay()).setRealWidth(mDisplaySize.getWidth());
         Shadows.shadowOf(windowManager.getDefaultDisplay()).setRealHeight(mDisplaySize.getHeight());
 
         when(mMockCamcorderProfileHelper.hasProfile(anyInt(), anyInt())).thenReturn(true);
+        ReflectionUtils.setVariableValueInObject(mMockCamcorderProfile, "videoFrameWidth", 3840);
+        ReflectionUtils.setVariableValueInObject(mMockCamcorderProfile, "videoFrameHeight", 2160);
+        when(mMockCamcorderProfileHelper.get(anyInt(), anyInt())).thenReturn(mMockCamcorderProfile);
     }
 
     @After
@@ -495,7 +504,9 @@ public final class SupportedSurfaceCombinationTest {
         List<UseCase> useCases = new ArrayList<>();
         useCases.add(fakeUseCase);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -605,7 +616,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(imageCapture);
         useCases.add(imageAnalysis);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -653,7 +666,9 @@ public final class SupportedSurfaceCombinationTest {
         List<UseCase> useCases = new ArrayList<>();
         useCases.add(preview);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -743,7 +758,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(videoCapture);
         useCases.add(preview);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -775,7 +792,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(preview);
 
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -818,7 +837,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(preview);
         useCases.add(imageAnalysis);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -853,7 +874,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(preview);
         useCases.add(imageAnalysis);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -936,7 +959,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(videoCapture);
         useCases.add(preview);
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -1117,7 +1142,9 @@ public final class SupportedSurfaceCombinationTest {
         useCases.add(imageCapture);
 
         Map<UseCase, UseCaseConfig<?>> useCaseToConfigMap =
-                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(useCases,
+                Configs.useCaseConfigMapWithDefaultSettingsFromUseCaseList(
+                        mCameraFactory.getCamera(CAMERA_ID).getCameraInfoInternal(),
+                        useCases,
                         mUseCaseConfigFactory);
         Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
                 supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
@@ -2076,6 +2103,61 @@ public final class SupportedSurfaceCombinationTest {
                 mMaximumVideoSize);
     }
 
+    @Test
+    public void canGet640x480_whenAnotherGroupMatchedInMod16Exists()
+            throws CameraUnavailableException {
+        Size[] supportedSizes = new Size[]{
+                new Size(4000, 3000),
+                new Size(3840, 2160),
+                new Size(1920, 1080),
+                new Size(1024, 738), // This will create a 512/269 aspect ratio group that
+                // 640x480 will be considered to match in mod16 condition.
+                new Size(800, 600),
+                new Size(640, 480),
+                new Size(320, 240)
+        };
+        setupCamera(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED,
+                SENSOR_ORIENTATION_90, LANDSCAPE_PIXEL_ARRAY_SIZE, supportedSizes, null);
+        SupportedSurfaceCombination supportedSurfaceCombination = new SupportedSurfaceCombination(
+                mContext, CAMERA_ID, mCameraManagerCompat, mMockCamcorderProfileHelper);
+
+        // Sets the target resolution as 640x480 with target rotation as ROTATION_90 because the
+        // sensor orientation is 90.
+        FakeUseCase useCase = new FakeUseCaseConfig.Builder().setTargetResolution(
+                mAnalysisSize).setTargetRotation(Surface.ROTATION_90).build();
+
+        Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
+                supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
+                        Collections.singletonList(useCase.getCurrentConfig()));
+
+        // Checks 640x480 is final selected for the use case.
+        assertThat(suggestedResolutionMap.get(useCase.getCurrentConfig())).isEqualTo(mAnalysisSize);
+    }
+
+    @Test
+    public void canGetSupportedSizeSmallerThan640x480_whenLargerMaxResolutionIsSet()
+            throws CameraUnavailableException {
+        Size[] supportedSizes = new Size[]{
+                new Size(480, 480)
+        };
+        setupCamera(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED,
+                SENSOR_ORIENTATION_90, LANDSCAPE_PIXEL_ARRAY_SIZE, supportedSizes, null);
+        SupportedSurfaceCombination supportedSurfaceCombination = new SupportedSurfaceCombination(
+                mContext, CAMERA_ID, mCameraManagerCompat, mMockCamcorderProfileHelper);
+
+        // Sets the max resolution as 720x1280
+        FakeUseCase useCase =
+                new FakeUseCaseConfig.Builder().setMaxResolution(mDisplaySize).build();
+
+        Map<UseCaseConfig<?>, Size> suggestedResolutionMap =
+                supportedSurfaceCombination.getSuggestedResolutions(Collections.emptyList(),
+                        Collections.singletonList(useCase.getCurrentConfig()));
+
+        // Checks 480x480 is final selected for the use case.
+        assertThat(suggestedResolutionMap.get(useCase.getCurrentConfig())).isEqualTo(
+                new Size(480, 480));
+    }
+
     private void setupCamera(int hardwareLevel) {
         setupCamera(hardwareLevel, SENSOR_ORIENTATION_90, LANDSCAPE_PIXEL_ARRAY_SIZE,
                 mSupportedSizes, null);
@@ -2141,16 +2223,27 @@ public final class SupportedSurfaceCombinationTest {
 
         mCameraFactory.insertCamera(lensFacingEnum, cameraId, () -> new FakeCamera(cameraId, null,
                 new Camera2CameraInfoImpl(cameraId,
-                        mCameraManagerCompat.getCameraCharacteristicsCompat(cameraId),
-                        mock(Camera2CameraControlImpl.class))));
+                        mCameraManagerCompat.getCameraCharacteristicsCompat(cameraId))));
 
         initCameraX();
     }
 
     private void initCameraX() {
+        CameraDeviceSurfaceManager.Provider surfaceManagerProvider =
+                (context, cameraManager, availableCameraIds) -> {
+                    try {
+                        return new Camera2DeviceSurfaceManager(context,
+                                mMockCamcorderProfileHelper,
+                                (CameraManagerCompat) cameraManager, availableCameraIds);
+                    } catch (CameraUnavailableException e) {
+                        throw new InitializationException(e);
+                    }
+                };
+
         CameraXConfig cameraXConfig = CameraXConfig.Builder.fromConfig(
                 Camera2Config.defaultConfig())
-                .setCameraFactoryProvider((ignored0, ignored1) -> mCameraFactory)
+                .setDeviceSurfaceManagerProvider(surfaceManagerProvider)
+                .setCameraFactoryProvider((ignored0, ignored1, ignored2) -> mCameraFactory)
                 .build();
         CameraX.initialize(mContext, cameraXConfig);
         CameraX cameraX;

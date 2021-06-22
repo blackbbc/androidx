@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+// @exportToFramework:skipFile()
 package androidx.appsearch.annotation;
 
 import androidx.appsearch.app.AppSearchSchema;
@@ -191,6 +191,7 @@ public @interface AppSearchDocument {
          * <p>If not specified, defaults to {@link
          * AppSearchSchema.PropertyConfig#INDEXING_TYPE_NONE} (the field will not be indexed and
          * cannot be queried).
+         * TODO(b/171857731) renamed to TermMatchType when using String-specific indexing config.
          */
         @AppSearchSchema.PropertyConfig.IndexingType int indexingType()
                 default AppSearchSchema.PropertyConfig.INDEXING_TYPE_NONE;

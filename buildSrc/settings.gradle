@@ -14,4 +14,19 @@
  * limitations under the License.
  */
 
-include ':jetpad-integration'
+include ":jetpad-integration"
+
+enableFeaturePreview("VERSION_CATALOGS")
+
+dependencyResolutionManagement {
+    versionCatalogs {
+        libs {
+            from(files("../gradle/libs.versions.toml"))
+            def agpOverride = System.getenv("GRADLE_PLUGIN_VERSION")
+            if (agpOverride != null) {
+                logger.warn("Using custom version ${agpOverride} of AGP due to GRADLE_PLUGIN_VERSION being set.")
+                version('androidGradlePlugin', agpOverride)
+            }
+        }
+    }
+}

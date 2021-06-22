@@ -16,165 +16,124 @@
 
 package androidx.compose.animation.demos
 
-import androidx.compose.animation.animatedFloat
-import androidx.compose.animation.core.AnimationEndReason
-import androidx.compose.animation.core.ExponentialDecay
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.SpringSpec
-import androidx.compose.animation.core.TargetAnimation
-import androidx.compose.animation.core.fling
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.calculateTargetValue
+import androidx.compose.animation.splineBasedDecay
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.verticalDrag
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.preferredHeight
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.material.Button
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.gesture.DragObserver
-import androidx.compose.ui.gesture.rawDragGestureFilter
+import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.DensityAmbient
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.sign
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun SwipeToDismissDemo() {
     Column {
-        SwipeToDismiss()
+        var index by remember { mutableStateOf(0) }
+        Box(Modifier.requiredHeight(300.dp).fillMaxWidth()) {
+            Box(
+                Modifier.swipeToDismiss(index).align(Alignment.BottomCenter).requiredSize(150.dp)
+                    .background(pastelColors[index])
+            )
+        }
         Text(
             "Swipe up to dismiss",
             fontSize = 30.sp,
-            modifier = Modifier.padding(40.dp)
+            modifier = Modifier.padding(40.dp).align(Alignment.CenterHorizontally)
         )
+        Button(
+            onClick = {
+                index = (index + 1) % pastelColors.size
+            },
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
+            Text("New Card")
+        }
     }
 }
 
-private val height = 1600f
-private val itemHeight = 1600f * 2 / 3f
-private val padding = 10f
-
-@Composable
-private fun SwipeToDismiss() {
-    val itemBottom = animatedFloat(height)
-    val index = remember { mutableStateOf(0) }
-    val itemWidth = remember { mutableStateOf(0f) }
-    val isFlinging = remember { mutableStateOf(false) }
-    val modifier = Modifier.rawDragGestureFilter(
-        dragObserver = object : DragObserver {
-            override fun onStart(downPosition: Offset) {
-                itemBottom.setBounds(0f, height)
-                if (isFlinging.value && itemBottom.targetValue < 100f) {
-                    reset()
+private fun Modifier.swipeToDismiss(index: Int): Modifier = composed {
+    val animatedOffset = remember { Animatable(0f) }
+    val height = remember { mutableStateOf(0) }
+    LaunchedEffect(index) {
+        animatedOffset.snapTo(0f)
+    }
+    this.pointerInput(Unit) {
+        coroutineScope {
+            while (true) {
+                val pointerId = awaitPointerEventScope {
+                    awaitFirstDown().id
                 }
-            }
-
-            private fun reset() {
-                itemBottom.snapTo(height)
-                index.value--
-                if (index.value < 0) {
-                    index.value += pastelColors.size
-                }
-            }
-
-            override fun onDrag(dragDistance: Offset): Offset {
-                itemBottom.snapTo(itemBottom.targetValue + dragDistance.y)
-                return dragDistance
-            }
-
-            fun adjustTarget(velocity: Float): (Float) -> TargetAnimation? {
-                return { target: Float ->
-                    // The velocity is fast enough to fly off screen
-                    if (target <= 0) {
-                        null
-                    } else {
-                        val animation = SpringSpec<Float>(
-                            dampingRatio = 0.8f, stiffness = 300f
+                height.value = size.height
+                val velocityTracker = VelocityTracker()
+                awaitPointerEventScope {
+                    verticalDrag(pointerId) {
+                        launch {
+                            animatedOffset.snapTo(
+                                animatedOffset.value + it.positionChange().y
+                            )
+                        }
+                        velocityTracker.addPosition(
+                            it.uptimeMillis,
+                            it.position
                         )
-                        val projectedTarget = target + sign(velocity) * 0.2f * height
-                        if (projectedTarget < 0.6 * height) {
-                            TargetAnimation(0f, animation)
-                        } else {
-                            TargetAnimation(height, animation)
-                        }
                     }
                 }
-            }
-
-            override fun onStop(velocity: Offset) {
-                isFlinging.value = true
-                itemBottom.fling(
-                    velocity.y,
-                    ExponentialDecay(3.0f),
-                    adjustTarget(velocity.y),
-                    onEnd = { endReason, final, _ ->
-                        isFlinging.value = false
-                        if (endReason != AnimationEndReason.Interrupted && final == 0f) {
-                            reset()
-                        }
+                val velocity = velocityTracker.calculateVelocity().y
+                launch {
+                    // Either fling out of the sight, or snap back
+                    val decay = splineBasedDecay<Float>(this@pointerInput)
+                    if (decay.calculateTargetValue(
+                            animatedOffset.value,
+                            velocity
+                        ) >= -size.height
+                    ) {
+                        // Not enough velocity to be dismissed
+                        animatedOffset.animateTo(0f, initialVelocity = velocity)
+                    } else {
+                        animatedOffset.updateBounds(
+                            lowerBound = -size.height.toFloat()
+                        )
+                        animatedOffset.animateDecay(velocity, decay)
                     }
-                )
+                }
             }
         }
-    )
-
-    val heightDp = with(DensityAmbient.current) { height.toDp() }
-
-    Canvas(
-        modifier.fillMaxWidth()
-            .preferredHeight(heightDp)
-            .onGloballyPositioned { coordinates ->
-                itemWidth.value = coordinates.size.width * 2 / 3f
-            }
-    ) {
-        val progress = 1 - itemBottom.value / height
-        // TODO: this progress can be used to drive state transitions
-        val alpha = 1f - FastOutSlowInEasing(progress)
-        val horizontalOffset = progress * itemWidth.value
-        drawLeftItems(horizontalOffset, itemWidth.value, itemHeight, index.value)
-        drawDismissingItem(itemBottom.value, itemWidth.value, itemHeight, index.value + 1, alpha)
-    }
+    }.offset { IntOffset(0, animatedOffset.value.roundToInt()) }
+        .graphicsLayer(alpha = calculateAlpha(animatedOffset.value, height.value))
 }
 
-private fun DrawScope.drawLeftItems(
-    horizontalOffset: Float,
-    width: Float,
-    height: Float,
-    index: Int
-) {
-    val offset = Offset(center.x - width * 1.5f + horizontalOffset + padding, size.height - height)
-    val rectSize = Size(width - (2 * padding), height)
-    drawRect(pastelColors[index % pastelColors.size], offset, rectSize)
-
-    if (offset.x >= 0) {
-        // draw another item
-        drawRect(
-            pastelColors[(index - 1 + pastelColors.size) % pastelColors.size],
-            offset - Offset(width, 0.0f),
-            rectSize
-        )
-    }
+private fun calculateAlpha(offset: Float, size: Int): Float {
+    if (size <= 0) return 1f
+    val alpha = (offset + size) / size
+    return alpha.coerceIn(0f, 1f)
 }
-
-private fun DrawScope.drawDismissingItem(
-    bottom: Float,
-    width: Float,
-    height: Float,
-    index: Int,
-    alpha: Float
-) = drawRect(
-    pastelColors[index % pastelColors.size],
-    topLeft = Offset(center.x - width / 2 + padding, bottom - height),
-    size = Size(width - (2 * padding), height),
-    alpha = alpha
-)
 
 internal val pastelColors = listOf(
     Color(0xFFffd7d7),

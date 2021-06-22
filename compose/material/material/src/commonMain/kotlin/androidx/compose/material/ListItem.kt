@@ -17,20 +17,19 @@
 package androidx.compose.material
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.ProvideTextStyle
-import androidx.compose.foundation.Text
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.preferredHeightIn
-import androidx.compose.foundation.layout.preferredSizeIn
-import androidx.compose.foundation.layout.preferredWidthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
@@ -41,7 +40,11 @@ import androidx.compose.ui.util.fastForEachIndexed
 import kotlin.math.max
 
 /**
- * Material Design implementation of [list items](https://material.io/components/lists).
+ * <a href="https://material.io/components/lists" class="external" target="_blank">Material Design list</a> item.
+ *
+ * Lists are continuous, vertical indexes of text or images.
+ *
+ * ![Lists image](https://developer.android.com/images/reference/androidx/compose/material/lists.png)
  *
  * To make this [ListItem] clickable, use [Modifier.clickable].
  * To add a background to the [ListItem], wrap it with a [Surface].
@@ -54,15 +57,19 @@ import kotlin.math.max
  * - three-line items
  * @sample androidx.compose.material.samples.ThreeLineListItems
  *
+ * You can combine this component with a checkbox or switch as in the following examples:
+ * @sample androidx.compose.material.samples.ClickableListItems
+ *
  * @param modifier Modifier to be applied to the list item
  * @param icon The leading supporting visual of the list item
  * @param secondaryText The secondary text of the list item
  * @param singleLineSecondaryText Whether the secondary text is single line
  * @param overlineText The text displayed above the primary text
- * @param trailing The trailing meta text or meta icon of the list item
+ * @param trailing The trailing meta text, icon, switch or checkbox
  * @param text The primary text of the list item
  */
 @Composable
+@ExperimentalMaterialApi
 fun ListItem(
     modifier: Modifier = Modifier,
     icon: @Composable (() -> Unit)? = null,
@@ -72,15 +79,14 @@ fun ListItem(
     trailing: @Composable (() -> Unit)? = null,
     text: @Composable () -> Unit
 ) {
-    val emphasisLevels = AmbientEmphasisLevels.current
     val typography = MaterialTheme.typography
 
-    val styledText = applyTextStyle(typography.subtitle1, emphasisLevels.high, text)!!
-    val styledSecondaryText = applyTextStyle(typography.body2, emphasisLevels.medium, secondaryText)
-    val styledOverlineText = applyTextStyle(typography.overline, emphasisLevels.high, overlineText)
-    val styledTrailing = applyTextStyle(typography.caption, emphasisLevels.high, trailing)
+    val styledText = applyTextStyle(typography.subtitle1, ContentAlpha.high, text)!!
+    val styledSecondaryText = applyTextStyle(typography.body2, ContentAlpha.medium, secondaryText)
+    val styledOverlineText = applyTextStyle(typography.overline, ContentAlpha.high, overlineText)
+    val styledTrailing = applyTextStyle(typography.caption, ContentAlpha.high, trailing)
 
-    val semanticsModifier = modifier.semantics(mergeAllDescendants = true) {}
+    val semanticsModifier = modifier.semantics(mergeDescendants = true) {}
 
     if (styledSecondaryText == null && styledOverlineText == null) {
         OneLine.ListItem(semanticsModifier, icon, styledText, styledTrailing)
@@ -110,20 +116,20 @@ fun ListItem(
 private object OneLine {
     // TODO(popam): support wide icons
     // TODO(popam): convert these to sp
-    // List item related constants.
+    // List item related defaults.
     private val MinHeight = 48.dp
     private val MinHeightWithIcon = 56.dp
 
-    // Icon related constants.
+    // Icon related defaults.
     private val IconMinPaddedWidth = 40.dp
     private val IconLeftPadding = 16.dp
     private val IconVerticalPadding = 8.dp
 
-    // Content related constants.
+    // Content related defaults.
     private val ContentLeftPadding = 16.dp
     private val ContentRightPadding = 16.dp
 
-    // Trailing related constants.
+    // Trailing related defaults.
     private val TrailingRightPadding = 16.dp
 
     @Composable
@@ -134,24 +140,24 @@ private object OneLine {
         trailing: @Composable (() -> Unit)?
     ) {
         val minHeight = if (icon == null) MinHeight else MinHeightWithIcon
-        Row(modifier.preferredHeightIn(min = minHeight)) {
+        Row(modifier.heightIn(min = minHeight)) {
             if (icon != null) {
                 Box(
                     Modifier.align(Alignment.CenterVertically)
-                        .preferredWidthIn(min = IconLeftPadding + IconMinPaddedWidth)
+                        .widthIn(min = IconLeftPadding + IconMinPaddedWidth)
                         .padding(
                             start = IconLeftPadding,
                             top = IconVerticalPadding,
                             bottom = IconVerticalPadding
                         ),
-                    alignment = Alignment.CenterStart
+                    contentAlignment = Alignment.CenterStart
                 ) { icon() }
             }
             Box(
                 Modifier.weight(1f)
                     .align(Alignment.CenterVertically)
                     .padding(start = ContentLeftPadding, end = ContentRightPadding),
-                alignment = Alignment.CenterStart
+                contentAlignment = Alignment.CenterStart
             ) { text() }
             if (trailing != null) {
                 Box(
@@ -165,16 +171,16 @@ private object OneLine {
 }
 
 private object TwoLine {
-    // List item related constants.
+    // List item related defaults.
     private val MinHeight = 64.dp
     private val MinHeightWithIcon = 72.dp
 
-    // Icon related constants.
+    // Icon related defaults.
     private val IconMinPaddedWidth = 40.dp
     private val IconLeftPadding = 16.dp
     private val IconVerticalPadding = 16.dp
 
-    // Content related constants.
+    // Content related defaults.
     private val ContentLeftPadding = 16.dp
     private val ContentRightPadding = 16.dp
     private val OverlineBaselineOffset = 24.dp
@@ -184,7 +190,7 @@ private object TwoLine {
     private val PrimaryToSecondaryBaselineOffsetNoIcon = 20.dp
     private val PrimaryToSecondaryBaselineOffsetWithIcon = 20.dp
 
-    // Trailing related constants.
+    // Trailing related defaults.
     private val TrailingRightPadding = 16.dp
 
     @Composable
@@ -197,14 +203,14 @@ private object TwoLine {
         trailing: @Composable (() -> Unit)?
     ) {
         val minHeight = if (icon == null) MinHeight else MinHeightWithIcon
-        Row(modifier.preferredHeightIn(min = minHeight)) {
+        Row(modifier.heightIn(min = minHeight)) {
             val columnModifier = Modifier.weight(1f)
                 .padding(start = ContentLeftPadding, end = ContentRightPadding)
 
             if (icon != null) {
                 Box(
                     Modifier
-                        .preferredSizeIn(
+                        .sizeIn(
                             minWidth = IconLeftPadding + IconMinPaddedWidth,
                             minHeight = minHeight
                         )
@@ -213,7 +219,7 @@ private object TwoLine {
                             top = IconVerticalPadding,
                             bottom = IconVerticalPadding
                         ),
-                    alignment = Alignment.TopStart
+                    contentAlignment = Alignment.TopStart
                 ) { icon() }
             }
 
@@ -255,9 +261,9 @@ private object TwoLine {
                 ) {
                     Box(
                         // TODO(popam): find way to center and wrap content without minHeight
-                        Modifier.preferredHeightIn(min = minHeight)
+                        Modifier.heightIn(min = minHeight)
                             .padding(end = TrailingRightPadding),
-                        alignment = Alignment.Center
+                        contentAlignment = Alignment.Center
                     ) { trailing() }
                 }
             }
@@ -266,15 +272,15 @@ private object TwoLine {
 }
 
 private object ThreeLine {
-    // List item related constants.
+    // List item related defaults.
     private val MinHeight = 88.dp
 
-    // Icon related constants.
+    // Icon related defaults.
     private val IconMinPaddedWidth = 40.dp
     private val IconLeftPadding = 16.dp
     private val IconThreeLineVerticalPadding = 16.dp
 
-    // Content related constants.
+    // Content related defaults.
     private val ContentLeftPadding = 16.dp
     private val ContentRightPadding = 16.dp
     private val ThreeLineBaselineFirstOffset = 28.dp
@@ -282,7 +288,7 @@ private object ThreeLine {
     private val ThreeLineBaselineThirdOffset = 20.dp
     private val ThreeLineTrailingTopPadding = 16.dp
 
-    // Trailing related constants.
+    // Trailing related defaults.
     private val TrailingRightPadding = 16.dp
 
     @Composable
@@ -294,18 +300,18 @@ private object ThreeLine {
         overlineText: @Composable (() -> Unit)?,
         trailing: @Composable (() -> Unit)?
     ) {
-        Row(modifier.preferredHeightIn(min = MinHeight)) {
+        Row(modifier.heightIn(min = MinHeight)) {
             if (icon != null) {
                 val minSize = IconLeftPadding + IconMinPaddedWidth
                 Box(
                     Modifier
-                        .preferredSizeIn(minWidth = minSize, minHeight = minSize)
+                        .sizeIn(minWidth = minSize, minHeight = minSize)
                         .padding(
                             start = IconLeftPadding,
                             top = IconThreeLineVerticalPadding,
                             bottom = IconThreeLineVerticalPadding
                         ),
-                    alignment = Alignment.CenterStart
+                    contentAlignment = Alignment.CenterStart
                 ) { icon() }
             }
             BaselinesOffsetColumn(
@@ -359,7 +365,7 @@ private fun BaselinesOffsetColumn(
             } else 0
             val topPadding = max(
                 0,
-                offsets[index].toIntPx() - placeable[FirstBaseline] - toPreviousBaseline
+                offsets[index].roundToPx() - placeable[FirstBaseline] - toPreviousBaseline
             )
             y[index] = topPadding + containerHeight
             containerHeight += topPadding + placeable.height
@@ -392,12 +398,15 @@ private fun OffsetToBaselineOrCenter(
         val y: Int
         val containerHeight: Int
         if (baseline != AlignmentLine.Unspecified) {
-            y = offset.toIntPx() - baseline
+            y = offset.roundToPx() - baseline
             containerHeight = max(constraints.minHeight, y + placeable.height)
         } else {
             containerHeight = max(constraints.minHeight, placeable.height)
-            y = Alignment.Center
-                .align(IntSize(0, containerHeight - placeable.height)).y
+            y = Alignment.Center.align(
+                IntSize.Zero,
+                IntSize(0, containerHeight - placeable.height),
+                layoutDirection
+            ).y
         }
         layout(placeable.width, containerHeight) {
             placeable.placeRelative(0, y)
@@ -407,12 +416,12 @@ private fun OffsetToBaselineOrCenter(
 
 private fun applyTextStyle(
     textStyle: TextStyle,
-    emphasis: Emphasis,
+    contentAlpha: Float,
     icon: @Composable (() -> Unit)?
 ): @Composable (() -> Unit)? {
     if (icon == null) return null
     return {
-        ProvideEmphasis(emphasis) {
+        CompositionLocalProvider(LocalContentAlpha provides contentAlpha) {
             ProvideTextStyle(textStyle, icon)
         }
     }

@@ -19,7 +19,6 @@ package androidx.compose.ui.geometry
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.util.lerp
-import androidx.compose.ui.util.toStringAsFixed
 import kotlin.math.absoluteValue
 import kotlin.math.max
 import kotlin.math.min
@@ -105,21 +104,6 @@ data class Rect(
     @Stable
     val isEmpty: Boolean
         get() = left >= right || top >= bottom
-
-    /**
-     * Returns a new rectangle translated by the given offset.
-     *
-     * To translate a rectangle by separate x and y components rather than by an
-     * [Offset], consider [translate].
-     */
-    @Deprecated(
-        "Use translate(offset) instead",
-        ReplaceWith("translate(offset)", "androidx.compose.ui.geometry")
-    )
-    @Stable
-    fun shift(offset: Offset): Rect {
-        return Rect(left + offset.x, top + offset.y, right + offset.x, bottom + offset.y)
-    }
 
     /**
      * Returns a new rectangle translated by the given offset.

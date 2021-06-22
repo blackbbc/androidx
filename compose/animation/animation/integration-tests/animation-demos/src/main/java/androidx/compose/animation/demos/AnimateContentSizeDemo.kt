@@ -18,8 +18,6 @@ package androidx.compose.animation.demos
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Text
-import androidx.compose.foundation.AmbientTextStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -27,13 +25,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.requiredSizeIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
+import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,16 +52,16 @@ fun AnimateContentSizeDemo() {
             .fillMaxWidth()
             .padding(50.dp)
     ) {
-        text()
-        Spacer(Modifier.height(20.dp))
-        button()
-        Spacer(Modifier.height(20.dp))
-        image()
+        MyText()
+        Spacer(Modifier.requiredHeight(20.dp))
+        MyButton()
+        Spacer(Modifier.requiredHeight(20.dp))
+        Image()
     }
 }
 
 @Composable
-fun text() {
+private fun MyText() {
     val shortText = "Click me"
     val longText = "Very long text\nthat spans across\nmultiple lines"
     var short by remember { mutableStateOf(true) }
@@ -82,13 +82,13 @@ fun text() {
             } else {
                 longText
             },
-            style = AmbientTextStyle.current.copy(color = Color.White)
+            style = LocalTextStyle.current.copy(color = Color.White)
         )
     }
 }
 
 @Composable
-fun button() {
+private fun MyButton() {
     val shortText = "Short"
     val longText = "Very loooooong text"
     var short by remember { mutableStateOf(true) }
@@ -101,18 +101,18 @@ fun button() {
             } else {
                 longText
             },
-            style = AmbientTextStyle.current.copy(color = Color.White),
+            style = LocalTextStyle.current.copy(color = Color.White),
             modifier = Modifier.animateContentSize()
         )
     }
 }
 
 @Composable
-fun image() {
+private fun Image() {
     var portraitMode by remember { mutableStateOf(true) }
     Box(
         Modifier.clickable { portraitMode = !portraitMode }
-            .sizeIn(maxWidth = 300.dp, maxHeight = 300.dp)
+            .requiredSizeIn(maxWidth = 300.dp, maxHeight = 300.dp)
             .background(if (portraitMode) Color(0xFFfffbd0) else Color(0xFFe3ffd9))
             .animateContentSize(tween(500))
             .aspectRatio(if (portraitMode) 3 / 4f else 16 / 9f)
@@ -123,7 +123,7 @@ fun image() {
             } else {
                 "16 : 9"
             },
-            style = AmbientTextStyle.current.copy(color = Color.Black)
+            style = LocalTextStyle.current.copy(color = Color.Black)
         )
     }
 }

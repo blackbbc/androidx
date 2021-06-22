@@ -16,28 +16,30 @@
 
 package androidx.compose.material
 
-import androidx.compose.foundation.Interaction
-import androidx.compose.foundation.InteractionState
+import androidx.compose.foundation.interaction.Interaction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.preferredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material.ripple.RippleIndication
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 /**
  * IconButton is a clickable icon, used to represent actions. An IconButton has an overall minimum
- * touch target size of 48 x 48dp, to meet accessibility guidelines. [icon] is centered
+ * touch target size of 48 x 48dp, to meet accessibility guidelines. [content] is centered
  * inside the IconButton.
  *
  * This component is typically used inside an App Bar for the navigation icon / actions. See App
  * Bar documentation for samples of this.
  *
- * [icon] should typically be an [Icon], using an icon from
+ * [content] should typically be an [Icon], using an icon from
  * [androidx.compose.material.icons.Icons]. If using a custom icon, note that the typical size for the
  * internal icon is 24 x 24 dp.
  *
@@ -47,11 +49,11 @@ import androidx.compose.ui.unit.dp
  * @param modifier optional [Modifier] for this IconButton
  * @param enabled whether or not this IconButton will handle input events and appear enabled for
  * semantics purposes
- * @param interactionState the [InteractionState] representing the different [Interaction]s
- * present on this IconButton. You can create and pass in your own remembered
- * [InteractionState] if you want to read the [InteractionState] and customize the appearance /
- * behavior of this IconButton in different [Interaction]s.
- * @param icon the content (icon) to be drawn inside the IconButton. This is typically an
+ * @param interactionSource the [MutableInteractionSource] representing the stream of
+ * [Interaction]s for this IconButton. You can create and pass in your own remembered
+ * [MutableInteractionSource] if you want to observe [Interaction]s and customize the
+ * appearance / behavior of this IconButton in different [Interaction]s.
+ * @param content the content (icon) to be drawn inside the IconButton. This is typically an
  * [Icon].
  */
 @Composable
@@ -59,20 +61,24 @@ fun IconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    interactionState: InteractionState = remember { InteractionState() },
-    icon: @Composable () -> Unit
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    content: @Composable () -> Unit
 ) {
     Box(
         modifier = modifier
             .clickable(
                 onClick = onClick,
                 enabled = enabled,
-                interactionState = interactionState,
-                indication = RippleIndication(bounded = false, radius = RippleRadius)
+                role = Role.Button,
+                interactionSource = interactionSource,
+                indication = rememberRipple(bounded = false, radius = RippleRadius)
             )
             .then(IconButtonSizeModifier),
-        alignment = Alignment.Center
-    ) { icon() }
+        contentAlignment = Alignment.Center
+    ) {
+        val contentAlpha = if (enabled) LocalContentAlpha.current else ContentAlpha.disabled
+        CompositionLocalProvider(LocalContentAlpha provides contentAlpha, content = content)
+    }
 }
 
 /**
@@ -86,11 +92,11 @@ fun IconButton(
  * @param modifier optional [Modifier] for this IconToggleButton
  * @param enabled enabled whether or not this [IconToggleButton] will handle input events and appear
  * enabled for semantics purposes
- * @param interactionState the [InteractionState] representing the different [Interaction]s
- * present on this IconToggleButton. You can create and pass in your own remembered
- * [InteractionState] if you want to read the [InteractionState] and customize the appearance /
- * behavior of this IconToggleButton in different [Interaction]s.
- * @param icon the content (icon) to be drawn inside the IconToggleButton. This is typically an
+ * @param interactionSource the [MutableInteractionSource] representing the stream of
+ * [Interaction]s for this IconToggleButton. You can create and pass in your own remembered
+ * [MutableInteractionSource] if you want to observe [Interaction]s and customize the
+ * appearance / behavior of this IconToggleButton in different [Interaction]s.
+ * @param content the content (icon) to be drawn inside the IconToggleButton. This is typically an
  * [Icon].
  */
 @Composable
@@ -99,19 +105,23 @@ fun IconToggleButton(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    interactionState: InteractionState = remember { InteractionState() },
-    icon: @Composable () -> Unit
+    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    content: @Composable () -> Unit
 ) {
     Box(
         modifier = modifier.toggleable(
             value = checked,
             onValueChange = onCheckedChange,
             enabled = enabled,
-            interactionState = interactionState,
-            indication = RippleIndication(bounded = false, radius = RippleRadius)
+            role = Role.Checkbox,
+            interactionSource = interactionSource,
+            indication = rememberRipple(bounded = false, radius = RippleRadius)
         ).then(IconButtonSizeModifier),
-        alignment = Alignment.Center
-    ) { icon() }
+        contentAlignment = Alignment.Center
+    ) {
+        val contentAlpha = if (enabled) LocalContentAlpha.current else ContentAlpha.disabled
+        CompositionLocalProvider(LocalContentAlpha provides contentAlpha, content = content)
+    }
 }
 
 // Default radius of an unbounded ripple in an IconButton
@@ -120,4 +130,4 @@ private val RippleRadius = 24.dp
 // TODO: b/149691127 investigate our strategy around accessibility touch targets, and remove
 // per-component definitions of this size.
 // Diameter of the IconButton, to allow for correct minimum touch target size for accessibility
-private val IconButtonSizeModifier = Modifier.preferredSize(48.dp)
+private val IconButtonSizeModifier = Modifier.size(48.dp)

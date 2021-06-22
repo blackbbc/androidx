@@ -18,16 +18,15 @@ package androidx.compose.ui.window
 
 import android.view.View
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Providers
-import androidx.compose.runtime.emptyContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LayoutDirectionAmbient
-import androidx.compose.ui.platform.ViewAmbient
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.unit.IntBounds
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -53,7 +52,7 @@ class PopupAlignmentTest {
     private val testTag = "testedPopup"
     private val offset = IntOffset(10, 10)
     private val popupSize = IntSize(40, 20)
-    private val parentBounds = IntBounds(50, 50, 150, 150)
+    private val parentBounds = IntRect(50, 50, 150, 150)
     private val parentSize = IntSize(parentBounds.width, parentBounds.height)
 
     private var composeViewAbsolutePos = IntOffset(0, 0)
@@ -308,7 +307,7 @@ class PopupAlignmentTest {
 
             rule.setContent {
                 // Get the compose view position on screen
-                val composeView = ViewAmbient.current
+                val composeView = LocalView.current
                 val positionArray = IntArray(2)
                 composeView.getLocationOnScreen(positionArray)
                 composeViewAbsolutePos = IntOffset(
@@ -320,7 +319,7 @@ class PopupAlignmentTest {
                 // position of the parent to be (0, 0)
                 TestAlign {
                     val layoutDirection = if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
-                    Providers(LayoutDirectionAmbient provides layoutDirection) {
+                    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                         SimpleContainer(width = parentWidthDp, height = parentHeightDp) {
                             PopupTestTag(testTag) {
                                 Popup(alignment = alignment, offset = offset) {
@@ -332,7 +331,7 @@ class PopupAlignmentTest {
                                         modifier = Modifier.onGloballyPositioned {
                                             measureLatch.countDown()
                                         },
-                                        children = emptyContent()
+                                        content = {}
                                     )
                                 }
                             }
@@ -346,8 +345,8 @@ class PopupAlignmentTest {
     }
 
     @Composable
-    private fun TestAlign(children: @Composable () -> Unit) {
-        Layout(children) { measurables, constraints ->
+    private fun TestAlign(content: @Composable () -> Unit) {
+        Layout(content) { measurables, constraints ->
             val measurable = measurables.firstOrNull()
             // The child cannot be larger than our max constraints, but we ignore min constraints.
             val placeable = measurable?.measure(constraints.copy(minWidth = 0, minHeight = 0))
@@ -368,7 +367,9 @@ class PopupAlignmentTest {
             layout(layoutWidth, layoutHeight) {
                 if (placeable != null) {
                     val position = Alignment.TopStart.align(
-                        IntSize(layoutWidth - placeable.width, layoutHeight - placeable.height)
+                        IntSize(placeable.width, placeable.height),
+                        IntSize(layoutWidth, layoutHeight),
+                        layoutDirection
                     )
                     placeable.placeRelative(position.x, position.y)
                 }

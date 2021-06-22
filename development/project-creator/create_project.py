@@ -28,13 +28,17 @@ from distutils.dir_util import DistutilsFileError
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 FRAMEWORKS_SUPPORT_FP = os.path.abspath(os.path.join(os.getcwd(), '..', '..'))
-SAMPLE_OWNERS_FP = os.path.abspath(os.path.join(os.getcwd(), 'groupId', 'OWNERS'))
-SAMPLE_SRC_FP = os.path.abspath(os.path.join(os.getcwd(), 'groupId', 'artifactId'))
+SAMPLE_OWNERS_FP = os.path.abspath(os.path.join(os.getcwd(), 'kotlin-template', 'groupId', 'OWNERS'))
+SAMPLE_JAVA_SRC_FP = os.path.abspath(os.path.join(os.getcwd(), 'java-template', 'groupId', 'artifactId'))
+SAMPLE_KOTLIN_SRC_FP = os.path.abspath(os.path.join(os.getcwd(), 'kotlin-template', 'groupId', 'artifactId'))
+SAMPLE_COMPOSE_SRC_FP = os.path.abspath(os.path.join(os.getcwd(), 'compose-template', 'groupId', 'artifactId'))
 SETTINGS_GRADLE_FP = os.path.abspath(os.path.join(os.getcwd(), '..', '..', "settings.gradle"))
 LIBRARY_VERSIONS_REL = './buildSrc/src/main/kotlin/androidx/build/LibraryVersions.kt'
 LIBRARY_VERSIONS_FP = os.path.join(FRAMEWORKS_SUPPORT_FP, LIBRARY_VERSIONS_REL)
 LIBRARY_GROUPS_REL = './buildSrc/src/main/kotlin/androidx/build/LibraryGroups.kt'
 LIBRARY_GROUPS_FP = os.path.join(FRAMEWORKS_SUPPORT_FP, LIBRARY_GROUPS_REL)
+DOCS_TOT_BUILD_GRADLE_REL = './docs-tip-of-tree/build.gradle'
+DOCS_TOT_BUILD_GRADLE_FP = os.path.join(FRAMEWORKS_SUPPORT_FP, DOCS_TOT_BUILD_GRADLE_REL)
 
 # Set up input arguments
 parser = argparse.ArgumentParser(
@@ -74,6 +78,31 @@ def rm(path):
     elif os.path.exists(path):
         os.remove(path)
 
+def mv_dir(src_path_dir, dst_path_dir):
+    """Moves a directory from src_path_dir to dst_path_dir.
+
+    Args:
+        src_path_dir: the source directory, which must exist
+        dst_path_dir: the distination directory
+    """
+    if os.path.exists(dst_path_dir):
+        print_e('rename error: Destination path %s already exists.' % dst_path_dir)
+        return None
+    # If moving to a new parent directory, create that directory
+    parent_dst_path_dir = os.path.dirname(dst_path_dir)
+    if not os.path.exists(parent_dst_path_dir):
+        os.makedirs(parent_dst_path_dir)
+    if not os.path.exists(src_path_dir):
+        print_e('mv error: Source path %s does not exist.' % src_path_dir)
+        return None
+    try:
+        os.rename(src_path_dir, dst_path_dir)
+    except OSError as error:
+        print_e('FAIL: Unable to copy %s to destination %s' % (src_path_dir, dst_path_dir))
+        print_e(error)
+        return None
+    return dst_path_dir
+
 def generate_package_name(group_id, artifact_id):
     final_group_id_word = group_id.split(".")[-1]
     artifact_id_suffix = artifact_id.replace(final_group_id_word, "")
@@ -96,9 +125,12 @@ def get_year():
     return str(date.today().year)
 
 def get_group_id_version_macro(group_id):
-    group_id_version_macro = group_id.replace("androidx.", "").replace(".", "-").upper()
-    if group_id.startswith("androidx.compose"):
+    group_id_version_macro = group_id.replace("androidx.", "").replace(".", "_").upper()
+    if group_id == "androidx.compose":
         group_id_version_macro = "COMPOSE"
+    elif group_id.startswith("androidx.compose"):
+        group_id_version_macro = group_id.replace("androidx.compose.", "").replace(".",
+                                                  "_").upper()
     return group_id_version_macro
 
 def sed(before, after, file):
@@ -108,6 +140,25 @@ def sed(before, after, file):
     # write back the file
     with open(file,"w") as f:
         f.write(new_file_contents)
+
+def remove_line(line_to_remove, file):
+    with open(file) as f:
+       file_contents = f.readlines()
+    new_file_contents = []
+    for line in file_contents:
+        if line_to_remove not in line:
+            new_file_contents.append(line)
+    # write back the file
+    with open(file,"w") as f:
+        f.write("".join(new_file_contents))
+
+def ask_yes_or_no(question):
+    while(True):
+        reply = str(input(question+' (y/n): ')).lower().strip()
+        if reply:
+            if reply[0] == 'y': return True
+            if reply[0] == 'n': return False
+        print("Please respond with y/n")
 
 def get_gradle_project_coordinates(group_id, artifact_id):
     coordinates = group_id.replace("androidx", "").replace(".",":")
@@ -122,6 +173,22 @@ def run_update_api(group_id, artifact_id):
     except subprocess.CalledProcessError:
         print_e('FAIL: Unable run updateApi with command: %s' % gradle_cmd)
         return None
+    return True
+
+def get_library_type(artifact_id):
+    """Returns the appropriate androidx.build.LibraryType for the project.
+    """
+    if "sample" in artifact_id:
+        library_type = "SAMPLES"
+    elif "compiler" in artifact_id:
+        library_type = "ANNOTATION_PROCESSOR"
+    elif "lint" in artifact_id:
+        library_type = "LINT"
+    elif "inspection" in artifact_id:
+        library_type = "IDE_PLUGIN"
+    else:
+        library_type = "PUBLISHED_LIBRARY"
+    return library_type
 
 def get_group_id_path(group_id):
     """Generates the group ID filepath
@@ -147,6 +214,20 @@ def get_full_artifact_path(group_id, artifact_id):
     group_id_path = get_group_id_path(group_id)
     return group_id_path + "/" + artifact_id
 
+def get_package_info_file_dir(group_id, artifact_id):
+    """Generates the full package_info.java filepath
+
+    Given androidx.foo.bar:bar-qux, the structure will be:
+    frameworks/support/foo/bar/bar-qux/src/main/androidx/foo/package-info.java
+
+    Args:
+        group_id: group_id of the new library
+        artifact_id: group_id of the new library
+    """
+    full_artifact_path = get_full_artifact_path(group_id, artifact_id)
+    group_id_subpath = "/src/main/" + \
+                        group_id.replace(".", "/")
+    return full_artifact_path + group_id_subpath
 
 def create_directories(group_id, artifact_id):
     """Creates the standard directories for the given group_id and artifact_id.
@@ -154,6 +235,7 @@ def create_directories(group_id, artifact_id):
     Given androidx.foo.bar:bar-qux, the structure will be:
     frameworks/support/foo/bar/bar-qux/build.gradle
     frameworks/support/foo/bar/bar-qux/src/main/AndroidManifest.xml
+    frameworks/support/foo/bar/bar-qux/src/main/androidx/foo/bar/package-info.java
     frameworks/support/foo/bar/bar-qux/src/androidTest/AndroidManifest.xml
     frameworks/support/foo/bar/bar-qux/api/current.txt
 
@@ -170,18 +252,56 @@ def create_directories(group_id, artifact_id):
     if not os.path.exists(group_id_path + "/OWNERS"):
         copyfile(SAMPLE_OWNERS_FP, group_id_path + "/OWNERS")
 
-    # Copy the full src structure
-    cp(SAMPLE_SRC_FP, full_artifact_path)
+    # Copy the full src structure, depending on the project source code
+    if "compose" in group_id or "compose" in artifact_id:
+        print("Auto-detected Compose project.")
+        cp(SAMPLE_COMPOSE_SRC_FP, full_artifact_path)
+    elif ask_yes_or_no("Is this a kotlin project?"):
+        cp(SAMPLE_KOTLIN_SRC_FP, full_artifact_path)
+    else:
+        # Confirm that the user is intentionally using java.
+        ask_yes_or_no("All new androidx projects are expected and encouraged "
+                      "to use Kotlin. Java projects should only be used if "
+                      "there is a business need to do so. "
+                      "Please ack to proceed:")
+        cp(SAMPLE_JAVA_SRC_FP, full_artifact_path)
+
+    # Java only libraries have no dependency on android.
+    # Java-only produces a jar, whereas an android library produces an aar.
+    if (get_library_type(artifact_id) == "LINT" or
+        ask_yes_or_no("Is this a java-only library? Java-only libraries produce"
+                      " JARs, whereas Android libraries produce AARs.")):
+        sed("com.android.library", "java-library",
+            full_artifact_path + "/build.gradle")
+        sed("org.jetbrains.kotlin.android", "kotlin",
+            full_artifact_path + "/build.gradle")
+
+    # Atomic group Ids have their version configured automatically,
+    # so we can remove the version line from the build file.
+    if is_group_id_atomic(group_id):
+        remove_line("mavenVersion = LibraryVersions.",
+                    full_artifact_path + "/build.gradle")
+
+    # Rename the package-info directory
+    full_package_info_dir = get_package_info_file_dir(group_id, artifact_id)
+    full_package_info_path = full_package_info_dir + "/package-info.java"
+    mv_dir(full_artifact_path + "/src/main/groupId", full_package_info_dir)
+
+    # Populate the library type
+    library_type = get_library_type(artifact_id)
+    sed("<LIBRARY_TYPE>", library_type, full_artifact_path + "/build.gradle")
 
     # Populate the YEAR
     year = get_year()
     sed("<YEAR>", year, full_artifact_path + "/build.gradle")
     sed("<YEAR>", year, full_artifact_path + "/src/androidTest/AndroidManifest.xml")
     sed("<YEAR>", year, full_artifact_path + "/src/main/AndroidManifest.xml")
+    sed("<YEAR>", year, full_package_info_path)
     # Populate the PACKAGE
     package = generate_package_name(group_id, artifact_id)
     sed("<PACKAGE>", package, full_artifact_path + "/src/androidTest/AndroidManifest.xml")
     sed("<PACKAGE>", package, full_artifact_path + "/src/main/AndroidManifest.xml")
+    sed("<PACKAGE>", package, full_package_info_path)
     # Populate the VERSION macro
     group_id_version_macro = get_group_id_version_macro(group_id)
     sed("<GROUPID>", group_id_version_macro, full_artifact_path + "/build.gradle")
@@ -204,7 +324,7 @@ def get_new_settings_gradle_line(group_id, artifact_id):
     """
 
     build_type = "MAIN"
-    if group_id.contains("compose") or group_id.contains("androidx.ui"):
+    if ("compose" in group_id or "compose" in artifact_id):
         build_type = "COMPOSE"
 
     gradle_cmd = get_gradle_project_coordinates(group_id, artifact_id)
@@ -241,6 +361,66 @@ def update_settings_gradle(group_id, artifact_id):
     # Open file for writing and update all lines
     with open(SETTINGS_GRADLE_FP, 'w') as f:
         f.writelines(settings_gradle_lines)
+
+def get_new_docs_tip_of_tree_build_grade_line(group_id, artifact_id):
+    """Generates the line needed for docs-tip-of-tree/build.gradle.
+
+    For a library androidx.foo.bar:bar-qux, the new line will be of the form:
+    docs(project(":foo:bar:bar-qux"))
+
+    If it is a sample project, then the new line will be of the form:
+    samples(project(":foo:bar:bar-qux-sample"))
+
+    Args:
+        group_id: group_id of the new library
+        artifact_id: group_id of the new library
+    """
+
+    gradle_cmd = get_gradle_project_coordinates(group_id, artifact_id)
+    prefix = "docs"
+    if "sample" in gradle_cmd:
+        prefix = "samples"
+    return "    %s(project(\"%s\"))\n" % (prefix, gradle_cmd)
+
+def update_docs_tip_of_tree_build_grade(group_id, artifact_id):
+    """Updates docs-tip-of-tree/build.gradle with the new library.
+
+    We ask for confirmation if the library contains either "benchmark"
+    or "test".
+
+    Args:
+        group_id: group_id of the new library
+        artifact_id: group_id of the new library
+    """
+    # Confirm with user that we want to generate docs for anything
+    # that might be a test or a benchmark.
+    if ("test" in group_id or "test" in artifact_id
+        or "benchmark" in group_id or "benchmark" in artifact_id):
+        if not ask_yes_or_no(("Should tip-of-tree documentation be generated "
+                              "for project %s:%s?" % (group_id, artifact_id))):
+            return
+
+    # Open file for reading and get all lines
+    with open(DOCS_TOT_BUILD_GRADLE_FP, 'r') as f:
+        docs_tot_bg_lines = f.readlines()
+    num_lines = len(docs_tot_bg_lines)
+
+    new_docs_tot_bq_line = get_new_docs_tip_of_tree_build_grade_line(group_id, artifact_id)
+    for i in range(num_lines):
+        cur_line = docs_tot_bg_lines[i]
+        if "project" not in cur_line:
+            continue
+        # Iterate through until you found the alphabetical place to insert the new line
+        if new_docs_tot_bq_line.split("project")[1] <= cur_line.split("project")[1]:
+            insert_line = i
+            break
+        else:
+            insert_line = i + 1
+    docs_tot_bg_lines.insert(insert_line, new_docs_tot_bq_line)
+
+    # Open file for writing and update all lines
+    with open(DOCS_TOT_BUILD_GRADLE_FP, 'w') as f:
+        f.writelines(docs_tot_bg_lines)
 
 
 def insert_new_group_id_into_library_versions_kt(group_id, artifact_id):
@@ -286,10 +466,10 @@ def insert_new_group_id_into_library_versions_kt(group_id, artifact_id):
     # Open file for writing and update all lines
     with open(LIBRARY_VERSIONS_FP, 'w') as f:
         f.writelines(library_versions_lines)
-    insert_new_group_id_int_library_groups_kt(group_id, artifact_id)
+    insert_new_group_id_into_library_groups_kt(group_id, artifact_id)
 
 
-def insert_new_group_id_int_library_groups_kt(group_id, artifact_id):
+def insert_new_group_id_into_library_groups_kt(group_id, artifact_id):
     """Inserts a group ID into the LibraryGroups.kt file.
 
     If one already exists, then this function just returns and resuses
@@ -335,6 +515,76 @@ def insert_new_group_id_int_library_groups_kt(group_id, artifact_id):
     with open(LIBRARY_GROUPS_FP, 'w') as f:
         f.writelines(library_groups_lines)
 
+def is_group_id_atomic(group_id):
+    """Checks if a group ID is atomic using the LibraryGroups.kt file.
+
+    If one already exists, then this function evaluates the group id
+    and returns the appropriate amoticity.  Otherwise, it returns
+    False.
+
+    Example of an atomic library group:
+        val WORK = LibraryGroup("androidx.work", LibraryVersions.WORK)
+    Example of a non-atomic library group:
+        val WEAR = LibraryGroup("androidx.wear", null)
+
+    Args:
+        group_id: group_id of the library we're checking.
+    """
+    # Open file for reading and get all lines
+    with open(LIBRARY_GROUPS_FP, 'r') as f:
+        library_groups_lines = f.readlines()
+    num_lines = len(library_groups_lines)
+
+    for i in range(num_lines):
+        cur_line = library_groups_lines[i]
+        # Skip any line that doesn't declare a version.
+        if 'LibraryGroup(' not in cur_line: continue
+        group_id_in_line = cur_line.split('LibraryGroup(')[1].split('"')[1]
+        # Account for Compose group id substitution variable.
+        group_id_in_line = group_id_in_line.replace("$group", "androidx.compose")
+        if group_id_in_line == group_id:
+            # Found the right line.
+            if 'LibraryVersions.' in cur_line and 'null' not in cur_line:
+                return True
+            else:
+                return False
+    # The group id does not exist yet, so just default to false.
+    return False
+
+def print_todo_list(group_id, artifact_id):
+    """Prints to the todo list once the script has finished.
+
+    There are some pieces that can not be automated or require human eyes.
+    List out the appropriate todos so that the users knows what needs
+    to be done prior to uploading.
+
+    Args:
+        group_id: group_id of the new library
+        artifact_id: group_id of the new library
+    """
+    build_gradle_path = get_full_artifact_path(group_id, artifact_id) + \
+                        "/build.gradle"
+    owners_file_path = get_group_id_path(group_id) + "/OWNERS"
+    package_info_path = get_package_info_file_dir(group_id, artifact_id) + \
+                        "/package-info.java"
+    print("---\n")
+    print("Created the project.  The following TODOs need to be completed by "
+          "you:\n")
+    print("\t1. Check that the OWNERS file is in the correct place. It is "
+          "currently at:"
+          "\n\t\t" + owners_file_path)
+    print("\t2. Add your name (and others) to the OWNERS file:" + \
+          "\n\t\t" + owners_file_path)
+    print("\t3. Check that the correct library version is assigned in the "
+          "build.gradle:"
+          "\n\t\t" + build_gradle_path)
+    print("\t4. Fill out the project/module name in the build.gradle:"
+          "\n\t\t" + build_gradle_path)
+    print("\t5. Fill out the project/module description in the build.gradle:"
+          "\n\t\t" + build_gradle_path)
+    print("\t6. Update the project/module package-info.java file:"
+          "\n\t\t" + package_info_path)
+
 def main(args):
     # Parse arguments and check for existence of build ID or file
     args = parser.parse_args()
@@ -348,9 +598,14 @@ def main(args):
     update_settings_gradle(args.group_id, args.artifact_id)
     insert_new_group_id_into_library_versions_kt(args.group_id,
                                                  args.artifact_id)
-    print("Success. Running updateApi for the new library, " + \
-          "this may take a minute.")
-    run_update_api(args.group_id, args.artifact_id)
+    update_docs_tip_of_tree_build_grade(args.group_id, args.artifact_id)
+    print("Created directories. \nRunning updateApi for the new "
+          "library, this may take a minute...", end='')
+    if run_update_api(args.group_id, args.artifact_id):
+        print("done.")
+    else:
+        print("failed.  Please investigate manually.")
+    print_todo_list(args.group_id, args.artifact_id)
 
 if __name__ == '__main__':
     main(sys.argv)

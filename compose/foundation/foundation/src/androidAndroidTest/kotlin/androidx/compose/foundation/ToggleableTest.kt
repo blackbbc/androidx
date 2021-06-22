@@ -16,23 +16,28 @@
 
 package androidx.compose.foundation
 
+import androidx.compose.foundation.interaction.Interaction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.selection.ToggleableState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.selection.triStateToggleable
-import androidx.compose.foundation.semantics.FoundationSemanticsProperties
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
@@ -49,6 +54,9 @@ import androidx.compose.ui.test.up
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -80,42 +88,49 @@ class ToggleableTest {
                     Modifier
                         .triStateToggleable(state = ToggleableState.On, onClick = {})
                         .testTag("checkedToggleable"),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
                 Box(
                     Modifier
                         .triStateToggleable(state = ToggleableState.Off, onClick = {})
                         .testTag("unCheckedToggleable"),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
                 Box(
                     Modifier
                         .triStateToggleable(state = ToggleableState.Indeterminate, onClick = {})
                         .testTag("indeterminateToggleable"),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
             }
         }
 
         fun hasIndeterminateState(): SemanticsMatcher = SemanticsMatcher.expectValue(
-            FoundationSemanticsProperties.ToggleableState, ToggleableState.Indeterminate
+            SemanticsProperties.ToggleableState, ToggleableState.Indeterminate
+        )
+
+        fun roleNotSet(): SemanticsMatcher = SemanticsMatcher.keyNotDefined(
+            SemanticsProperties.Role
         )
 
         rule.onNodeWithTag("checkedToggleable")
+            .assert(roleNotSet())
             .assertIsEnabled()
             .assertIsOn()
             .assertHasClickAction()
         rule.onNodeWithTag("unCheckedToggleable")
+            .assert(roleNotSet())
             .assertIsEnabled()
             .assertIsOff()
             .assertHasClickAction()
         rule.onNodeWithTag("indeterminateToggleable")
+            .assert(roleNotSet())
             .assertIsEnabled()
             .assert(hasIndeterminateState())
             .assertHasClickAction()
@@ -129,16 +144,16 @@ class ToggleableTest {
                     Modifier
                         .toggleable(value = true, onValueChange = {})
                         .testTag("checkedToggleable"),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
                 Box(
                     Modifier
                         .toggleable(value = false, onValueChange = {})
                         .testTag("unCheckedToggleable"),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
             }
@@ -164,8 +179,8 @@ class ToggleableTest {
                         onClick = {},
                         enabled = false
                     ),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
             }
@@ -173,7 +188,7 @@ class ToggleableTest {
 
         rule.onNode(isToggleable())
             .assertIsNotEnabled()
-            .assertHasNoClickAction()
+            .assertHasClickAction()
     }
 
     @Test
@@ -185,8 +200,8 @@ class ToggleableTest {
             Box {
                 Box(
                     Modifier.toggleable(value = checked, onValueChange = onCheckedChange),
-                    children = {
-                        Text("ToggleableText")
+                    content = {
+                        BasicText("ToggleableText")
                     }
                 )
             }
@@ -201,72 +216,154 @@ class ToggleableTest {
     }
 
     @Test
-    fun toggleableTest_interactionState() {
-        val interactionState = InteractionState()
+    fun toggleableTest_toggle_consumedWhenDisabled() {
+        val enabled = mutableStateOf(false)
+        var checked = true
+        val onCheckedChange: (Boolean) -> Unit = { checked = it }
+        var outerChecked = true
+        val outerOnCheckedChange: (Boolean) -> Unit = { outerChecked = it }
 
         rule.setContent {
+            Box(
+                Modifier.toggleable(
+                    value = outerChecked,
+                    onValueChange = outerOnCheckedChange
+                )
+            ) {
+                BasicText(
+                    "ToggleableText",
+                    modifier = Modifier
+                        .testTag("myToggleable")
+                        .toggleable(
+                            value = checked,
+                            onValueChange = onCheckedChange,
+                            enabled = enabled.value
+                        )
+                )
+            }
+        }
+
+        rule.onNodeWithTag("myToggleable")
+            .performClick()
+
+        rule.runOnIdle {
+            assertThat(checked).isTrue()
+            assertThat(outerChecked).isTrue()
+            enabled.value = true
+        }
+
+        rule.onNodeWithTag("myToggleable")
+            .performClick()
+
+        rule.runOnIdle {
+            assertThat(checked).isFalse()
+            assertThat(outerChecked).isTrue()
+        }
+    }
+
+    @Test
+    fun toggleableTest_interactionSource() {
+        val interactionSource = MutableInteractionSource()
+
+        var scope: CoroutineScope? = null
+
+        rule.mainClock.autoAdvance = false
+
+        rule.setContent {
+            scope = rememberCoroutineScope()
             Box {
                 Box(
                     Modifier.toggleable(
                         value = true,
-                        interactionState = interactionState,
+                        interactionSource = interactionSource,
+                        indication = null,
                         onValueChange = {}
                     )
                 ) {
-                    Text("ToggleableText")
+                    BasicText("ToggleableText")
                 }
             }
         }
 
+        val interactions = mutableListOf<Interaction>()
+
+        scope!!.launch {
+            interactionSource.interactions.collect { interactions.add(it) }
+        }
+
         rule.runOnIdle {
-            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactions).isEmpty()
         }
 
         rule.onNodeWithText("ToggleableText")
             .performGesture { down(center) }
 
+        // Advance past the tap timeout
+        rule.mainClock.advanceTimeBy(TapIndicationDelay)
+
         rule.runOnIdle {
-            assertThat(interactionState.value).contains(Interaction.Pressed)
+            assertThat(interactions).hasSize(1)
+            assertThat(interactions.first()).isInstanceOf(PressInteraction.Press::class.java)
         }
 
         rule.onNodeWithText("ToggleableText")
             .performGesture { up() }
 
         rule.runOnIdle {
-            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactions).hasSize(2)
+            assertThat(interactions.first()).isInstanceOf(PressInteraction.Press::class.java)
+            assertThat(interactions[1]).isInstanceOf(PressInteraction.Release::class.java)
+            assertThat((interactions[1] as PressInteraction.Release).press)
+                .isEqualTo(interactions[0])
         }
     }
 
     @Test
-    fun toggleableTest_interactionState_resetWhenDisposed() {
-        val interactionState = InteractionState()
+    fun toggleableTest_interactionSource_resetWhenDisposed() {
+        val interactionSource = MutableInteractionSource()
         var emitToggleableText by mutableStateOf(true)
 
+        var scope: CoroutineScope? = null
+
+        rule.mainClock.autoAdvance = false
+
         rule.setContent {
+            scope = rememberCoroutineScope()
             Box {
                 if (emitToggleableText) {
                     Box(
                         Modifier.toggleable(
                             value = true,
-                            interactionState = interactionState,
+                            interactionSource = interactionSource,
+                            indication = null,
                             onValueChange = {}
                         )
                     ) {
-                        Text("ToggleableText")
+                        BasicText("ToggleableText")
                     }
                 }
             }
         }
 
+        val interactions = mutableListOf<Interaction>()
+
+        scope!!.launch {
+            interactionSource.interactions.collect { interactions.add(it) }
+        }
+
         rule.runOnIdle {
-            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactions).isEmpty()
         }
 
         rule.onNodeWithText("ToggleableText")
             .performGesture { down(center) }
 
+        // Advance past the tap timeout
+        rule.mainClock.advanceTimeBy(TapIndicationDelay)
+
         rule.runOnIdle {
-            assertThat(interactionState.value).contains(Interaction.Pressed)
+            assertThat(interactions).hasSize(1)
+            assertThat(interactions.first()).isInstanceOf(PressInteraction.Press::class.java)
         }
 
         // Dispose toggleable
@@ -274,13 +371,19 @@ class ToggleableTest {
             emitToggleableText = false
         }
 
+        rule.mainClock.advanceTimeByFrame()
+
         rule.runOnIdle {
-            assertThat(interactionState.value).doesNotContain(Interaction.Pressed)
+            assertThat(interactions).hasSize(2)
+            assertThat(interactions.first()).isInstanceOf(PressInteraction.Press::class.java)
+            assertThat(interactions[1]).isInstanceOf(PressInteraction.Cancel::class.java)
+            assertThat((interactions[1] as PressInteraction.Cancel).press)
+                .isEqualTo(interactions[0])
         }
     }
 
     @Test
-    fun testInspectorValue() {
+    fun toggleableText_testInspectorValue_noIndication() {
         rule.setContent {
             val modifier = Modifier.toggleable(value = true, onValueChange = {}) as InspectableValue
             assertThat(modifier.nameFallback).isEqualTo("toggleable")
@@ -288,15 +391,36 @@ class ToggleableTest {
             assertThat(modifier.inspectableElements.map { it.name }.asIterable()).containsExactly(
                 "value",
                 "enabled",
-                "indication",
-                "interactionState",
+                "role",
                 "onValueChange",
             )
         }
     }
 
     @Test
-    fun testInspectorValueTriState() {
+    fun toggleableTest_testInspectorValue_fullParams() {
+        rule.setContent {
+            val modifier = Modifier.toggleable(
+                value = true,
+                onValueChange = {},
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) as InspectableValue
+            assertThat(modifier.nameFallback).isEqualTo("toggleable")
+            assertThat(modifier.valueOverride).isNull()
+            assertThat(modifier.inspectableElements.map { it.name }.asIterable()).containsExactly(
+                "value",
+                "enabled",
+                "role",
+                "indication",
+                "interactionSource",
+                "onValueChange",
+            )
+        }
+    }
+
+    @Test
+    fun toggleableTest_testInspectorValueTriState_noIndication() {
         rule.setContent {
             val modifier = Modifier.triStateToggleable(state = ToggleableState.On, onClick = {})
                 as InspectableValue
@@ -305,8 +429,30 @@ class ToggleableTest {
             assertThat(modifier.inspectableElements.map { it.name }.asIterable()).containsExactly(
                 "state",
                 "enabled",
+                "role",
+                "onClick",
+            )
+        }
+    }
+
+    @Test
+    fun toggleableTest_testInspectorValueTriState_fullParams() {
+        rule.setContent {
+            val modifier = Modifier.triStateToggleable(
+                state = ToggleableState.On,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+                as InspectableValue
+            assertThat(modifier.nameFallback).isEqualTo("triStateToggleable")
+            assertThat(modifier.valueOverride).isNull()
+            assertThat(modifier.inspectableElements.map { it.name }.asIterable()).containsExactly(
+                "state",
+                "enabled",
+                "role",
                 "indication",
-                "interactionState",
+                "interactionSource",
                 "onClick",
             )
         }

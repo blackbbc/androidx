@@ -17,123 +17,83 @@
 package androidx.wear.watchface.test
 
 import android.content.Context
-import android.graphics.RectF
-import android.graphics.drawable.Icon
 import android.os.Handler
-import android.support.wearable.complications.ComplicationData
 import android.view.SurfaceHolder
-import androidx.wear.complications.DefaultComplicationProviderPolicy
-import androidx.wear.complications.SystemProviders
-import androidx.wear.watchface.Complication
-import androidx.wear.watchface.ComplicationsManager
+import androidx.wear.watchface.ComplicationSlotsManager
 import androidx.wear.watchface.MutableWatchState
 import androidx.wear.watchface.WatchFace
-import androidx.wear.watchface.WatchFaceHost
 import androidx.wear.watchface.WatchFaceService
-import androidx.wear.watchface.WatchFaceType
 import androidx.wear.watchface.WatchState
-import androidx.wear.watchface.samples.EXAMPLE_OPENGL_COMPLICATION_ID
-import androidx.wear.watchface.samples.ExampleOpenGLRenderer
-import androidx.wear.watchface.samples.R
-import androidx.wear.watchface.samples.WatchFaceColorStyle
-import androidx.wear.watchface.style.Layer
-import androidx.wear.watchface.style.ListUserStyleCategory
-import androidx.wear.watchface.style.UserStyleRepository
-import androidx.wear.watchface.style.UserStyleSchema
+import androidx.wear.watchface.control.data.WallpaperInteractiveWatchFaceInstanceParams
+import androidx.wear.watchface.samples.ExampleOpenGLWatchFaceService
+import androidx.wear.watchface.style.CurrentUserStyleRepository
 
 /** A simple OpenGL test watch face for integration tests. */
 internal class TestGlesWatchFaceService(
     testContext: Context,
     private val handler: Handler,
     var mockSystemTimeMillis: Long,
-    var surfacHolderOverride: SurfaceHolder?
+    var surfacHolderOverride: SurfaceHolder?,
+    var directBootParams: WallpaperInteractiveWatchFaceInstanceParams?
 ) : WatchFaceService() {
 
-    private val mutableWatchState = MutableWatchState().apply {
-        isAmbient.value = false
+    private val mutableWatchState = MutableWatchState()
+
+    // We can't subclass ExampleOpenGLWatchFaceService because we want to override internal methods,
+    // so instead we use composition.
+    private val delegate = object : ExampleOpenGLWatchFaceService() {
+        init {
+            attachBaseContext(testContext)
+        }
     }
 
     init {
         attachBaseContext(testContext)
     }
 
-    override fun createWatchFace(
+    override fun createUserStyleSchema() = delegate.createUserStyleSchema()
+
+    override fun createComplicationSlotsManager(
+        currentUserStyleRepository: CurrentUserStyleRepository
+    ) = delegate.createComplicationSlotsManager(currentUserStyleRepository)
+
+    override suspend fun createWatchFace(
         surfaceHolder: SurfaceHolder,
-        watchFaceHost: WatchFaceHost,
-        watchState: WatchState
+        watchState: WatchState,
+        complicationSlotsManager: ComplicationSlotsManager,
+        currentUserStyleRepository: CurrentUserStyleRepository
     ): WatchFace {
         // Override is necessary because the watch face isn't visible in this test.
         mutableWatchState.isVisible.value = true
-
-        val watchFaceStyle = WatchFaceColorStyle.create(this, "white_style")
-        val colorStyleCategory = ListUserStyleCategory(
-            "color_style_category",
-            "Colors",
-            "Watchface colorization",
-            icon = null,
-            options = listOf(
-                ListUserStyleCategory.ListOption(
-                    "red_style",
-                    "Red",
-                    Icon.createWithResource(this, R.drawable.red_style)
-                ),
-                ListUserStyleCategory.ListOption(
-                    "green_style",
-                    "Green",
-                    Icon.createWithResource(this, R.drawable.green_style)
-                )
-            ),
-            listOf(Layer.BASE_LAYER, Layer.TOP_LAYER)
-        )
-        val userStyleRepository = UserStyleRepository(UserStyleSchema(listOf(colorStyleCategory)))
-        val complicationSlots = ComplicationsManager(
-            listOf(
-                Complication.Builder(
-                    EXAMPLE_OPENGL_COMPLICATION_ID,
-                    watchFaceStyle.getComplicationDrawableRenderer(this, watchState),
-                    intArrayOf(
-                        ComplicationData.TYPE_RANGED_VALUE,
-                        ComplicationData.TYPE_LONG_TEXT,
-                        ComplicationData.TYPE_SHORT_TEXT,
-                        ComplicationData.TYPE_ICON,
-                        ComplicationData.TYPE_SMALL_IMAGE
-                    ),
-                    DefaultComplicationProviderPolicy(SystemProviders.DAY_OF_WEEK)
-                ).setUnitSquareBounds(RectF(0.2f, 0.7f, 0.4f, 0.9f))
-                    .setDefaultProviderType(ComplicationData.TYPE_SHORT_TEXT)
-                    .build()
-            ),
-            userStyleRepository
-        )
-        val renderer = ExampleOpenGLRenderer(
+        return delegate.createWatchFace(
             surfaceHolder,
-            userStyleRepository,
             watchState,
-            colorStyleCategory,
-            complicationSlots[EXAMPLE_OPENGL_COMPLICATION_ID]!!
-        )
-
-        return WatchFace.Builder(
-            WatchFaceType.ANALOG,
-            16,
-            userStyleRepository,
-            complicationSlots,
-            renderer,
-            watchFaceHost,
-            watchState
+            complicationSlotsManager,
+            currentUserStyleRepository
         ).setSystemTimeProvider(object : WatchFace.SystemTimeProvider {
             override fun getSystemTimeMillis(): Long {
                 return mockSystemTimeMillis
             }
-        }).build()
+        })
     }
 
     override fun getMutableWatchState() = mutableWatchState
 
-    override fun getHandler() = handler
+    override fun getUiThreadHandlerImpl() = handler
 
     // We want full control over when frames are produced.
     override fun allowWatchFaceToAnimate() = false
 
     override fun getWallpaperSurfaceHolderOverride() = surfacHolderOverride
+
+    override fun readDirectBootPrefs(
+        context: Context,
+        fileName: String
+    ) = directBootParams
+
+    override fun writeDirectBootPrefs(
+        context: Context,
+        fileName: String,
+        prefs: WallpaperInteractiveWatchFaceInstanceParams
+    ) {}
 }

@@ -44,6 +44,8 @@ class ListenableFuturePagingSourceTest {
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Int> {
             return loadInternal(params)
         }
+
+        override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
     }
 
     private val listenableFuturePagingSource = object : ListenableFuturePagingSource<Int, Int>() {
@@ -56,18 +58,20 @@ class ListenableFuturePagingSourceTest {
             }
             return future
         }
+
+        override fun getRefreshKey(state: PagingState<Int, Int>): Int? = null
     }
 
     @Test
     fun basic() = runBlocking {
-        val params = LoadParams.Refresh(0, 2, false, 2)
+        val params = LoadParams.Refresh(0, 2, false)
         assertEquals(pagingSource.load(params), listenableFuturePagingSource.load(params))
     }
 
     @Test
     fun error() {
         runBlocking {
-            val params = LoadParams.Refresh<Int>(null, 2, false, 2)
+            val params = LoadParams.Refresh<Int>(null, 2, false)
             assertFailsWith<NullPointerException> { pagingSource.load(params) }
             assertFailsWith<NullPointerException> { listenableFuturePagingSource.load(params) }
         }
@@ -76,7 +80,7 @@ class ListenableFuturePagingSourceTest {
     @Test
     fun errorWrapped() {
         runBlocking {
-            val params = LoadParams.Refresh(-1, 2, false, 2)
+            val params = LoadParams.Refresh(-1, 2, false)
             assertFailsWith<IllegalArgumentException> { pagingSource.load(params) }
             assertFailsWith<IllegalArgumentException> { listenableFuturePagingSource.load(params) }
         }

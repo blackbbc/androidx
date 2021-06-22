@@ -23,13 +23,11 @@ import android.util.Rational;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.camera.camera2.internal.compat.CameraCharacteristicsCompat;
-import androidx.camera.core.ExperimentalExposureCompensation;
 import androidx.camera.core.ExposureState;
 
 /**
  * An implementation of {@link ExposureState} where the values can be set.
  */
-@ExperimentalExposureCompensation
 class ExposureStateImpl implements ExposureState {
 
     private final Object mLock = new Object();
@@ -75,6 +73,8 @@ class ExposureStateImpl implements ExposureState {
     public boolean isExposureCompensationSupported() {
         Range<Integer> compensationRange =
                 mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
-        return compensationRange.getLower() != 0 && compensationRange.getUpper() != 0;
+        return compensationRange != null
+                && compensationRange.getLower() != 0
+                && compensationRange.getUpper() != 0;
     }
 }

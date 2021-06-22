@@ -20,6 +20,7 @@ import androidx.build.Version
 import androidx.build.checkapi.getApiFileVersion
 import androidx.build.checkapi.getVersionedApiLocation
 import androidx.build.checkapi.isValidArtifactVersion
+import androidx.build.doclava.androidJarFile
 import androidx.build.getCheckoutRoot
 import androidx.build.java.JavaCompileInputs
 import org.gradle.api.DefaultTask
@@ -91,9 +92,9 @@ abstract class RegenerateOldApisTask @Inject constructor(
         val outputApiLocation = project.getVersionedApiLocation(version)
         if (outputApiLocation.publicApiFile.exists()) {
             project.logger.lifecycle("Regenerating $mavenId")
-            project.generateApi(
-                inputs, outputApiLocation, ApiLintMode.Skip, generateRestrictToLibraryGroupAPIs,
-                workerExecutor
+            generateApi(
+                project.getMetalavaClasspath(), inputs, outputApiLocation, ApiLintMode.Skip,
+                generateRestrictToLibraryGroupAPIs, workerExecutor
             )
         }
     }
@@ -102,7 +103,7 @@ abstract class RegenerateOldApisTask @Inject constructor(
         val jars = getJars(runnerProject, mavenId)
         val sources = getSources(runnerProject, mavenId + ":sources")
 
-        return JavaCompileInputs.fromSourcesAndDeps(sources, jars, runnerProject)
+        return JavaCompileInputs(sources, jars, androidJarFile(project))
     }
 
     fun getJars(runnerProject: Project, mavenId: String): FileCollection {
@@ -135,7 +136,7 @@ abstract class RegenerateOldApisTask @Inject constructor(
         return runnerProject.files()
     }
 
-    fun getSources(runnerProject: Project, mavenId: String): Collection<File> {
+    fun getSources(runnerProject: Project, mavenId: String): FileCollection {
         val configuration = runnerProject.configurations.detachedConfiguration(
             runnerProject.dependencies.create(mavenId)
         )
@@ -147,7 +148,7 @@ abstract class RegenerateOldApisTask @Inject constructor(
             copySpec.from(runnerProject.zipTree(configuration.singleFile))
             copySpec.into(unzippedDir)
         })
-        return listOf(unzippedDir)
+        return project.files(unzippedDir)
     }
 
     fun getEmbeddedLibs(runnerProject: Project, mavenId: String): Collection<File> {

@@ -139,7 +139,7 @@ public class ImageSaverTest {
                 }
 
                 @Override
-                public void onError(SaveError saveError, String message,
+                public void onError(@NonNull SaveError saveError, @NonNull String message,
                         @Nullable Throwable cause) {
                     Logger.d(TAG, message, cause);
                     mMockCallback.onError(saveError, message, cause);
@@ -193,6 +193,7 @@ public class ImageSaverTest {
         mBackgroundExecutor.shutdown();
     }
 
+    @SuppressWarnings("deprecation")
     private void createDefaultPictureFolderIfNotExist() {
         File pictureFolder = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_PICTURES);
@@ -227,13 +228,32 @@ public class ImageSaverTest {
                 outputFileOptions,
                 /*orientation=*/ 0,
                 mBackgroundExecutor,
+                mBackgroundExecutor,
                 mSyncCallback);
     }
 
     @Test
-    public void canSaveYuvImage() throws InterruptedException, IOException {
+    public void canSaveYuvImage_withNonExistingFile() throws InterruptedException {
+        File saveLocation = new File(ApplicationProvider.getApplicationContext().getCacheDir(),
+                "test" + System.currentTimeMillis() + ".jpg");
+        saveLocation.deleteOnExit();
+        // make sure file does not exist
+        if (saveLocation.exists()) {
+            saveLocation.delete();
+        }
+        assertThat(!saveLocation.exists());
+
+        getDefaultImageSaver(mMockYuvImage, saveLocation).run();
+        mSemaphore.acquire();
+
+        verify(mMockCallback).onImageSaved(any());
+    }
+
+    @Test
+    public void canSaveYuvImage_withExistingFile() throws InterruptedException, IOException {
         File saveLocation = File.createTempFile("test", ".jpg");
         saveLocation.deleteOnExit();
+        assertThat(saveLocation.exists());
 
         getDefaultImageSaver(mMockYuvImage, saveLocation).run();
         mSemaphore.acquire();
@@ -267,6 +287,7 @@ public class ImageSaverTest {
         mContentResolver.delete(saveLocationUri, null, null);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void saveToUriWithEmptyCollection_onErrorCalled() throws InterruptedException {
         // Arrange.

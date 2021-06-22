@@ -29,10 +29,13 @@ class TestPagingSource(
     counted: Boolean = true,
     override val jumpingSupported: Boolean = true,
     val items: List<Int> = ITEMS,
-    private val loadDelay: Long = 1000
+    private val loadDelay: Long = 1000,
 ) : PagingSource<Int, Int>() {
     var errorNextLoad = false
     var nextLoadResult: LoadResult<Int, Int>? = null
+
+    val getRefreshKeyCalls = mutableListOf<PagingState<Int, Int>>()
+    val loadedPages = mutableListOf<LoadResult.Page<Int, Int>>()
 
     init {
         if (!counted) {
@@ -50,8 +53,10 @@ class TestPagingSource(
         val key = params.key ?: 0
 
         val isPrepend = params is LoadParams.Prepend
-        val start = if (isPrepend) key - params.loadSize + 1 else key
-        val end = if (isPrepend) key + 1 else key + params.loadSize
+        val start = (if (isPrepend) key - params.loadSize + 1 else key)
+            .coerceAtLeast(0)
+        val end = (if (isPrepend) key + 1 else key + params.loadSize)
+            .coerceAtMost(items.size)
 
         // This delay allows tests running withing DelayController APIs to control the order of
         // execution of events.
@@ -74,11 +79,13 @@ class TestPagingSource(
             if (end < items.size) end else null,
             start,
             items.size - end
-        )
+        ).also {
+            loadedPages.add(it)
+        }
     }
 
-    @OptIn(ExperimentalPagingApi::class)
     override fun getRefreshKey(state: PagingState<Int, Int>): Int? {
+        getRefreshKeyCalls.add(state)
         return state.anchorPosition
     }
 

@@ -17,20 +17,24 @@
 package androidx.paging
 
 import androidx.paging.PagingSource.LoadResult.Page
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.Runnable
-import kotlinx.coroutines.launch
+import androidx.testutils.TestDispatcher
+import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
-import kotlin.coroutines.CoroutineContext
+import java.util.concurrent.Executors
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalPagingApi::class)
 @RunWith(JUnit4::class)
 class LegacyPagingSourceTest {
     private val fakePagingState = PagingState(
@@ -48,6 +52,37 @@ class LegacyPagingSourceTest {
         ),
         leadingPlaceholderCount = 0
     )
+
+    @Test
+    fun init_invalidateOnFetchDispatcher() {
+        val testDispatcher = TestDispatcher()
+        val dataSource = object : DataSource<Int, Int>(KeyType.ITEM_KEYED) {
+            var isInvalidCalls = 0
+
+            override val isInvalid: Boolean
+                get() {
+                    isInvalidCalls++
+                    return super.isInvalid
+                }
+
+            override suspend fun load(params: Params<Int>): BaseResult<Int> {
+                return BaseResult(listOf(), null, null)
+            }
+
+            override fun getKeyInternal(item: Int): Int = 0
+        }
+
+        // init will immediately trigger a call to DataSource.isInvalid, but if it's launched on
+        // fetchDispatcher, it should block on testDispatcher.executeAll().
+        LegacyPagingSource(
+            fetchDispatcher = testDispatcher,
+            dataSource = dataSource,
+        )
+
+        assertEquals(0, dataSource.isInvalidCalls)
+        testDispatcher.executeAll()
+        assertEquals(1, dataSource.isInvalidCalls)
+    }
 
     @Test
     fun item() {
@@ -76,7 +111,10 @@ class LegacyPagingSourceTest {
 
             override fun getKey(item: String) = item.hashCode()
         }
-        val pagingSource = LegacyPagingSource { dataSource }
+        val pagingSource = LegacyPagingSource(
+            fetchDispatcher = Dispatchers.Unconfined,
+            dataSource
+        )
 
         // Check that jumpingSupported is disabled.
         assertFalse { pagingSource.jumpingSupported }
@@ -119,7 +157,10 @@ class LegacyPagingSourceTest {
                 Assert.fail("loadAfter not expected")
             }
         }
-        val pagingSource = LegacyPagingSource { dataSource }
+        val pagingSource = LegacyPagingSource(
+            fetchDispatcher = Dispatchers.Unconfined,
+            dataSource = dataSource
+        )
 
         // Check that jumpingSupported is disabled.
         assertFalse { pagingSource.jumpingSupported }
@@ -139,7 +180,10 @@ class LegacyPagingSourceTest {
 
     @Test
     fun positional() {
-        val pagingSource = LegacyPagingSource { createTestPositionalDataSource() }
+        val pagingSource = LegacyPagingSource(
+            fetchDispatcher = Dispatchers.Unconfined,
+            dataSource = createTestPositionalDataSource()
+        )
 
         // Check that jumpingSupported is enabled.
         assertTrue { pagingSource.jumpingSupported }
@@ -189,7 +233,10 @@ class LegacyPagingSourceTest {
 
     @Test
     fun invalidateFromPagingSource() {
-        val pagingSource = LegacyPagingSource { createTestPositionalDataSource() }
+        val pagingSource = LegacyPagingSource(
+            fetchDispatcher = Dispatchers.Unconfined,
+            dataSource = createTestPositionalDataSource()
+        )
         val dataSource = pagingSource.dataSource
 
         var kotlinInvalidated = false
@@ -216,7 +263,10 @@ class LegacyPagingSourceTest {
 
     @Test
     fun invalidateFromDataSource() {
-        val pagingSource = LegacyPagingSource { createTestPositionalDataSource() }
+        val pagingSource = LegacyPagingSource(
+            fetchDispatcher = Dispatchers.Unconfined,
+            dataSource = createTestPositionalDataSource()
+        )
         val dataSource = pagingSource.dataSource
 
         var kotlinInvalidated = false
@@ -241,41 +291,57 @@ class LegacyPagingSourceTest {
         assertTrue { javaInvalidated }
     }
 
+    @Suppress("DEPRECATION")
     @Test
     fun createDataSourceOnFetchDispatcher() {
-        val manualDispatcher = object : CoroutineDispatcher() {
-            val coroutines = ArrayList<Pair<CoroutineContext, Runnable>>()
-            override fun dispatch(context: CoroutineContext, block: Runnable) {
-                coroutines.add(context to block)
+        val methodCalls = mutableMapOf<String, MutableList<Thread>>()
+
+        val dataSourceFactory = object : DataSource.Factory<Int, String>() {
+            override fun create(): DataSource<Int, String> {
+                return ThreadCapturingDataSource { methodName ->
+                    methodCalls.getOrPut(methodName) {
+                        mutableListOf()
+                    }.add(Thread.currentThread())
+                }
             }
         }
 
-        var initialized = false
-        val pagingSource = LegacyPagingSource(manualDispatcher) {
-            initialized = true
-            createTestPositionalDataSource(expectInitialLoad = true)
-        }
+        // create an executor special to the legacy data source
+        val executor = Executors.newSingleThreadExecutor()
 
-        assertFalse { initialized }
+        // extract the thread instance from the executor. we'll use it to assert calls later
+        var dataSourceThread: Thread? = null
+        executor.submit {
+            dataSourceThread = Thread.currentThread()
+        }.get()
 
-        // Trigger lazy-initialization dispatch.
-        val job = GlobalScope.launch {
-            pagingSource.load(PagingSource.LoadParams.Refresh(0, 1, false, 1))
-        }
-
-        // Assert that initialization has been scheduled on manualDispatcher, which has not been
-        // triggered yet.
-        assertFalse { initialized }
-
-        // Force all tasks on manualDispatcher to run.
-        while (!job.isCompleted) {
-            while (manualDispatcher.coroutines.isNotEmpty()) {
-                @OptIn(ExperimentalStdlibApi::class)
-                manualDispatcher.coroutines.removeFirst().second.run()
+        val pager = Pager(
+            config = PagingConfig(10, enablePlaceholders = false),
+            pagingSourceFactory = dataSourceFactory.asPagingSourceFactory(
+                executor.asCoroutineDispatcher()
+            )
+        )
+        // collect from pager. we take only 2 paging data generations and only take 1 PageEvent
+        // from them
+        runBlocking {
+            pager.flow.take(2).collectLatest { pagingData ->
+                // wait until first insert happens
+                pagingData.flow.filter {
+                    it is PageEvent.Insert
+                }.first()
+                pagingData.receiver.refresh()
             }
         }
-
-        assertTrue { initialized }
+        // validate method calls (to ensure test did run as expected) and their threads.
+        assertThat(methodCalls["<init>"]).hasSize(2)
+        assertThat(methodCalls["<init>"]?.toSet()).containsExactly(dataSourceThread)
+        assertThat(methodCalls["addInvalidatedCallback"]).hasSize(2)
+        assertThat(methodCalls["addInvalidatedCallback"]?.toSet()).containsExactly(dataSourceThread)
+        assertThat(methodCalls["loadInitial"]).hasSize(2)
+        assertThat(methodCalls).containsKey("isInvalid")
+        assertThat(methodCalls["loadInitial"]?.toSet()).containsExactly(dataSourceThread)
+        // TODO b/174625633 this should also be 2
+        assertThat(methodCalls["removeInvalidatedCallback"]).hasSize(1)
     }
 
     @Test
@@ -296,17 +362,22 @@ class LegacyPagingSourceTest {
             }
         }
 
-        val pagingSourceFactory = dataSourceFactory.asPagingSourceFactory().let {
+        val testDispatcher = TestDispatcher()
+        val pagingSourceFactory = dataSourceFactory.asPagingSourceFactory(
+            fetchDispatcher = testDispatcher
+        ).let {
             { it() as LegacyPagingSource }
         }
 
         val pagingSource0 = pagingSourceFactory()
+        testDispatcher.executeAll()
         assertTrue { pagingSource0.dataSource.isInvalid }
         assertTrue { pagingSource0.invalid }
         assertTrue { dataSourceFactory.dataSources[0].isInvalid }
         assertEquals(dataSourceFactory.dataSources[0], pagingSource0.dataSource)
 
         val pagingSource1 = pagingSourceFactory()
+        testDispatcher.executeAll()
         assertFalse { pagingSource1.dataSource.isInvalid }
         assertFalse { pagingSource1.invalid }
         assertFalse { dataSourceFactory.dataSources[1].isInvalid }
@@ -333,4 +404,55 @@ class LegacyPagingSourceTest {
                 Assert.fail("loadRange not expected")
             }
         }
+
+    /**
+     * A data source implementation which tracks method calls and their threads.
+     */
+    @Suppress("DEPRECATION")
+    class ThreadCapturingDataSource(
+        private val recordMethodCall: (methodName: String) -> Unit
+    ) : PositionalDataSource<String>() {
+        init {
+            recordMethodCall("<init>")
+        }
+
+        override fun loadInitial(
+            params: LoadInitialParams,
+            callback: LoadInitialCallback<String>
+        ) {
+            recordMethodCall("loadInitial")
+            callback.onResult(
+                data = emptyList(),
+                position = 0,
+            )
+        }
+
+        override fun loadRange(params: LoadRangeParams, callback: LoadRangeCallback<String>) {
+            recordMethodCall("loadRange")
+            callback.onResult(data = emptyList())
+        }
+
+        override val isInvalid: Boolean
+            get() {
+                // this is important because room's implementation might run a db query to
+                // update invalidations.
+                recordMethodCall("isInvalid")
+                return super.isInvalid
+            }
+
+        override fun addInvalidatedCallback(onInvalidatedCallback: InvalidatedCallback) {
+            recordMethodCall("addInvalidatedCallback")
+            super.addInvalidatedCallback(onInvalidatedCallback)
+        }
+
+        override fun removeInvalidatedCallback(onInvalidatedCallback: InvalidatedCallback) {
+            recordMethodCall("removeInvalidatedCallback")
+            super.removeInvalidatedCallback(onInvalidatedCallback)
+        }
+
+        override fun invalidate() {
+            recordMethodCall("invalidate")
+            super.invalidate()
+        }
+    }
 }

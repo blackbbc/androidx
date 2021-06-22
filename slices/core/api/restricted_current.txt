@@ -5,6 +5,10 @@ package androidx.slice {
     method public long currentTimeMillis();
   }
 
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public class CornerDrawable extends android.graphics.drawable.InsetDrawable {
+    ctor public CornerDrawable(android.graphics.drawable.Drawable?, float);
+  }
+
   @RequiresApi(19) @androidx.versionedparcelable.VersionedParcelize(allowSerialization=true, isCustom=true) public final class Slice extends androidx.versionedparcelable.CustomVersionedParcelable implements androidx.versionedparcelable.VersionedParcelable {
     method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public static androidx.slice.Slice? bindSlice(android.content.Context!, android.net.Uri, java.util.Set<androidx.slice.SliceSpec!>!);
     method public java.util.List<java.lang.String!>! getHints();
@@ -135,6 +139,21 @@ package androidx.slice {
 
 package androidx.slice.compat {
 
+  @RequiresApi(19) @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public class CompatPermissionManager {
+    ctor public CompatPermissionManager(android.content.Context!, String!, int, String![]!);
+    method public int checkSlicePermission(android.net.Uri!, int, int);
+    method public void grantSlicePermission(android.net.Uri!, String!);
+    method public void revokeSlicePermission(android.net.Uri!, String!);
+    field public static final String ALL_SUFFIX = "_all";
+  }
+
+  public static class CompatPermissionManager.PermissionState {
+    method public String! getKey();
+    method public boolean hasAccess(java.util.List<java.lang.String!>!);
+    method public boolean hasAllPermissions();
+    method public java.util.Set<java.lang.String!>! toPersistable();
+  }
+
   @RequiresApi(19) @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP) public class SliceProviderCompat {
     ctor public SliceProviderCompat(androidx.slice.SliceProvider, androidx.slice.compat.CompatPermissionManager, android.content.Context);
     method public static void addSpecs(android.os.Bundle, java.util.Set<androidx.slice.SliceSpec!>);
@@ -186,6 +205,7 @@ package androidx.slice.core {
     method public CharSequence? getContentDescription();
     method public androidx.core.graphics.drawable.IconCompat? getIcon();
     method @androidx.slice.core.SliceHints.ImageMode public int getImageMode();
+    method public String? getKey();
     method public int getPriority();
     method public CharSequence getTitle();
     method public boolean isActivity();
@@ -194,6 +214,7 @@ package androidx.slice.core {
     method public boolean isToggle();
     method public androidx.slice.core.SliceAction! setChecked(boolean);
     method public androidx.slice.core.SliceAction? setContentDescription(CharSequence);
+    method public androidx.slice.core.SliceAction setKey(String);
     method public androidx.slice.core.SliceAction! setPriority(@IntRange(from=0) int);
   }
 
@@ -210,6 +231,7 @@ package androidx.slice.core {
     method public CharSequence? getContentDescription();
     method public androidx.core.graphics.drawable.IconCompat? getIcon();
     method @androidx.slice.core.SliceHints.ImageMode public int getImageMode();
+    method public String? getKey();
     method public int getPriority();
     method public androidx.slice.SliceItem? getSliceItem();
     method public String? getSubtype();
@@ -222,6 +244,7 @@ package androidx.slice.core {
     method public void setActivity(boolean);
     method public androidx.slice.core.SliceActionImpl! setChecked(boolean);
     method public androidx.slice.core.SliceActionImpl? setContentDescription(CharSequence);
+    method public androidx.slice.core.SliceActionImpl setKey(String);
     method public androidx.slice.core.SliceActionImpl! setPriority(@IntRange(from=0) int);
   }
 
@@ -244,12 +267,15 @@ package androidx.slice.core {
     field public static final String SLICE_METADATA_KEY = "android.metadata.SLICE_URI";
     field public static final int SMALL_IMAGE = 1; // 0x1
     field public static final int STAR_RATING = 2; // 0x2
+    field public static final String SUBTYPE_ACTION_KEY = "action_key";
+    field public static final String SUBTYPE_DATE_PICKER = "date_picker";
     field public static final String SUBTYPE_HOST_EXTRAS = "host_extras";
     field public static final String SUBTYPE_MILLIS = "millis";
     field public static final String SUBTYPE_MIN = "min";
     field public static final String SUBTYPE_SELECTION = "selection";
     field public static final String SUBTYPE_SELECTION_OPTION_KEY = "selection_option_key";
     field public static final String SUBTYPE_SELECTION_OPTION_VALUE = "selection_option_value";
+    field public static final String SUBTYPE_TIME_PICKER = "time_picker";
     field public static final int UNKNOWN_IMAGE = 5; // 0x5
   }
 

@@ -19,14 +19,12 @@ import androidx.lifecycle.testing.TestLifecycleOwner
 import androidx.paging.CombinedLoadStates
 import androidx.paging.ExperimentalPagingApi
 import androidx.paging.LoadState
-import androidx.paging.LoadType
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.TestPagingSource
 import androidx.paging.assertEvents
 import androidx.paging.localLoadStatesOf
-import androidx.paging.toCombinedLoadStatesLocal
 import androidx.recyclerview.widget.DiffUtil
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
@@ -68,14 +66,13 @@ class PagingDataAdapterTest {
                     override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
                         return oldItem == newItem
                     }
+
                     override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
                         return oldItem == newItem
                     }
                 },
                 workerDispatcher = Dispatchers.Main
             )
-        val refreshEvents = mutableListOf<Boolean>()
-        pagingDataAdapter.addDataRefreshListener { refreshEvents.add(it) }
         val pager = Pager(
             config = PagingConfig(
                 pageSize = 2,
@@ -100,52 +97,6 @@ class PagingDataAdapterTest {
     }
 
     /*
-     * Testing dataRefreshListener callbacks
-     */
-    @Test
-    fun testDataRefreshListenerCallbacks() = testScope.runBlockingTest {
-        val pagingDataAdapter =
-            PagingDataAdapter(
-                diffCallback = object : DiffUtil.ItemCallback<Int>() {
-                    override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
-                        return oldItem == newItem
-                    }
-                    override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
-                        return oldItem == newItem
-                    }
-                },
-                workerDispatcher = Dispatchers.Main
-            )
-        val refreshEvents = mutableListOf<Boolean>()
-        pagingDataAdapter.addDataRefreshListener { refreshEvents.add(it) }
-        val pager = Pager(
-            config = PagingConfig(
-                pageSize = 2,
-                prefetchDistance = 1,
-                enablePlaceholders = true,
-                initialLoadSize = 2
-            ),
-            initialKey = 50
-        ) {
-            TestPagingSource()
-        }
-        val job = launch {
-            pager.flow.collect {
-                pagingDataAdapter.submitData(it)
-            }
-        }
-        advanceUntilIdle()
-        pagingDataAdapter.get(51)
-        advanceUntilIdle()
-        pagingDataAdapter.get(52)
-        assertEquals(pagingDataAdapter.size(), 100)
-        job.cancel()
-        pagingDataAdapter.submitData(TestLifecycleOwner().lifecycle, PagingData.empty<Int>())
-        advanceUntilIdle()
-        assertEvents(expected = listOf(false, true), actual = refreshEvents)
-    }
-
-    /*
      * Testing loadStateListener callbacks
      */
     @Test
@@ -156,6 +107,7 @@ class PagingDataAdapterTest {
                     override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
                         return oldItem == newItem
                     }
+
                     override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
                         return oldItem == newItem
                     }
@@ -185,24 +137,23 @@ class PagingDataAdapterTest {
         // empty previous list.
         assertEvents(
             listOf(
-                LoadType.REFRESH to LoadState.Loading,
-                LoadType.REFRESH to LoadState.NotLoading(endOfPaginationReached = false)
-            ).toCombinedLoadStatesLocal(),
+                localLoadStatesOf(),
+                localLoadStatesOf(refreshLocal = LoadState.Loading),
+                localLoadStatesOf(
+                    refreshLocal = LoadState.NotLoading(endOfPaginationReached = false)
+                ),
+            ),
             loadEvents
         )
         loadEvents.clear()
         job.cancel()
-        pagingDataAdapter.submitData(TestLifecycleOwner().lifecycle, PagingData.empty<Int>())
+
+        pagingDataAdapter.submitData(TestLifecycleOwner().lifecycle, PagingData.empty())
         advanceUntilIdle()
         // Assert that all load state updates are sent, even when differ enters fast path for
         // empty next list.
         assertEvents(
             expected = listOf(
-                localLoadStatesOf(
-                    refreshLocal = LoadState.NotLoading(endOfPaginationReached = false),
-                    prependLocal = LoadState.NotLoading(endOfPaginationReached = true),
-                    appendLocal = LoadState.NotLoading(endOfPaginationReached = false)
-                ),
                 localLoadStatesOf(
                     refreshLocal = LoadState.NotLoading(endOfPaginationReached = false),
                     prependLocal = LoadState.NotLoading(endOfPaginationReached = true),

@@ -169,7 +169,7 @@ public class AccessibilityDelegateCompatTest extends
 
     @Test
     @SdkSuppress(minSdkVersion = 19, maxSdkVersion = 27)
-    @FlakyTest
+    @FlakyTest(bugId = 187190911)
     public void testAccessibilityPaneTitle_isntTrackedAsPaneWithoutTitle() {
         // This test isn't to test the propagation up, just that the event is sent correctly
         ViewCompat.setAccessibilityLiveRegion(mView,
@@ -334,15 +334,33 @@ public class AccessibilityDelegateCompatTest extends
         assertFalse(nodeHasActionWithId(id, label));
     }
 
+    @Test
+    @SdkSuppress(minSdkVersion = 21)
+    public void testAddDuplicateAccessibilityAction() {
+        final AccessibilityViewCommand action = mock(AccessibilityViewCommand.class);
+        final CharSequence label = "Asad's action";
+        final int id = ViewCompat.addAccessibilityAction(mView, label, action);
+        assertThat(nodeActionCountsWithId(id, label), equalTo(1));
+
+        final int newId = ViewCompat.addAccessibilityAction(mView, label, action);
+        assertThat(nodeActionCountsWithId(id, label), equalTo(1));
+        assertEquals(id, newId);
+    }
+
     private boolean nodeHasActionWithId(int id, CharSequence label) {
+        return nodeActionCountsWithId(id, label) > 0;
+    }
+
+    private int nodeActionCountsWithId(int id, CharSequence label) {
+        int count = 0;
         final List<AccessibilityActionCompat> actions = getNodeCompatForView(mView).getActionList();
         for (int i = 0; i < actions.size(); i++) {
             final AccessibilityActionCompat action = actions.get(i);
             if (action.getId() == id && TextUtils.equals(action.getLabel(), label)) {
-                return true;
+                count++;
             }
         }
-        return false;
+        return count;
     }
 
     @Test
@@ -387,8 +405,6 @@ public class AccessibilityDelegateCompatTest extends
         verify(action).perform(mView, null);
     }
 
-
-
     @Test
     @SdkSuppress(minSdkVersion = 21)
     public void testReplaceActionPerformIsCalledWithTwoReplacements() {
@@ -410,7 +426,7 @@ public class AccessibilityDelegateCompatTest extends
 
     @Test
     @SdkSuppress(minSdkVersion = 21)
-    public void testActionRemovedAfterAfterNullReplacement() {
+    public void testActionRemovedAfterNullReplacement() {
         final AccessibilityViewCommand action = mock(AccessibilityViewCommand.class);
 
         ViewCompat.replaceAccessibilityAction(mView, AccessibilityActionCompat.ACTION_FOCUS,
@@ -468,35 +484,29 @@ public class AccessibilityDelegateCompatTest extends
     public void testSetAccessibilityPaneTitle_sendsOutCorrectEvent() throws TimeoutException {
         final Activity activity = mActivityTestRule.getActivity();
 
-        AccessibilityEvent awaitedEvent =
-                sUiAutomation.executeAndWaitForEvent(new Runnable() {
-                    @Override
-                    public void run() {
-                        ViewCompat.setAccessibilityPaneTitle(mView, "test");
-                    }
-                }, new UiAutomation.AccessibilityEventFilter() {
-                    @Override
-                    public boolean accept(AccessibilityEvent event) {
-                        boolean isWindowStateChanged = event.getEventType()
-                                == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
-                        int isPaneTitle = (event.getContentChangeTypes()
-                                & AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_TITLE);
-                        // onInitializeA11yEvent is not called in 28 for panes, so the package name
-                        // isn't set
-                        boolean isFromThisPackage = Build.VERSION.SDK_INT == 28
-                                || TextUtils.equals(event.getPackageName(),
-                                activity.getPackageName());
-                        boolean isFromThisSource =
-                                event.getSource().equals(mView.createAccessibilityNodeInfo());
-                        return isWindowStateChanged && (isPaneTitle != 0) && isFromThisPackage
-                                && isFromThisSource;
-                    }
-                }, TIMEOUT_ASYNC_PROCESSING);
-
-        // The event should come from a view that's important for accessibility, even though the
-        // layout we added it to isn't important. Otherwise services may not find out about the
-        // new button.
-        assertTrue(awaitedEvent.getSource().isImportantForAccessibility());
+        sUiAutomation.executeAndWaitForEvent(new Runnable() {
+            @Override
+            public void run() {
+                ViewCompat.setAccessibilityPaneTitle(mView, "test");
+            }
+        }, new UiAutomation.AccessibilityEventFilter() {
+            @Override
+            public boolean accept(AccessibilityEvent event) {
+                boolean isWindowStateChanged = event.getEventType()
+                        == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+                int isPaneTitle = (event.getContentChangeTypes()
+                        & AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_TITLE);
+                // onInitializeA11yEvent is not called in 28 for panes, so the package name
+                // isn't set
+                boolean isFromThisPackage = Build.VERSION.SDK_INT == 28
+                        || TextUtils.equals(event.getPackageName(),
+                        activity.getPackageName());
+                boolean isFromThisSource =
+                        event.getSource().equals(mView.createAccessibilityNodeInfo());
+                return isWindowStateChanged && (isPaneTitle != 0) && isFromThisPackage
+                        && isFromThisSource;
+            }
+        }, TIMEOUT_ASYNC_PROCESSING);
     }
 
     @Test
@@ -509,29 +519,23 @@ public class AccessibilityDelegateCompatTest extends
         assertThat(ViewCompat.getStateDescription(mView), is(nullValue()));
         assertThat(getNodeCompatForView(mView).getStateDescription(), is(nullValue()));
 
-        AccessibilityEvent awaitedEvent =
-                sUiAutomation.executeAndWaitForEvent(new Runnable() {
-                    @Override
-                    public void run() {
-                        ViewCompat.setStateDescription(mView, state);
-                    }
-                }, new UiAutomation.AccessibilityEventFilter() {
-                    @Override
-                    public boolean accept(AccessibilityEvent event) {
-                        boolean isContentChanged = event.getEventType()
-                                == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED;
-                        int isStateDescription = (event.getContentChangeTypes()
-                                & AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION);
-                        boolean isFromThisPackage = TextUtils.equals(event.getPackageName(),
-                                activity.getPackageName());
-                        return isContentChanged && (isStateDescription != 0) && isFromThisPackage;
-                    }
-                }, TIMEOUT_ASYNC_PROCESSING);
-
-        // The event should come from a view that's important for accessibility, even though the
-        // layout we added it to isn't important. Otherwise services may not find out about the
-        // new button.
-        assertTrue(awaitedEvent.getSource().isImportantForAccessibility());
+        sUiAutomation.executeAndWaitForEvent(new Runnable() {
+            @Override
+            public void run() {
+                ViewCompat.setStateDescription(mView, state);
+            }
+        }, new UiAutomation.AccessibilityEventFilter() {
+            @Override
+            public boolean accept(AccessibilityEvent event) {
+                boolean isContentChanged = event.getEventType()
+                        == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED;
+                int isStateDescription = (event.getContentChangeTypes()
+                        & AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION);
+                boolean isFromThisPackage = TextUtils.equals(event.getPackageName(),
+                        activity.getPackageName());
+                return isContentChanged && (isStateDescription != 0) && isFromThisPackage;
+            }
+        }, TIMEOUT_ASYNC_PROCESSING);
 
         assertThat(ViewCompat.getStateDescription(mView), is(state));
         assertThat(getNodeCompatForView(mView).getStateDescription(), is(state));

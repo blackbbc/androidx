@@ -17,16 +17,17 @@
 package androidx.compose.ui.draw
 
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ContentDrawScope
-import androidx.compose.ui.DrawModifier
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.times
 import androidx.compose.ui.layout.IntrinsicMeasurable
 import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.LayoutModifier
@@ -39,9 +40,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
-import androidx.compose.ui.unit.hasFixedHeight
-import androidx.compose.ui.unit.hasFixedWidth
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -96,6 +94,15 @@ private class PainterModifier(
     val colorFilter: ColorFilter? = null,
     inspectorInfo: InspectorInfo.() -> Unit
 ) : LayoutModifier, DrawModifier, InspectorValueInfo(inspectorInfo) {
+
+    /**
+     * Helper property to determine if we should size content to the intrinsic
+     * size of the Painter or not. This is only done if [sizeToIntrinsics] is true
+     * and the Painter has an intrinsic size
+     */
+    private val useIntrinsicSize: Boolean
+        get() = sizeToIntrinsics && painter.intrinsicSize.isSpecified
+
     override fun MeasureScope.measure(
         measurable: Measurable,
         constraints: Constraints
@@ -110,7 +117,7 @@ private class PainterModifier(
         measurable: IntrinsicMeasurable,
         height: Int
     ): Int {
-        return if (sizeToIntrinsics) {
+        return if (useIntrinsicSize) {
             val constraints = Constraints(maxHeight = height)
             val layoutWidth =
                 measurable.minIntrinsicWidth(modifyConstraints(constraints).maxHeight)
@@ -125,7 +132,7 @@ private class PainterModifier(
         measurable: IntrinsicMeasurable,
         height: Int
     ): Int {
-        return if (sizeToIntrinsics) {
+        return if (useIntrinsicSize) {
             val constraints = Constraints(maxHeight = height)
             val layoutWidth =
                 measurable.maxIntrinsicWidth(modifyConstraints(constraints).maxHeight)
@@ -140,7 +147,7 @@ private class PainterModifier(
         measurable: IntrinsicMeasurable,
         width: Int
     ): Int {
-        return if (sizeToIntrinsics) {
+        return if (useIntrinsicSize) {
             val constraints = Constraints(maxWidth = width)
             val layoutHeight =
                 measurable.minIntrinsicHeight(modifyConstraints(constraints).maxWidth)
@@ -155,7 +162,7 @@ private class PainterModifier(
         measurable: IntrinsicMeasurable,
         width: Int
     ): Int {
-        return if (sizeToIntrinsics) {
+        return if (useIntrinsicSize) {
             val constraints = Constraints(maxWidth = width)
             val layoutHeight =
                 measurable.maxIntrinsicHeight(modifyConstraints(constraints).maxWidth)
@@ -167,7 +174,7 @@ private class PainterModifier(
     }
 
     private fun calculateScaledSize(dstSize: Size): Size {
-        return if (!sizeToIntrinsics) {
+        return if (!useIntrinsicSize) {
             dstSize
         } else {
             val srcWidth = if (!painter.intrinsicSize.hasSpecifiedAndFiniteWidth()) {
@@ -183,18 +190,27 @@ private class PainterModifier(
             }
 
             val srcSize = Size(srcWidth, srcHeight)
-            srcSize * contentScale.scale(srcSize, dstSize)
+            if (dstSize.width != 0f && dstSize.height != 0f) {
+                srcSize * contentScale.computeScaleFactor(srcSize, dstSize)
+            } else {
+                Size.Zero
+            }
         }
     }
 
     private fun modifyConstraints(constraints: Constraints): Constraints {
-        if (!sizeToIntrinsics || (constraints.hasFixedWidth && constraints.hasFixedHeight)) {
+        val hasBoundedDimens = constraints.hasBoundedWidth && constraints.hasBoundedHeight
+        val hasFixedDimens = constraints.hasFixedWidth && constraints.hasFixedHeight
+        if ((!useIntrinsicSize && hasBoundedDimens) || hasFixedDimens) {
             // If we have fixed constraints or we are not attempting to size the
             // composable based on the size of the Painter, do not attempt to
             // modify them. Otherwise rely on Alignment and ContentScale
             // to determine how to position the drawing contents of the Painter within
             // the provided bounds
-            return constraints
+            return constraints.copy(
+                minWidth = constraints.maxWidth,
+                minHeight = constraints.maxHeight
+            )
         }
 
         val intrinsicSize = painter.intrinsicSize
@@ -246,16 +262,19 @@ private class PainterModifier(
         }
 
         val srcSize = Size(srcWidth, srcHeight)
-        val scale = contentScale.scale(srcSize, size)
 
         // Compute the offset to translate the content based on the given alignment
         // and size to draw based on the ContentScale parameter
-        val scaledSize = srcSize * scale
+        val scaledSize = if (size.width != 0f && size.height != 0f) {
+            srcSize * contentScale.computeScaleFactor(srcSize, size)
+        } else {
+            Size.Zero
+        }
+
         val alignedPosition = alignment.align(
-            IntSize(
-                ceil(size.width - (scaledSize.width)).toInt(),
-                ceil(size.height - (scaledSize.height)).toInt()
-            )
+            IntSize(scaledSize.width.roundToInt(), scaledSize.height.roundToInt()),
+            IntSize(size.width.roundToInt(), size.height.roundToInt()),
+            layoutDirection
         )
 
         val dx = alignedPosition.x.toFloat()

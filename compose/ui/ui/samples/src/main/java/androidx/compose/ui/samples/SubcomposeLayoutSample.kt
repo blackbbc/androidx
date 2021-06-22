@@ -18,18 +18,17 @@ package androidx.compose.ui.samples
 
 import androidx.annotation.Sampled
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.layout.ExperimentalSubcomposeLayoutApi
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.IntSize
 
 @Sampled
 @Composable
-@OptIn(ExperimentalSubcomposeLayoutApi::class)
 fun SubcomposeLayoutSample(
     mainContent: @Composable () -> Unit,
     dependentContent: @Composable (IntSize) -> Unit
 ) {
-    SubcomposeLayout<SlotsEnum> { constraints ->
+    // enum class SlotsEnum { Main, Dependent }
+    SubcomposeLayout { constraints ->
         val mainPlaceables = subcompose(SlotsEnum.Main, mainContent).map {
             it.measure(constraints)
         }
@@ -50,7 +49,4 @@ fun SubcomposeLayoutSample(
     }
 }
 
-enum class SlotsEnum {
-    Main,
-    Dependent
-}
+enum class SlotsEnum { Main, Dependent }

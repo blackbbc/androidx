@@ -25,6 +25,8 @@ import androidx.work.impl.utils.futures.SettableFuture;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.NoSuchElementException;
+
 /**
  * Manages callbacks from {@link IWorkManagerImpl}.
  *
@@ -67,6 +69,7 @@ public class RemoteCallback extends IWorkManagerImplCallback.Stub {
     public void onSuccess(@NonNull byte[] result) throws RemoteException {
         mFuture.set(result);
         unlinkToDeath();
+        onRequestCompleted();
     }
 
     @Override
@@ -74,14 +77,30 @@ public class RemoteCallback extends IWorkManagerImplCallback.Stub {
         onFailure(new RuntimeException(error));
     }
 
+    /**
+     * This method can be used by {@link RemoteCallback} implementations to keep track of
+     * the lengths of the session after completion of a request.
+     */
+    protected void onRequestCompleted() {
+        // Does nothing.
+    }
+
     private void onFailure(@NonNull Throwable throwable) {
         mFuture.setException(throwable);
         unlinkToDeath();
+        onRequestCompleted();
     }
 
     private void unlinkToDeath() {
         if (mBinder != null) {
-            mBinder.unlinkToDeath(mRecipient, 0);
+            try {
+                mBinder.unlinkToDeath(mRecipient, 0);
+            } catch (NoSuchElementException ignore) {
+                // Sometimes trying to link a death recipient to a binder itself might fail
+                // because the designated process might have crashed.
+                // In such cases trying to unlink will fail because there may not be a registered
+                // recipient
+            }
         }
     }
 

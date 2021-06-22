@@ -22,8 +22,8 @@ import androidx.test.annotation.UiThreadTest
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.FlakyTest
 import androidx.test.filters.LargeTest
-import androidx.test.rule.ActivityTestRule
 import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Rule
@@ -67,6 +67,7 @@ class ActivityScenarioRuleTest {
     @get:Rule
     val activityRule = ActivityScenarioRule(Activity::class.java)
 
+    @FlakyTest(bugId = 187106319)
     @UiThreadTest
     @Test
     fun verifyActivityLaunched() {
@@ -80,8 +81,9 @@ class ActivityTestRuleTest {
     @get:Rule
     val benchmarkRule = BenchmarkRule(enableReport = false)
 
+    @Suppress("DEPRECATION")
     @get:Rule
-    val activityRule = ActivityTestRule(Activity::class.java)
+    val activityRule = androidx.test.rule.ActivityTestRule(Activity::class.java)
 
     @UiThreadTest
     @Test

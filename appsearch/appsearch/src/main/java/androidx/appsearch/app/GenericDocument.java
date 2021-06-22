@@ -25,6 +25,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.appsearch.exceptions.AppSearchException;
+import androidx.appsearch.util.BundleUtil;
 import androidx.core.util.Preconditions;
 
 import java.lang.reflect.Array;
@@ -37,11 +38,15 @@ import java.util.Set;
  * Represents a document unit.
  *
  * <p>Documents are constructed via {@link GenericDocument.Builder}.
+ *
+ * @see AppSearchSession#putDocuments
+ * @see AppSearchSession#getByUri
+ * @see AppSearchSession#query
  */
 public class GenericDocument {
-    private static final String TAG = "GenericDocument";
+    private static final String TAG = "AppSearchGenericDocumen";
 
-    /** The default empty namespace.*/
+    /** The default empty namespace. */
     public static final String DEFAULT_NAMESPACE = "";
 
     /**
@@ -78,19 +83,18 @@ public class GenericDocument {
      * The maximum number of indexed properties a document can have.
      *
      * <p>Indexed properties are properties where the
-     * {@link androidx.appsearch.annotation.AppSearchDocument.Property#indexingType} constant is
-     * anything other than {@link
-     * androidx.appsearch.app.AppSearchSchema.PropertyConfig.IndexingType#INDEXING_TYPE_NONE}.
+     * {@link AppSearchSchema.PropertyConfig#getIndexingType()} constant is anything other than
+     * {@link AppSearchSchema.PropertyConfig.IndexingType#INDEXING_TYPE_NONE}.
      */
     public static int getMaxIndexedProperties() {
         return MAX_INDEXED_PROPERTIES;
     }
 
-    /** Contains {@link GenericDocument} basic information (uri, schemaType etc).*/
+    /** Contains {@link GenericDocument} basic information (uri, schemaType etc). */
     @NonNull
     final Bundle mBundle;
 
-    /** Contains all properties in {@link GenericDocument} to support getting properties via keys.*/
+    /** Contains all properties in {@link GenericDocument} to support getting properties via keys */
     @NonNull
     private final Bundle mProperties;
 
@@ -104,6 +108,7 @@ public class GenericDocument {
 
     /**
      * Rebuilds a {@link GenericDocument} by the a bundle.
+     *
      * @param bundle Contains {@link GenericDocument} basic information (uri, schemaType etc) and
      *               a properties bundle contains all properties in {@link GenericDocument} to
      *               support getting properties via keys.
@@ -131,6 +136,7 @@ public class GenericDocument {
 
     /**
      * Returns the {@link Bundle} populated by this builder.
+     *
      * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -157,7 +163,11 @@ public class GenericDocument {
         return mSchemaType;
     }
 
-    /** Returns the creation timestamp of the {@link GenericDocument}, in milliseconds. */
+    /**
+     * Returns the creation timestamp of the {@link GenericDocument}, in milliseconds.
+     *
+     * <p>The value is in the {@link System#currentTimeMillis} time base.
+     */
     public long getCreationTimestampMillis() {
         return mCreationTimestampMillis;
     }
@@ -165,8 +175,12 @@ public class GenericDocument {
     /**
      * Returns the TTL (Time To Live) of the {@link GenericDocument}, in milliseconds.
      *
+     * <p>The TTL is measured against {@link #getCreationTimestampMillis}. At the timestamp of
+     * {@code creationTimestampMillis + ttlMillis}, measured in the {@link System#currentTimeMillis}
+     * time base, the document will be auto-deleted.
+     *
      * <p>The default value is 0, which means the document is permanent and won't be auto-deleted
-     *    until the app is uninstalled.
+     * until the app is uninstalled.
      */
     public long getTtlMillis() {
         return mBundle.getLong(TTL_MILLIS_FIELD, DEFAULT_TTL_MILLIS);
@@ -175,10 +189,13 @@ public class GenericDocument {
     /**
      * Returns the score of the {@link GenericDocument}.
      *
-     * <p>The score is a query-independent measure of the document's quality, relative to other
-     * {@link GenericDocument}s of the same type.
+     * <p>The score is a query-independent measure of the document's quality, relative to
+     * other {@link GenericDocument}s of the same type.
      *
-     * <p>The default value is 0.
+     * <p>Results may be sorted by score using {@link SearchSpec.Builder#setRankingStrategy}.
+     * Documents with higher scores are considered better than documents with lower scores.
+     *
+     * <p>Any nonnegative integer can be used a score.
      */
     public int getScore() {
         return mBundle.getInt(SCORE_FIELD, DEFAULT_SCORE);
@@ -191,11 +208,29 @@ public class GenericDocument {
     }
 
     /**
+     * Retrieves the property value with the given key as {@link Object}.
+     *
+     * @param key The key to look for.
+     * @return The entry with the given key as an object or {@code null} if there is no such key.
+     */
+    @Nullable
+    public Object getProperty(@NonNull String key) {
+        Preconditions.checkNotNull(key);
+        Object property = mProperties.get(key);
+        if (property instanceof ArrayList) {
+            return getPropertyBytesArray(key);
+        } else if (property instanceof Bundle[]) {
+            return getPropertyDocumentArray(key);
+        }
+        return property;
+    }
+
+    /**
      * Retrieves a {@link String} value by key.
      *
      * @param key The key to look for.
-     * @return The first {@link String} associated with the given key or {@code null} if there
-     *         is no such key or the value is of a different type.
+     * @return The first {@link String} associated with the given key or {@code null} if there is
+     * no such key or the value is of a different type.
      */
     @Nullable
     public String getPropertyString(@NonNull String key) {
@@ -213,7 +248,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The first {@code long} associated with the given key or default value {@code 0} if
-     *         there is no such key or the value is of a different type.
+     * there is no such key or the value is of a different type.
      */
     public long getPropertyLong(@NonNull String key) {
         Preconditions.checkNotNull(key);
@@ -230,7 +265,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The first {@code double} associated with the given key or default value {@code 0.0}
-     *         if there is no such key or the value is of a different type.
+     * if there is no such key or the value is of a different type.
      */
     public double getPropertyDouble(@NonNull String key) {
         Preconditions.checkNotNull(key);
@@ -247,7 +282,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The first {@code boolean} associated with the given key or default value
-     *         {@code false} if there is no such key or the value is of a different type.
+     * {@code false} if there is no such key or the value is of a different type.
      */
     public boolean getPropertyBoolean(@NonNull String key) {
         Preconditions.checkNotNull(key);
@@ -263,8 +298,8 @@ public class GenericDocument {
      * Retrieves a {@code byte[]} value by key.
      *
      * @param key The key to look for.
-     * @return The first {@code byte[]} associated with the given key or {@code null} if there
-     *         is no such key or the value is of a different type.
+     * @return The first {@code byte[]} associated with the given key or {@code null} if there is
+     * no such key or the value is of a different type.
      */
     @Nullable
     public byte[] getPropertyBytes(@NonNull String key) {
@@ -282,7 +317,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The first {@link GenericDocument} associated with the given key or {@code null} if
-     *         there is no such key or the value is of a different type.
+     * there is no such key or the value is of a different type.
      */
     @Nullable
     public GenericDocument getPropertyDocument(@NonNull String key) {
@@ -310,8 +345,8 @@ public class GenericDocument {
      * Retrieves a repeated {@code String} property by key.
      *
      * @param key The key to look for.
-     * @return The {@code String[]} associated with the given key, or {@code null} if no value
-     *         is set or the value is of a different type.
+     * @return The {@code String[]} associated with the given key, or {@code null} if no value is
+     * set or the value is of a different type.
      */
     @Nullable
     public String[] getPropertyStringArray(@NonNull String key) {
@@ -324,7 +359,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The {@code long[]} associated with the given key, or {@code null} if no value is
-     *         set or the value is of a different type.
+     * set or the value is of a different type.
      */
     @Nullable
     public long[] getPropertyLongArray(@NonNull String key) {
@@ -336,8 +371,8 @@ public class GenericDocument {
      * Retrieves a repeated {@code double} property by key.
      *
      * @param key The key to look for.
-     * @return The {@code double[]} associated with the given key, or {@code null} if no value
-     *         is set or the value is of a different type.
+     * @return The {@code double[]} associated with the given key, or {@code null} if no value is
+     * set or the value is of a different type.
      */
     @Nullable
     public double[] getPropertyDoubleArray(@NonNull String key) {
@@ -350,7 +385,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The {@code boolean[]} associated with the given key, or {@code null} if no value
-     *         is set or the value is of a different type.
+     * is set or the value is of a different type.
      */
     @Nullable
     public boolean[] getPropertyBooleanArray(@NonNull String key) {
@@ -362,8 +397,8 @@ public class GenericDocument {
      * Retrieves a {@code byte[][]} property by key.
      *
      * @param key The key to look for.
-     * @return The {@code byte[][]} associated with the given key, or {@code null} if no value
-     *         is set or the value is of a different type.
+     * @return The {@code byte[][]} associated with the given key, or {@code null} if no value is
+     * set or the value is of a different type.
      */
     @SuppressLint("ArrayReturn")
     @Nullable
@@ -396,7 +431,7 @@ public class GenericDocument {
      *
      * @param key The key to look for.
      * @return The {@link GenericDocument}[] associated with the given key, or {@code null} if no
-     *         value is set or the value is of a different type.
+     * value is set or the value is of a different type.
      */
     @SuppressLint("ArrayReturn")
     @Nullable
@@ -435,6 +470,7 @@ public class GenericDocument {
         }
     }
 
+// @exportToFramework:startStrip()
     /**
      * Converts this GenericDocument into an instance of the provided data class.
      *
@@ -447,7 +483,7 @@ public class GenericDocument {
      * would be an empty or partially populated result.
      *
      * @param dataClass a class annotated with
-     *        {@link androidx.appsearch.annotation.AppSearchDocument}.
+     *                  {@link androidx.appsearch.annotation.AppSearchDocument}.
      */
     @NonNull
     public <T> T toDataClass(@NonNull Class<T> dataClass) throws AppSearchException {
@@ -456,6 +492,7 @@ public class GenericDocument {
         DataClassFactory<T> factory = registry.getOrCreateFactory(dataClass);
         return factory.fromGenericDocument(this);
     }
+// @exportToFramework:endStrip()
 
     @Override
     public boolean equals(@Nullable Object other) {
@@ -466,140 +503,15 @@ public class GenericDocument {
             return false;
         }
         GenericDocument otherDocument = (GenericDocument) other;
-        return bundleEquals(this.mBundle, otherDocument.mBundle);
-    }
-
-    /**
-     * Deeply checks two bundles are equally or not.
-     * <p> Two bundles will be considered equally if they contain same content.
-     */
-    @SuppressWarnings("unchecked")
-    private static boolean bundleEquals(Bundle one, Bundle two) {
-        if (one.size() != two.size()) {
-            return false;
-        }
-        Set<String> keySetOne = one.keySet();
-        Object valueOne;
-        Object valueTwo;
-        // Bundle inherit its equals() from Object.java, which only compare their memory address.
-        // We should iterate all keys and check their presents and values in both bundle.
-        for (String key : keySetOne) {
-            valueOne = one.get(key);
-            valueTwo = two.get(key);
-            if (valueOne instanceof Bundle
-                    && valueTwo instanceof Bundle
-                    && !bundleEquals((Bundle) valueOne, (Bundle) valueTwo)) {
-                return false;
-            } else if (valueOne == null && (valueTwo != null || !two.containsKey(key))) {
-                // If we call bundle.get(key) when the 'key' doesn't actually exist in the
-                // bundle, we'll get back a null. So make sure that both values are null and
-                // both keys exist in the bundle.
-                return false;
-            } else if (valueOne instanceof boolean[]) {
-                if (!(valueTwo instanceof boolean[])
-                        || !Arrays.equals((boolean[]) valueOne, (boolean[]) valueTwo)) {
-                    return false;
-                }
-            } else if (valueOne instanceof long[]) {
-                if (!(valueTwo instanceof long[])
-                        || !Arrays.equals((long[]) valueOne, (long[]) valueTwo)) {
-                    return false;
-                }
-            } else if (valueOne instanceof double[]) {
-                if (!(valueTwo instanceof double[])
-                        || !Arrays.equals((double[]) valueOne, (double[]) valueTwo)) {
-                    return false;
-                }
-            } else if (valueOne instanceof Bundle[]) {
-                if (!(valueTwo instanceof Bundle[])) {
-                    return false;
-                }
-                Bundle[] bundlesOne = (Bundle[]) valueOne;
-                Bundle[] bundlesTwo = (Bundle[]) valueTwo;
-                if (bundlesOne.length != bundlesTwo.length) {
-                    return false;
-                }
-                for (int i = 0; i < bundlesOne.length; i++) {
-                    if (!bundleEquals(bundlesOne[i], bundlesTwo[i])) {
-                        return false;
-                    }
-                }
-            } else if (valueOne instanceof ArrayList) {
-                if (!(valueTwo instanceof ArrayList)) {
-                    return false;
-                }
-                ArrayList<Bundle> bundlesOne = (ArrayList<Bundle>) valueOne;
-                ArrayList<Bundle> bundlesTwo = (ArrayList<Bundle>) valueTwo;
-                if (bundlesOne.size() != bundlesTwo.size()) {
-                    return false;
-                }
-                for (int i = 0; i < bundlesOne.size(); i++) {
-                    if (!bundleEquals(bundlesOne.get(i), bundlesTwo.get(i))) {
-                        return false;
-                    }
-                }
-            } else if (valueOne instanceof Object[]) {
-                if (!(valueTwo instanceof Object[])
-                        || !Arrays.equals((Object[]) valueOne, (Object[]) valueTwo)) {
-                    return false;
-                }
-            }
-        }
-        return true;
+        return BundleUtil.deepEquals(this.mBundle, otherDocument.mBundle);
     }
 
     @Override
     public int hashCode() {
         if (mHashCode == null) {
-            mHashCode = bundleHashCode(mBundle);
+            mHashCode = BundleUtil.deepHashCode(mBundle);
         }
         return mHashCode;
-    }
-
-    /**
-     * Calculates the hash code for a bundle.
-     * <p> The hash code is only effected by the contents in the bundle. Bundles will get
-     * consistent hash code if they have same contents.
-     */
-    @SuppressWarnings("unchecked")
-    private static int bundleHashCode(Bundle bundle) {
-        int[] hashCodes = new int[bundle.size()];
-        int i = 0;
-        // Bundle inherit its hashCode() from Object.java, which only relative to their memory
-        // address. Bundle doesn't have an order, so we should iterate all keys and combine
-        // their value's hashcode into an array. And use the hashcode of the array to be
-        // the hashcode of the bundle.
-        for (String key : bundle.keySet()) {
-            Object value = bundle.get(key);
-            if (value instanceof boolean[]) {
-                hashCodes[i++] = Arrays.hashCode((boolean[]) value);
-            } else if (value instanceof long[]) {
-                hashCodes[i++] = Arrays.hashCode((long[]) value);
-            } else if (value instanceof double[]) {
-                hashCodes[i++] = Arrays.hashCode((double[]) value);
-            } else if (value instanceof String[]) {
-                hashCodes[i++] = Arrays.hashCode((Object[]) value);
-            } else if (value instanceof Bundle) {
-                hashCodes[i++] = bundleHashCode((Bundle) value);
-            } else if (value instanceof Bundle[]) {
-                Bundle[] bundles = (Bundle[]) value;
-                int[] innerHashCodes = new int[bundles.length];
-                for (int j = 0; j < innerHashCodes.length; j++) {
-                    innerHashCodes[j] = bundleHashCode(bundles[j]);
-                }
-                hashCodes[i++] = Arrays.hashCode(innerHashCodes);
-            } else if (value instanceof ArrayList) {
-                ArrayList<Bundle> bundles = (ArrayList<Bundle>) value;
-                int[] innerHashCodes = new int[bundles.size()];
-                for (int j = 0; j < innerHashCodes.length; j++) {
-                    innerHashCodes[j] = bundleHashCode(bundles.get(j));
-                }
-                hashCodes[i++] = Arrays.hashCode(innerHashCodes);
-            } else {
-                hashCodes[i++] = value.hashCode();
-            }
-        }
-        return Arrays.hashCode(hashCodes);
     }
 
     @Override
@@ -683,12 +595,14 @@ public class GenericDocument {
         /**
          * Create a new {@link GenericDocument.Builder}.
          *
-         * @param uri The uri of {@link GenericDocument}.
+         * @param uri        The uri of {@link GenericDocument}.
          * @param schemaType The schema type of the {@link GenericDocument}. The passed-in
-         *        {@code schemaType} must be defined using {@link AppSearchSession#setSchema} prior
-         *        to inserting a document of this {@code schemaType} into the AppSearch index using
-         *        {@link AppSearchSession#putDocuments}. Otherwise, the document will be
-         *        rejected by {@link AppSearchSession#putDocuments}.
+         *                   {@code schemaType} must be defined using
+         *                   {@link AppSearchSession#setSchema} prior
+         *                   to inserting a document of this {@code schemaType} into the
+         *                   AppSearch index using
+         *                   {@link AppSearchSession#putDocuments}. Otherwise, the document will be
+         *                   rejected by {@link AppSearchSession#putDocuments}.
          */
         @SuppressWarnings("unchecked")
         public Builder(@NonNull String uri, @NonNull String schemaType) {
@@ -726,6 +640,11 @@ public class GenericDocument {
          * <p>The score is a query-independent measure of the document's quality, relative to
          * other {@link GenericDocument}s of the same type.
          *
+         * <p>Results may be sorted by score using {@link SearchSpec.Builder#setRankingStrategy}.
+         * Documents with higher scores are considered better than documents with lower scores.
+         *
+         * <p>Any nonnegative integer can be used a score.
+         *
          * @throws IllegalArgumentException If the provided value is negative.
          */
         @NonNull
@@ -739,8 +658,10 @@ public class GenericDocument {
         }
 
         /**
-         * Sets the creation timestamp of the {@link GenericDocument}, in milliseconds. Should be
-         * set using a value obtained from the {@link System#currentTimeMillis()} time base.
+         * Sets the creation timestamp of the {@link GenericDocument}, in milliseconds.
+         *
+         * <p>Should be set using a value obtained from the {@link System#currentTimeMillis} time
+         * base.
          */
         @NonNull
         public BuilderType setCreationTimestampMillis(long creationTimestampMillis) {
@@ -753,8 +674,12 @@ public class GenericDocument {
         /**
          * Sets the TTL (Time To Live) of the {@link GenericDocument}, in milliseconds.
          *
-         * <p>After this many milliseconds since the {@link #setCreationTimestampMillis creation
-         * timestamp}, the document is deleted.
+         * <p>The TTL is measured against {@link #getCreationTimestampMillis}. At the timestamp of
+         * {@code creationTimestampMillis + ttlMillis}, measured in the
+         * {@link System#currentTimeMillis} time base, the document will be auto-deleted.
+         *
+         * <p>The default value is 0, which means the document is permanent and won't be
+         * auto-deleted until the app is uninstalled.
          *
          * @param ttlMillis A non-negative duration in milliseconds.
          * @throws IllegalArgumentException If the provided value is negative.
@@ -773,7 +698,7 @@ public class GenericDocument {
          * Sets one or multiple {@code String} values for a property, replacing its previous
          * values.
          *
-         * @param key The key associated with the {@code values}.
+         * @param key    The key associated with the {@code values}.
          * @param values The {@code String} values of the property.
          */
         @NonNull
@@ -789,7 +714,7 @@ public class GenericDocument {
          * Sets one or multiple {@code boolean} values for a property, replacing its previous
          * values.
          *
-         * @param key The key associated with the {@code values}.
+         * @param key    The key associated with the {@code values}.
          * @param values The {@code boolean} values of the property.
          */
         @NonNull
@@ -805,7 +730,7 @@ public class GenericDocument {
          * Sets one or multiple {@code long} values for a property, replacing its previous
          * values.
          *
-         * @param key The key associated with the {@code values}.
+         * @param key    The key associated with the {@code values}.
          * @param values The {@code long} values of the property.
          */
         @NonNull
@@ -821,7 +746,7 @@ public class GenericDocument {
          * Sets one or multiple {@code double} values for a property, replacing its previous
          * values.
          *
-         * @param key The key associated with the {@code values}.
+         * @param key    The key associated with the {@code values}.
          * @param values The {@code double} values of the property.
          */
         @NonNull
@@ -836,7 +761,7 @@ public class GenericDocument {
         /**
          * Sets one or multiple {@code byte[]} for a property, replacing its previous values.
          *
-         * @param key The key associated with the {@code values}.
+         * @param key    The key associated with the {@code values}.
          * @param values The {@code byte[]} of the property.
          */
         @NonNull
@@ -852,7 +777,7 @@ public class GenericDocument {
          * Sets one or multiple {@link GenericDocument} values for a property, replacing its
          * previous values.
          *
-         * @param key The key associated with the {@code values}.
+         * @param key    The key associated with the {@code values}.
          * @param values The {@link GenericDocument} values of the property.
          */
         @NonNull
@@ -873,7 +798,7 @@ public class GenericDocument {
                     throw new IllegalArgumentException("The String at " + i + " is null.");
                 } else if (values[i].length() > MAX_STRING_LENGTH) {
                     throw new IllegalArgumentException("The String at " + i + " length is: "
-                            + values[i].length()  + ", which exceeds length limit: "
+                            + values[i].length() + ", which exceeds length limit: "
                             + MAX_STRING_LENGTH + ".");
                 }
             }
