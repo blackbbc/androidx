@@ -19,7 +19,9 @@ package androidx.room.solver
 import COMMON
 import androidx.paging.DataSource
 import androidx.paging.PagingSource
+import androidx.room.Dao
 import androidx.room.compiler.processing.XProcessingEnv
+import androidx.room.compiler.processing.isTypeElement
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.XTestInvocation
 import androidx.room.compiler.processing.util.runProcessorTest
@@ -28,6 +30,7 @@ import androidx.room.ext.L
 import androidx.room.ext.LifecyclesTypeNames
 import androidx.room.ext.PagingTypeNames
 import androidx.room.ext.ReactiveStreamsTypeNames
+import androidx.room.ext.RoomTypeNames
 import androidx.room.ext.RoomTypeNames.STRING_UTIL
 import androidx.room.ext.RxJava2TypeNames
 import androidx.room.ext.RxJava3TypeNames
@@ -35,6 +38,8 @@ import androidx.room.ext.T
 import androidx.room.parser.SQLTypeAffinity
 import androidx.room.processor.Context
 import androidx.room.processor.CustomConverterProcessor
+import androidx.room.processor.DaoProcessor
+import androidx.room.processor.DaoProcessorTest
 import androidx.room.processor.ProcessorErrors
 import androidx.room.solver.binderprovider.DataSourceFactoryQueryResultBinderProvider
 import androidx.room.solver.binderprovider.DataSourceQueryResultBinderProvider
@@ -42,6 +47,8 @@ import androidx.room.solver.binderprovider.LiveDataQueryResultBinderProvider
 import androidx.room.solver.binderprovider.PagingSourceQueryResultBinderProvider
 import androidx.room.solver.binderprovider.RxQueryResultBinderProvider
 import androidx.room.solver.query.parameter.CollectionQueryParameterAdapter
+import androidx.room.solver.query.result.CompatPagingSourceQueryResultBinder
+import androidx.room.solver.query.result.PagingSourceQueryResultBinder
 import androidx.room.solver.shortcut.binderprovider.GuavaListenableFutureDeleteOrUpdateMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.GuavaListenableFutureInsertMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.RxCallableDeleteOrUpdateMethodBinderProvider
@@ -54,6 +61,7 @@ import androidx.room.solver.types.EnumColumnTypeAdapter
 import androidx.room.solver.types.PrimitiveColumnTypeAdapter
 import androidx.room.solver.types.TypeConverter
 import androidx.room.testing.context
+import androidx.room.vo.ReadQueryMethod
 import com.google.common.truth.Truth.assertThat
 import com.squareup.javapoet.TypeName
 import org.hamcrest.CoreMatchers.`is`
@@ -789,6 +797,171 @@ class TypeAdapterStoreTest {
             invocation.assertCompilationResult {
                 hasError(ProcessorErrors.PAGING_SPECIFY_PAGING_SOURCE_TYPE)
             }
+        }
+    }
+
+    @Test
+    fun findPagingSourceJavaCollectionValue() {
+        runProcessorTest { invocation ->
+            val pagingSourceElement = invocation.processingEnv
+                .requireTypeElement(PagingSource::class)
+            val intType = invocation.processingEnv.requireType(Integer::class)
+            val collectionType = invocation.processingEnv.requireType("java.util.Collection")
+            val pagingSourceIntCollectionType = invocation.processingEnv
+                .getDeclaredType(pagingSourceElement, intType, collectionType)
+
+            assertThat(pagingSourceIntCollectionType).isNotNull()
+            assertThat(
+                PagingSourceQueryResultBinderProvider(invocation.context)
+                    .matches(pagingSourceIntCollectionType)
+            ).isTrue()
+            invocation.assertCompilationResult {
+                hasError(ProcessorErrors.PAGING_SPECIFY_PAGING_SOURCE_VALUE_TYPE)
+            }
+        }
+    }
+
+    @Test
+    fun findPagingSourceKotlinCollectionValue() {
+        runProcessorTest { invocation ->
+            val pagingSourceElement = invocation.processingEnv
+                .requireTypeElement(PagingSource::class)
+            val intType = invocation.processingEnv.requireType(Integer::class)
+            val kotlinCollectionType = invocation.processingEnv.requireType(Collection::class)
+            val pagingSourceIntCollectionType = invocation.processingEnv
+                .getDeclaredType(pagingSourceElement, intType, kotlinCollectionType)
+
+            assertThat(pagingSourceIntCollectionType).isNotNull()
+            assertThat(
+                PagingSourceQueryResultBinderProvider(invocation.context)
+                    .matches(pagingSourceIntCollectionType)
+            ).isTrue()
+            invocation.assertCompilationResult {
+                hasError(ProcessorErrors.PAGING_SPECIFY_PAGING_SOURCE_VALUE_TYPE)
+            }
+        }
+    }
+
+    @Test
+    fun findPagingSourceJavaListValue() {
+        runProcessorTest { invocation ->
+            val pagingSourceElement = invocation.processingEnv
+                .requireTypeElement(PagingSource::class)
+            val intType = invocation.processingEnv.requireType(Integer::class)
+            val javaListType = invocation.processingEnv.requireType("java.util.List")
+            val pagingSourceIntListType = invocation.processingEnv
+                .getDeclaredType(pagingSourceElement, intType, javaListType)
+            assertThat(pagingSourceIntListType).isNotNull()
+            assertThat(
+                PagingSourceQueryResultBinderProvider(invocation.context)
+                    .matches(pagingSourceIntListType)
+            ).isTrue()
+            invocation.assertCompilationResult {
+                hasError(ProcessorErrors.PAGING_SPECIFY_PAGING_SOURCE_VALUE_TYPE)
+            }
+        }
+    }
+
+    @Test
+    fun findPagingSourceKotlinMutableSetValue() {
+        runProcessorTest { invocation ->
+            val pagingSourceElement = invocation.processingEnv
+                .requireTypeElement(PagingSource::class)
+            val intType = invocation.processingEnv.requireType(Integer::class)
+            val mutableSetType = invocation.processingEnv.requireType(MutableSet::class)
+            val pagingSourceIntCollectionType = invocation.processingEnv
+                .getDeclaredType(pagingSourceElement, intType, mutableSetType)
+
+            assertThat(pagingSourceIntCollectionType).isNotNull()
+            assertThat(
+                PagingSourceQueryResultBinderProvider(invocation.context)
+                    .matches(pagingSourceIntCollectionType)
+            ).isTrue()
+            invocation.assertCompilationResult {
+                hasError(ProcessorErrors.PAGING_SPECIFY_PAGING_SOURCE_VALUE_TYPE)
+            }
+        }
+    }
+
+    @Test
+    fun testNewPagingSourceBinder() {
+        val inputSource =
+            Source.java(
+                qName = "foo.bar.MyDao",
+                code =
+                    """
+                ${DaoProcessorTest.DAO_PREFIX}
+
+                @Dao abstract class MyDao {
+                    @Query("SELECT uid FROM User")
+                    abstract androidx.paging.PagingSource<Integer, User> getAllIds();
+                }
+                    """.trimIndent()
+            )
+        runProcessorTest(
+            sources = listOf(
+                inputSource,
+                COMMON.USER,
+                COMMON.PAGING_SOURCE,
+                COMMON.LIMIT_OFFSET_PAGING_SOURCE,
+            ),
+        ) { invocation: XTestInvocation ->
+            val dao = invocation.roundEnv
+                .getElementsAnnotatedWith(
+                    Dao::class.qualifiedName!!
+                ).first()
+            check(dao.isTypeElement())
+            val dbType = invocation.context.processingEnv
+                .requireType(RoomTypeNames.ROOM_DB)
+            val parser = DaoProcessor(
+                invocation.context,
+                dao, dbType, null,
+            )
+            val parsedDao = parser.process()
+            val binder = parsedDao.queryMethods.filterIsInstance<ReadQueryMethod>()
+                .first().queryResultBinder
+            assertThat(binder is PagingSourceQueryResultBinder).isTrue()
+        }
+    }
+
+    @Test
+    fun testCompatPagingSourceBinder() {
+        val inputSource =
+            Source.java(
+                qName = "foo.bar.MyDao",
+                code =
+                    """
+                ${DaoProcessorTest.DAO_PREFIX}
+
+                @Dao abstract class MyDao {
+                    @Query("SELECT uid FROM User")
+                    abstract androidx.paging.PagingSource<Integer, User> getAllIds();
+                }
+                    """.trimIndent()
+            )
+        runProcessorTest(
+            sources = listOf(
+                inputSource,
+                COMMON.USER,
+                COMMON.PAGING_SOURCE,
+            ),
+        ) { invocation: XTestInvocation ->
+            val dao = invocation.roundEnv
+                .getElementsAnnotatedWith(
+                    Dao::class.qualifiedName!!
+                ).first()
+            check(dao.isTypeElement())
+            val dbType = invocation.context.processingEnv
+                .requireType(RoomTypeNames.ROOM_DB)
+            val parser = DaoProcessor(
+                invocation.context,
+                dao, dbType, null
+            )
+            val parsedDao = parser.process()
+            assertThat(parsedDao.queryMethods.size, `is`(1))
+            val binder = parsedDao.queryMethods.filterIsInstance<ReadQueryMethod>()
+                .first().queryResultBinder
+            assertThat(binder is CompatPagingSourceQueryResultBinder).isTrue()
         }
     }
 

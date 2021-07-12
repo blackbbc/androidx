@@ -113,15 +113,31 @@ class ExperimentalDetector : Detector(), SourceCodeScanner {
     ) {
         val useAnnotation = (annotation.uastParent as? UClass)?.qualifiedName ?: return
         if (!hasOrUsesAnnotation(context, usage, useAnnotation, useAnnotationNames)) {
-            val level = annotation.extractAttribute(context, "level") ?: "ERROR"
-            report(
-                context, usage,
-                """
-                    This declaration is opt-in and its usage should be marked with
-                    '@$useAnnotation' or '@OptIn(markerClass = $useAnnotation.class)'
-                """,
-                level
-            )
+            // For some reason we can't read the explicit default level from the compiled version
+            // of kotlin.Experimental (but we can from kotlin.RequiresOptIn? go figure). It's
+            // possible that we'll fail to read the level for other reasons, but the safest
+            // fallback is ERROR either way.
+            val level = annotation.extractAttribute(context, "level", "ERROR")
+            if (level != null) {
+                report(
+                    context, usage, useAnnotation,
+                    "This declaration is opt-in and its usage should be marked with " +
+                        "`@$useAnnotation` or `@OptIn(markerClass = $useAnnotation.class)`",
+                    level
+                )
+            } else {
+                // This is a more serious failure where we obtained a representation that we
+                // couldn't understand.
+                report(
+                    context, usage, useAnnotation,
+                    """
+                    Failed to read `level` from `@$useAnnotation` -- assuming `ERROR`. This
+                    declaration is opt-in and its usage should be marked with `@$useAnnotation`
+                    or `@OptIn(markerClass = $useAnnotation.class)`
+                    """.trimIndent(),
+                    "ERROR"
+                )
+            }
         }
     }
 
@@ -178,20 +194,22 @@ class ExperimentalDetector : Detector(), SourceCodeScanner {
     private fun report(
         context: JavaContext,
         usage: UElement,
+        annotation: String,
         message: String,
-        level: String
-
+        level: String,
     ) {
         val issue = when (level) {
             "ERROR" -> ISSUE_ERROR
             "WARNING" -> ISSUE_WARNING
             else -> throw IllegalArgumentException(
-                "Level was \"" + level + "\" but must be one " +
-                    "of: ERROR, WARNING"
+                "Level was \"$level\" but must be one of: ERROR, WARNING"
             )
         }
+
         try {
-            context.report(issue, usage, context.getNameLocation(usage), message.trimIndent())
+            if (context.configuration.getOption(issue, "opt-in")?.contains(annotation) != true) {
+                context.report(issue, usage, context.getNameLocation(usage), message.trimIndent())
+            }
         } catch (e: UnsupportedOperationException) {
             if ("Method not implemented" == e.message) {
                 // Workaround for b/191286558 where lint attempts to read annotations from a
@@ -235,10 +253,11 @@ class ExperimentalDetector : Detector(), SourceCodeScanner {
             explanation = """
                 This API has been flagged as opt-in with $level-level severity.
 
-                Any declaration annotated with this marker is considered part of an unstable or
-                otherwise non-standard API surface and its call sites should accept the opt-in
-                aspect of it either by using `@OptIn` or by being annotated with that marker
-                themselves, effectively causing further propagation of the opt-in aspect.
+                Any declaration annotated with this marker is considered part of an
+                unstable or otherwise non-standard API surface and its call sites
+                should accept the opt-in aspect of it either by using `@OptIn` or by
+                being annotated with that marker themselves, effectively causing
+                further propagation of the opt-in aspect.
             """,
             category = Category.CORRECTNESS,
             priority = 4,

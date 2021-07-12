@@ -17,7 +17,6 @@
 import androidx.build.LibraryGroups
 import androidx.build.LibraryType
 import androidx.build.LibraryVersions
-import androidx.build.RunApiTasks
 import androidx.build.AndroidXComposePlugin
 
 plugins {
@@ -29,11 +28,23 @@ plugins {
 AndroidXComposePlugin.applyAndConfigureKotlinPlugin(project)
 
 dependencies {
-    kotlinPlugin(project(":compose:compiler:compiler"))
+    kotlinPlugin("androidx.compose.compiler:compiler:1.0.0-rc01")
 
-    implementation(libs.kotlinStdlib)
+    if(!AndroidXComposePlugin.isMultiplatformEnabled(project)) {
+        api(project(":compose:foundation:foundation"))
+        api(project(":compose:ui:ui"))
+        api(project(":compose:ui:ui-text"))
+        api(project(":compose:runtime:runtime"))
+
+        implementation(libs.kotlinStdlib)
+        implementation(project(":compose:foundation:foundation-layout"))
+
+        androidTestImplementation project(path: ':compose:ui:ui-test')
+        androidTestImplementation project(path: ':compose:ui:ui-test-junit4')
+        androidTestImplementation project(path: ':compose:test-utils')
+        androidTestImplementation(libs.testRunner)
+    }
 }
-
 
 if(AndroidXComposePlugin.isMultiplatformEnabled(project)) {
     kotlin {
@@ -46,7 +57,13 @@ if(AndroidXComposePlugin.isMultiplatformEnabled(project)) {
          */
         sourceSets {
             commonMain.dependencies {
+                api(project(":compose:foundation:foundation"))
+                api(project(":compose:ui:ui"))
+                api(project(":compose:ui:ui-text"))
+                api(project(":compose:runtime:runtime"))
+
                 implementation(libs.kotlinStdlibCommon)
+                implementation(project(":compose:foundation:foundation-layout"))
             }
             jvmMain.dependencies {
                 implementation(libs.kotlinStdlib)
@@ -94,5 +111,4 @@ androidx {
             "functionality to support wearable specific devices sizes, shapes and navigation " +
             "gestures. It builds upon the Jetpack Compose libraries."
     targetsJavaConsumers = false
-    runApiTasks = new RunApiTasks.No("API tracking disabled while the package is empty")
 }
