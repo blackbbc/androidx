@@ -15,7 +15,6 @@
  */
 package androidx.wear.compose.material
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
@@ -106,7 +106,6 @@ public fun Chip(
         modifier = modifier
             .height(ChipDefaults.Height)
             .clip(shape = shape)
-            .background(color = Color.Transparent, shape = shape)
     ) {
         // TODO: Due to b/178201337 the paint() modifier on the box doesn't make a call to draw the
         //  box contents. As a result we need to have stacked boxes to enable us to paint the
@@ -115,7 +114,9 @@ public fun Chip(
             Modifier
                 .paint(
                     painter = colors.background(enabled = enabled).value,
+                    contentScale = ContentScale.FillBounds
                 )
+                .fillMaxSize()
 
         val contentBoxModifier = Modifier
             .clickable(
@@ -198,7 +199,7 @@ public fun Chip(
     colors: ChipColors = ChipDefaults.primaryChipColors(),
     enabled: Boolean = true,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-    contentPadding: PaddingValues = ChipDefaults.contentPadding(icon != null),
+    contentPadding: PaddingValues = ChipDefaults.ContentPadding,
 ) {
     Chip(
         onClick = onClick,
@@ -303,7 +304,7 @@ public fun CompactChip(
     colors: ChipColors = ChipDefaults.primaryChipColors(),
     enabled: Boolean = true,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-    contentPadding: PaddingValues = ChipDefaults.contentPadding(icon != null),
+    contentPadding: PaddingValues = ChipDefaults.ContentPadding,
 ) {
     if (label != null) {
         Chip(
@@ -528,22 +529,65 @@ public object ChipDefaults {
         )
     }
 
-    private val ChipHorizontalPadding = 14.dp
-    private val ChipWithIconHorizontalPadding = 12.dp
-    private val ChipVerticalPadding = 6.dp
-
     /**
-     * Creates a [PaddingValues] for a [Chip] based on whether the chip has a icon. For chips with
-     * icons a smaller start and end padding are applied to compensate for the space that the icon
-     * consumes.
+     * Creates a [ChipColors] for an image background [Chip]. Image background chips have an image
+     * as the background of the chip typically with a scrim over the image to ensure that the
+     * content is visible, and use a default content color of [Colors.onBackground].
      *
-     * @param hasIcon Whether the [Chip] has an icon.
+     * @param backgroundImagePainter The [Painter] to use to draw the background of the [Chip]
+     * @param backgroundImageScrimBrush The [Brush] to use to paint a scrim over the background
+     * image to ensure that any text drawn over the image is legible
+     * @param contentColor The content color of this [Chip] when enabled
+     * @param secondaryContentColor The secondary content color of this [Chip] when enabled, used
+     * for secondaryLabel content
+     * @param iconTintColor The icon tint color of this [Chip] when enabled, used for icon content
      */
-    public fun contentPadding(
-        hasIcon: Boolean
-    ): PaddingValues {
-        return if (hasIcon) ContentWithIconPadding else ContentPadding
+    @Composable
+    public fun imageBackgroundChipColors(
+        backgroundImagePainter: Painter,
+        backgroundImageScrimBrush: Brush = Brush.linearGradient(
+            colors = listOf(
+                MaterialTheme.colors.surface.copy(alpha = 1.0f),
+                MaterialTheme.colors.surface.copy(alpha = 0f)
+            )
+        ),
+        contentColor: Color = MaterialTheme.colors.onBackground,
+        secondaryContentColor: Color = contentColor,
+        iconTintColor: Color = contentColor,
+    ): ChipColors {
+        val backgroundPainter =
+            remember(backgroundImagePainter, backgroundImageScrimBrush) {
+                ImageWithScrimPainter(
+                    imagePainter = backgroundImagePainter,
+                    brush = backgroundImageScrimBrush
+                )
+            }
+
+        val disabledContentAlpha = ContentAlpha.disabled
+        val disabledBackgroundPainter =
+            remember(backgroundImagePainter, backgroundImageScrimBrush, disabledContentAlpha) {
+                ImageWithScrimPainter(
+                    imagePainter = backgroundImagePainter,
+                    brush = backgroundImageScrimBrush,
+                    alpha = disabledContentAlpha,
+                )
+            }
+        return DefaultChipColors(
+            backgroundPainter = backgroundPainter,
+            contentColor = contentColor,
+            secondaryContentColor = secondaryContentColor,
+            iconTintColor = iconTintColor,
+            disabledBackgroundPainter = disabledBackgroundPainter,
+            disabledContentColor = contentColor.copy(alpha = ContentAlpha.disabled),
+            disabledSecondaryContentColor = secondaryContentColor.copy(
+                alpha = ContentAlpha.disabled
+            ),
+            disabledIconTintColor = iconTintColor.copy(alpha = ContentAlpha.disabled),
+        )
     }
+
+    private val ChipHorizontalPadding = 14.dp
+    private val ChipVerticalPadding = 6.dp
 
     /**
      * The default content padding used by [Chip]
@@ -552,16 +596,6 @@ public object ChipDefaults {
         start = ChipHorizontalPadding,
         top = ChipVerticalPadding,
         end = ChipHorizontalPadding,
-        bottom = ChipVerticalPadding
-    )
-
-    /**
-     * The content padding used by a [Chip] which includes an icon
-     */
-    public val ContentWithIconPadding: PaddingValues = PaddingValues(
-        start = ChipWithIconHorizontalPadding,
-        top = ChipVerticalPadding,
-        end = ChipWithIconHorizontalPadding,
         bottom = ChipVerticalPadding
     )
 

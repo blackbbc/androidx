@@ -17,7 +17,6 @@
 package androidx.build
 
 import androidx.build.dependencyTracker.AffectedModuleDetector
-import androidx.build.gradle.getByType
 import com.android.build.gradle.internal.dsl.LintOptions
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
@@ -25,6 +24,7 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.TaskAction
+import org.gradle.kotlin.dsl.getByType
 import java.io.File
 import java.util.Locale
 
@@ -46,6 +46,15 @@ fun Project.configureNonAndroidProjectForLint(extension: AndroidXExtension) {
     val lintTask = tasks.named("lint")
     lintTask.configure { task ->
         AffectedModuleDetector.configureTaskGuard(task)
+    }
+    afterEvaluate {
+        tasks.named("lintAnalyze").configure { task ->
+            AffectedModuleDetector.configureTaskGuard(task)
+        }
+        /* TODO: uncomment when we upgrade to AGP 7.1.0-alpha04
+        tasks.named("lintReport").configure { task ->
+            AffectedModuleDetector.configureTaskGuard(task)
+        }*/
     }
     tasks.register("lintDebug") {
         it.dependsOn(lintTask)
@@ -84,6 +93,13 @@ fun Project.configureAndroidProjectForLint(lintOptions: LintOptions, extension: 
             tasks.named("lint${variant.name.capitalize(Locale.US)}").configure { task ->
                 AffectedModuleDetector.configureTaskGuard(task)
             }
+            tasks.named("lintAnalyze${variant.name.capitalize(Locale.US)}").configure { task ->
+                AffectedModuleDetector.configureTaskGuard(task)
+            }
+            /* TODO: uncomment when we upgrade to AGP 7.1.0-alpha04
+            tasks.named("lintReport${variant.name.capitalize(Locale.US)}").configure { task ->
+                AffectedModuleDetector.configureTaskGuard(task)
+            }*/
         }
     }
 }
@@ -213,7 +229,7 @@ fun Project.configureLint(lintOptions: LintOptions, extension: AndroidXExtension
             if (lintConfig == null) {
                 // suppress warnings more specifically than issue-wide severity (regexes)
                 // Currently suppresses warnings from baseline files working as intended
-                lintConfig = project.rootProject.file("buildSrc/lint.xml")
+                lintConfig = File(project.getSupportRootFolder(), "buildSrc/lint.xml")
             }
 
             // Ideally, teams aren't able to add new violations to a baseline file; they should only

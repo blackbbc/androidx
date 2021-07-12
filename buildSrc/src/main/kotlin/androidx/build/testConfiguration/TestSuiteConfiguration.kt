@@ -27,7 +27,6 @@ import androidx.build.dependencyTracker.AffectedModuleDetector
 import androidx.build.getConstrainedTestConfigDirectory
 import androidx.build.getSupportRootFolder
 import androidx.build.getTestConfigDirectory
-import androidx.build.gradle.getByType
 import androidx.build.hasAndroidTestSourceCode
 import androidx.build.hasBenchmarkPlugin
 import androidx.build.renameApkForTesting
@@ -35,12 +34,13 @@ import com.android.build.api.artifact.Artifacts
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.ApplicationVariant
 import com.android.build.api.variant.LibraryVariant
-import com.android.build.gradle.TestedExtension
+import com.android.build.gradle.BaseExtension
 import com.android.build.gradle.tasks.PackageAndroidArtifact
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Zip
+import org.gradle.kotlin.dsl.getByType
 import java.io.File
 
 /**
@@ -119,18 +119,24 @@ fun Project.createTestConfigurationGenerationTask(
  * alternative project. Default is for the project to register the new config task to itself
  */
 fun Project.addAppApkToTestConfigGeneration(overrideProject: Project = this) {
+    if (project.isMacrobenchmarkTarget()) {
+        return
+    }
     // TODO(aurimas): migrate away from this when upgrading to AGP 7.1.0-alpha03 or newer
     @Suppress("DEPRECATION")
     extensions.getByType<
         com.android.build.api.extension.ApplicationAndroidComponentsExtension
         >().apply {
-        onVariants(selector().withBuildType("debug")) { debugVariant ->
-            overrideProject.tasks.withType(GenerateTestConfigurationTask::class.java)
-                .configureEach {
-                    it.appFolder.set(debugVariant.artifacts.get(SingleArtifact.APK))
-                    it.appLoader.set(debugVariant.artifacts.getBuiltArtifactsLoader())
-                    it.appProjectPath.set(overrideProject.path)
-                }
+        onVariants(selector().withBuildType("debug")) { appVariant ->
+            overrideProject.tasks.named(
+                "${AndroidXPlugin.GENERATE_TEST_CONFIGURATION_TASK}" +
+                    "${appVariant.name}AndroidTest"
+            ) { configTask ->
+                configTask as GenerateTestConfigurationTask
+                configTask.appFolder.set(appVariant.artifacts.get(SingleArtifact.APK))
+                configTask.appLoader.set(appVariant.artifacts.getBuiltArtifactsLoader())
+                configTask.appProjectPath.set(overrideProject.path)
+            }
         }
     }
 }
@@ -340,7 +346,7 @@ private fun Project.configureMacrobenchmarkConfigTask(
         this.rootProject.tasks.findByName(
             AndroidXPlugin.ZIP_CONSTRAINED_TEST_CONFIGS_WITH_APKS_TASK
         )!!.dependsOn(configTask)
-    } else if (path.endsWith("macrobenchmark-target")) {
+    } else if (isMacrobenchmarkTarget()) {
         configTask.configure { task ->
             task.appFolder.set(artifacts.get(SingleArtifact.APK))
             task.appLoader.set(artifacts.getBuiltArtifactsLoader())
@@ -349,12 +355,19 @@ private fun Project.configureMacrobenchmarkConfigTask(
     }
 }
 
-fun Project.configureTestConfigGeneration(testedExtension: TestedExtension) {
+/**
+ * Tells whether this project is the macrobenchmark-target project
+ */
+fun Project.isMacrobenchmarkTarget(): Boolean {
+    return path.endsWith("macrobenchmark-target")
+}
+
+fun Project.configureTestConfigGeneration(baseExtension: BaseExtension) {
     // TODO(aurimas): migrate away from this when upgrading to AGP 7.1.0-alpha03 or newer
     @Suppress("DEPRECATION")
-    extensions.getByType<
-        com.android.build.api.extension.AndroidComponentsExtension<*, *, *>
-        >().apply {
+    extensions.getByType(
+        com.android.build.api.extension.AndroidComponentsExtension::class.java
+    ).apply {
         onVariants { variant ->
             val androidTest = when (variant) {
                 is ApplicationVariant -> variant.androidTest
@@ -366,8 +379,8 @@ fun Project.configureTestConfigGeneration(testedExtension: TestedExtension) {
                     createOrUpdateMediaTestConfigurationGenerationTask(
                         androidTest.name,
                         androidTest.artifacts,
-                        testedExtension.defaultConfig.minSdk!!,
-                        testedExtension.defaultConfig.testInstrumentationRunner!!,
+                        baseExtension.defaultConfig.minSdk!!,
+                        baseExtension.defaultConfig.testInstrumentationRunner!!,
                         isMedia2 = true
                     )
                 }
@@ -375,26 +388,26 @@ fun Project.configureTestConfigGeneration(testedExtension: TestedExtension) {
                     createOrUpdateMediaTestConfigurationGenerationTask(
                         androidTest.name,
                         androidTest.artifacts,
-                        testedExtension.defaultConfig.minSdk!!,
-                        testedExtension.defaultConfig.testInstrumentationRunner!!,
+                        baseExtension.defaultConfig.minSdk!!,
+                        baseExtension.defaultConfig.testInstrumentationRunner!!,
                         isMedia2 = false
                     )
                 }
                 path.endsWith("macrobenchmark") ||
-                    path.endsWith("macrobenchmark-target") -> {
+                    isMacrobenchmarkTarget() -> {
                     configureMacrobenchmarkConfigTask(
                         androidTest.name,
                         androidTest.artifacts,
-                        testedExtension.defaultConfig.minSdk!!,
-                        testedExtension.defaultConfig.testInstrumentationRunner!!
+                        baseExtension.defaultConfig.minSdk!!,
+                        baseExtension.defaultConfig.testInstrumentationRunner!!
                     )
                 }
                 else -> {
                     createTestConfigurationGenerationTask(
                         androidTest.name,
                         androidTest.artifacts,
-                        testedExtension.defaultConfig.minSdk!!,
-                        testedExtension.defaultConfig.testInstrumentationRunner!!
+                        baseExtension.defaultConfig.minSdk!!,
+                        baseExtension.defaultConfig.testInstrumentationRunner!!
                     )
                 }
             }

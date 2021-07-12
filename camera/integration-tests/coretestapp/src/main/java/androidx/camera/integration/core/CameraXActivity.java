@@ -21,6 +21,7 @@ import static androidx.camera.core.ImageCapture.FLASH_MODE_OFF;
 import static androidx.camera.core.ImageCapture.FLASH_MODE_ON;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -142,6 +143,7 @@ public class CameraXActivity extends AppCompatActivity {
     private final AtomicLong mPreviewFrameCount = new AtomicLong(0);
     private final MutableLiveData<String> mImageAnalysisResult = new MutableLiveData<>();
     private static final String BACKWARD = "BACKWARD";
+
     private ActiveRecording mActiveRecording;
     /** The camera to use */
     CameraSelector mCurrentCameraSelector = BACK_SELECTOR;
@@ -170,6 +172,8 @@ public class CameraXActivity extends AppCompatActivity {
     private Button mDecEV;
     private TextView mZoomRatioLabel;
     private SeekBar mZoomSeekBar;
+    private Button mZoomIn2XToggle;
+    private Button mZoomResetToggle;
 
     private OpenGLRenderer mPreviewRenderer;
     private DisplayManager.DisplayListener mDisplayListener;
@@ -348,6 +352,7 @@ public class CameraXActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("MissingPermission")
     private void setUpRecordButton() {
         mRecordUi.getButtonRecord().setOnClickListener((view) -> {
             RecordUi.State state = mRecordUi.getState();
@@ -356,6 +361,7 @@ public class CameraXActivity extends AppCompatActivity {
                     createDefaultVideoFolderIfNotExist();
                     mActiveRecording = getVideoCapture().getOutput()
                             .prepareRecording(getNewVideoOutputFileOptions())
+                            .withAudioEnabled()
                             .withEventListener(ContextCompat.getMainExecutor(CameraXActivity.this),
                                     mVideoRecordEventListener)
                             .start();
@@ -400,7 +406,7 @@ public class CameraXActivity extends AppCompatActivity {
         updateRecordingStats(event.getRecordingStats());
 
         switch (event.getEventType()) {
-            case FINALIZE:
+            case VideoRecordEvent.EVENT_TYPE_FINALIZE:
                 VideoRecordEvent.Finalize finalize = (VideoRecordEvent.Finalize) event;
 
                 switch (finalize.getError()) {
@@ -412,6 +418,13 @@ public class CameraXActivity extends AppCompatActivity {
                         if (finalize.getError() != VideoRecordEvent.ERROR_NONE) {
                             msg += " with error (" + finalize.getError() + ")";
                         }
+                        // The video file path is used in tracing e2e test log. Don't remove it.
+                        String videoFile = getAbsolutePathFromUri(
+                                getApplicationContext().getContentResolver(),
+                                uri
+                        );
+                        Log.d(TAG, "Saved video file: " + videoFile);
+
                         Log.d(TAG, msg, finalize.getCause());
                         Toast.makeText(CameraXActivity.this, msg, Toast.LENGTH_LONG).show();
                         break;
@@ -447,7 +460,8 @@ public class CameraXActivity extends AppCompatActivity {
     }
 
     private void updateRecordingStats(@NonNull RecordingStats stats) {
-        double durationSec = TimeUnit.NANOSECONDS.toMillis(stats.getRecordedDurationNs()) / 1000d;
+        double durationSec = TimeUnit.NANOSECONDS.toMillis(stats.getRecordedDurationNanos())
+                / 1000d;
         // Show megabytes in International System of Units (SI)
         double sizeMb = stats.getNumBytesRecorded() / (1000d * 1000d);
         String msg = String.format("%.2f sec\n%.2f MB", durationSec, sizeMb);
@@ -616,6 +630,7 @@ public class CameraXActivity extends AppCompatActivity {
         }
         mPlusEV.setEnabled(isExposureCompensationSupported());
         mDecEV.setEnabled(isExposureCompensationSupported());
+        mZoomIn2XToggle.setEnabled(is2XZoomSupported());
     }
 
     private void setUpButtonEvents() {
@@ -630,6 +645,7 @@ public class CameraXActivity extends AppCompatActivity {
         setUpCameraDirectionButton();
         setUpTorchButton();
         setUpEVButton();
+        setUpZoomButton();
         mCaptureQualityToggle.setOnCheckedChangeListener(mOnCheckedChangeListener);
     }
 
@@ -660,6 +676,8 @@ public class CameraXActivity extends AppCompatActivity {
         mDecEV = findViewById(R.id.dec_ev_toggle);
         mZoomSeekBar = findViewById(R.id.seekBar);
         mZoomRatioLabel = findViewById(R.id.zoomRatio);
+        mZoomIn2XToggle = findViewById(R.id.zoom_in_2x_toggle);
+        mZoomResetToggle = findViewById(R.id.zoom_reset_toggle);
 
         mTextView = findViewById(R.id.textView);
         mRecordUi = new RecordUi(
@@ -966,30 +984,9 @@ public class CameraXActivity extends AppCompatActivity {
                     }
 
                     CameraInfo cameraInfo = mCamera.getCameraInfo();
-                    CameraControl cameraControl = mCamera.getCameraControl();
-                    float newZoom =
-                            cameraInfo.getZoomState().getValue().getZoomRatio()
-                                    * detector.getScaleFactor();
-                    float clampedNewZoom = MathUtils.clamp(newZoom,
-                            cameraInfo.getZoomState().getValue().getMinZoomRatio(),
-                            cameraInfo.getZoomState().getValue().getMaxZoomRatio());
-
-                    Log.d(TAG, "setZoomRatio ratio: " + clampedNewZoom);
-                    showNormalZoomRatio();
-                    ListenableFuture<Void> listenableFuture = cameraControl.setZoomRatio(
-                            clampedNewZoom);
-                    Futures.addCallback(listenableFuture, new FutureCallback<Void>() {
-                        @Override
-                        public void onSuccess(@Nullable Void result) {
-                            Log.d(TAG, "setZoomRatio onSuccess: " + clampedNewZoom);
-                            showZoomRatioIsAlive();
-                        }
-
-                        @Override
-                        public void onFailure(Throwable t) {
-                            Log.d(TAG, "setZoomRatio failed, " + t);
-                        }
-                    }, ContextCompat.getMainExecutor(CameraXActivity.this));
+                    float newZoom = cameraInfo.getZoomState().getValue().getZoomRatio()
+                            * detector.getScaleFactor();
+                    setZoomRatio(newZoom);
                     return true;
                 }
             };
@@ -1079,6 +1076,51 @@ public class CameraXActivity extends AppCompatActivity {
                 mZoomRatioLabel.setText(str);
                 mZoomSeekBar.setProgress((int) (MAX_SEEKBAR_VALUE * state.getLinearZoom()));
             });
+    }
+
+    private boolean is2XZoomSupported() {
+        CameraInfo cameraInfo = getCameraInfo();
+        return cameraInfo != null
+                && cameraInfo.getZoomState().getValue().getMaxZoomRatio() >= 2.0f;
+    }
+
+    private void setUpZoomButton() {
+        mZoomIn2XToggle.setOnClickListener(v -> {
+            setZoomRatio(2.0f);
+        });
+
+        mZoomResetToggle.setOnClickListener(v -> {
+            setZoomRatio(1.0f);
+        });
+    }
+
+    void setZoomRatio(float newZoom) {
+        if (mCamera == null) {
+            return;
+        }
+
+        CameraInfo cameraInfo = mCamera.getCameraInfo();
+        CameraControl cameraControl = mCamera.getCameraControl();
+        float clampedNewZoom = MathUtils.clamp(newZoom,
+                cameraInfo.getZoomState().getValue().getMinZoomRatio(),
+                cameraInfo.getZoomState().getValue().getMaxZoomRatio());
+
+        Log.d(TAG, "setZoomRatio ratio: " + clampedNewZoom);
+        showNormalZoomRatio();
+        ListenableFuture<Void> listenableFuture = cameraControl.setZoomRatio(
+                clampedNewZoom);
+        Futures.addCallback(listenableFuture, new FutureCallback<Void>() {
+            @Override
+            public void onSuccess(@Nullable Void result) {
+                Log.d(TAG, "setZoomRatio onSuccess: " + clampedNewZoom);
+                showZoomRatioIsAlive();
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                Log.d(TAG, "setZoomRatio failed, " + t);
+            }
+        }, ContextCompat.getMainExecutor(CameraXActivity.this));
     }
 
     private void setupViewFinderGestureControls() {

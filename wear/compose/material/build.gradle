@@ -17,7 +17,6 @@
 import androidx.build.LibraryGroups
 import androidx.build.LibraryType
 import androidx.build.LibraryVersions
-import androidx.build.RunApiTasks
 import androidx.build.AndroidXComposePlugin
 
 plugins {
@@ -29,22 +28,22 @@ plugins {
 AndroidXComposePlugin.applyAndConfigureKotlinPlugin(project)
 
 dependencies {
-    kotlinPlugin(project(":compose:compiler:compiler"))
+    kotlinPlugin("androidx.compose.compiler:compiler:1.0.0-rc01")
 
     if(!AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-        api(project(":compose:foundation:foundation"))
-        api(project(":compose:ui:ui"))
-        api(project(":compose:ui:ui-text"))
-        api(project(":compose:runtime:runtime"))
+        api("androidx.compose.foundation:foundation:1.0.0-rc01")
+        api("androidx.compose.ui:ui:1.0.0-rc01")
+        api("androidx.compose.ui:ui-text:1.0.0-rc01")
+        api("androidx.compose.runtime:runtime:1.0.0-rc01")
 
         implementation(libs.kotlinStdlib)
-        implementation(project(":compose:material:material"))
-        implementation(project(":compose:material:material-ripple"))
+        implementation("androidx.compose.material:material:1.0.0-rc01")
+        implementation("androidx.compose.material:material-ripple:1.0.0-rc01")
 
         androidTestImplementation project(path: ':compose:ui:ui-test')
         androidTestImplementation project(path: ':compose:ui:ui-test-junit4')
         androidTestImplementation project(path: ':compose:test-utils')
-        androidTestImplementation project(":test-screenshot")
+        androidTestImplementation project(":test:screenshot:test-screenshot")
         androidTestImplementation(libs.testRunner)
     }
 }
@@ -91,7 +90,7 @@ if(AndroidXComposePlugin.isMultiplatformEnabled(project)) {
                 implementation(project(path: ':compose:ui:ui-test'))
                 implementation(project(path: ':compose:ui:ui-test-junit4'))
                 implementation(project(path: ':compose:test-utils'))
-                implementation(project(":test-screenshot"))
+                implementation(project(":test:screenshot:test-screenshot"))
             }
         }
     }
@@ -121,7 +120,6 @@ androidx {
             "Material Design UX guidelines and specifications. It builds upon the Jetpack Compose" +
             " libraries."
     targetsJavaConsumers = false
-    runApiTasks = new RunApiTasks.No("API tracking disabled while the package is empty")
 }
 
 
