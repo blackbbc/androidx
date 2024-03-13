@@ -42,7 +42,6 @@ import androidx.lifecycle.Lifecycle;
 /**
  * Assorted utilities to deal with serialization of remote calls.
  *
- * @hide
  */
 @RestrictTo(LIBRARY)
 public final class RemoteUtils {
@@ -342,6 +341,14 @@ public final class RemoteUtils {
         public void onScale(float focusX, float focusY, float scaleFactor) {
             dispatchCallFromHost(mLifecycle, "onScale", () -> {
                 mSurfaceCallback.onScale(focusX, focusY, scaleFactor);
+                return null;
+            });
+        }
+        @RequiresCarApi(5)
+        @Override
+        public void onClick(float x, float y) throws RemoteException {
+            dispatchCallFromHost(mLifecycle, "onClick", () -> {
+                mSurfaceCallback.onClick(x, y);
                 return null;
             });
         }

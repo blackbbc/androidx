@@ -14,32 +14,54 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
     id("AndroidXPlugin")
     id("com.android.library")
+    id("org.jetbrains.kotlin.android")
 }
 
 dependencies {
-    implementation("androidx.arch.core:core-common:2.1.0")
-    api("androidx.arch.core:core-runtime:2.1.0")
+    api(libs.kotlinStdlib)
+    api(libs.kotlinCoroutinesCore)
+    api("androidx.arch.core:core-runtime:2.2.0")
     api(project(":lifecycle:lifecycle-livedata-core"))
+    api(project(":lifecycle:lifecycle-livedata-core-ktx"))
+
+    implementation("androidx.arch.core:core-common:2.2.0")
 
     testImplementation(project(":lifecycle:lifecycle-runtime-testing"))
-    testImplementation("androidx.arch.core:core-testing:2.1.0")
+    testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation(libs.kotlinCoroutinesTest)
     testImplementation(libs.junit)
-    testImplementation(libs.mockitoCore)
+    testImplementation(libs.mockitoCore4)
+    testImplementation(libs.truth)
+
+    androidTestImplementation(libs.testExtJunit)
+    androidTestImplementation(libs.testCore)
+    androidTestImplementation(libs.testRules)
+    androidTestImplementation(libs.testRunner)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.kotlinCoroutinesTest)
+    androidTestImplementation(libs.kotlinCoroutinesAndroid)
 }
 
 androidx {
-    name = "Android Lifecycle LiveData"
+    name = "Lifecycle LiveData"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.LIFECYCLE
-    mavenGroup = LibraryGroups.LIFECYCLE
     inceptionYear = "2017"
     description = "Android Lifecycle LiveData"
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.lifecycle.livedata"
 }

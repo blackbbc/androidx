@@ -22,6 +22,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import androidx.annotation.NonNull;
 import android.app.Activity;
 import android.app.FragmentManager;
 import androidx.leanback.widget.GuidanceStylist.Guidance;
@@ -151,8 +152,9 @@ public class GuidedStepTestFragment extends GuidedStepFragment {
         mProvider.onSaveInstanceState(outState);
     }
 
+    @NonNull
     @Override
-    public Guidance onCreateGuidance(Bundle savedInstanceState) {
+    public Guidance onCreateGuidance(@NonNull Bundle savedInstanceState) {
         Guidance g = mProvider.onCreateGuidance(savedInstanceState);
         if (g == null) {
             g = new Guidance("", "", "", null);
@@ -161,27 +163,33 @@ public class GuidedStepTestFragment extends GuidedStepFragment {
     }
 
     @Override
-    public void onCreateActions(List<GuidedAction> actions, Bundle savedInstanceState) {
+    public void onCreateActions(
+            @NonNull List<GuidedAction> actions,
+            @NonNull Bundle savedInstanceState
+    ) {
         mProvider.onCreateActions(actions, savedInstanceState);
     }
 
     @Override
-    public void onCreateButtonActions(List<GuidedAction> actions, Bundle savedInstanceState) {
+    public void onCreateButtonActions(
+            @NonNull List<GuidedAction> actions,
+            @NonNull Bundle savedInstanceState
+    ) {
         mProvider.onCreateButtonActions(actions, savedInstanceState);
     }
 
     @Override
-    public void onGuidedActionClicked(GuidedAction action) {
+    public void onGuidedActionClicked(@NonNull GuidedAction action) {
         mProvider.onGuidedActionClicked(action);
     }
 
     @Override
-    public boolean onSubGuidedActionClicked(GuidedAction action) {
+    public boolean onSubGuidedActionClicked(@NonNull GuidedAction action) {
         return mProvider.onSubGuidedActionClicked(action);
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle state) {
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle state) {
         View view = super.onCreateView(inflater, container, state);
         mProvider.onCreateView(inflater, container, state, view);
         return view;

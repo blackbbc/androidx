@@ -17,6 +17,7 @@
 package androidx.camera.core.impl;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,6 +26,7 @@ import java.util.List;
 /**
  * Different implementations of {@link CameraCaptureCallback}.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class CameraCaptureCallbacks {
     private CameraCaptureCallbacks() {
     }
@@ -56,11 +58,16 @@ public final class CameraCaptureCallbacks {
 
     static final class NoOpCameraCaptureCallback extends CameraCaptureCallback {
         @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureResult cameraCaptureResult) {
+        public void onCaptureStarted(int captureConfigId) {
         }
 
         @Override
-        public void onCaptureFailed(@NonNull CameraCaptureFailure failure) {
+        public void onCaptureCompleted(int captureConfigId,
+                @NonNull CameraCaptureResult cameraCaptureResult) {
+        }
+
+        @Override
+        public void onCaptureFailed(int captureConfigId, @NonNull CameraCaptureFailure failure) {
         }
     }
 
@@ -81,29 +88,44 @@ public final class CameraCaptureCallbacks {
         }
 
         @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureResult cameraCaptureResult) {
+        public void onCaptureStarted(int captureConfigId) {
             for (CameraCaptureCallback callback : mCallbacks) {
-                callback.onCaptureCompleted(cameraCaptureResult);
+                callback.onCaptureStarted(captureConfigId);
             }
         }
 
         @Override
-        public void onCaptureFailed(@NonNull CameraCaptureFailure failure) {
+        public void onCaptureCompleted(int captureConfigId,
+                @NonNull CameraCaptureResult cameraCaptureResult) {
             for (CameraCaptureCallback callback : mCallbacks) {
-                callback.onCaptureFailed(failure);
+                callback.onCaptureCompleted(captureConfigId, cameraCaptureResult);
             }
         }
 
         @Override
-        public void onCaptureCancelled() {
+        public void onCaptureFailed(int captureConfigId, @NonNull CameraCaptureFailure failure) {
             for (CameraCaptureCallback callback : mCallbacks) {
-                callback.onCaptureCancelled();
+                callback.onCaptureFailed(captureConfigId, failure);
+            }
+        }
+
+        @Override
+        public void onCaptureCancelled(int captureConfigId) {
+            for (CameraCaptureCallback callback : mCallbacks) {
+                callback.onCaptureCancelled(captureConfigId);
             }
         }
 
         @NonNull
         public List<CameraCaptureCallback> getCallbacks() {
             return mCallbacks;
+        }
+
+        @Override
+        public void onCaptureProcessProgressed(int captureConfigId, int progress) {
+            for (CameraCaptureCallback callback : mCallbacks) {
+                callback.onCaptureProcessProgressed(captureConfigId, progress);
+            }
         }
     }
 }

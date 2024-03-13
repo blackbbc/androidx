@@ -19,8 +19,9 @@
 package androidx.compose.animation.core.lint
 
 import androidx.compose.lint.test.Stubs
-import androidx.compose.lint.test.compiledStub
+import androidx.compose.lint.test.bytecodeStub
 import com.android.tools.lint.checks.infrastructure.LintDetectorTest
+import com.android.tools.lint.checks.infrastructure.TestMode
 import com.android.tools.lint.detector.api.Detector
 import com.android.tools.lint.detector.api.Issue
 import org.junit.Test
@@ -39,67 +40,11 @@ class UnrememberedAnimatableDetectorTest : LintDetectorTest() {
     override fun getIssues(): MutableList<Issue> =
         mutableListOf(UnrememberedAnimatableDetector.UnrememberedAnimatable)
 
-    // Simplified Animatable.kt stubs
-    private val AnimatableStub = compiledStub(
-        filename = "Animatable.kt",
-        filepath = "androidx/compose/animation/core",
-        """
-            package androidx.compose.animation.core
-
-            class Animatable<T, V>(
-                initialValue: T,
-                val typeConverter: V? = null
-            )
-
-            fun Animatable(initialValue: Float): Animatable<Float, Any> = Animatable(initialValue)
-        """,
-"""
-        androidx/compose/animation/core/Animatable.class:
-        H4sIAAAAAAAAAI1SW08TQRT+ZrvdtmsLSwUpeENFbQuyaHwgQky8xKRJQQJN
-        X4gPQzvitNtdsjNt8MXwN3z1F2iiIfHBEB/9UcYz23qjPpjNzrnMmfN95/Lt
-        ++cvAO7jHkOVh+04ku0jvxX1DiMlfB7KHtcyCskTC/9RYvL9QGTAGDY2Gg/q
-        HT7gfsDDA//5fke09HrzH76H4y4G76wvA5vB2ZCh1A8ZbpfHH417Kk2GXLnR
-        WG80E32xHsUHfkfo/ZjLUFEFYaSTEpS/1Q8CQ56wU+VKMw8Hros0zjEU9OtD
-        8SQKByLWImYojiPlUcBEDhYmGWz9SiqG5fr/d4xA86YyyYMmD/qCoflfBdbq
-        3UgHMvQ7g54vQ2IX8sB/Kl7yfqCJsdJxv6WjeJPHXRGvD8vKuMRzhlp8IHTj
-        78qmy5V/DSNdrlAHqTHJOfUTdFNo3qYCyGf1BinaFGaONAPrkutIGmuVtPZd
-        hhenx55rlSzXytLvnR6T4pROj6t2lm4YCeZZ96zV1OO5ouPZ89ba6XHRzVpe
-        et4usTX29Z1jec7OzB+2S3ly83Y242UNCC0pa9BPgwYN7Xd3V7qa9mBXHoRc
-        92Nq7sWdfqhlT9TCgVSSIh79XgSa35OoTUGTdRmKrX5vX8QNk8XMPWqZAcXS
-        2CPn4tlc2zzmPUHt/CtpYVfzVneTH46eubtRP26JZ9IYc6MczTE2uEuzSpvO
-        omhWjKwKWRbmUSXpkD9HMkWSBktyiaxtujetd6snyFeXP8H7kLxZpnMiubHp
-        c+iljTtkLQyjMUUYSLTzFMcS7U/MLFZI5qyEDsF6BnSadAO6QUkM0cnL6Tdv
-        aQc2q0vLJ7gwRPaHHLMJhSLBIiHgUEqbADIEPYvSiL5PGQ14uvoR3vtfzJ3E
-        6SSM88OAEeMhu7kzHRl6U1hNZJk6CdTo9iK9u7SHVA2Xa7hCJ66aY6GGa7i+
-        B6ZwA4t7cBWKCjcVbincVjivUFDIKMwqlBQmfgAHXc93GwUAAA==
-        """,
-        """
-        androidx/compose/animation/core/AnimatableKt.class:
-        H4sIAAAAAAAAAJVRTW/TQBB9a+eDuKF1w1frAoVyoRJi08KJIKQKKVKECRKt
-        eslpE6+iTezdyl5HPeYncUQcUM78KMSsGykSXKi1np33/Ha88+bX7x8/AbzF
-        EcMroZPcqOSaT0x2ZQrJhVaZsMpoYnLJzyooxqn8ZJtgDOFMLARPhZ7yL+OZ
-        nBDrMwQbHQN/2T+O/79wj+Hidifex5tL9FMjbC/++1a9D1T2RWzyKZ9JO86F
-        0gUV1MZWFQs+NHZYpmmvjToaATy0GNpKK6tEeinSkvpgfYbdeG5sqjT/LK1I
-        6PdU1ssWPhnIXKiTbO4Sj/hr5bIuZckJw5vVMgxWy8Db8wIvbNJLYLWMItqj
-        7U6t43W9KvpddtoIaxFhd/SUxnI7+8Bwd0O8nluG2keTUAs7sdJyWGZjmV/c
-        DKcTm4nrMFcOr8nWuZpqYcuc8oOvpbYqkwO9UIWiz2cb12jQ56bMJ7Kv3LH9
-        tfTyHyFOyNEa3EMyZzF8HBDihJnz7eg7gm/ONzym2KjIFp5QbN8IsEUZ8LTS
-        NHG4Vt2p8LMqRnhO+zvXPum3R/AH2BkgpIjdATq4N8B9PBiBFXiIRyPUC7f2
-        CuxXa+sP0YZpjAsDAAA=
-        """,
-        """
-        META-INF/main.kotlin_module:
-        H4sIAAAAAAAAAHWLuwrCQBBFR3zBIBZbiIgQsFCwWBt/QCzTqdhvkiEO7CPs
-        A/x8V9QqWNx74XIOAAwBYJAz/i7gEVfKNt5x85S1M50LJJVloyI7KxZXtq2m
-        u9KJTr+3jHjA4r+VH09i9uFVpSkLW1z2BJ9sZEMCL2TIVOQzt8N1j0ssW6+6
-        B9dBTM9Ouzc4x1GkEMXklruMG9jDC9/F7r/gAAAA
-        """
-    )
-
     // Simplified Animatable Color function stub, from androidx.compose.animation
-    private val AnimatableColorStub = compiledStub(
+    private val AnimatableColorStub = bytecodeStub(
         filename = "SingleValueAnimation.kt",
         filepath = "androidx/compose/animation",
+        checksum = 0x98c0a447,
         """
             package androidx.compose.animation
 
@@ -109,29 +54,29 @@ class UnrememberedAnimatableDetectorTest : LintDetectorTest() {
             fun Animatable(initialValue: Color): Animatable<Color, Any> = Animatable(initialValue)
         """,
 """
-        androidx/compose/animation/SingleValueAnimationKt.class:
-        H4sIAAAAAAAAAJVTXU8TQRQ9s223Zam0VFEoigooHwLbEh8wJUSCMSkWTESb
-        GB7MtF3rtNsZMjvb8Ej8J/oLfJNoYgi++aOMdwuExBKFTfbOuXfPnXPvzN1f
-        v7/9APAYSwxFLhtaica+W1edPRV4Lpeiw41Q0t0Rsul7Ve6H3vpZ8IVJgjFk
-        W7zLXZ/Lpvuy1vLqFI0x5E5ovOZ7iyvvVoq+v87gzm7OVf6hUlfac88TSwzN
-        q2Ws9nND4TY13/sg6oG7oXylS5W/Cy6tkdJURemm2/JMTXMhA9KQyvREAndb
-        me3Q94k1f/lakhhgmPx/PUkMMqRqan9RdPZ8hpkLW+5vI41rGHKQRobBXhVS
-        mDWG6mx/d/2RcqWtjC+k2+p2XCGNpyX33Wfeex76ZoM6NjqsG6W3uG57ujRX
-        TWMYOQcOrjOkIynB/d4wMLBNhuGz/bY8wxvUPp2U1enGaLJYZBJEa0fAovi+
-        iFCBUKPI8OboIOccHTjWqHXyZiMnFcvPEMgP5eI5q2D1bKzAlu1sPE/+z0N2
-        dECGHX+246lE1j7+aA1S1piTSB1/miiwaPNlBuf8NhgWrjZ505e5A0YN4tZF
-        P8dS2zDEN1SDlDMVIb3tsFPz9OuTWnIVVY9OUIvIPw0O7Iim5CbUhMdfhdKI
-        jleWXREI+rx+Po7U144Kdd17LqK0sVNqtY+IIizEET1EQwI2Ypgh7wkhi9bM
-        dzhvJw6RZQn2FTe+RDeEWbI2JQBJzJFN93AGI7hJ63yPk8SjU1aq5y/07EMs
-        0vo0OhISG91FrIyxMvJkMV7GbdwpYwJ3d8EC3MP9XSQDTAaYCjAd4EGAkQCJ
-        APYfAm5eAJQEAAA=
+        META-INF/main.kotlin_module:
+        H4sIAAAAAAAA/3XLvQvCQAwF8IiiGEThBhERBBfBoS6Cszh2s+KetqE9uI9y
+        TcE/3xN1KgZehsf7AcAQAAYxU/gennBNrgxel8+k8LbxLSfktCXR3qllpl1l
+        +EGm48uvTQWPuP2vYhNYzT57yg1HcMZVD4TOibas8MaWbc4hFbXIHDVt7SUT
+        kjfc46YHO51UgZpaF62aXL3xUeIcR8KtqPE9/lR2cIAXLlZThPEAAAA=
         """,
         """
-        META-INF/main.kotlin_module:
-        H4sIAAAAAAAAAHWLuwrCQBBFR3zBIBZbiIgQsFCwWBt/QCzTqdhvkiEO7CPs
-        A/x8V9QqWNx74XIOAAwBYJAz/i7gEVfKNt5x85S1M50LJJVloyI7KxZXtq2m
-        u9KJTr+3jHjA4r+VH09i9uFVpSkLW1z2BJ9sZEMCL2TIVOQzt8N1j0ssW6+6
-        B9dBTM9Ouzc4x1GkEMXklruMG9jDC9/F7r/gAAAA
+        androidx/compose/animation/SingleValueAnimationKt.class:
+        H4sIAAAAAAAA/5VTXU8TQRQ9s223Za20VFEoigooHwLTEh8wJUSCMSkWTMQ0
+        MTyYaTvWabczZHa24ZH4T/QX+CbRxBB880cZZ1sIiSUKD3vn3Dvnzv3cX7+/
+        /QDwBJSgyGRDK9E4oHXV2VcBp0yKDjNCSborZNPnVeaHfOPM+NIkQQiyLdZl
+        1GeySV/VWrxurTGCXJ/Gaj5fWn23WvT9DQI6tzVf+UeUutKcnjuWCJpX81gb
+        5IaCNjXb/yDqAd1UvtKlyt8Jl9ZtpOmK0k3a4qammZCBjSGV6QUJ6I4yO6Hv
+        W9bC5XNJYohg6v/5JHGNIFVTB0uis+8TzF5Y8mAZaVzHsIc0MgTumpDCrBNU
+        5warG7SUK21lfCFpq9uhQhquJfPpc/6ehb7ZtBUbHdaN0ttMt7kuzVfTGEHO
+        g4cbBOkolGB+bxkIyBbByNl729ywhi3fdsrpdGN2s0gkhiIBy21HwLGXByJC
+        BYsaRYLt48Ocd3zoOWNO/8tGSiqWn7EgP5yL55yC05OxAllxs/G81X8ekePD
+        k89uPJXIuicfnaSXSJ18miyQ6NEVAu98FASLV1u7mcsMgEQl3b7oz1huG4L4
+        pmrYyJmKkHwn7NS4ftPPJVdR9ah9WkT6qXFoVzQlM6G2eOJ1KI3o8LLsikDY
+        643zXbR17apQ1/kLEbmNn1KrA0QU4SCOfuPHkYCLGOas9tQix56Z7/DeTh4h
+        SxLkK25+iSaDeStd6wAksWBluoczGMUtez7ucZJYPGWlevpST85i2Z7PopbY
+        YGN7iJUxXka+jAncKeMuJsu4h/t7IAEeYGoPyQDTAWYCPAzwKMBogEQA9w+x
+        P7r8kQQAAA==
         """
     )
 
@@ -223,12 +168,15 @@ class UnrememberedAnimatableDetectorTest : LintDetectorTest() {
                 }
             """
             ),
-            AnimatableStub,
+            Stubs.Animatable,
             AnimatableColorStub,
             Stubs.Color,
             Stubs.Composable,
-            Stubs.Remember
-        )
+            Stubs.Remember,
+            Stubs.SnapshotState,
+            Stubs.StateFactoryMarker
+            )
+            .skipTestModes(TestMode.TYPE_ALIAS)
             .run()
             .expect(
                 """
@@ -386,11 +334,13 @@ src/test/{.kt:80: Error: Creating an Animatable during composition without using
                 }
             """
             ),
-            AnimatableStub,
+            Stubs.Animatable,
             AnimatableColorStub,
             Stubs.Color,
             Stubs.Composable,
-            Stubs.Remember
+            Stubs.Remember,
+            Stubs.SnapshotState,
+            Stubs.StateFactoryMarker
         )
             .run()
             .expectClean()
@@ -499,12 +449,14 @@ src/test/{.kt:80: Error: Creating an Animatable during composition without using
                 }
             """
             ),
-            AnimatableStub,
+            Stubs.Animatable,
             AnimatableColorStub,
             Stubs.Color,
             Stubs.Composable,
-            Stubs.Remember
-        )
+            Stubs.Remember,
+            Stubs.SnapshotState,
+            Stubs.StateFactoryMarker
+            )
             .run()
             .expectClean()
     }

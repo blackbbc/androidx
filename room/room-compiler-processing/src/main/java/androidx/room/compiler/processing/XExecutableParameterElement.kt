@@ -19,4 +19,57 @@ package androidx.room.compiler.processing
 /**
  * Parameter of a method.
  */
-interface XExecutableParameterElement : XVariableElement
+interface XExecutableParameterElement : XVariableElement {
+
+    /**
+     * The name of the parameter in JVM.
+     *
+     * Use this property when you need to generate Java code accessing this parameter. Unlike
+     * [name], the [jvmName] is guaranteed to be a valid Java name.
+     */
+    val jvmName: String
+
+    /**
+     * Returns `true` if this parameter is a synthetic Continuation parameter of a suspend function.
+     */
+    fun isContinuationParam(): Boolean
+
+    /**
+     * Returns `true` if this parameter represents the receiver of an extension function.
+     */
+    fun isReceiverParam(): Boolean
+
+    /**
+     * Returns `true` if this parameter represents the single parameter of a Kotlin property setter
+     * method.
+     */
+    fun isKotlinPropertyParam(): Boolean
+
+    /**
+     * Returns `true` if this parameter is a vararg.
+     */
+    fun isVarArgs(): Boolean
+
+    /**
+     * The enclosing [XExecutableElement] this parameter belongs to.
+     */
+    override val enclosingElement: XExecutableElement
+
+    /**
+     * The enclosing [XExecutableElement] this parameter belongs to.
+     */
+    @Deprecated(message = "use XExecutableParameterElement#enclosingElement() instead.",
+        replaceWith = ReplaceWith("enclosingElement")
+    )
+    val enclosingMethodElement: XExecutableElement
+        get() = enclosingElement
+
+    /**
+     * `true` if the parameter has a default value, `false` otherwise.
+     *
+     * Note that when @JvmOverloads is used in a kotlin function with KAPT, only the original
+     * function's parameter might have a default value. For the generated overload methods, this
+     * will always return `false`.
+     */
+    val hasDefaultValue: Boolean
+}

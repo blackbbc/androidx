@@ -56,6 +56,14 @@ public final class RoleManagerCompat {
      * </activity>
      * }</pre>
      * The application will be able to handle that intent by default.
+     * <p>
+     * Apps that hold this role are allowed to start activities in response to notification clicks
+     * or notification action clicks when targeting {@link android.os.Build.VERSION_CODES#S} to give
+     * browsers time to adapt. This is temporary and browsers will be subjected to the same
+     * trampoline restrictions at some point in future releases. For more details on those
+     * restrictions see {@link android.app.Notification.Builder#setContentIntent(PendingIntent)} and
+     * {@link android.app.Notification.Action.Builder#Builder(android.graphics.drawable.Icon,
+     * java.lang.CharSequence, android.app.PendingIntent)}.
      *
      * @see android.content.Intent#CATEGORY_APP_BROWSER
      */
@@ -64,7 +72,9 @@ public final class RoleManagerCompat {
     /**
      * The name of the dialer role.
      * <p>
-     * To qualify for this role, an application needs to handle the intent to dial:
+     * To qualify for this role, an application needs to handle the intent to dial, and implement
+     * an {@link android.telecom.InCallService} if the application targets
+     * {@link android.os.Build.VERSION_CODES.TIRAMISU} or higher:
      * <pre class="prettyprint">{@code
      * <activity>
      *     <intent-filter>
@@ -77,6 +87,16 @@ public final class RoleManagerCompat {
      *         <data android:scheme="tel" />
      *     </intent-filter>
      * </activity>
+     * <service android:permission="android.permission.BIND_INCALL_SERVICE">
+     *     <meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true" />
+     *     <meta-data
+     *         android:name="android.telecom.IN_CALL_SERVICE_CAR_MODE_UI"
+     *         android:value="false" />
+     *     <intent-filter>
+     *         <action android:name="android.telecom.InCallService" />
+     *     </intent-filter>
+     * </service>
+     *
      * }</pre>
      * The application will be able to handle those intents by default, and gain access to phone,
      * contacts, SMS, microphone and camera.

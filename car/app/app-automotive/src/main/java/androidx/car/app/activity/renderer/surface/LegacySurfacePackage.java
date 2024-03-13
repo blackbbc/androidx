@@ -19,11 +19,12 @@ package androidx.car.app.activity.renderer.surface;
 import static java.util.Objects.requireNonNull;
 
 import android.annotation.SuppressLint;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.car.app.annotations.KeepFields;
 import androidx.car.app.serialization.Bundleable;
 import androidx.car.app.serialization.BundlerException;
 
@@ -34,8 +35,8 @@ import androidx.car.app.serialization.BundlerException;
  * This class exists for compatibility with Q devices. In Android R and later,
  * {@link android.view.SurfaceControlViewHost.SurfacePackage} will be used instead.
  */
+@KeepFields
 public final class LegacySurfacePackage {
-    @Keep
     @Nullable
     private ISurfaceControl mISurfaceControl;
 
@@ -73,10 +74,16 @@ public final class LegacySurfacePackage {
                 requireNonNull(event);
                 mCallback.onTouchEvent(event);
             }
+
+            @Override
+            public void onKeyEvent(@NonNull KeyEvent event) {
+                requireNonNull(event);
+                mCallback.onKeyEvent(event);
+            }
         };
     }
 
-    /** Empty constructor needed for serializations. **/
+    /** Empty constructor needed for serializations. */
     private LegacySurfacePackage() {
     }
 

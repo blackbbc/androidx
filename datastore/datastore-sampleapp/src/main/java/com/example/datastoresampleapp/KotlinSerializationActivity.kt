@@ -27,6 +27,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.core.Serializer
 import androidx.lifecycle.lifecycleScope
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -38,14 +42,9 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
-
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class KotlinSerializationActivity : AppCompatActivity() {
-    private val TAG = "KotlinSerializationActivity"
+    private val TAG = "SerializationActivity"
 
     private val PROTO_STORE_FILE_NAME = "kotlin_serialization_test_file.json"
 
@@ -115,6 +114,7 @@ class KotlinSerializationActivity : AppCompatActivity() {
 @Serializable
 data class MySettings(val count: Int = 0)
 
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 object MySettingsSerializer : Serializer<MySettings> {
     override val defaultValue: MySettings
         get() = MySettings()

@@ -16,19 +16,30 @@
 
 package androidx.room.compiler.processing.ksp
 
+import androidx.room.compiler.codegen.XTypeName
 import androidx.room.compiler.processing.XRawType
 import androidx.room.compiler.processing.rawTypeName
-import com.squareup.javapoet.TypeName
-import com.google.devtools.ksp.symbol.KSType
 
-internal class KspRawType private constructor(
-    private val ksType: KSType,
-    override val typeName: TypeName
+internal class KspRawType constructor(
+    private val original: KspType
 ) : XRawType {
-    constructor(original: KspType) : this(
-        ksType = original.ksType.starProjection().makeNotNullable(),
-        typeName = original.typeName.rawTypeName()
-    )
+    private val ksType by lazy {
+        original.ksType.starProjection().makeNotNullable()
+    }
+
+    override val typeName by lazy {
+        xTypeName.java
+    }
+
+    private val xTypeName: XTypeName by lazy {
+        XTypeName(
+            original.asTypeName().java.rawTypeName(),
+            original.asTypeName().kotlin.rawTypeName(),
+            original.nullability
+        )
+    }
+
+    override fun asTypeName() = xTypeName
 
     override fun isAssignableFrom(other: XRawType): Boolean {
         check(other is KspRawType)
@@ -36,14 +47,14 @@ internal class KspRawType private constructor(
     }
 
     override fun equals(other: Any?): Boolean {
-        return this === other || typeName == (other as? XRawType)?.typeName
+        return this === other || xTypeName == (other as? XRawType)?.asTypeName()
     }
 
     override fun hashCode(): Int {
-        return typeName.hashCode()
+        return xTypeName.hashCode()
     }
 
     override fun toString(): String {
-        return typeName.toString()
+        return xTypeName.kotlin.toString()
     }
 }

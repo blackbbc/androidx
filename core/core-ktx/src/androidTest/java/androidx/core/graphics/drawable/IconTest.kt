@@ -26,9 +26,9 @@ import androidx.core.net.toUri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
 import androidx.test.filters.SmallTest
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.io.File
 
 @SdkSuppress(minSdkVersion = 26)
 @SmallTest
@@ -89,7 +89,7 @@ class IconTest {
     }
 
     private fun Icon.toIntrinsicBitmap(): Bitmap {
-        val drawable = loadDrawable(context)
+        val drawable = loadDrawable(context)!!
         val bitmap = createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight)
         drawable.setBounds(0, 0, drawable.intrinsicHeight, drawable.intrinsicHeight)
         drawable.draw(Canvas(bitmap))

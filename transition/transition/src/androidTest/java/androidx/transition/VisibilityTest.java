@@ -16,14 +16,14 @@
 
 package androidx.transition;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
@@ -110,7 +110,7 @@ public class VisibilityTest extends BaseTest {
         final TransitionSet set = new TransitionSet();
         set.addTransition(new Visibility() {
             @Override
-            public Animator onDisappear(ViewGroup sceneRoot, View view,
+            public Animator onDisappear(@NonNull ViewGroup sceneRoot, @NonNull View view,
                     TransitionValues startValues, TransitionValues endValues) {
                 views[0] = view;
                 return ValueAnimator.ofFloat(0, 1);
@@ -118,13 +118,13 @@ public class VisibilityTest extends BaseTest {
         });
         set.addTransition(new Visibility() {
             @Override
-            public Animator onDisappear(ViewGroup sceneRoot, View view,
+            public Animator onDisappear(@NonNull ViewGroup sceneRoot, @NonNull View view,
                     TransitionValues startValues, TransitionValues endValues) {
                 views[1] = view;
                 return ValueAnimator.ofFloat(0, 1);
             }
         });
-        Transition.TransitionListener listener = mock(Transition.TransitionListener.class);
+        Transition.TransitionListener listener = spy(new TransitionListenerAdapter());
         set.addListener(listener);
 
         // remove view
@@ -172,12 +172,12 @@ public class VisibilityTest extends BaseTest {
         // create fake transition and listener
         final Visibility visibility = new Visibility() {
             @Override
-            public Animator onDisappear(ViewGroup sceneRoot, View view,
+            public Animator onDisappear(@NonNull ViewGroup sceneRoot, @NonNull View view,
                     TransitionValues startValues, TransitionValues endValues) {
                 return ValueAnimator.ofFloat(0, 1);
             }
         };
-        Transition.TransitionListener listener = mock(Transition.TransitionListener.class);
+        Transition.TransitionListener listener = spy(new TransitionListenerAdapter());
         visibility.addListener(listener);
 
         // remove view
@@ -243,7 +243,7 @@ public class VisibilityTest extends BaseTest {
         }
 
         @Override
-        public Animator onAppear(ViewGroup sceneRoot, TransitionValues startValues,
+        public Animator onAppear(@NonNull ViewGroup sceneRoot, TransitionValues startValues,
                 int startVisibility, TransitionValues endValues, int endVisibility) {
             if (startValues == null) {
                 return null;
@@ -253,7 +253,7 @@ public class VisibilityTest extends BaseTest {
         }
 
         @Override
-        public Animator onDisappear(ViewGroup sceneRoot, TransitionValues startValues,
+        public Animator onDisappear(@NonNull ViewGroup sceneRoot, TransitionValues startValues,
                 int startVisibility, TransitionValues endValues, int endVisibility) {
             if (startValues == null) {
                 return null;
@@ -278,16 +278,16 @@ public class VisibilityTest extends BaseTest {
         }
 
         @Override
-        public Animator onAppear(ViewGroup sceneRoot, View view, TransitionValues startValues,
-                TransitionValues endValues) {
+        public Animator onAppear(@NonNull ViewGroup sceneRoot, @NonNull View view,
+                TransitionValues startValues, TransitionValues endValues) {
             float startScaleX = startValues == null ? 0.25f :
                     (float) startValues.values.get(PROPNAME_SCALE_X);
             return ObjectAnimator.ofFloat(view, "scaleX", startScaleX, 0.75f);
         }
 
         @Override
-        public Animator onDisappear(ViewGroup sceneRoot, View view, TransitionValues startValues,
-                TransitionValues endValues) {
+        public Animator onDisappear(@NonNull ViewGroup sceneRoot, @NonNull View view,
+                TransitionValues startValues, TransitionValues endValues) {
             if (startValues == null) {
                 return null;
             }

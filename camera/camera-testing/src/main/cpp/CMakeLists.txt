@@ -16,6 +16,8 @@
 
 cmake_minimum_required(VERSION 3.4.1)
 
+project(camera_testing_jni)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror")
 
 add_library(
@@ -26,3 +28,8 @@ add_library(
 find_library(android-lib android)
 
 target_link_libraries(testing_surface_format_jni  ${android-lib})
+target_link_options(
+        testing_surface_format_jni
+        PRIVATE
+        "-Wl,-z,max-page-size=16384"
+)

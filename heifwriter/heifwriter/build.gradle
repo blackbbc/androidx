@@ -1,4 +1,10 @@
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -10,6 +16,7 @@ android {
     defaultConfig {
         minSdkVersion 28
     }
+    namespace "androidx.heifwriter"
 }
 
 dependencies {
@@ -23,9 +30,9 @@ dependencies {
 }
 
 androidx {
-    name = "Android Support HeifWriter"
+    name = "HeifWriter"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.HEIFWRITER
     inceptionYear = "2018"
     description = "Android Support HeifWriter for writing HEIF still images"
+    metalavaK2UastEnabled = true
 }

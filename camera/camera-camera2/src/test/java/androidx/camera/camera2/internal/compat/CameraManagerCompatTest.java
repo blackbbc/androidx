@@ -49,7 +49,9 @@ import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowLog;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 @RunWith(RobolectricTestRunner.class)
@@ -76,7 +78,6 @@ public final class CameraManagerCompatTest {
                 mContext.getSystemService(Context.CAMERA_SERVICE));
         mShadowCameraManager.addCallback(mInteractionCallback);
     }
-
 
     @Test
     public void getCameraCharacteristicsCompat_callUnderlyingMethod()
@@ -214,6 +215,42 @@ public final class CameraManagerCompatTest {
         assertThat(unregisterCaptor.getValue()).isSameInstanceAs(originalCallback);
     }
 
+    @Test(expected = CameraAccessExceptionCompat.class)
+    public void throwCameraAccessExceptionCompat_whenCallingGetCharacteristicsThrowAssertionError()
+            throws CameraAccessExceptionCompat {
+        when(mInteractionCallback.getCameraCharacteristics(any(String.class))).thenThrow(
+                new AssertionError("CameraManager#getCameraCharacteristics AssertionError!"));
+
+        CameraManagerCompat manager = CameraManagerCompat.from(mContext);
+        manager.getCameraCharacteristicsCompat(CAMERA_ID);
+    }
+
+    @Test
+    @Config(minSdk = 30)
+    public void getConcurrentCameraIds_api30_returnsCameraIdSets() {
+        CameraManagerCompat manager = CameraManagerCompat.from(mContext);
+
+        try {
+            manager.getConcurrentCameraIds();
+        } catch (CameraAccessExceptionCompat e) {
+        }
+
+        verify(mInteractionCallback, times(1)).getConcurrentCameraIds();
+    }
+
+    @Test
+    @Config(maxSdk = 29)
+    public void getConcurrentCameraIds_api29_returnsCameraIdSets() {
+        CameraManagerCompat manager = CameraManagerCompat.from(mContext);
+
+        try {
+            manager.getConcurrentCameraIds();
+        } catch (CameraAccessExceptionCompat e) {
+        }
+
+        verify(mInteractionCallback, times(0)).getConcurrentCameraIds();
+    }
+
     /**
      * A Shadow of {@link CameraManager} which forwards invocations to callbacks to record
      * interactions.
@@ -222,9 +259,11 @@ public final class CameraManagerCompatTest {
             value = CameraManager.class,
             minSdk = 21
     )
-    static final class ShadowInteractionCameraManager {
+    public static final class ShadowInteractionCameraManager {
 
         private static final String[] EMPTY_ID_LIST = new String[]{};
+
+        private static final Set<Set<String>> EMPTY_CONCURRENT_ID_SET = new HashSet<>();
         private final List<Callback> mCallbacks = new ArrayList<>();
         private final CameraCharacteristics mCameraCharacteristics =
                 mock(CameraCharacteristics.class);
@@ -241,6 +280,17 @@ public final class CameraManagerCompatTest {
             }
 
             return EMPTY_ID_LIST;
+        }
+
+        @NonNull
+        @Implementation
+        protected Set<Set<String>> getConcurrentCameraIds() throws CameraAccessException {
+            if (Build.VERSION.SDK_INT >= 30) {
+                for (Callback cb : mCallbacks) {
+                    Set<Set<String>> ids = cb.getConcurrentCameraIds();
+                }
+            }
+            return EMPTY_CONCURRENT_ID_SET;
         }
 
         @NonNull
@@ -301,6 +351,9 @@ public final class CameraManagerCompatTest {
         interface Callback {
             @NonNull
             String[] getCameraIdList();
+
+            @NonNull
+            Set<Set<String>> getConcurrentCameraIds();
 
             @NonNull
             CameraCharacteristics getCameraCharacteristics(@NonNull String cameraId);

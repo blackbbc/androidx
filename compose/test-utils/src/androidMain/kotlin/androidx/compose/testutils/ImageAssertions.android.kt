@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import org.junit.Assert
 import kotlin.math.roundToInt
+import org.junit.Assert
 
 /**
  * A helper function to run asserts on [Bitmap].
@@ -60,8 +60,8 @@ fun ImageBitmap.assertPixels(
     }
 
     val pixel = toPixelMap()
-    for (x in 0 until width) {
-        for (y in 0 until height) {
+    for (y in 0 until height) {
+        for (x in 0 until width) {
             val pxPos = IntOffset(x, y)
             val expectedClr = expectedColorProvider(pxPos)
             if (expectedClr != null) {
@@ -102,10 +102,19 @@ fun ImageBitmap.assertContainsColor(
     return this
 }
 
+fun ImageBitmap.assertDoesNotContainColor(
+    unexpectedColor: Color
+): ImageBitmap {
+    if (containsColor(unexpectedColor)) {
+        throw AssertionError("The given color $unexpectedColor was found in the bitmap.")
+    }
+    return this
+}
+
 private fun ImageBitmap.containsColor(expectedColor: Color): Boolean {
     val pixels = this.toPixelMap()
-    for (x in 0 until width) {
-        for (y in 0 until height) {
+    for (y in 0 until height) {
+        for (x in 0 until width) {
             val color = pixels[x, y]
             if (color == expectedColor) {
                 return true
@@ -192,16 +201,16 @@ fun ImageBitmap.assertShape(
     backgroundPath.addOutline(
         backgroundShape.createOutline(Size(sizeX, sizeY), LayoutDirection.Ltr, density)
     )
-    for (x in centerX - sizeX / 2 until centerX + sizeX / 2) {
-        for (y in centerY - sizeY / 2 until centerY + sizeY / 2) {
+    for (y in centerY - sizeY / 2 until centerY + sizeY / 2) {
+        for (x in centerX - sizeX / 2 until centerX + sizeX / 2) {
             val point = Offset(x.toFloat(), y.toFloat())
             if (!backgroundPath.contains(
                     pixelFartherFromCenter(
-                            point,
-                            sizeX,
-                            sizeY,
-                            shapeOverlapPixelCount
-                        )
+                        point,
+                        sizeX,
+                        sizeY,
+                        shapeOverlapPixelCount
+                    )
                 )
             ) {
                 continue

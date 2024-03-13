@@ -21,7 +21,7 @@ package androidx.compose.animation.core.lint
 import androidx.compose.lint.Name
 import androidx.compose.lint.Names
 import androidx.compose.lint.isInPackageName
-import androidx.compose.lint.invokedInComposableBodyAndNotRemembered
+import androidx.compose.lint.isNotRemembered
 import com.android.tools.lint.client.api.UElementHandler
 import com.android.tools.lint.detector.api.Category
 import com.android.tools.lint.detector.api.Detector
@@ -32,9 +32,9 @@ import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
 import com.android.tools.lint.detector.api.SourceCodeScanner
 import com.intellij.psi.impl.source.PsiClassReferenceType
+import java.util.EnumSet
 import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.util.isConstructorCall
-import java.util.EnumSet
 
 /**
  * [Detector] that checks `Animatable` calls to make sure that if they are called inside a
@@ -61,7 +61,7 @@ class UnrememberedAnimatableDetector : Detector(), SourceCodeScanner {
                 if (!returnType.rawType().equalsToText(Animatable.javaFqn)) return
             }
 
-            if (node.invokedInComposableBodyAndNotRemembered()) {
+            if (node.isNotRemembered()) {
                 context.report(
                     UnrememberedAnimatable,
                     node,

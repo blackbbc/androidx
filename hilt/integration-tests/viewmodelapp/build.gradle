@@ -18,7 +18,7 @@ plugins {
     id("AndroidXPlugin")
     id("com.android.application")
     id("kotlin-android")
-    id("kotlin-kapt")
+    id("com.google.devtools.ksp")
     id("dagger.hilt.android.plugin")
 }
 
@@ -32,19 +32,26 @@ android {
             shrinkResources true
         }
     }
+    namespace "androidx.hilt.integration.viewmodelapp"
 }
 
 dependencies {
-    implementation("androidx.activity:activity:1.2.0")
-    implementation("androidx.fragment:fragment-ktx:1.3.0")
+    implementation(project(":activity:activity-ktx"))
+    implementation(project(":fragment:fragment-ktx"))
     implementation(libs.kotlinStdlib)
     implementation(libs.hiltAndroid)
-    kapt(libs.hiltCompiler)
+    ksp(libs.hiltCompiler)
 
+    androidTestImplementation(project(":activity:activity-ktx"))
+    androidTestImplementation(project(":fragment:fragment-ktx"))
     androidTestImplementation(libs.truth)
     androidTestImplementation(libs.testCore)
     androidTestImplementation(libs.testExtJunit)
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.hiltAndroidTesting)
-    kaptAndroidTest(libs.hiltCompiler)
+    kspAndroidTest(libs.hiltCompiler)
+}
+
+hilt {
+    enableAggregatingTask = true
 }

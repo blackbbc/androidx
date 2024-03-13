@@ -16,12 +16,16 @@
 
 package androidx.compose.ui.inspection.inspector
 
+import androidx.collection.MutableIntList
+import androidx.collection.intListOf
+import androidx.collection.mutableIntListOf
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -42,13 +46,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.DefaultCameraDistance
+import androidx.compose.ui.graphics.DefaultShadowColor
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.colorspace.ColorModel
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.inspection.util.removeLast
+import androidx.compose.ui.platform.debugInspectorInfo
+import androidx.compose.ui.platform.inspectable
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -60,6 +70,7 @@ import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextGeometricTransform
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Density
@@ -69,6 +80,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.packFloats
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import com.google.common.truth.Truth.assertThat
@@ -81,6 +93,7 @@ import org.junit.runner.RunWith
 
 private const val ROOT_ID = 3L
 private const val NODE_ID = -7L
+private const val ANCHOR_HASH = 77
 private const val PARAM_INDEX = 4
 private const val MAX_RECURSIONS = 2
 private const val MAX_ITERABLE_SIZE = 5
@@ -218,12 +231,21 @@ class ParameterFactoryTest {
                     parameter("x", ParameterType.DimensionDp, 2.5f)
                     parameter("y", ParameterType.DimensionDp, 5.0f)
                 }
+                parameter("intrinsicSize", ParameterType.String, Size::class.java.simpleName) {
+                    val width = 5.0f
+                    val height = 9.5f
+                    parameter("height", ParameterType.Float, height)
+                    parameter("maxDimension", ParameterType.Float, height)
+                    parameter("minDimension", ParameterType.Float, width)
+                    parameter("packedValue", ParameterType.Int64, packFloats(width, height))
+                    parameter("width", ParameterType.Float, width)
+                }
                 parameter("start", ParameterType.String, Offset::class.java.simpleName) {
                     parameter("x", ParameterType.DimensionDp, 0.0f)
                     parameter("y", ParameterType.DimensionDp, 0.25f)
                 }
-                parameter("tileMode", ParameterType.String, "Clamp", index = 4)
-                parameter("createdSize", ParameterType.String, "Unspecified", index = 5)
+                parameter("tileMode", ParameterType.String, "Clamp", index = 5)
+                parameter("createdSize", ParameterType.String, "Unspecified", index = 6)
             }
         }
         // TODO: add tests for RadialGradient & ShaderBrush
@@ -656,6 +678,64 @@ class ParameterFactoryTest {
     }
 
     @Test
+    fun testSingleModifierNode() {
+        validate(
+            create(
+                "modifier",
+                Modifier.graphicsLayer(
+                    scaleX = 2f,
+                    scaleY = 1.5f,
+                    alpha = 0.5f,
+                    clip = true
+                )
+            )
+        ) {
+            parameter("modifier", ParameterType.String, "") {
+                parameter("graphicsLayer", ParameterType.String, "") {
+                    parameter("scaleX", ParameterType.Float, 2f)
+                    parameter("scaleY", ParameterType.Float, 1.5f)
+                    parameter("alpha", ParameterType.Float, 0.5f)
+                    parameter("translationX", ParameterType.Float, 0f)
+                    parameter("translationY", ParameterType.Float, 0f)
+                    parameter("shadowElevation", ParameterType.Float, 0f)
+                    parameter("rotationX", ParameterType.Float, 0f)
+                    parameter("rotationY", ParameterType.Float, 0f)
+                    parameter("rotationZ", ParameterType.Float, 0f)
+                    parameter("cameraDistance", ParameterType.Float, DefaultCameraDistance)
+                    parameter("transformOrigin", ParameterType.String, "Center")
+                    parameter("shape", ParameterType.String, "RectangleShape")
+                    parameter("clip", ParameterType.Boolean, true)
+                    // parameter("renderEffect", ParameterType.String, "")
+                    val shadowArgb = DefaultShadowColor.toArgb()
+                    parameter("ambientShadowColor", ParameterType.Color, shadowArgb, index = 14)
+                    parameter("spotShadowColor", ParameterType.Color, shadowArgb, index = 15)
+                    parameter("compositingStrategy", ParameterType.String, "Auto", index = 16)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun testWrappedModifier() {
+        @Suppress("DEPRECATION")
+        fun Modifier.frame(color: Color) = inspectable(
+            debugInspectorInfo {
+                name = "frame"
+                value = color
+            }
+        ) {
+            background(color).border(width = 5.dp, color = color)
+        }
+        validate(create("modifier", Modifier.width(40.dp).frame(Color.Green).height(50.dp))) {
+            parameter("modifier", ParameterType.String, "") {
+                parameter("width", ParameterType.DimensionDp, 40.0f)
+                parameter("frame", ParameterType.Color, Color.Green.toArgb())
+                parameter("height", ParameterType.DimensionDp, 50.0f)
+            }
+        }
+    }
+
+    @Test
     fun testSingleModifierWithParameters() {
         validate(create("modifier", Modifier.padding(1.dp, 2.dp, 3.dp, 4.dp))) {
             parameter("modifier", ParameterType.String, "") {
@@ -848,16 +928,18 @@ class ParameterFactoryTest {
     fun testTextStyle() {
         val style = TextStyle(
             color = Color.Red,
-            textDecoration = TextDecoration.Underline
+            textDecoration = TextDecoration.Underline,
+            textDirection = TextDirection.Content
         )
         validate(create("style", style)) {
             parameter("style", ParameterType.String, TextStyle::class.java.simpleName) {
-                parameter("background", ParameterType.String, "Unspecified")
-                parameter("color", ParameterType.Color, Color.Red.toArgb(), index = 2)
-                parameter("fontSize", ParameterType.String, "Unspecified", index = 5)
-                parameter("letterSpacing", ParameterType.String, "Unspecified", index = 9)
-                parameter("lineHeight", ParameterType.String, "Unspecified", index = 10)
-                parameter("textDecoration", ParameterType.String, "Underline", index = 14)
+                parameter("color", ParameterType.Color, Color.Red.toArgb())
+                parameter("fontSize", ParameterType.String, "Unspecified", index = 1)
+                parameter("letterSpacing", ParameterType.String, "Unspecified", index = 7)
+                parameter("background", ParameterType.String, "Unspecified", index = 11)
+                parameter("textDecoration", ParameterType.String, "Underline", index = 12)
+                parameter("textDirection", ParameterType.String, "Content", index = 14)
+                parameter("lineHeight", ParameterType.String, "Unspecified", index = 15)
             }
         }
     }
@@ -890,6 +972,7 @@ class ParameterFactoryTest {
         val parameter = factory.create(
             ROOT_ID,
             NODE_ID,
+            ANCHOR_HASH,
             name,
             value,
             ParameterKind.Normal,
@@ -904,7 +987,7 @@ class ParameterFactoryTest {
             parameter,
             parameter.name,
             value,
-            mutableListOf(),
+            mutableIntListOf(),
             maxRecursions,
             maxInitialIterableSize
         )
@@ -924,6 +1007,7 @@ class ParameterFactoryTest {
         factory.expand(
             ROOT_ID,
             NODE_ID,
+            ANCHOR_HASH,
             name,
             value,
             reference,
@@ -940,7 +1024,9 @@ class ParameterFactoryTest {
     }
 
     private fun ref(vararg reference: Int): NodeParameterReference =
-        NodeParameterReference(NODE_ID, ParameterKind.Normal, PARAM_INDEX, reference)
+        NodeParameterReference(
+            NODE_ID, ANCHOR_HASH, ParameterKind.Normal, PARAM_INDEX, intListOf(*reference)
+        )
 
     private fun validate(
         parameter: NodeParameter,
@@ -955,12 +1041,13 @@ class ParameterFactoryTest {
         parameter: NodeParameter,
         name: String,
         value: Any,
-        indices: MutableList<Int>,
+        indices: MutableIntList,
         maxRecursions: Int,
         maxInitialIterableSize: Int
     ) {
         factory.clearReferenceCache()
-        val reference = NodeParameterReference(NODE_ID, ParameterKind.Normal, PARAM_INDEX, indices)
+        val reference =
+            NodeParameterReference(NODE_ID, ANCHOR_HASH, ParameterKind.Normal, PARAM_INDEX, indices)
         val expanded = expand(
             name,
             value,

@@ -95,6 +95,16 @@ class AnimationState<T, V : AnimationVector>(
      */
     val velocity: T
         get() = typeConverter.convertFromVector(velocityVector)
+
+    override fun toString(): String {
+        return "AnimationState(" +
+            "value=$value, " +
+            "velocity=$velocity, " +
+            "isRunning=$isRunning, " +
+            "lastFrameTimeNanos=$lastFrameTimeNanos, " +
+            "finishedTimeNanos=$finishedTimeNanos" +
+            ")"
+    }
 }
 
 /**
@@ -329,4 +339,4 @@ fun <T, V : AnimationVector> AnimationState(
  * @return a new AnimationVector instance of type [V].
  */
 fun <T, V : AnimationVector> TwoWayConverter<T, V>.createZeroVectorFrom(value: T) =
-    convertToVector(value).newInstance()
+    convertToVector(value).also { it.reset() }

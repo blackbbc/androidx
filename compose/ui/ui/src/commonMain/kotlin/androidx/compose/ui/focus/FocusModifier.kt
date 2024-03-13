@@ -16,37 +16,7 @@
 
 package androidx.compose.ui.focus
 
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.focus.FocusStateImpl.Inactive
-import androidx.compose.ui.node.ModifiedFocusNode
-import androidx.compose.ui.platform.InspectorInfo
-import androidx.compose.ui.platform.InspectorValueInfo
-import androidx.compose.ui.platform.NoInspectorInfo
-import androidx.compose.ui.platform.debugInspectorInfo
-
-/**
- * A [Modifier.Element] that wraps makes the modifiers on the right into a Focusable. Use a
- * different instance of [FocusModifier] for each focusable component.
- */
-internal class FocusModifier(
-    initialFocus: FocusStateImpl,
-    // TODO(b/172265016): Make this a required parameter and remove the default value.
-    //  Set this value in AndroidComposeView, and other places where we create a focus modifier
-    //  using this internal constructor.
-    inspectorInfo: InspectorInfo.() -> Unit = NoInspectorInfo
-) : Modifier.Element, InspectorValueInfo(inspectorInfo) {
-
-    // TODO(b/188684110): Move focusState and focusedChild to ModifiedFocusNode and make this
-    //  modifier stateless.
-
-    var focusState: FocusStateImpl = initialFocus
-
-    var focusedChild: ModifiedFocusNode? = null
-
-    lateinit var focusNode: ModifiedFocusNode
-}
 
 /**
  * Add this modifier to a component to make it focusable.
@@ -61,9 +31,7 @@ internal class FocusModifier(
  *
  * @sample androidx.compose.ui.samples.FocusableSampleUsingLowerLevelFocusTarget
  */
-fun Modifier.focusTarget(): Modifier = composed(debugInspectorInfo { name = "focusTarget" }) {
-    remember { FocusModifier(Inactive) }
-}
+fun Modifier.focusTarget(): Modifier = this then FocusTargetNode.FocusTargetElement
 
 /**
  * Add this modifier to a component to make it focusable.
@@ -72,6 +40,4 @@ fun Modifier.focusTarget(): Modifier = composed(debugInspectorInfo { name = "foc
     "Replaced by focusTarget",
     ReplaceWith("focusTarget()", "androidx.compose.ui.focus.focusTarget")
 )
-fun Modifier.focusModifier(): Modifier = composed(debugInspectorInfo { name = "focusModifier" }) {
-    remember { FocusModifier(Inactive) }
-}
+fun Modifier.focusModifier(): Modifier = focusTarget()

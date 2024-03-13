@@ -18,7 +18,7 @@ package androidx.core.google.shortcuts;
 
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
-import static androidx.core.google.shortcuts.ShortcutUtils.CAPABILITY_PARAM_SEPARATOR;
+import static androidx.core.google.shortcuts.utils.ShortcutUtils.CAPABILITY_PARAM_SEPARATOR;
 
 import android.content.Context;
 import android.os.Build;
@@ -34,12 +34,14 @@ import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.google.shortcuts.builders.CapabilityBuilder;
 import androidx.core.google.shortcuts.builders.ParameterBuilder;
 import androidx.core.google.shortcuts.builders.ShortcutBuilder;
+import androidx.core.google.shortcuts.utils.ShortcutUtils;
+import androidx.core.graphics.drawable.IconCompat;
 
+import com.google.android.gms.appindex.Action;
+import com.google.android.gms.appindex.AppIndex;
+import com.google.android.gms.appindex.Indexable;
+import com.google.android.gms.appindex.UserActions;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.firebase.appindexing.Action;
-import com.google.firebase.appindexing.FirebaseAppIndex;
-import com.google.firebase.appindexing.FirebaseUserActions;
-import com.google.firebase.appindexing.Indexable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,13 +49,12 @@ import java.util.List;
 /**
  * Provides a listener on changes to shortcuts in ShortcutInfoCompat.
  *
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP)
 public class ShortcutInfoChangeListenerImpl extends ShortcutInfoChangeListener {
     private final Context mContext;
-    private final FirebaseAppIndex mFirebaseAppIndex;
-    private final FirebaseUserActions mFirebaseUserActions;
+    private final AppIndex mFirebaseAppIndex;
+    private final UserActions mFirebaseUserActions;
     @Nullable private final KeysetHandle mKeysetHandle;
 
     /**
@@ -64,14 +65,14 @@ public class ShortcutInfoChangeListenerImpl extends ShortcutInfoChangeListener {
      */
     @NonNull
     public static ShortcutInfoChangeListenerImpl getInstance(@NonNull Context context) {
-        return new ShortcutInfoChangeListenerImpl(context, FirebaseAppIndex.getInstance(context),
-                FirebaseUserActions.getInstance(context),
+        return new ShortcutInfoChangeListenerImpl(context, AppIndex.getInstance(context),
+                UserActions.getInstance(context),
                 ShortcutUtils.getOrCreateShortcutKeysetHandle(context));
     }
 
     @VisibleForTesting
-    ShortcutInfoChangeListenerImpl(Context context, FirebaseAppIndex firebaseAppIndex,
-            FirebaseUserActions firebaseUserActions, @Nullable KeysetHandle keysetHandle) {
+    ShortcutInfoChangeListenerImpl(Context context, AppIndex firebaseAppIndex,
+            UserActions firebaseUserActions, @Nullable KeysetHandle keysetHandle) {
         mContext = context;
         mFirebaseAppIndex = firebaseAppIndex;
         mFirebaseUserActions = firebaseUserActions;
@@ -85,7 +86,12 @@ public class ShortcutInfoChangeListenerImpl extends ShortcutInfoChangeListener {
      */
     @Override
     public void onShortcutAdded(@NonNull List<ShortcutInfoCompat> shortcuts) {
-        mFirebaseAppIndex.update(buildIndexables(shortcuts));
+        List<Indexable> indexables = new ArrayList<>();
+        for (ShortcutInfoCompat shortcut : shortcuts) {
+            ShortcutBuilder shortcutBuilder = buildShortcutIndexable(shortcut);
+            indexables.add(shortcutBuilder.build());
+        }
+        mFirebaseAppIndex.update(indexables.toArray(new Indexable[0]));
     }
 
     /**
@@ -95,7 +101,7 @@ public class ShortcutInfoChangeListenerImpl extends ShortcutInfoChangeListener {
      */
     @Override
     public void onShortcutUpdated(@NonNull List<ShortcutInfoCompat> shortcuts) {
-        mFirebaseAppIndex.update(buildIndexables(shortcuts));
+        onShortcutAdded(shortcuts);
     }
 
     /**
@@ -138,26 +144,14 @@ public class ShortcutInfoChangeListenerImpl extends ShortcutInfoChangeListener {
 
     @NonNull
     private Action buildAction(@NonNull String url) {
-        // The reported action isn't uploaded to the server.
-        Action.Metadata.Builder metadataBuilder = new Action.Metadata.Builder().setUpload(false);
         return new Action.Builder(Action.Builder.VIEW_ACTION)
                 // Empty label as placeholder.
                 .setObject("", url)
-                .setMetadata(metadataBuilder)
                 .build();
     }
 
     @NonNull
-    private Indexable[] buildIndexables(@NonNull List<ShortcutInfoCompat> shortcuts) {
-        List<Indexable> indexables = new ArrayList<>();
-        for (ShortcutInfoCompat shortcut : shortcuts) {
-            indexables.add(buildIndexable(shortcut));
-        }
-        return indexables.toArray(new Indexable[0]);
-    }
-
-    @NonNull
-    private Indexable buildIndexable(@NonNull ShortcutInfoCompat shortcut) {
+    private ShortcutBuilder buildShortcutIndexable(@NonNull ShortcutInfoCompat shortcut) {
         String url = ShortcutUtils.getIndexableUrl(mContext, shortcut.getId());
         String shortcutUrl = ShortcutUtils.getIndexableShortcutUrl(mContext, shortcut.getIntent(),
                 mKeysetHandle);
@@ -191,8 +185,18 @@ public class ShortcutInfoChangeListenerImpl extends ShortcutInfoChangeListener {
             }
         }
 
+        // Add icon
+        if (shortcut.getIcon() != null) {
+            IconCompat icon = shortcut.getIcon();
+            if (icon.getType() == IconCompat.TYPE_URI_ADAPTIVE_BITMAP
+                    || icon.getType() == IconCompat.TYPE_URI) {
+                // Assume the uri is public and can be opened by Google apps
+                shortcutBuilder.setImage(icon.getUri().toString());
+            }
+        }
+
         // By default, the indexable will be saved only on-device.
-        return shortcutBuilder.build();
+        return shortcutBuilder;
     }
 
     @RequiresApi(21)

@@ -16,7 +16,6 @@
 
 package androidx.transition;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Matrix;
@@ -45,7 +44,7 @@ public class PatternPathMotion extends PathMotion {
 
     private Path mOriginalPatternPath;
 
-    private final Path mPatternPath = new Path();
+    private final @NonNull Path mPatternPath = new Path();
 
     private final Matrix mTempMatrix = new Matrix();
 
@@ -57,8 +56,6 @@ public class PatternPathMotion extends PathMotion {
         mOriginalPatternPath = mPatternPath;
     }
 
-    @SuppressLint("RestrictedApi") // remove once core lib would be released with the new
-    // LIBRARY_GROUP_PREFIX restriction. tracking in b/127286008
     public PatternPathMotion(@NonNull Context context, @NonNull AttributeSet attrs) {
         TypedArray a = context.obtainStyledAttributes(attrs, Styleable.PATTERN_PATH_MOTION);
         try {
@@ -82,7 +79,7 @@ public class PatternPathMotion extends PathMotion {
      *
      * @param patternPath A Path to be used as a pattern for two-dimensional motion.
      */
-    public PatternPathMotion(Path patternPath) {
+    public PatternPathMotion(@NonNull Path patternPath) {
         setPatternPath(patternPath);
     }
 
@@ -93,6 +90,7 @@ public class PatternPathMotion extends PathMotion {
      *
      * @return the Path defining a pattern of motion between two coordinates.
      */
+    @NonNull
     public Path getPatternPath() {
         return mOriginalPatternPath;
     }
@@ -104,7 +102,7 @@ public class PatternPathMotion extends PathMotion {
      *
      * @param patternPath A Path to be used as a pattern for two-dimensional motion.
      */
-    public void setPatternPath(Path patternPath) {
+    public void setPatternPath(@NonNull Path patternPath) {
         PathMeasure pathMeasure = new PathMeasure(patternPath, false);
         float length = pathMeasure.getLength();
         float[] pos = new float[2];

@@ -19,7 +19,6 @@ package androidx.appcompat.app
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.res.Configuration
-import android.os.Build
 import androidx.appcompat.Orientation
 import androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
 import androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
@@ -45,7 +44,7 @@ import org.junit.runners.Parameterized
 
 @LargeTest
 @RunWith(Parameterized::class)
-@SdkSuppress(minSdkVersion = 18)
+@SdkSuppress(minSdkVersion = 31) // UiAutomator is unreliable below SDK 31
 public class NightModeRotateRecreatesActivityWithConfigTestCase(private val setMode: NightSetMode) {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -132,10 +131,6 @@ public class NightModeRotateRecreatesActivityWithConfigTestCase(private val setM
     public companion object {
         @JvmStatic
         @Parameterized.Parameters
-        public fun data(): List<NightSetMode> = if (Build.VERSION.SDK_INT >= 17) {
-            listOf(NightSetMode.DEFAULT, NightSetMode.LOCAL)
-        } else {
-            listOf(NightSetMode.DEFAULT)
-        }
+        public fun data(): List<NightSetMode> = listOf(NightSetMode.DEFAULT, NightSetMode.LOCAL)
     }
 }

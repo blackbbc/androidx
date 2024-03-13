@@ -20,9 +20,7 @@ import androidx.compose.ui.geometry.MutableRect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Matrix
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.layout.GraphicLayerInfo
+import androidx.compose.ui.graphics.ReusableGraphicsLayerScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -31,27 +29,15 @@ import androidx.compose.ui.unit.LayoutDirection
 /**
  * A layer returned by [Owner.createLayer] to separate drawn content.
  */
-internal interface OwnedLayer : GraphicLayerInfo {
+internal interface OwnedLayer {
 
     /**
      * Applies the new layer properties and causing this layer to be redrawn.
      */
     fun updateLayerProperties(
-        scaleX: Float,
-        scaleY: Float,
-        alpha: Float,
-        translationX: Float,
-        translationY: Float,
-        shadowElevation: Float,
-        rotationX: Float,
-        rotationY: Float,
-        rotationZ: Float,
-        cameraDistance: Float,
-        transformOrigin: TransformOrigin,
-        shape: Shape,
-        clip: Boolean,
+        scope: ReusableGraphicsLayerScope,
         layoutDirection: LayoutDirection,
-        density: Density
+        density: Density,
     )
 
     /**
@@ -110,4 +96,23 @@ internal interface OwnedLayer : GraphicLayerInfo {
      * converting bounds in a parent layer to be in this layer's coordinates.
      */
     fun mapBounds(rect: MutableRect, inverse: Boolean)
+
+    /**
+     * Reuse this layer after it was [destroy]ed, setting the new
+     * [drawBlock] and [invalidateParentLayer] values. The layer will be reinitialized
+     * as new after this call.
+     */
+    fun reuseLayer(drawBlock: (Canvas) -> Unit, invalidateParentLayer: () -> Unit)
+
+    /**
+     * Calculates the transform from the parent to the local coordinates and multiplies
+     * [matrix] by the transform.
+     */
+    fun transform(matrix: Matrix)
+
+    /**
+     * Calculates the transform from the layer to the parent and multiplies [matrix] by
+     * the transform.
+     */
+    fun inverseTransform(matrix: Matrix)
 }

@@ -21,7 +21,6 @@ package androidx.core.view
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.Px
-import androidx.annotation.RequiresApi
 
 /**
  * Returns the view at [index].
@@ -63,6 +62,27 @@ public inline fun ViewGroup.forEachIndexed(action: (index: Int, view: View) -> U
     }
 }
 
+/**
+ * Returns an [IntRange] of the valid indices for the children of this view group.
+ *
+ * This can be used for looping:
+ * ```kotlin
+ * for (i in viewGroup.indices.reversed) {
+ *   if (viewGroup[i] is SomeView) {
+ *     viewGroup.removeViewAt(i)
+ *   }
+ * }
+ * ```
+ *
+ * Or to determine if an index is valid:
+ * ```kotlin
+ * if (2 in viewGroup.indices) {
+ *   // Do something…
+ * }
+ * ```
+ */
+public inline val ViewGroup.indices: IntRange get() = 0 until childCount
+
 /** Returns a [MutableIterator] over the views in this view group. */
 public operator fun ViewGroup.iterator(): MutableIterator<View> = object : MutableIterator<View> {
     private var index = 0
@@ -84,22 +104,75 @@ public val ViewGroup.children: Sequence<View>
 
 /**
  * Returns a [Sequence] over the child views in this view group recursively.
- * This performs a depth-first traversal.
- * A view with no children will return a zero-element sequence.
+ *
+ * This performs a depth-first traversal. A view with no children will return a zero-element
+ * sequence.
+ *
+ * For example, to efficiently filter views within the hierarchy using a predicate:
+ *
+ * ```
+ * fun ViewGroup.findViewTreeIterator(predicate: (View) -> Boolean): Sequence<View> {
+ *     return sequenceOf(this)
+ *         .plus(descendantsTree)
+ *         .filter { predicate(it) }
+ * }
+ * ```
  *
  * @see View.allViews
  * @see ViewGroup.children
  * @see View.ancestors
  */
 public val ViewGroup.descendants: Sequence<View>
-    get() = sequence {
-        forEach { child ->
-            yield(child)
-            if (child is ViewGroup) {
-                yieldAll(child.descendants)
+    get() = Sequence {
+        TreeIterator(children.iterator()) { child ->
+            (child as? ViewGroup)?.children?.iterator()
+        }
+    }
+
+/**
+ * Lazy iterator for iterating through an abstract hierarchy.
+ *
+ * @param rootIterator Iterator for root elements of hierarchy
+ * @param getChildIterator Function which returns a child iterator for the current item if the
+ * current item has a child or `null` otherwise
+ */
+internal class TreeIterator<T>(
+    rootIterator: Iterator<T>,
+    private val getChildIterator: ((T) -> Iterator<T>?)
+) : Iterator<T> {
+    private val stack = mutableListOf<Iterator<T>>()
+
+    private var iterator: Iterator<T> = rootIterator
+
+    override fun hasNext(): Boolean {
+        return iterator.hasNext()
+    }
+
+    override fun next(): T {
+        val item = iterator.next()
+        prepareNextIterator(item)
+        return item
+    }
+
+    /**
+     * Calculates next iterator for [item].
+     */
+    private fun prepareNextIterator(item: T) {
+        // If current item has a child, then get the child iterator and save the current iterator to
+        // the stack. Otherwise, if current iterator has no more elements then restore the parent
+        // iterator from the stack.
+        val childIterator = getChildIterator(item)
+        if (childIterator != null && childIterator.hasNext()) {
+            stack.add(iterator)
+            iterator = childIterator
+        } else {
+            while (!iterator.hasNext() && stack.isNotEmpty()) {
+                iterator = stack.last()
+                stack.removeLast()
             }
         }
     }
+}
 
 /**
  * Sets the margins in the ViewGroup's MarginLayoutParams. This version of the method sets all axes
@@ -130,9 +203,13 @@ public inline fun ViewGroup.MarginLayoutParams.updateMargins(
  * Updates the relative margins in the ViewGroup's MarginLayoutParams.
  * This version of the method allows using named parameters to just set one or more axes.
  *
+ * Note that this inline method references platform APIs added in API 17 and may raise runtime
+ * verification warnings on earlier platforms. See Chromium's guide to
+ * [Class Verification Failures](https://chromium.googlesource.com/chromium/src/+/HEAD/build/android/docs/class_verification_failures.md)
+ * for more information.
+ *
  * @see ViewGroup.MarginLayoutParams.setMargins
  */
-@RequiresApi(17)
 public inline fun ViewGroup.MarginLayoutParams.updateMarginsRelative(
     @Px start: Int = marginStart,
     @Px top: Int = topMargin,

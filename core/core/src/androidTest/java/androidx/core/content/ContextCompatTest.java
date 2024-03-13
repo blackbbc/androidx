@@ -66,12 +66,19 @@ import static android.content.Context.WALLPAPER_SERVICE;
 import static android.content.Context.WIFI_P2P_SERVICE;
 import static android.content.Context.WIFI_SERVICE;
 import static android.content.Context.WINDOW_SERVICE;
+import static android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
+import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
@@ -80,6 +87,7 @@ import android.app.DownloadManager;
 import android.app.KeyguardManager;
 import android.app.NotificationManager;
 import android.app.SearchManager;
+import android.app.UiAutomation;
 import android.app.UiModeManager;
 import android.app.WallpaperManager;
 import android.app.admin.DevicePolicyManager;
@@ -87,12 +95,16 @@ import android.app.job.JobScheduler;
 import android.app.usage.UsageStatsManager;
 import android.appwidget.AppWidgetManager;
 import android.bluetooth.BluetoothManager;
+import android.content.BroadcastReceiver;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.RestrictionsManager;
 import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
+import android.content.pm.PermissionInfo;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.Drawable;
 import android.hardware.ConsumerIrManager;
@@ -127,6 +139,7 @@ import android.telecom.TelecomManager;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.util.DisplayMetrics;
+import android.view.Display;
 import android.view.LayoutInflater;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
@@ -134,19 +147,35 @@ import android.view.accessibility.CaptioningManager;
 import android.view.inputmethod.InputMethodManager;
 import android.view.textservice.TextServicesManager;
 
+import androidx.core.app.AppLocalesStorageHelper;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.core.hardware.display.DisplayManagerCompat;
+import androidx.core.os.ConfigurationCompat;
+import androidx.core.os.LocaleListCompat;
 import androidx.core.test.R;
+import androidx.test.core.app.ApplicationProvider;
 import androidx.test.filters.LargeTest;
 import androidx.test.filters.SdkSuppress;
+import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @LargeTest
 public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowActivity> {
     private Context mContext;
+    private IntentFilter mTestFilter = new IntentFilter();
+    private String mPermission;
+    private BroadcastReceiver mTestReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
 
+        }
+    };
     public ContextCompatTest() {
         super(ThemedYellowActivity.class);
     }
@@ -154,6 +183,12 @@ public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowA
     @Before
     public void setup() {
         mContext = mActivityTestRule.getActivity();
+        mPermission = mContext.getPackageName() + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION";
+    }
+
+    @After
+    public void tearDown() {
+        setAppLocales(mContext, "");
     }
 
     @Test
@@ -166,32 +201,50 @@ public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowA
                 ContextCompat.getSystemServiceName(mContext, ActivityManager.class));
         assertEquals(ALARM_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, AlarmManager.class));
+        assertEquals(APP_OPS_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, AppOpsManager.class));
         assertEquals(AUDIO_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, AudioManager.class));
+        assertEquals(BLUETOOTH_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, BluetoothManager.class));
+        assertEquals(CAPTIONING_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, CaptioningManager.class));
         assertEquals(CLIPBOARD_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, ClipboardManager.class));
         assertEquals(CONNECTIVITY_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, ConnectivityManager.class));
+        assertEquals(CONSUMER_IR_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, ConsumerIrManager.class));
         assertEquals(DEVICE_POLICY_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, DevicePolicyManager.class));
+        assertEquals(DISPLAY_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, DisplayManager.class));
         assertEquals(DOWNLOAD_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, DownloadManager.class));
         assertEquals(DROPBOX_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, DropBoxManager.class));
         assertEquals(INPUT_METHOD_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, InputMethodManager.class));
+        assertEquals(INPUT_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, InputManager.class));
         assertEquals(KEYGUARD_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, KeyguardManager.class));
         assertEquals(LAYOUT_INFLATER_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, LayoutInflater.class));
         assertEquals(LOCATION_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, LocationManager.class));
+        assertEquals(MEDIA_ROUTER_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, MediaRouter.class));
         assertEquals(NFC_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, NfcManager.class));
         assertEquals(NOTIFICATION_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, NotificationManager.class));
+        assertEquals(NSD_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, NsdManager.class));
         assertEquals(POWER_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, PowerManager.class));
+        assertEquals(PRINT_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, PrintManager.class));
         assertEquals(SEARCH_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, SearchManager.class));
         assertEquals(SENSOR_SERVICE,
@@ -206,6 +259,8 @@ public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowA
                 ContextCompat.getSystemServiceName(mContext, UiModeManager.class));
         assertEquals(USB_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, UsbManager.class));
+        assertEquals(USER_SERVICE,
+                ContextCompat.getSystemServiceName(mContext, UserManager.class));
         assertEquals(VIBRATOR_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, Vibrator.class));
         assertEquals(WALLPAPER_SERVICE,
@@ -216,46 +271,6 @@ public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowA
                 ContextCompat.getSystemServiceName(mContext, WifiManager.class));
         assertEquals(WINDOW_SERVICE,
                 ContextCompat.getSystemServiceName(mContext, WindowManager.class));
-    }
-
-    @Test
-    @SdkSuppress(minSdkVersion = 16)
-    public void getSystemServiceNameApi16() {
-        assertEquals(INPUT_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, InputManager.class));
-        assertEquals(MEDIA_ROUTER_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, MediaRouter.class));
-        assertEquals(NSD_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, NsdManager.class));
-    }
-
-    @Test
-    @SdkSuppress(minSdkVersion = 17)
-    public void getSystemServiceNameApi17() {
-        assertEquals(DISPLAY_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, DisplayManager.class));
-        assertEquals(USER_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, UserManager.class));
-    }
-
-    @Test
-    @SdkSuppress(minSdkVersion = 18)
-    public void getSystemServiceNameApi18() {
-        assertEquals(BLUETOOTH_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, BluetoothManager.class));
-    }
-
-    @Test
-    @SdkSuppress(minSdkVersion = 19)
-    public void getSystemServiceNameApi19() {
-        assertEquals(APP_OPS_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, AppOpsManager.class));
-        assertEquals(CAPTIONING_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, CaptioningManager.class));
-        assertEquals(CONSUMER_IR_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, ConsumerIrManager.class));
-        assertEquals(PRINT_SERVICE,
-                ContextCompat.getSystemServiceName(mContext, PrintManager.class));
     }
 
     @Test
@@ -445,6 +460,97 @@ public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowA
         return ((size * tdensity) + (sdensity >> 1)) / sdensity;
     }
 
+    @Test
+    public void testRegisterReceiver_noExportStateFlagThrowsException() {
+        assertThrows(IllegalArgumentException.class, () -> ContextCompat.registerReceiver(mContext,
+                mTestReceiver, mTestFilter, 0));
+    }
+
+    @Test
+    public void testRegisterReceiver_specifyBothExportStateFlagsThrowsException() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ContextCompat.registerReceiver(mContext,
+                mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_EXPORTED | ContextCompat.RECEIVER_NOT_EXPORTED));
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 33)
+    public void testRegisterReceiverApi33() {
+        Context spyContext = spy(mContext);
+
+        ContextCompat.registerReceiver(spyContext, mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+        verify(spyContext).registerReceiver(eq(mTestReceiver), eq(mTestFilter), eq(null),
+                any(), eq(ContextCompat.RECEIVER_NOT_EXPORTED));
+
+        ContextCompat.registerReceiver(spyContext, mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_EXPORTED);
+        verify(spyContext).registerReceiver(eq(mTestReceiver), eq(mTestFilter), eq(null), any(),
+                eq(ContextCompat.RECEIVER_EXPORTED));
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 26, maxSdkVersion = 32)
+    public void testRegisterReceiverApi26() {
+        Context spyContext = spy(mContext);
+
+        ContextCompat.registerReceiver(spyContext, mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+        verify(spyContext).registerReceiver(eq(mTestReceiver), eq(mTestFilter),
+                eq(mPermission), any());
+
+        ContextCompat.registerReceiver(spyContext, mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_EXPORTED);
+        verify(spyContext).registerReceiver(eq(mTestReceiver), eq(mTestFilter), eq(null), any(),
+                eq(0));
+
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 29, maxSdkVersion = 32)
+    public void testRegisterReceiverPermissionNotGrantedApi26() {
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        uiAutomation.adoptShellPermissionIdentity();
+        try {
+            assertThrows(RuntimeException.class,
+                    () -> ContextCompat.registerReceiver(mContext,
+                            mTestReceiver, mTestFilter, ContextCompat.RECEIVER_NOT_EXPORTED));
+        } finally {
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    @Test
+    @SdkSuppress(maxSdkVersion = 25)
+    public void testRegisterReceiver() {
+        Context spyContext = spy(mContext);
+
+        ContextCompat.registerReceiver(spyContext, mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+        verify(spyContext).registerReceiver(eq(mTestReceiver), eq(mTestFilter), eq(mPermission),
+                any());
+
+        ContextCompat.registerReceiver(spyContext, mTestReceiver, mTestFilter,
+                ContextCompat.RECEIVER_EXPORTED);
+        verify(spyContext).registerReceiver(eq(mTestReceiver), eq(mTestFilter), eq(null), any());
+    }
+
+    @Test
+    public void testRegisterReceiver_mergedPermission_hasSignatureProtectionLevel()
+            throws Exception {
+        // Packages registering unexported runtime receivers on pre-T devices will have their
+        // receiver protected by a permission; to ensure other apps on the device cannot send a
+        // broadcast to these receivers, the permission must be declared with the signature
+        // protectionLevel.
+        PermissionInfo permissionInfo =
+                mContext.getPackageManager().getPermissionInfo(mPermission, 0);
+
+        assertEquals("The permission guarding unexported runtime receivers must have the "
+                + "signature protectionLevel.", PermissionInfo.PROTECTION_SIGNATURE,
+                permissionInfo.protectionLevel);
+    }
+
     @Test(expected = NullPointerException.class)
     public void testCheckSelfPermissionNull() {
         ContextCompat.checkSelfPermission(mContext, null);
@@ -473,5 +579,102 @@ public class ContextCompatTest extends BaseInstrumentationTestCase<ThemedYellowA
         assertEquals("Delete packages permission denied", PackageManager.PERMISSION_DENIED,
                 ContextCompat.checkSelfPermission(mContext,
                         android.Manifest.permission.DELETE_PACKAGES));
+    }
+
+    @Test
+    public void testCheckSelfPermissionNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            assertEquals(
+                    mContext.checkCallingPermission(Manifest.permission.POST_NOTIFICATIONS),
+                    ContextCompat.checkSelfPermission(
+                            mContext,
+                            Manifest.permission.POST_NOTIFICATIONS));
+        } else {
+            assertEquals("Notification permission allowed by default on devices <= SDK 32",
+                    NotificationManagerCompat.from(mContext).areNotificationsEnabled()
+                            ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED,
+                    ContextCompat.checkSelfPermission(mContext,
+                            Manifest.permission.POST_NOTIFICATIONS));
+        }
+    }
+
+    @Test
+    public void testGetDisplayFromActivity() {
+        final Display actualDisplay = ContextCompat.getDisplayOrDefault(mContext);
+        if (Build.VERSION.SDK_INT >= 30) {
+            assertEquals(mContext.getDisplay(), actualDisplay);
+        } else {
+            final WindowManager windowManager =
+                    (WindowManager) mContext.getSystemService(WINDOW_SERVICE);
+            assertEquals(actualDisplay, windowManager.getDefaultDisplay());
+        }
+    }
+
+    @Test
+    public void testGetDisplayFromDisplayContext() {
+        final DisplayManagerCompat displayManagerCompat = DisplayManagerCompat
+                .getInstance(mContext);
+        final Display defaultDisplay =  displayManagerCompat.getDisplay(Display.DEFAULT_DISPLAY);
+        final Context displayContext = mContext.createDisplayContext(defaultDisplay);
+
+        assertEquals(ContextCompat.getDisplayOrDefault(displayContext), defaultDisplay);
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 30)
+    public void testGetDisplayFromWindowContext() {
+        final Context windowContext = mContext.createWindowContext(TYPE_APPLICATION_OVERLAY, null);
+
+        assertEquals(ContextCompat.getDisplayOrDefault(windowContext), windowContext.getDisplay());
+    }
+
+    @Test
+    public void testGetDisplayFromApplication() {
+        final Context applicationContext = ApplicationProvider.getApplicationContext();
+        final Context spyContext = spy(applicationContext);
+        final Display actualDisplay = ContextCompat.getDisplayOrDefault(spyContext);
+
+        if (Build.VERSION.SDK_INT >= 30) {
+            verify(spyContext).getSystemService(eq(DisplayManager.class));
+
+            final Display defaultDisplay = DisplayManagerCompat.getInstance(spyContext)
+                    .getDisplay(Display.DEFAULT_DISPLAY);
+            assertEquals(defaultDisplay, actualDisplay);
+        } else {
+            final WindowManager windowManager =
+                    (WindowManager) spyContext.getSystemService(WINDOW_SERVICE);
+            // Don't verify if the returned display is the same instance because Application is
+            // not a DisplayContext and the framework always create a fallback Display for
+            // the Context that not associated with a Display.
+            assertEquals(windowManager.getDefaultDisplay().getDisplayId(),
+                    actualDisplay.getDisplayId());
+        }
+    }
+
+    @Test
+    @SdkSuppress(maxSdkVersion = 32)
+    public void testGetContextForLanguage17() {
+        setAppLocales(mContext, LocaleListCompat.create(Locale.JAPAN).toLanguageTags());
+
+        // verify the context that respects the per-app locales
+        Context newContext = ContextCompat.getContextForLanguage(mContext);
+        LocaleListCompat locales = ConfigurationCompat.getLocales(
+                newContext.getResources().getConfiguration());
+        assertEquals(1, locales.size());
+        assertEquals(Locale.JAPAN, locales.get(0));
+    }
+
+    private void setAppLocales(Context context, String locales) {
+        AppLocalesStorageHelper.persistLocales(context, locales);
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 30)
+    public void testCreateAttributionContext() {
+        Context attributionContext = ContextCompat.createAttributionContext(mContext, "tag");
+        assertEquals("tag", attributionContext.getAttributionTag());
+
+        Context attributionContextNull = ContextCompat.createAttributionContext(mContext, null);
+        assertNull(attributionContextNull.getAttributionTag());
     }
 }

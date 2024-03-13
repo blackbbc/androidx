@@ -22,11 +22,11 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin(project(":compose:compiler:compiler"))
 
     debugImplementation(project(":compose:ui:ui-test-manifest"))
 
     implementation(project(":compose:ui:ui"))
+    implementation("androidx.tracing:tracing:1.1.0")
     androidTestImplementation(project(":compose:ui:ui-test-junit4"))
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.testCore)
@@ -36,4 +36,5 @@ android {
     defaultConfig {
         minSdkVersion 21
     }
+    namespace "androidx.compose.ui.test.manifest.integration.testapp"
 }

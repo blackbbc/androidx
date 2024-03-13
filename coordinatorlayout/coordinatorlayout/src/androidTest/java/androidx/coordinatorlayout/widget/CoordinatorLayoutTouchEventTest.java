@@ -558,7 +558,8 @@ public class CoordinatorLayoutTouchEventTest {
         @NonNull
         @Override
         public String toString() {
-            return "MotionEvent#getAction() == " + MotionEvent.actionToString(mAction);
+            String message = "MotionEvent#getAction() == ";
+            return message + MotionEvent.actionToString(mAction);
         }
     }
 

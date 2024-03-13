@@ -17,32 +17,39 @@
 package androidx.camera.video;
 
 import android.annotation.SuppressLint;
+import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
+import android.media.MediaMuxer;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
+import androidx.camera.video.internal.encoder.EncoderConfig;
 import androidx.core.util.Consumer;
 
 import com.google.auto.value.AutoValue;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.Objects;
 
 /**
  * MediaSpec communicates the encoding type and encoder-specific options for both the
  * video and audio inputs to the VideoOutput.
- * @hide
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @RestrictTo(Scope.LIBRARY)
 @AutoValue
 public abstract class MediaSpec {
 
-    private static final String AUDIO_FORMAT_MPEG4 = MediaFormat.MIMETYPE_AUDIO_AAC;
-    private static final String AUDIO_FORMAT_WEBM = "audio/webm";
-    private static final String VIDEO_FORMAT_MPEG4 = MediaFormat.MIMETYPE_VIDEO_AVC;
-    private static final String VIDEO_FORMAT_WEBM = MediaFormat.MIMETYPE_VIDEO_VP8;
+    private static final String AUDIO_ENCODER_MIME_MPEG4_DEFAULT = MediaFormat.MIMETYPE_AUDIO_AAC;
+    private static final String AUDIO_ENCODER_MIME_WEBM_DEFAULT = MediaFormat.MIMETYPE_AUDIO_VORBIS;
+    private static final String VIDEO_ENCODER_MIME_MPEG4_DEFAULT = MediaFormat.MIMETYPE_VIDEO_AVC;
+    private static final String VIDEO_ENCODER_MIME_WEBM_DEFAULT = MediaFormat.MIMETYPE_VIDEO_VP8;
+
+    private static final int AAC_DEFAULT_PROFILE = MediaCodecInfo.CodecProfileLevel.AACObjectLC;
 
     /** The output format representing no preference for output format. */
     public static final int OUTPUT_FORMAT_AUTO = -1;
@@ -51,34 +58,62 @@ public abstract class MediaSpec {
     /** VP8, VP9 media file format */
     public static final int OUTPUT_FORMAT_WEBM = 1;
 
-    /** @hide */
     @IntDef({OUTPUT_FORMAT_AUTO, OUTPUT_FORMAT_MPEG_4, OUTPUT_FORMAT_WEBM})
     @Retention(RetentionPolicy.SOURCE)
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public @interface OutputFormat {
     }
 
+    @RestrictTo(Scope.LIBRARY)
     @NonNull
-    static String outputFormatToAudioMime(@OutputFormat int outputFormat) {
+    public static String outputFormatToAudioMime(@OutputFormat int outputFormat) {
         switch (outputFormat) {
             case MediaSpec.OUTPUT_FORMAT_WEBM:
-                return AUDIO_FORMAT_WEBM;
+                return AUDIO_ENCODER_MIME_WEBM_DEFAULT;
             case MediaSpec.OUTPUT_FORMAT_MPEG_4:
                 // Fall-through
+            case MediaSpec.OUTPUT_FORMAT_AUTO:
+                // Fall-through
             default:
-                return AUDIO_FORMAT_MPEG4;
+                return AUDIO_ENCODER_MIME_MPEG4_DEFAULT;
         }
     }
 
+    @RestrictTo(Scope.LIBRARY)
+    public static int outputFormatToAudioProfile(@OutputFormat int outputFormat) {
+        String audioMime = outputFormatToAudioMime(outputFormat);
+        if (Objects.equals(audioMime, MediaFormat.MIMETYPE_AUDIO_AAC)) {
+            return AAC_DEFAULT_PROFILE;
+        }
+
+        return EncoderConfig.CODEC_PROFILE_NONE;
+    }
+
+    @RestrictTo(Scope.LIBRARY)
     @NonNull
-    static String outputFormatToVideoMime(@OutputFormat int outputFormat) {
+    public static String outputFormatToVideoMime(@OutputFormat int outputFormat) {
         switch (outputFormat) {
             case MediaSpec.OUTPUT_FORMAT_WEBM:
-                return VIDEO_FORMAT_WEBM;
+                return VIDEO_ENCODER_MIME_WEBM_DEFAULT;
             case MediaSpec.OUTPUT_FORMAT_MPEG_4:
                 // Fall-through
+            case MediaSpec.OUTPUT_FORMAT_AUTO:
+                // Fall-through
             default:
-                return VIDEO_FORMAT_MPEG4;
+                return VIDEO_ENCODER_MIME_MPEG4_DEFAULT;
+        }
+    }
+
+    static int outputFormatToMuxerFormat(@OutputFormat int outputFormat) {
+        switch (outputFormat) {
+            case MediaSpec.OUTPUT_FORMAT_WEBM:
+                return MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM;
+            case MediaSpec.OUTPUT_FORMAT_MPEG_4:
+                // Fall-through
+            case MediaSpec.OUTPUT_FORMAT_AUTO:
+                // Fall-through
+            default:
+                return MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4;
         }
     }
 
@@ -123,7 +158,6 @@ public abstract class MediaSpec {
 
     /**
      * The builder for {@link MediaSpec}.
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     @SuppressWarnings("StaticFinalBuilder")

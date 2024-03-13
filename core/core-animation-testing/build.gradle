@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -27,15 +32,18 @@ dependencies {
     api("androidx.annotation:annotation:1.1.0")
     implementation("androidx.core:core:1.3.1")
     implementation(project(":core:core-animation"))
-    implementation(libs.testExtJunit)
-    implementation(libs.testCore)
+    implementation(libs.junit)
 }
 
 androidx {
-    name = "Android Support Animator Testing"
+    name = "Animation Testing"
     publish = Publish.SNAPSHOT_AND_RELEASE
     mavenVersion = LibraryVersions.CORE_ANIMATION_TESTING
-    mavenGroup = LibraryGroups.CORE
     inceptionYear = "2018"
     description = "This library provides functionalities for testing animations for API 14 and above."
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.core.animation.testing"
 }

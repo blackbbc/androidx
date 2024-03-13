@@ -24,25 +24,25 @@ import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composition
 import androidx.compose.runtime.CompositionContext
+import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.UiComposable
 import androidx.compose.ui.node.InternalCoreApi
 import androidx.compose.ui.node.Owner
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import java.lang.ref.WeakReference
 
 /**
  * Base class for custom [android.view.View]s implemented using Jetpack Compose UI.
  * Subclasses should implement the [Content] function with the appropriate content.
  * Calls to [addView] and its variants and overloads will fail with [IllegalStateException].
  *
- * This [android.view.View] requires that the window it is attached to contains a
- * [ViewTreeLifecycleOwner]. This [androidx.lifecycle.LifecycleOwner] is used to
- * [dispose][androidx.compose.runtime.Composition.dispose] of the underlying composition
- * when the host [Lifecycle] is destroyed, permitting the view to be attached and
- * detached repeatedly while preserving the composition. Call [disposeComposition]
- * to dispose of the underlying composition earlier, or if the view is never initially
- * attached to a window. (The requirement to dispose of the composition explicitly
+ * By default, the composition is disposed according to [ViewCompositionStrategy.Default].
+ * Call [disposeComposition] to dispose of the underlying composition earlier, or if the view is
+ * never initially attached to a window. (The requirement to dispose of the composition explicitly
  * in the event that the view is never (re)attached is temporary.)
  */
 abstract class AbstractComposeView @JvmOverloads constructor(
@@ -61,8 +61,10 @@ abstract class AbstractComposeView @JvmOverloads constructor(
      * If this View moves to the [android.view.ViewOverlay] we won't be able
      * to find view tree dependencies; this happens when using transition APIs
      * to animate views out in particular.
+     *
+     * We only ever set this when we're attached to a window.
      */
-    private var cachedViewTreeCompositionContext: CompositionContext? = null
+    private var cachedViewTreeCompositionContext: WeakReference<CompositionContext>? = null
 
     /**
      * The [getWindowToken] of the window this view was last attached to.
@@ -120,11 +122,11 @@ abstract class AbstractComposeView @JvmOverloads constructor(
     // this particular ViewCompositionStrategy is not going to do something harmful with it.
     @Suppress("LeakingThis")
     private var disposeViewCompositionStrategy: (() -> Unit)? =
-        ViewCompositionStrategy.DisposeOnDetachedFromWindow.installFor(this)
+        ViewCompositionStrategy.Default.installFor(this)
 
     /**
      * Set the strategy for managing disposal of this View's internal composition.
-     * Defaults to [ViewCompositionStrategy.DisposeOnDetachedFromWindow].
+     * Defaults to [ViewCompositionStrategy.Default].
      *
      * This View's composition is a live resource that must be disposed to ensure that
      * long-lived references to it do not persist
@@ -149,10 +151,12 @@ abstract class AbstractComposeView @JvmOverloads constructor(
 
     /**
      * Enables the display of visual layout bounds for the Compose UI content of this view.
-     * This is typically managed
+     * This is typically configured using the system developer setting for "Show layout bounds."
      */
     @OptIn(InternalCoreApi::class)
     @InternalComposeUiApi
+    @Suppress("GetterSetterNames")
+    @get:Suppress("GetterSetterNames")
     var showLayoutBounds: Boolean = false
         set(value) {
             field = value
@@ -168,12 +172,14 @@ abstract class AbstractComposeView @JvmOverloads constructor(
      * whichever comes first.
      */
     @Composable
+    @UiComposable
     abstract fun Content()
 
     /**
      * Perform initial composition for this view.
      * Once this method is called or the view becomes attached to a window,
-     * either [disposeComposition] must be called or the [ViewTreeLifecycleOwner] must
+     * either [disposeComposition] must be called or the
+     * [LifecycleOwner] returned by [findViewTreeLifecycleOwner] must
      * reach the [Lifecycle.State.DESTROYED] state for the composition to be cleaned up
      * properly. (This restriction is temporary.)
      *
@@ -201,6 +207,24 @@ abstract class AbstractComposeView @JvmOverloads constructor(
     }
 
     /**
+     * `true` if the [CompositionContext] can be considered to be "alive" for the purposes
+     * of locally caching it in case the view is placed into a ViewOverlay.
+     * [Recomposer]s that are in the [Recomposer.State.ShuttingDown] state or lower should
+     * not be cached or reusedif currently cached, as they will never recompose content.
+     */
+    private val CompositionContext.isAlive: Boolean
+        get() = this !is Recomposer || currentState.value > Recomposer.State.ShuttingDown
+
+    /**
+     * Cache this [CompositionContext] in [cachedViewTreeCompositionContext] if it [isAlive]
+     * and return the [CompositionContext] itself either way.
+     */
+    private fun CompositionContext.cacheIfAlive(): CompositionContext = also { context ->
+        context.takeIf { it.isAlive }
+            ?.let { cachedViewTreeCompositionContext = WeakReference(it) }
+    }
+
+    /**
      * Determine the correct [CompositionContext] to use as the parent of this view's
      * composition. This can result in caching a looked-up [CompositionContext] for use
      * later. See [cachedViewTreeCompositionContext] for more details.
@@ -215,9 +239,9 @@ abstract class AbstractComposeView @JvmOverloads constructor(
      * to do it, as well as still locate any view tree dependencies.
      */
     private fun resolveParentCompositionContext() = parentContext
-        ?: findViewTreeCompositionContext()?.also { cachedViewTreeCompositionContext = it }
-        ?: cachedViewTreeCompositionContext
-        ?: windowRecomposer.also { cachedViewTreeCompositionContext = it }
+        ?: findViewTreeCompositionContext()?.cacheIfAlive()
+        ?: cachedViewTreeCompositionContext?.get()?.takeIf { it.isAlive }
+        ?: windowRecomposer.cacheIfAlive()
 
     @Suppress("DEPRECATION") // Still using ViewGroup.setContent for now
     private fun ensureCompositionCreated() {
@@ -311,6 +335,28 @@ abstract class AbstractComposeView @JvmOverloads constructor(
         getChildAt(0)?.layoutDirection = layoutDirection
     }
 
+    // Transition group handling:
+    // Both the framework and androidx transition APIs use isTransitionGroup as a signal for
+    // determining view properties to capture during a transition. As AbstractComposeView uses
+    // a view subhierarchy to perform its work but operates as a single unit, mark instances as
+    // transition groups by default.
+    // This is implemented as overridden methods instead of setting isTransitionGroup = true in
+    // the constructor so that values set explicitly by xml inflation performed by the ViewGroup
+    // constructor will take precedence. As of this writing all known framework implementations
+    // use the public isTransitionGroup method rather than checking the internal ViewGroup flag
+    // to determine behavior, making this implementation a slight compatibility risk for a
+    // tradeoff of cleaner View-consumer API behavior without the overhead of performing an
+    // additional obtainStyledAttributes call to determine a value potentially overridden from xml.
+
+    private var isTransitionGroupSet = false
+
+    override fun isTransitionGroup(): Boolean = !isTransitionGroupSet || super.isTransitionGroup()
+
+    override fun setTransitionGroup(isTransitionGroup: Boolean) {
+        super.setTransitionGroup(isTransitionGroup)
+        isTransitionGroupSet = true
+    }
+
     // Below: enforce restrictions on adding child views to this ViewGroup
 
     override fun addView(child: View?) {
@@ -352,19 +398,17 @@ abstract class AbstractComposeView @JvmOverloads constructor(
         checkAddView()
         return super.addViewInLayout(child, index, params, preventRequestLayout)
     }
+
+    override fun shouldDelayChildPressedState(): Boolean = false
 }
 
 /**
  * A [android.view.View] that can host Jetpack Compose UI content.
  * Use [setContent] to supply the content composable function for the view.
  *
- * This [android.view.View] requires that the window it is attached to contains a
- * [ViewTreeLifecycleOwner]. This [androidx.lifecycle.LifecycleOwner] is used to
- * [dispose][androidx.compose.runtime.Composition.dispose] of the underlying composition
- * when the host [Lifecycle] is destroyed, permitting the view to be attached and
- * detached repeatedly while preserving the composition. Call [disposeComposition]
- * to dispose of the underlying composition earlier, or if the view is never initially
- * attached to a window. (The requirement to dispose of the composition explicitly
+ * By default, the composition is disposed according to [ViewCompositionStrategy.Default].
+ * Call [disposeComposition] to dispose of the underlying composition earlier, or if the view is
+ * never initially attached to a window. (The requirement to dispose of the composition explicitly
  * in the event that the view is never (re)attached is temporary.)
  */
 class ComposeView @JvmOverloads constructor(

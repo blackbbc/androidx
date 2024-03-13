@@ -1,543 +1,211 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 7.1.0-alpha02" type="baseline" client="cli" name="Lint" variant="all" version="7.1.0-alpha02">
+<issues format="6" by="lint 8.4.0-alpha09" type="baseline" client="gradle" dependencies="false" name="AGP (8.4.0-alpha09)" variant="all" version="8.4.0-alpha09">
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `waitAndScreenShot`"
-        errorLine1="        val bitmap = rule.waitAndScreenShot()"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~">
+        id="BanThreadSleep"
+        message="Uses Thread.sleep()"
+        errorLine1="                Thread.sleep(sleepTime)"
+        errorLine2="                       ~~~~~">
         <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/draw/AlphaTest.kt"
-            line="231"
-            column="27"/>
+            file="src/androidInstrumentedTest/kotlin/androidx/compose/ui/input/pointer/AndroidPointerInputTest.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 29 (current min is 21): `RenderNodeApi29`"
-        errorLine1="        RenderNodeApi29(AndroidComposeView(activity)).apply {"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="ExperimentalPropertyAnnotation"
+        message="This property does not have all required annotations to correctly mark it as experimental."
+        errorLine1="    @InternalComposeUiApi"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/AndroidLayoutDrawTest.kt"
-            line="224"
-            column="9"/>
+            file="src/androidMain/kotlin/androidx/compose/ui/platform/ComposeView.android.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 29 (current min is 21): `dumpRenderNodeData`"
-        errorLine1="        }.dumpRenderNodeData().cameraDistance == cameraDistance"
-        errorLine2="          ~~~~~~~~~~~~~~~~~~">
+        id="ExperimentalPropertyAnnotation"
+        message="This property does not have all required annotations to correctly mark it as experimental."
+        errorLine1="    @ExperimentalComposeUiApi"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/AndroidLayoutDrawTest.kt"
-            line="226"
-            column="11"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/semantics/SemanticsProperties.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 23 (current min is 21): `RenderNodeApi23`"
-        errorLine1="        RenderNodeApi23(AndroidComposeView(activity)).apply {"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="ExperimentalPropertyAnnotation"
+        message="This property does not have all required annotations to correctly mark it as experimental."
+        errorLine1="    @get:ExperimentalComposeUiApi"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/AndroidLayoutDrawTest.kt"
-            line="231"
-            column="9"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/platform/WindowInfo.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 23 (current min is 21): `dumpRenderNodeData`"
-        errorLine1="        }.dumpRenderNodeData().cameraDistance == -cameraDistance // Camera distance is negative"
-        errorLine2="          ~~~~~~~~~~~~~~~~~~">
+        id="ExperimentalPropertyAnnotation"
+        message="This property does not have all required annotations to correctly mark it as experimental."
+        errorLine1="    @get:ExperimentalComposeUiApi"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/AndroidLayoutDrawTest.kt"
-            line="233"
-            column="11"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/platform/WindowInfo.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `waitAndScreenShot`"
-        errorLine1="    val bitmap = waitAndScreenShot()"
-        errorLine2="                 ~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="field children with type Map&lt;Integer, AutofillNode>: replace with IntObjectMap"
+        errorLine1="    val children: MutableMap&lt;Int, AutofillNode> = mutableMapOf()"
+        errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/AndroidLayoutDrawTest.kt"
-            line="3707"
-            column="18"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/autofill/AutofillTree.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `AndroidAutofill`"
-        errorLine1="        androidAutofill = AndroidAutofill(view, autofillTree)"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;Integer, AutofillNode> of getChildren: replace with IntObjectMap"
+        errorLine1="    val children: MutableMap&lt;Int, AutofillNode> = mutableMapOf()"
+        errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPerformAutofillTest.kt"
-            line="46"
-            column="27"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/autofill/AutofillTree.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `android.view.autofill.AutofillValue#forText`"
-        errorLine1="            .apply { append(autofillNode.id, AutofillValue.forText(expectedValue)) }"
-        errorLine2="                                                           ~~~~~~~">
+        id="PrimitiveInCollection"
+        message="variable deltas with type List&lt;? extends Offset>: replace with LongList"
+        errorLine1="    val deltas = items.fastZipWithNext { el1, el2 ->"
+        errorLine2="    ^">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPerformAutofillTest.kt"
-            line="62"
-            column="60"/>
+            file="src/androidMain/kotlin/androidx/compose/ui/platform/accessibility/CollectionInfo.android.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `performAutofill`"
-        errorLine1="        androidAutofill.performAutofill(autofillValues)"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;LayoutNode, Integer> of getMapOfOriginalDepth: replace with ObjectIntMap"
+        errorLine1="    private val mapOfOriginalDepth by lazy(LazyThreadSafetyMode.NONE) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPerformAutofillTest.kt"
-            line="65"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/DepthSortedSet.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `android.view.autofill.AutofillValue#forText`"
-        errorLine1="            .apply { append(autofillNode.id, AutofillValue.forText(expectedValue)) }"
-        errorLine2="                                                           ~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type List&lt;HapticFeedbackType> of values: replace with IntList"
+        errorLine1="        fun values(): List&lt;HapticFeedbackType> = listOf(LongPress, TextHandleMove)"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPerformAutofillTest.kt"
-            line="84"
-            column="60"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/hapticfeedback/HapticFeedbackType.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `performAutofill`"
-        errorLine1="        androidAutofill.performAutofill(autofillValues)"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="field alignmentLineMap with type Map&lt;AlignmentLine, Integer>: replace with ObjectIntMap"
+        errorLine1="    private val alignmentLineMap: MutableMap&lt;AlignmentLine, Int> = hashMapOf()"
+        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPerformAutofillTest.kt"
-            line="87"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LayoutNodeAlignmentLines.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `AndroidAutofill`"
-        errorLine1="        androidAutofill = AndroidAutofill(view, autofillTree)"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;AlignmentLine, Integer> of getLastCalculation: replace with ObjectIntMap"
+        errorLine1="    fun getLastCalculation(): Map&lt;AlignmentLine, Int> = alignmentLineMap"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="50"
-            column="27"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LayoutNodeAlignmentLines.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="        val viewStructure: ViewStructure = FakeAndroidViewStructure()"
-        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;AlignmentLine, Integer> of getAlignmentLinesMap: replace with ObjectIntMap"
+        errorLine1="    protected abstract val NodeCoordinator.alignmentLinesMap: Map&lt;AlignmentLine, Int>"
+        errorLine2="                                                              ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="57"
-            column="44"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LayoutNodeAlignmentLines.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `populateViewStructure`"
-        errorLine1="        androidAutofill.populateViewStructure(viewStructure)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;AlignmentLine, Integer> of calculateAlignmentLines: replace with ObjectIntMap"
+        errorLine1="    fun calculateAlignmentLines(): Map&lt;AlignmentLine, Int>"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="60"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LayoutNodeLayoutDelegate.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 23 (current min is 21): `android.view.ViewStructure#getChildCount`"
-        errorLine1="        assertThat(viewStructure.childCount).isEqualTo(0)"
-        errorLine2="                                 ~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="field oldAlignmentLines with type Map&lt;AlignmentLine, Integer>: replace with ObjectIntMap"
+        errorLine1="    private var oldAlignmentLines: MutableMap&lt;AlignmentLine, Int>? = null"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="63"
-            column="34"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LookaheadDelegate.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="        val viewStructure = FakeAndroidViewStructure()"
-        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="field cachedAlignmentLinesMap with type Map&lt;AlignmentLine, Integer>: replace with ObjectIntMap"
+        errorLine1="    protected val cachedAlignmentLinesMap = mutableMapOf&lt;AlignmentLine, Int>()"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="77"
-            column="29"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LookaheadDelegate.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `populateViewStructure`"
-        errorLine1="        androidAutofill.populateViewStructure(viewStructure)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;AlignmentLine, Integer> of getCachedAlignmentLinesMap: replace with ObjectIntMap"
+        errorLine1="    protected val cachedAlignmentLinesMap = mutableMapOf&lt;AlignmentLine, Int>()"
+        errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="78"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/LookaheadDelegate.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="            FakeAndroidViewStructure().apply {"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;AlignmentLine, Integer> of getAlignmentLines: replace with ObjectIntMap"
+        errorLine1="    val alignmentLines: Map&lt;AlignmentLine, Int>"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="82"
-            column="13"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/layout/MeasureResult.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="                    FakeAndroidViewStructure().apply {"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="method layout has parameter alignmentLines with type Map&lt;AlignmentLine, Integer>: replace with ObjectIntMap"
+        errorLine1="        alignmentLines: Map&lt;AlignmentLine, Int> = emptyMap(),"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="84"
-            column="21"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/layout/MeasureScope.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setAutofillType`"
-        errorLine1="                        setAutofillType(View.AUTOFILL_TYPE_TEXT)"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="field oldAlignmentLines with type Map&lt;AlignmentLine, Integer>: replace with ObjectIntMap"
+        errorLine1="    private var oldAlignmentLines: MutableMap&lt;AlignmentLine, Int>? = null"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="87"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/NodeCoordinator.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setAutofillHints`"
-        errorLine1="                        setAutofillHints(arrayOf(AUTOFILL_HINT_PERSON_NAME))"
-        errorLine2="                        ~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="variable alignmentLines with type Map&lt;AlignmentLine, ? extends Integer>: replace with ObjectIntMap"
+        errorLine1="                val alignmentLines = coordinator._measureResult?.alignmentLines"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="88"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/node/NodeCoordinator.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setDimens`"
-        errorLine1="                        setDimens(0, 0, 0, 0, 0, 0)"
-        errorLine2="                        ~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="return type Map&lt;Integer, SemanticsNode> of getAllSemanticsNodesToMap: replace with IntObjectMap"
+        errorLine1="): Map&lt;Int, SemanticsNode> {"
+        errorLine2="   ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="89"
-            column="25"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/semantics/SemanticsOwner.kt"/>
     </issue>
 
     <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="        val viewStructure: ViewStructure = FakeAndroidViewStructure()"
-        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="PrimitiveInCollection"
+        message="variable nodes with type Map&lt;Integer, SemanticsNode>: replace with IntObjectMap"
+        errorLine1="    val nodes = mutableMapOf&lt;Int, SemanticsNode>()"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="114"
-            column="44"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `populateViewStructure`"
-        errorLine1="        androidAutofill.populateViewStructure(viewStructure)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="115"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="            FakeAndroidViewStructure().apply {"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="119"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="                    FakeAndroidViewStructure().apply {"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="121"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setAutofillType`"
-        errorLine1="                        setAutofillType(View.AUTOFILL_TYPE_TEXT)"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="124"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setAutofillHints`"
-        errorLine1="                        setAutofillHints(arrayOf(AUTOFILL_HINT_PERSON_NAME))"
-        errorLine2="                        ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="125"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setDimens`"
-        errorLine1="                        setDimens(0, 0, 0, 0, 0, 0)"
-        errorLine2="                        ~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="126"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `FakeAndroidViewStructure`"
-        errorLine1="                    FakeAndroidViewStructure().apply {"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="130"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setAutofillType`"
-        errorLine1="                        setAutofillType(View.AUTOFILL_TYPE_TEXT)"
-        errorLine2="                        ~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="133"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setAutofillHints`"
-        errorLine1="                        setAutofillHints(arrayOf(View.AUTOFILL_HINT_EMAIL_ADDRESS))"
-        errorLine2="                        ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="134"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `setDimens`"
-        errorLine1="                        setDimens(0, 0, 0, 0, 0, 0)"
-        errorLine2="                        ~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AndroidPopulateViewStructureTest.kt"
-            line="135"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 23 (current min is 21): `android.content.Context#getSystemService`"
-        errorLine1="            activity.getSystemService(AutofillManager::class.java)"
-        errorLine2="                     ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="60"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Class requires API level 26 (current min is 21): `android.view.autofill.AutofillManager`"
-        errorLine1="            activity.getSystemService(AutofillManager::class.java)"
-        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="60"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `AndroidAutofill`"
-        errorLine1="        androidAutofill = AndroidAutofill(view, autofillTree)"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="63"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `android.view.View#getImportantForAutofill`"
-        errorLine1="        assertThat(view.importantForAutofill).isEqualTo(View.IMPORTANT_FOR_AUTOFILL_YES)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="74"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `requestAutofillForNode`"
-        errorLine1="        androidAutofill.requestAutofillForNode(autofillNode)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="84"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `requestAutofillForNode`"
-        errorLine1="        androidAutofill.requestAutofillForNode(autofillNode)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="101"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `cancelAutofillForNode`"
-        errorLine1="        androidAutofill.cancelAutofillForNode(autofillNode)"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/test/kotlin/androidx/compose/ui/autofill/AutofillNodeTest.kt"
-            line="110"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `waitAndScreenShot`"
-        errorLine1="        val bitmap = rule.waitAndScreenShot()"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/draw/ClipDrawTest.kt"
-            line="524"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 29 (current min is 21): `android.os.Parcel#readBoolean`"
-        errorLine1="        parcel?.readBoolean()"
-        errorLine2="                ~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/platform/DisposableSaveableStateRegistryTest.kt"
-            line="184"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 29 (current min is 21): `android.os.Parcel#readBoolean`"
-        errorLine1="        parcel?.readBoolean()"
-        errorLine2="                ~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/platform/DisposableSaveableStateRegistryTest.kt"
-            line="184"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 29 (current min is 21): `android.os.Parcel#writeBoolean`"
-        errorLine1="        parcel.writeBoolean(true)"
-        errorLine2="               ~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/platform/DisposableSaveableStateRegistryTest.kt"
-            line="188"
-            column="16"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `captureToImage`"
-        errorLine1="    fun SemanticsNodeInteraction.captureToBitmap() = captureToImage().asAndroidBitmap()"
-        errorLine2="                                                     ~~~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/draw/DrawModifierTest.kt"
-            line="638"
-            column="54"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `captureToImage`"
-        errorLine1="            .captureToImage()"
-        errorLine2="             ~~~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/draw/InvalidatingNotPlacedChildTest.kt"
-            line="378"
-            column="14"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `captureToImage`"
-        errorLine1="    val bitmap = onRoot().captureToImage()"
-        errorLine2="                          ~~~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/draw/PainterModifierTest.kt"
-            line="720"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `waitAndScreenShot`"
-        errorLine1="        val bitmap = rule.waitAndScreenShot()"
-        errorLine2="                          ~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/draw/ShadowTest.kt"
-            line="342"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 26 (current min is 21): `captureToImage`"
-        errorLine1="        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()"
-        errorLine2="                                   ~~~~~~~~~~~~~~">
-        <location
-            file="src/androidAndroidTest/kotlin/androidx/compose/ui/graphics/vector/VectorTest.kt"
-            line="481"
-            column="36"/>
+            file="src/commonMain/kotlin/androidx/compose/ui/semantics/SemanticsOwner.kt"/>
     </issue>
 
 </issues>

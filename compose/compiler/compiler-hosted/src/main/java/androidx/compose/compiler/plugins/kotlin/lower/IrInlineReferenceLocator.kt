@@ -17,153 +17,126 @@
 
 package androidx.compose.compiler.plugins.kotlin.lower
 
+import androidx.compose.compiler.plugins.kotlin.ComposeFqNames
+import androidx.compose.compiler.plugins.kotlin.ComposeFqNames.InternalPackage
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
-import org.jetbrains.kotlin.backend.jvm.ir.isInlineParameter
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.declarations.IrDeclaration
-import org.jetbrains.kotlin.ir.declarations.IrDeclarationBase
+import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
-import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrBlock
-import org.jetbrains.kotlin.ir.expressions.IrCallableReference
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
-import org.jetbrains.kotlin.ir.util.dump
+import org.jetbrains.kotlin.ir.symbols.IrFunctionSymbol
+import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.classOrNull
+import org.jetbrains.kotlin.ir.types.isNullable
+import org.jetbrains.kotlin.ir.util.constructedClass
+import org.jetbrains.kotlin.ir.util.hasAnnotation
+import org.jetbrains.kotlin.ir.util.isFunction
 import org.jetbrains.kotlin.ir.util.isLambda
-import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
+import org.jetbrains.kotlin.ir.util.isSuspendFunction
+import org.jetbrains.kotlin.ir.util.packageFqName
+import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
+import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
+import org.jetbrains.kotlin.ir.visitors.acceptVoid
 
-internal open class IrInlineReferenceLocator(private val context: IrPluginContext) :
-    IrElementVisitor<Unit, IrDeclaration?> {
-    override fun visitElement(element: IrElement, data: IrDeclaration?) {
-        element.acceptChildren(this, data)
-    }
+class ComposeInlineLambdaLocator(private val context: IrPluginContext) {
+    private val inlineLambdaToParameter = mutableMapOf<IrFunctionSymbol, IrValueParameter>()
+    private val inlineFunctionExpressions = mutableSetOf<IrExpression>()
 
-    override fun visitDeclaration(declaration: IrDeclarationBase, data: IrDeclaration?) {
-        val scope = if (declaration is IrVariable) data else declaration
-        declaration.acceptChildren(this, scope)
-    }
+    fun isInlineLambda(irFunction: IrFunction): Boolean =
+        irFunction.symbol in inlineLambdaToParameter.keys
 
-    override fun visitValueParameter(declaration: IrValueParameter, data: IrDeclaration?) {
-        val parent = declaration.parent as? IrFunction
-        if (parent?.isInline == true && declaration.isInlineParameter()) {
-            val defaultValue = declaration.defaultValue
-            if (defaultValue != null) {
-                if (defaultValue.expression.isInlineIrExpression()) {
-                    visitInlineable(
-                        defaultValue.expression,
-                        declaration.parent as IrFunction,
-                        declaration,
-                        data!!
-                    )
+    fun isCrossinlineLambda(irFunction: IrFunction): Boolean =
+        inlineLambdaToParameter[irFunction.symbol]?.isCrossinline == true
+
+    fun isInlineFunctionExpression(expression: IrExpression): Boolean =
+        expression in inlineFunctionExpressions
+
+    fun preservesComposableScope(irFunction: IrFunction): Boolean =
+        inlineLambdaToParameter[irFunction.symbol]?.let {
+            !it.isCrossinline && !it.type.hasAnnotation(ComposeFqNames.DisallowComposableCalls)
+        } ?: false
+
+    // Locate all inline lambdas in the scope of the given IrElement.
+    fun scan(element: IrElement) {
+        element.acceptVoid(object : IrElementVisitorVoid {
+            override fun visitElement(element: IrElement) {
+                element.acceptChildrenVoid(this)
+            }
+
+            override fun visitValueParameter(declaration: IrValueParameter) {
+                declaration.acceptChildrenVoid(this)
+                val parent = declaration.parent as? IrFunction
+                if (parent?.isInlineFunctionCall(context) == true &&
+                    declaration.isInlinedFunction()) {
+                    declaration.defaultValue?.expression?.unwrapLambda()?.let {
+                        inlineLambdaToParameter[it] = declaration
+                    }
                 }
             }
-        }
-        super.visitValueParameter(declaration, data)
-    }
 
-    override fun visitFunctionAccess(expression: IrFunctionAccessExpression, data: IrDeclaration?) {
-        val function = expression.symbol.owner
-        if (function.isInlineFunctionCall(context)) {
-            for (parameter in function.valueParameters) {
-                if (!parameter.isInlineParameter())
-                    continue
-
-                val valueArgument = expression.getValueArgument(parameter.index) ?: continue
-                if (!valueArgument.isInlineIrExpression())
-                    continue
-
-                visitInlineable(valueArgument, function, parameter, data!!)
-            }
-        }
-        return super.visitFunctionAccess(expression, data)
-    }
-
-    private fun visitInlineable(
-        value: IrExpression,
-        callee: IrFunction,
-        parameter: IrValueParameter,
-        scope: IrDeclaration
-    ) {
-        if (value is IrBlock) {
-            visitInlineLambda(
-                value.statements.last() as IrFunctionReference,
-                callee,
-                parameter,
-                scope
-            )
-        } else if (value is IrFunctionExpression) {
-            visitInlineLambda(value, callee, parameter, scope)
-        } else if (value is IrCallableReference<*>) {
-            visitInlineReference(value)
-        }
-    }
-
-    open fun visitInlineReference(argument: IrCallableReference<*>) {}
-
-    open fun visitInlineLambda(
-        argument: IrFunctionReference,
-        callee: IrFunction,
-        parameter: IrValueParameter,
-        scope: IrDeclaration
-    ) = visitInlineReference(argument)
-
-    open fun visitInlineLambda(
-        argument: IrFunctionExpression,
-        callee: IrFunction,
-        parameter: IrValueParameter,
-        scope: IrDeclaration
-    ) {}
-
-    companion object {
-        fun scan(context: IrPluginContext, element: IrElement): Set<InlineLambdaInfo> =
-            mutableSetOf<InlineLambdaInfo>().apply {
-                element.accept(
-                    object : IrInlineReferenceLocator(context) {
-                        override fun visitInlineLambda(
-                            argument: IrFunctionExpression,
-                            callee: IrFunction,
-                            parameter: IrValueParameter,
-                            scope: IrDeclaration
-                        ) {
-                            add(InlineLambdaInfo(argument, callee, parameter, scope))
+            override fun visitFunctionAccess(expression: IrFunctionAccessExpression) {
+                expression.acceptChildrenVoid(this)
+                val function = expression.symbol.owner
+                if (function.isInlineFunctionCall(context)) {
+                    for (parameter in function.valueParameters) {
+                        if (parameter.isInlinedFunction()) {
+                            expression.getValueArgument(parameter.index)
+                                ?.also { inlineFunctionExpressions += it }
+                                ?.unwrapLambda()
+                                ?.let { inlineLambdaToParameter[it] = parameter }
                         }
-                    },
-                    null
-                )
+                    }
+                }
             }
+        })
     }
 }
 
-data class InlineLambdaInfo(
-    val argument: IrFunctionExpression,
-    val callee: IrFunction,
-    val parameter: IrValueParameter,
-    val scope: IrDeclaration
-)
+// TODO: There is a Kotlin command line option to disable inlining (-Xno-inline). The code
+//       should check for this option.
+private fun IrFunction.isInlineFunctionCall(context: IrPluginContext) =
+    isInline || isInlineArrayConstructor(context)
 
-@Suppress("UNUSED_PARAMETER")
-fun IrFunction.isInlineFunctionCall(context: IrPluginContext) =
-    (/*!context.state.isInlineDisabled */ true || typeParameters.any { it.isReified }) && isInline
-
-fun IrExpression.isInlineIrExpression() =
-    when (this) {
-        is IrBlock -> origin.isInlineIrExpression()
-        is IrCallableReference<*> -> true.also {
-            assert((0 until valueArgumentsCount).count { getValueArgument(it) != null } == 0) {
-                "Expecting 0 value arguments for bounded callable reference: ${dump()}"
-            }
-        }
-        is IrFunctionExpression -> origin.isInlineIrExpression()
-        else -> false
+// Constructors can't be marked as inline in metadata, hence this hack.
+private fun IrFunction.isInlineArrayConstructor(context: IrPluginContext): Boolean =
+    this is IrConstructor && valueParameters.size == 2 && constructedClass.symbol.let {
+        it == context.irBuiltIns.arrayClass ||
+            it in context.irBuiltIns.primitiveArraysToPrimitiveTypes
     }
 
-fun IrStatementOrigin?.isInlineIrExpression(): Boolean {
-    if (isLambda) return true
-    if (this == IrStatementOrigin.ADAPTED_FUNCTION_REFERENCE) return true
-    if (this == IrStatementOrigin.SUSPEND_CONVERSION) return true
-    return false
+fun IrExpression.unwrapLambda(): IrFunctionSymbol? = when {
+    this is IrBlock && origin.isLambdaBlockOrigin ->
+        (statements.lastOrNull() as? IrFunctionReference)?.symbol
+
+    this is IrFunctionExpression ->
+        function.symbol
+
+    else ->
+        null
 }
+
+private val IrStatementOrigin?.isLambdaBlockOrigin: Boolean
+    get() = isLambda || this == IrStatementOrigin.ADAPTED_FUNCTION_REFERENCE ||
+        this == IrStatementOrigin.SUSPEND_CONVERSION
+
+// This is copied from JvmIrInlineUtils.kt in the Kotlin compiler, since we
+// need to check for synthetic composable functions.
+private fun IrValueParameter.isInlinedFunction(): Boolean =
+    index >= 0 && !isNoinline && (type.isFunction() || type.isSuspendFunction() ||
+        type.isSyntheticComposableFunction()) &&
+        // Parameters with default values are always nullable, so check the expression too.
+        // Note that the frontend has a diagnostic for nullable inline parameters, so actually
+        // making this return `false` requires using `@Suppress`.
+        (!type.isNullable() || defaultValue?.expression?.type?.isNullable() == false)
+
+fun IrType.isSyntheticComposableFunction() =
+    classOrNull?.owner?.let {
+        it.name.asString().startsWith("ComposableFunction") &&
+            it.packageFqName == InternalPackage
+    } ?: false

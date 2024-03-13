@@ -16,22 +16,23 @@
 
 package androidx.camera.core.impl;
 
+import android.util.Range;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.camera.core.CameraSelector;
+import androidx.annotation.RequiresApi;
 import androidx.camera.core.ExtendableBuilder;
 import androidx.camera.core.UseCase;
+import androidx.camera.core.impl.stabilization.StabilizationMode;
 import androidx.camera.core.internal.TargetConfig;
 import androidx.camera.core.internal.UseCaseEventConfig;
-import androidx.core.util.Consumer;
-
-import java.util.Collection;
 
 /**
  * Configuration containing options for use cases.
  *
  * @param <T> The use case being configured.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public interface UseCaseConfig<T extends UseCase> extends TargetConfig<T>, UseCaseEventConfig,
         ImageInputConfig {
     // Option Declarations:
@@ -42,11 +43,13 @@ public interface UseCaseConfig<T extends UseCase> extends TargetConfig<T>, UseCa
      */
     Option<SessionConfig> OPTION_DEFAULT_SESSION_CONFIG =
             Option.create("camerax.core.useCase.defaultSessionConfig", SessionConfig.class);
+
     /**
      * Option: camerax.core.useCase.defaultCaptureConfig
      */
     Option<CaptureConfig> OPTION_DEFAULT_CAPTURE_CONFIG =
             Option.create("camerax.core.useCase.defaultCaptureConfig", CaptureConfig.class);
+
     /**
      * Option: camerax.core.useCase.sessionConfigUnpacker
      *
@@ -56,6 +59,7 @@ public interface UseCaseConfig<T extends UseCase> extends TargetConfig<T>, UseCa
     Option<SessionConfig.OptionUnpacker> OPTION_SESSION_CONFIG_UNPACKER =
             Option.create("camerax.core.useCase.sessionConfigUnpacker",
                     SessionConfig.OptionUnpacker.class);
+
     /**
      * Option: camerax.core.useCase.captureConfigUnpacker
      *
@@ -65,22 +69,48 @@ public interface UseCaseConfig<T extends UseCase> extends TargetConfig<T>, UseCa
     Option<CaptureConfig.OptionUnpacker> OPTION_CAPTURE_CONFIG_UNPACKER =
             Option.create("camerax.core.useCase.captureConfigUnpacker",
                     CaptureConfig.OptionUnpacker.class);
+
     /**
      * Option: camerax.core.useCase.surfaceOccypyPriority
      */
     Option<Integer> OPTION_SURFACE_OCCUPANCY_PRIORITY =
             Option.create("camerax.core.useCase.surfaceOccupancyPriority", int.class);
+
     /**
-     * Option: camerax.core.useCase.cameraSelector
+     * Option: camerax.core.useCase.targetFrameRate
      */
-    Option<CameraSelector> OPTION_CAMERA_SELECTOR =
-            Config.Option.create("camerax.core.useCase.cameraSelector", CameraSelector.class);
+    Option<Range<Integer>> OPTION_TARGET_FRAME_RATE =
+            Config.Option.create("camerax.core.useCase.targetFrameRate", Range.class);
+
     /**
-     * Option: camerax.core.useCase.attachedUseCasesUpdateListener
+     * Option: camerax.core.useCase.zslDisabled
      */
-    Option<Consumer<Collection<UseCase>>> OPTION_ATTACHED_USE_CASES_UPDATE_LISTENER =
-            Config.Option.create("camerax.core.useCase.attachedUseCasesUpdateListener",
-                    Consumer.class);
+    Option<Boolean> OPTION_ZSL_DISABLED =
+            Option.create("camerax.core.useCase.zslDisabled", boolean.class);
+
+    /**
+     * Option: camerax.core.useCase.highResolutionDisabled
+     */
+    Option<Boolean> OPTION_HIGH_RESOLUTION_DISABLED =
+            Option.create("camerax.core.useCase.highResolutionDisabled", boolean.class);
+
+    /**
+     * Option: camerax.core.useCase.highResolutionDisabled
+     */
+    Option<UseCaseConfigFactory.CaptureType> OPTION_CAPTURE_TYPE = Option.create(
+            "camerax.core.useCase.captureType", UseCaseConfigFactory.CaptureType.class);
+
+    /**
+     * Option: camerax.core.useCase.previewStabilizationMode
+     */
+    Option<Integer> OPTION_PREVIEW_STABILIZATION_MODE =
+            Option.create("camerax.core.useCase.previewStabilizationMode", int.class);
+
+    /**
+     * Option: camerax.core.useCase.videoStabilizationMode
+     */
+    Option<Integer> OPTION_VIDEO_STABILIZATION_MODE =
+            Option.create("camerax.core.useCase.videoStabilizationMode", int.class);
 
     // *********************************************************************************************
 
@@ -234,52 +264,72 @@ public interface UseCaseConfig<T extends UseCase> extends TargetConfig<T>, UseCa
     }
 
     /**
-     * Retrieves the camera selector that this use case requires.
-     *
-     * @param valueIfMissing The value to return if this configuration option has not been set.
-     * @return The stored value or <code>valueIfMissing</code> if the value does not exist in this
-     * configuration.
+     * Retrieves target frame rate
+     * @param valueIfMissing
+     * @return the stored value or <code>valueIfMissing</code> if the value does not exist in
+     * this configuration
      */
     @Nullable
-    default CameraSelector getCameraSelector(@Nullable CameraSelector valueIfMissing) {
-        return retrieveOption(OPTION_CAMERA_SELECTOR, valueIfMissing);
+    default Range<Integer> getTargetFrameRate(@Nullable Range<Integer> valueIfMissing) {
+        return retrieveOption(OPTION_TARGET_FRAME_RATE, valueIfMissing);
     }
 
     /**
-     * Retrieves the camera selector that this use case requires.
+     * Retrieves the target frame rate
      *
      * @return The stored value, if it exists in this configuration.
      * @throws IllegalArgumentException if the option does not exist in this configuration.
      */
     @NonNull
-    default CameraSelector getCameraSelector() {
-        return retrieveOption(OPTION_CAMERA_SELECTOR);
+    default Range<Integer> getTargetFrameRate() {
+        return retrieveOption(OPTION_TARGET_FRAME_RATE);
     }
 
     /**
-     * Retrieves the attached use cases update listener that will be updated when one or more use
-     * cases are attached or detached.
+     * Retrieves the flag whether zero-shutter lag is disabled.
      *
      * @param valueIfMissing The value to return if this configuration option has not been set.
-     * @return The stored value or <code>valueIfMissing</code> if the value does not exist in this
-     * configuration.
+     * @return The stored value or <code>valueIfMissing</code> if the value does not exist in
+     * this configuration
      */
-    @Nullable
-    default Consumer<Collection<UseCase>> getAttachedUseCasesUpdateListener(
-            @Nullable Consumer<Collection<UseCase>> valueIfMissing) {
-        return retrieveOption(OPTION_ATTACHED_USE_CASES_UPDATE_LISTENER, valueIfMissing);
+    default boolean isZslDisabled(boolean valueIfMissing) {
+        return retrieveOption(OPTION_ZSL_DISABLED, valueIfMissing);
     }
 
     /**
-     * Retrieves the attached use cases update listener that will be updated when the use case is
-     * attached.
+     * Retrieves the flag whether high resolution is disabled.
      *
-     * @return The stored value, if it exists in this configuration.
-     * @throws IllegalArgumentException if the option does not exist in this configuration.
+     * @param valueIfMissing The value to return if this configuration option has not been set.
+     * @return The stored value or <code>valueIfMissing</code> if the value does not exist in
+     * this configuration
+     */
+    default boolean isHigResolutionDisabled(boolean valueIfMissing) {
+        return retrieveOption(OPTION_HIGH_RESOLUTION_DISABLED, valueIfMissing);
+    }
+
+    /**
+     * @return The {@link UseCaseConfigFactory.CaptureType} of this UseCaseConfig.
      */
     @NonNull
-    default Consumer<Collection<UseCase>> getAttachedUseCasesUpdateListener() {
-        return retrieveOption(OPTION_ATTACHED_USE_CASES_UPDATE_LISTENER);
+    default UseCaseConfigFactory.CaptureType getCaptureType() {
+        return retrieveOption(OPTION_CAPTURE_TYPE);
+    }
+
+    /**
+     * @return The preview stabilization mode of this UseCaseConfig.
+     */
+    @StabilizationMode.Mode
+    default int getPreviewStabilizationMode() {
+        return retrieveOption(OPTION_PREVIEW_STABILIZATION_MODE,
+                StabilizationMode.UNSPECIFIED);
+    }
+
+    /**
+     * @return The video stabilization mode of this UseCaseConfig.
+     */
+    @StabilizationMode.Mode
+    default int getVideoStabilizationMode() {
+        return retrieveOption(OPTION_VIDEO_STABILIZATION_MODE, StabilizationMode.UNSPECIFIED);
     }
 
     /**
@@ -351,25 +401,41 @@ public interface UseCaseConfig<T extends UseCase> extends TargetConfig<T>, UseCa
         B setSurfaceOccupancyPriority(int priority);
 
         /**
-         * Sets the camera selector that this use case requires.
+         * Sets zsl disabled or not.
          *
-         * @param cameraSelector The camera filter appended internally.
-         * @return The current Builder.
+         * <p> Zsl will be disabled when any of the following conditions:
+         * <ul>
+         *     <li> Extension is ON
+         *     <li> Flash mode is ON or AUTO
+         *     <li> VideoCapture is ON
+         * </ul>
+         *
+         * @param disabled True if zero-shutter lag should be disabled. Otherwise, should not be
+         *                 disabled. However, enabling zero-shutter lag needs other conditions e.g.
+         *                 flash mode OFF, so setting to false doesn't guarantee zero-shutter lag to
+         *                 be always ON.
          */
         @NonNull
-        B setCameraSelector(@NonNull CameraSelector cameraSelector);
+        B setZslDisabled(boolean disabled);
 
         /**
-         * Sets the attached use cases update listener that will be updated when the use case is
-         * attached.
+         * Sets high resolution disabled or not.
          *
-         * @param attachedUseCasesUpdateListener The attached use cases update listener appended
-         *                                       internally.
-         * @return The current Builder.
+         * <p> High resolution will be disabled when Extension is ON.
+         *
+         * @param disabled True if high resolution should be disabled. Otherwise, should not be
+         *                 disabled.
          */
         @NonNull
-        B setAttachedUseCasesUpdateListener(
-                @NonNull Consumer<Collection<UseCase>> attachedUseCasesUpdateListener);
+        B setHighResolutionDisabled(boolean disabled);
+
+        /**
+         * Sets the capture type for this configuration.
+         *
+         * @param captureType The capture type for this use case.
+         */
+        @NonNull
+        B setCaptureType(@NonNull UseCaseConfigFactory.CaptureType captureType);
 
         /**
          * Retrieves the configuration used by this builder.

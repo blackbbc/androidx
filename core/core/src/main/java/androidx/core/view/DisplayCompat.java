@@ -27,6 +27,7 @@ import android.os.Build;
 import android.text.TextUtils;
 import android.view.Display;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -74,11 +75,7 @@ public final class DisplayCompat {
         }
 
         displaySize = new Point();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            Api17Impl.getRealSize(display, displaySize);
-        } else {
-            display.getSize(displaySize);
-        }
+        display.getRealSize(displaySize);
         return displaySize;
     }
 
@@ -167,7 +164,7 @@ public final class DisplayCompat {
 
         // Check the system property for display size.
         String displaySize = getSystemProperty(property);
-        if (TextUtils.isEmpty(displaySize)) {
+        if (TextUtils.isEmpty(displaySize) || displaySize == null) {
             return null;
         }
 
@@ -275,9 +272,9 @@ public final class DisplayCompat {
         static boolean isCurrentModeTheLargestMode(@NonNull Display display) {
             Display.Mode currentMode = display.getMode();
             Display.Mode[] supportedModes = display.getSupportedModes();
-            for (int i = 0; i < supportedModes.length; ++i) {
-                if (currentMode.getPhysicalHeight() < supportedModes[i].getPhysicalHeight()
-                        || currentMode.getPhysicalWidth() < supportedModes[i].getPhysicalWidth()) {
+            for (Display.Mode supportedMode : supportedModes) {
+                if (currentMode.getPhysicalHeight() < supportedMode.getPhysicalHeight()
+                        || currentMode.getPhysicalWidth() < supportedMode.getPhysicalWidth()) {
                     return false;
                 }
             }
@@ -300,15 +297,6 @@ public final class DisplayCompat {
         static boolean physicalSizeEquals(Display.Mode mode, Display.Mode otherMode) {
             return mode.getPhysicalWidth() == otherMode.getPhysicalWidth()
                     && mode.getPhysicalHeight() == otherMode.getPhysicalHeight();
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
-    static class Api17Impl {
-        private Api17Impl() {}
-
-        static void getRealSize(Display display, Point displaySize) {
-            display.getRealSize(displaySize);
         }
     }
 
@@ -343,7 +331,8 @@ public final class DisplayCompat {
         ModeCompat(@NonNull Display.Mode mode, boolean isNative) {
             Preconditions.checkNotNull(mode, "mode == null, can't wrap a null reference");
             // This simplifies the getPhysicalWidth() / getPhysicalHeight functions below
-            mPhysicalSize = new Point(mode.getPhysicalWidth(), mode.getPhysicalHeight());
+            mPhysicalSize = new Point(Api23Impl.getPhysicalWidth(mode),
+                    Api23Impl.getPhysicalHeight(mode));
             mMode = mode;
             mIsNative = isNative;
         }
@@ -401,6 +390,22 @@ public final class DisplayCompat {
         public Display.Mode toMode() {
             return mMode;
         }
+
+        @RequiresApi(23)
+        static class Api23Impl {
+            private Api23Impl() {
+                // This class is not instantiable.
+            }
+
+            @DoNotInline
+            static int getPhysicalWidth(Display.Mode mode) {
+                return mode.getPhysicalWidth();
+            }
+
+            @DoNotInline
+            static int getPhysicalHeight(Display.Mode mode) {
+                return mode.getPhysicalHeight();
+            }
+        }
     }
 }
-

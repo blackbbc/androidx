@@ -31,12 +31,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Button
 import androidx.compose.material.Icon
+import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.ModalDrawer
+import androidx.compose.material.Scaffold
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
@@ -49,6 +52,8 @@ import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCompositionContext
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Alignment
@@ -58,16 +63,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.inspection.compose.flatten
 import androidx.compose.ui.inspection.testdata.TestActivity
+import androidx.compose.ui.inspection.util.ThreadUtils
 import androidx.compose.ui.layout.GraphicLayerInfo
+import androidx.compose.ui.node.Ref
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.isDebugInspectorInfoEnabled
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.toFontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.data.Group
 import androidx.compose.ui.tooling.data.UiToolingDataApi
@@ -85,14 +99,14 @@ import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import java.util.Collections
+import java.util.WeakHashMap
+import kotlin.math.roundToInt
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.Collections
-import java.util.WeakHashMap
-import kotlin.math.roundToInt
 
 private const val DEBUG = false
 private const val ROOT_ID = 3L
@@ -108,6 +122,9 @@ class LayoutInspectorTreeTest {
 
     @get:Rule
     val composeTestRule = createAndroidComposeRule<TestActivity>()
+
+    private val fontFamily = Font(androidx.testutils.fonts.R.font.sample_font)
+        .toFontFamily()
 
     @Before
     fun before() {
@@ -157,14 +174,103 @@ class LayoutInspectorTreeTest {
     @Test
     fun buildTree() {
         val slotTableRecord = CompositionDataRecord.create()
-
+        val localDensity = Density(density = 1f, fontScale = 1f)
         show {
             Inspectable(slotTableRecord) {
-                Column {
-                    Text(text = "Hello World", color = Color.Green)
-                    Icon(Icons.Filled.FavoriteBorder, null)
-                    Surface {
-                        Button(onClick = {}) { Text(text = "OK") }
+                CompositionLocalProvider(LocalDensity provides localDensity) {
+                    Column {
+                        // width: 100.dp, height: 10.dp
+                        Text(
+                            text = "helloworld",
+                            color = Color.Green,
+                            fontSize = 10.sp,
+                            lineHeight = 10.sp,
+                            fontFamily = fontFamily
+                        )
+                        // width: 24.dp, height: 24.dp
+                        Icon(Icons.Filled.FavoriteBorder, null)
+                        Surface {
+                            // minwidth: 64.dp, height: 42.dp
+                            Button(onClick = {}) {
+                                // width: 20.dp, height: 10.dp
+                                Text(
+                                    text = "ok",
+                                    fontSize = 10.sp,
+                                    lineHeight = 10.sp,
+                                    fontFamily = fontFamily
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODO: Find out if we can set "settings put global debug_view_attributes 1" in tests
+        val view = findAndroidComposeView()
+        view.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
+        val builder = LayoutInspectorTree()
+        builder.includeAllParameters = true
+        val nodes = builder.convert(view)
+        dumpNodes(nodes, view, builder)
+
+        validate(nodes, builder, density = localDensity) {
+            node(
+                name = "Column",
+                fileName = "LayoutInspectorTreeTest.kt",
+                left = 0.0.dp, top = 0.0.dp, width = 100.dp, height = 82.dp,
+                children = listOf("Text", "Icon", "Surface"),
+                inlined = true,
+            )
+            node(
+                name = "Text",
+                isRenderNode = true,
+                fileName = "LayoutInspectorTreeTest.kt",
+                left = 0.dp, top = 0.0.dp, width = 100.dp, height = 10.dp,
+            )
+            node(
+                name = "Icon",
+                isRenderNode = true,
+                fileName = "LayoutInspectorTreeTest.kt",
+                left = 0.dp, top = 10.dp, width = 24.dp, height = 24.dp,
+            )
+            node(
+                name = "Surface",
+                fileName = "LayoutInspectorTreeTest.kt",
+                isRenderNode = true,
+                left = 0.dp, top = 34.dp, width = 64.dp, height = 48.dp,
+                children = listOf("Button")
+            )
+            node(
+                name = "Button",
+                fileName = "LayoutInspectorTreeTest.kt",
+                isRenderNode = true,
+                left = 0.dp, top = 40.dp, width = 64.dp, height = 36.dp,
+                children = listOf("Text")
+            )
+            node(
+                name = "Text",
+                isRenderNode = true,
+                fileName = "LayoutInspectorTreeTest.kt",
+                left = 21.dp, top = 53.dp, width = 23.dp, height = 10.dp,
+            )
+        }
+    }
+
+    @Test
+    fun buildTreeWithTransformedText() {
+        val slotTableRecord = CompositionDataRecord.create()
+        val localDensity = Density(density = 1f, fontScale = 1f)
+        show {
+            Inspectable(slotTableRecord) {
+                CompositionLocalProvider(LocalDensity provides localDensity) {
+                    Column {
+                        Text(
+                            text = "helloworld",
+                            fontSize = 10.sp,
+                            fontFamily = fontFamily,
+                            modifier = Modifier.graphicsLayer(rotationZ = -90f)
+                        )
                     }
                 }
             }
@@ -177,84 +283,21 @@ class LayoutInspectorTreeTest {
         val nodes = builder.convert(view)
         dumpNodes(nodes, view, builder)
 
-        validate(nodes, builder) {
+        validate(nodes, builder, density = localDensity) {
             node(
                 name = "Column",
+                hasTransformations = false,
                 fileName = "LayoutInspectorTreeTest.kt",
-                left = 0.0.dp, top = 0.0.dp, width = 72.0.dp, height = 78.9.dp,
-                children = listOf("Text", "Icon", "Surface")
-            )
-            node(
-                name = "Text",
-                isRenderNode = true,
-                fileName = "LayoutInspectorTreeTest.kt",
-                left = 0.0.dp, top = 0.0.dp, width = 72.0.dp, height = 18.9.dp,
-            )
-            node(
-                name = "Icon",
-                isRenderNode = true,
-                fileName = "LayoutInspectorTreeTest.kt",
-                left = 0.0.dp, top = 18.9.dp, width = 24.0.dp, height = 24.0.dp,
-            )
-            node(
-                name = "Surface",
-                fileName = "LayoutInspectorTreeTest.kt",
-                isRenderNode = true,
-                left = 0.0.dp, top = 42.9.dp, width = 64.0.dp, height = 36.0.dp,
-                children = listOf("Button")
-            )
-            node(
-                name = "Button",
-                fileName = "LayoutInspectorTreeTest.kt",
-                isRenderNode = true,
-                left = 0.0.dp, top = 42.9.dp, width = 64.0.dp, height = 36.0.dp,
-                children = listOf("Text")
-            )
-            node(
-                name = "Text",
-                isRenderNode = true,
-                fileName = "LayoutInspectorTreeTest.kt",
-                left = 21.7.dp, top = 51.5.dp, width = 20.9.dp, height = 18.9.dp,
-            )
-        }
-    }
-
-    @Test
-    fun buildTreeWithTransformedText() {
-        val slotTableRecord = CompositionDataRecord.create()
-
-        show {
-            Inspectable(slotTableRecord) {
-                MaterialTheme {
-                    Text(
-                        text = "Hello World",
-                        modifier = Modifier.graphicsLayer(rotationZ = 225f)
-                    )
-                }
-            }
-        }
-
-        // TODO: Find out if we can set "settings put global debug_view_attributes 1" in tests
-        val view = findAndroidComposeView()
-        view.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
-        val builder = LayoutInspectorTree()
-        val nodes = builder.convert(view)
-        dumpNodes(nodes, view, builder)
-
-        validate(nodes, builder) {
-            node(
-                name = "MaterialTheme",
-                hasTransformations = true,
-                fileName = "LayoutInspectorTreeTest.kt",
-                left = 68.0.dp, top = 49.8.dp, width = 88.6.dp, height = 21.7.dp,
-                children = listOf("Text")
+                left = 0.dp, top = 0.dp, width = 100.dp, height = 10.dp,
+                children = listOf("Text"),
+                inlined = true,
             )
             node(
                 name = "Text",
                 isRenderNode = true,
                 hasTransformations = true,
                 fileName = "LayoutInspectorTreeTest.kt",
-                left = 68.0.dp, top = 49.8.dp, width = 88.6.dp, height = 21.7.dp,
+                left = 45.dp, top = 55.dp, width = 100.dp, height = 10.dp,
             )
         }
     }
@@ -283,16 +326,13 @@ class LayoutInspectorTreeTest {
         val nodes = builder.convert(view)
         dumpNodes(nodes, view, builder)
 
-        if (DEBUG) {
-            validate(nodes, builder) {
-                node("Box", children = listOf("ModalDrawer"))
-                node("ModalDrawer", children = listOf("Column", "Text"))
-                node("Column", children = listOf("Text", "Button"))
-                node("Text")
-                node("Button", children = listOf("Text"))
-                node("Text")
-                node("Text")
-            }
+        validate(nodes, builder) {
+            node("ModalDrawer", isRenderNode = true, children = listOf("Column", "Text"))
+            node("Column", inlined = true, children = listOf("Text", "Button"))
+            node("Text", isRenderNode = true)
+            node("Button", isRenderNode = true, children = listOf("Text"))
+            node("Text", isRenderNode = true)
+            node("Text", isRenderNode = true)
         }
         assertThat(nodes.size).isEqualTo(1)
     }
@@ -324,7 +364,6 @@ class LayoutInspectorTreeTest {
 
         if (DEBUG) {
             validate(nodes, builder) {
-                node("Box", children = listOf("ModalDrawer"))
                 node("ModalDrawer", children = listOf("WithConstraints"))
                 node("WithConstraints", children = listOf("SubcomposeLayout"))
                 node("SubcomposeLayout", children = listOf("Box"))
@@ -396,13 +435,22 @@ class LayoutInspectorTreeTest {
         val view = findAndroidComposeView()
         view.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
         val builder = LayoutInspectorTree()
+        builder.includeAllParameters = false
         val node = builder.convert(view)
             .flatMap { flatten(it) }
             .firstOrNull { it.name == "BasicText" }
 
         assertThat(node).isNotNull()
+        assertThat(node?.parameters).isEmpty()
 
-        assertThat(node?.parameters).isNotEmpty()
+        // Get parameters for the Spacer after getting the tree without parameters:
+        val paramsNode = builder.findParameters(view, node!!.anchorId)!!
+        val params = builder.convertParameters(
+            ROOT_ID, paramsNode, ParameterKind.Normal, MAX_RECURSIONS, MAX_ITERABLE_SIZE
+        )
+        assertThat(params).isNotEmpty()
+        val text = params.find { it.name == "text" }
+        assertThat(text?.value).isEqualTo("Some text")
     }
 
     @Test
@@ -451,17 +499,18 @@ class LayoutInspectorTreeTest {
         val builder = LayoutInspectorTree()
         val nodes = builder.convert(androidComposeView)
         validate(nodes, builder, checkSemantics = true) {
-            node("Column", children = listOf("Text", "Row", "Row"))
+            node("Column", children = listOf("Text", "Row", "Row"), inlined = true)
             node(
                 name = "Text",
                 isRenderNode = true,
                 mergedSemantics = "[Studio]",
-                unmergedSemantics = "[Studio]"
+                unmergedSemantics = "[Studio]",
             )
             node(
                 name = "Row",
                 children = listOf("Text", "Text"),
-                mergedSemantics = "[Hello, World]"
+                mergedSemantics = "[Hello, World]",
+                inlined = true,
             )
             node("Text", isRenderNode = true, unmergedSemantics = "[Hello]")
             node("Text", isRenderNode = true, unmergedSemantics = "[World]")
@@ -469,7 +518,8 @@ class LayoutInspectorTreeTest {
                 name = "Row",
                 children = listOf("Text", "Text"),
                 mergedSemantics = "[to]",
-                unmergedSemantics = "[to]"
+                unmergedSemantics = "[to]",
+                inlined = true,
             )
             node("Text", isRenderNode = true, unmergedSemantics = "[Hello]")
             node("Text", isRenderNode = true, unmergedSemantics = "[World]")
@@ -498,6 +548,7 @@ class LayoutInspectorTreeTest {
         val composeViews = findAllAndroidComposeViews()
         val appView = composeViews[0]
         val dialogView = composeViews[1]
+        assertThat(composeViews).hasSize(2)
         appView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
         dialogView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
 
@@ -512,7 +563,8 @@ class LayoutInspectorTreeTest {
             node(
                 name = "Column",
                 fileName = "LayoutInspectorTreeTest.kt",
-                children = listOf("Text")
+                children = listOf("Text"),
+                inlined = true,
             )
             node(
                 name = "Text",
@@ -576,7 +628,8 @@ class LayoutInspectorTreeTest {
                 name = "Column",
                 isRenderNode = true,
                 fileName = "LayoutInspectorTreeTest.kt",
-                children = listOf("Text")
+                children = listOf("Text"),
+                inlined = true,
             )
             node(
                 name = "Text",
@@ -626,18 +679,70 @@ class LayoutInspectorTreeTest {
         builder.hideSystemNodes = false
         val nodes = builder.convert(composeView)
         dumpNodes(nodes, composeView, builder)
-        val androidView = nodes.flatMap { flatten(it) }.single { it.name == "AndroidView" }
+        val androidView = nodes.flatMap { flatten(it) }.first { it.name == "AndroidView" }
+        assertThat(androidView.viewId).isEqualTo(0)
 
         validate(listOf(androidView), builder) {
             node(
                 name = "AndroidView",
                 fileName = "LayoutInspectorTreeTest.kt",
+                children = listOf("AndroidView")
+            )
+            node(
+                name = "AndroidView",
+                fileName = "AndroidView.android.kt",
                 children = listOf("ComposeNode")
             )
             node(
                 name = "ComposeNode",
                 fileName = "AndroidView.android.kt",
                 hasViewIdUnder = composeView,
+                inlined = true,
+            )
+        }
+    }
+
+    @Test
+    fun testAndroidViewWithOnResetOverload() {
+        val slotTableRecord = CompositionDataRecord.create()
+
+        show {
+            Inspectable(slotTableRecord) {
+                Column {
+                    Text("Compose Text")
+                    AndroidView(
+                        factory = { context ->
+                            TextView(context).apply {
+                                text = "AndroidView"
+                            }
+                        },
+                        onReset = {
+                            // Do nothing, just use the overload.
+                        }
+                    )
+                }
+            }
+        }
+        val composeView = findAndroidComposeView() as ViewGroup
+        composeView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
+        val builder = LayoutInspectorTree()
+        builder.hideSystemNodes = false
+        val nodes = builder.convert(composeView)
+        dumpNodes(nodes, composeView, builder)
+        val androidView = nodes.flatMap { flatten(it) }.first { it.name == "AndroidView" }
+        assertThat(androidView.viewId).isEqualTo(0)
+
+        validate(listOf(androidView), builder) {
+            node(
+                name = "AndroidView",
+                fileName = "LayoutInspectorTreeTest.kt",
+                children = listOf("ReusableComposeNode")
+            )
+            node(
+                name = "ReusableComposeNode",
+                fileName = "AndroidView.android.kt",
+                hasViewIdUnder = composeView,
+                inlined = true,
             )
         }
     }
@@ -746,12 +851,13 @@ class LayoutInspectorTreeTest {
         dumpNodes(nodes, androidComposeView, builder)
 
         validate(nodes, builder, checkLineNumbers = true, checkRenderNodes = false) {
-            node("Column", lineNumber = testLine + 5, children = listOf("Title"))
+            node("Column", lineNumber = testLine + 5, children = listOf("Title"), inlined = true)
             node("Title", lineNumber = testLine + 6, children = listOf("Column"))
             node(
                 name = "Column",
                 lineNumber = titleLine + 4,
-                children = listOf("Spacer", "Text", "Text", "Spacer", "Text", "Spacer")
+                children = listOf("Spacer", "Text", "Text", "Spacer", "Text", "Spacer"),
+                inlined = true,
             )
             node("Spacer", lineNumber = titleLine + 11)
             node("Text", lineNumber = titleLine + 12)
@@ -763,12 +869,14 @@ class LayoutInspectorTreeTest {
     }
 
     @Composable
-    fun First() {
+    @Suppress("UNUSED_PARAMETER")
+    fun First(p1: Int) {
         Text("First")
     }
 
     @Composable
-    fun Second() {
+    @Suppress("UNUSED_PARAMETER")
+    fun Second(p2: Int) {
         Text("Second")
     }
 
@@ -778,11 +886,16 @@ class LayoutInspectorTreeTest {
 
         show {
             Inspectable(slotTableRecord) {
-                val showFirst by remember { mutableStateOf(true) }
-                Crossfade(showFirst) {
-                    when (it) {
-                        true -> First()
-                        false -> Second()
+                Column {
+                    var showFirst by remember { mutableStateOf(true) }
+                    Button(onClick = { showFirst = !showFirst }) {
+                        Text("Button")
+                    }
+                    Crossfade(showFirst) {
+                        when (it) {
+                            true -> First(p1 = 1)
+                            false -> Second(p2 = 2)
+                        }
                     }
                 }
             }
@@ -790,18 +903,37 @@ class LayoutInspectorTreeTest {
         val androidComposeView = findAndroidComposeView()
         androidComposeView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
         val builder = LayoutInspectorTree()
-        builder.hideSystemNodes = false
-        val first = builder.convert(androidComposeView)
-            .flatMap { flatten(it) }
-            .first { it.name == "First" }
+        builder.includeAllParameters = true
+        val tree1 = builder.convert(androidComposeView)
+        val first = tree1.flatMap { flatten(it) }.single { it.name == "First" }
         val hash = packageNameHash(this.javaClass.name.substringBeforeLast('.'))
         assertThat(first.fileName).isEqualTo("LayoutInspectorTreeTest.kt")
         assertThat(first.packageHash).isEqualTo(hash)
-    }
+        assertThat(first.parameters.map { it.name }).contains("p1")
 
-    @Composable
-    fun InlineParameters(size: Dp, fontSize: TextUnit) {
-        Text("$size $fontSize")
+        val cross1 = tree1.flatMap { flatten(it) }.single { it.name == "Crossfade" }
+        val button1 = tree1.flatMap { flatten(it) }.single { it.name == "Button" }
+        val column1 = tree1.flatMap { flatten(it) }.single { it.name == "Column" }
+
+        assertThat(cross1.id).isGreaterThan(RESERVED_FOR_GENERATED_IDS)
+        assertThat(button1.id).isGreaterThan(RESERVED_FOR_GENERATED_IDS)
+        assertThat(column1.id).isLessThan(RESERVED_FOR_GENERATED_IDS)
+
+        composeTestRule.onNodeWithText("Button").performClick()
+        composeTestRule.runOnIdle {
+            val tree2 = builder.convert(androidComposeView)
+            val second = tree2.flatMap { flatten(it) }.first { it.name == "Second" }
+            assertThat(second.fileName).isEqualTo("LayoutInspectorTreeTest.kt")
+            assertThat(second.packageHash).isEqualTo(hash)
+            assertThat(second.parameters.map { it.name }).contains("p2")
+
+            val cross2 = tree2.flatMap { flatten(it) }.first { it.name == "Crossfade" }
+            val button2 = tree2.flatMap { flatten(it) }.single { it.name == "Button" }
+            val column2 = tree2.flatMap { flatten(it) }.single { it.name == "Column" }
+            assertThat(cross2.id).isNotEqualTo(cross1.id)
+            assertThat(button2.id).isEqualTo(button1.id)
+            assertThat(column2.id).isEqualTo(column1.id)
+        }
     }
 
     @Test
@@ -817,6 +949,7 @@ class LayoutInspectorTreeTest {
         androidComposeView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
         val builder = LayoutInspectorTree()
         builder.hideSystemNodes = false
+        builder.includeAllParameters = true
         val inlineParameters = builder.convert(androidComposeView)
             .flatMap { flatten(it) }
             .first { it.name == "InlineParameters" }
@@ -824,6 +957,84 @@ class LayoutInspectorTreeTest {
         assertThat(inlineParameters.parameters[0].value?.javaClass).isEqualTo(Dp::class.java)
         assertThat(inlineParameters.parameters[1].name).isEqualTo("fontSize")
         assertThat(inlineParameters.parameters[1].value?.javaClass).isEqualTo(TextUnit::class.java)
+        assertThat(inlineParameters.parameters).hasSize(2)
+    }
+
+    @Test
+    fun testRemember() {
+        val slotTableRecord = CompositionDataRecord.create()
+
+        // Regression test for: b/235526153
+        // The method: SubCompositionRoots.remember had code like this:
+        //   group.data.filterIsInstance<Ref<ViewRootForInspector>>().singleOrNull()?.value
+        // which would cause a ClassCastException if the data contained a Ref to something
+        // else than a ViewRootForInspector instance. This would crash the app.
+        show {
+            Inspectable(slotTableRecord) {
+                rememberCompositionContext()
+                val stringReference = remember { Ref<String>() }
+                stringReference.value = "Hello"
+            }
+        }
+        val androidComposeView = findAndroidComposeView()
+        androidComposeView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
+        val builder = LayoutInspectorTree()
+        builder.hideSystemNodes = false
+        builder.includeAllParameters = false
+    }
+
+    @Test // regression test for b/311436726
+    fun testLazyColumn() {
+        val slotTableRecord = CompositionDataRecord.create()
+
+        show {
+            Inspectable(slotTableRecord) {
+                LazyColumn(modifier = Modifier.testTag("LazyColumn")) {
+                    items(100) { index ->
+                        Text(text = "Item: $index")
+                    }
+                }
+            }
+        }
+
+        val androidComposeView = findAndroidComposeView()
+        androidComposeView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
+        val builder = LayoutInspectorTree()
+        builder.hideSystemNodes = false
+        builder.includeAllParameters = true
+        ThreadUtils.runOnMainThread {
+            builder.convert(androidComposeView)
+        }
+        for (index in 20..40) {
+            composeTestRule.onNodeWithTag("LazyColumn").performScrollToIndex(index)
+        }
+        ThreadUtils.runOnMainThread {
+            builder.convert(androidComposeView)
+        }
+    }
+
+    @Test
+    fun testScaffold() {
+        val slotTableRecord = CompositionDataRecord.create()
+
+        show {
+            Inspectable(slotTableRecord) {
+                Scaffold {
+                    Column {
+                        LinearProgressIndicator(progress = 0.3F)
+                    }
+                }
+            }
+        }
+        val androidComposeView = findAndroidComposeView()
+        androidComposeView.setTag(R.id.inspection_slot_table_set, slotTableRecord.store)
+        val builder = LayoutInspectorTree()
+        builder.hideSystemNodes = false
+        builder.includeAllParameters = true
+        val linearProgressIndicator = builder.convert(androidComposeView)
+            .flatMap { flatten(it) }
+            .firstOrNull { it.name == "LinearProgressIndicator" }
+        assertThat(linearProgressIndicator).isNotNull()
     }
 
     @Suppress("SameParameterValue")
@@ -834,6 +1045,7 @@ class LayoutInspectorTreeTest {
         checkSemantics: Boolean = false,
         checkLineNumbers: Boolean = false,
         checkRenderNodes: Boolean = true,
+        density: Density = this.density,
         block: TreeValidationReceiver.() -> Unit = {}
     ) {
         if (DEBUG) {
@@ -866,6 +1078,7 @@ class LayoutInspectorTreeTest {
             fileName: String? = null,
             lineNumber: Int = -1,
             isRenderNode: Boolean = false,
+            inlined: Boolean = false,
             hasViewIdUnder: View? = null,
             hasTransformations: Boolean = false,
             mergedSemantics: String = "",
@@ -880,6 +1093,7 @@ class LayoutInspectorTreeTest {
             assertWithMessage("No such node found: $name").that(nodeIterator.hasNext()).isTrue()
             val node = nodeIterator.next()
             assertThat(node.name).isEqualTo(name)
+            assertThat(node.anchorId).isNotEqualTo(UNDEFINED_ID)
             val message = "Node: $name"
             assertWithMessage(message).that(node.children.map { it.name })
                 .containsExactlyElementsIn(children).inOrder()
@@ -887,6 +1101,7 @@ class LayoutInspectorTreeTest {
             if (lineNumber != -1) {
                 assertWithMessage(message).that(node.lineNumber).isEqualTo(lineNumber)
             }
+            assertWithMessage(message).that(node.inlined).isEqualTo(inlined)
             if (checkRenderNodes) {
                 if (isRenderNode) {
                     assertWithMessage(message).that(node.id).isGreaterThan(0L)
@@ -1117,8 +1332,6 @@ private class CompositionDataRecordImpl : CompositionDataRecord {
  *
  * @param compositionDataRecord [CompositionDataRecord] to record the SlotTable used in the
  * composition of [content]
- *
- * @suppress
  */
 @Composable
 @OptIn(InternalComposeApi::class)
@@ -1134,4 +1347,9 @@ internal fun Inspectable(
         LocalInspectionTables provides store,
         content = content
     )
+}
+
+@Composable
+fun InlineParameters(size: Dp, fontSize: TextUnit) {
+    Text("$size $fontSize")
 }

@@ -19,7 +19,7 @@ package androidx.testutils
 import android.app.Activity
 import android.os.Bundle
 import android.util.Log
-import androidx.testutils.test.R
+import androidx.testutils.runtime.R
 
 class TestActivity : Activity(), Resettable {
     override fun setFinishEnabled(finishEnabled: Boolean) {
@@ -32,6 +32,7 @@ class TestActivity : Activity(), Resettable {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.content_view)
         println("onCreate")
+        @Suppress("Deprecation")
         overridePendingTransition(0, 0)
     }
 
@@ -48,6 +49,7 @@ class TestActivity : Activity(), Resettable {
         }
 
         super.finish()
+        @Suppress("Deprecation")
         overridePendingTransition(0, 0)
     }
 

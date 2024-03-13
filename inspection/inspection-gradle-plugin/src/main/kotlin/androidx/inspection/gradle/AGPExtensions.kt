@@ -16,10 +16,25 @@
 
 package androidx.inspection.gradle
 
-import org.gradle.api.Project
+import com.android.build.api.variant.Variant
 import java.io.File
 import java.util.Locale
+import org.gradle.api.Project
+import org.gradle.api.file.Directory
+import org.gradle.api.provider.Provider
 
+internal fun Variant.taskName(baseName: String) =
+    "$baseName${name.replaceFirstChar(Char::titlecase)}"
+
+internal fun Project.taskWorkingDir(
+    variant: Variant,
+    baseName: String
+): Provider<Directory> {
+    return layout.buildDirectory.dir("androidx_inspection/$baseName/${variant.name}")
+}
+
+// Functions below will be removed once registerGenerateProguardDetectionFileTask is migrated
+// that needs newly added function "addGeneratedSourceDirectory"
 @Suppress("DEPRECATION") // BaseVariant
 internal fun com.android.build.gradle.api.BaseVariant.taskName(baseName: String) =
     "$baseName${name.capitalize(Locale.ENGLISH)}"

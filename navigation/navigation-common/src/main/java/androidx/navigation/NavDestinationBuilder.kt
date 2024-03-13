@@ -148,12 +148,6 @@ public open class NavDestinationBuilder<out D : NavDestination> internal constru
      */
     public open fun build(): D {
         return navigator.createDestination().also { destination ->
-            if (route != null) {
-                destination.route = route
-            }
-            if (id != -1) {
-                destination.id = id
-            }
             destination.label = label
             arguments.forEach { (name, argument) ->
                 destination.addArgument(name, argument)
@@ -163,6 +157,12 @@ public open class NavDestinationBuilder<out D : NavDestination> internal constru
             }
             actions.forEach { (actionId, action) ->
                 destination.putAction(actionId, action)
+            }
+            if (route != null) {
+                destination.route = route
+            }
+            if (id != -1) {
+                destination.id = id
             }
         }
     }
@@ -248,6 +248,22 @@ public class NavArgumentBuilder {
         set(value) {
             field = value
             builder.setDefaultValue(value)
+        }
+
+    /**
+     * Set whether there is an unknown default value present.
+     *
+     * Use with caution!! In general you should let [defaultValue] to automatically set this state.
+     * This state should be set to true only if all these conditions are met:
+     *
+     * 1. There is default value present
+     * 2. You do not have access to actual default value (thus you can't use [defaultValue])
+     * 3. You know the default value will never ever be null if [nullable] is true.
+     */
+    internal var unknownDefaultValuePresent: Boolean = false
+        set(value) {
+            field = value
+            builder.setUnknownDefaultValuePresent(value)
         }
 
     /**

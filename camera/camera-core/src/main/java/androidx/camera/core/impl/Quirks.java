@@ -18,6 +18,7 @@ package androidx.camera.core.impl;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,7 @@ import java.util.List;
  * Wraps a list of {@link Quirk}s, allowing to easily retrieve a {@link Quirk} instance by its
  * class.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public class Quirks {
 
     @NonNull
@@ -55,6 +57,28 @@ public class Quirks {
             }
         }
         return null;
+    }
+
+    /**
+     * Retrieves all {@link Quirk}s of the same or inherited type as the given type.
+     *
+     * <p>Unlike {@link #get(Class)}, a quirk can only be retrieved by the exact class. If a
+     * superclass or superinterface is provided, all the inherited classes will be returned.
+     *
+     * @param quirkClass The super type of quirk to retrieve.
+     * @return A {@link Quirk} list of the provided type. An empty list is returned if it isn't
+     * found.
+     */
+    @SuppressWarnings("unchecked")
+    @NonNull
+    public <T extends Quirk> List<T> getAll(@NonNull Class<T> quirkClass) {
+        List<T> list = new ArrayList<>();
+        for (Quirk quirk : mQuirks) {
+            if (quirkClass.isAssignableFrom(quirk.getClass())) {
+                list.add((T) quirk);
+            }
+        }
+        return list;
     }
 
     /**

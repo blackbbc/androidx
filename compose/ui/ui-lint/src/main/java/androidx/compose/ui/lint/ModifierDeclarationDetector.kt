@@ -20,9 +20,7 @@ package androidx.compose.ui.lint
 
 import androidx.compose.lint.Names
 import androidx.compose.lint.inheritsFrom
-import androidx.compose.lint.isComposable
 import androidx.compose.lint.toKmFunction
-import androidx.compose.ui.lint.ModifierDeclarationDetector.Companion.ComposableModifierFactory
 import androidx.compose.ui.lint.ModifierDeclarationDetector.Companion.ModifierFactoryReturnType
 import com.android.tools.lint.client.api.UElementHandler
 import com.android.tools.lint.detector.api.Category
@@ -37,6 +35,7 @@ import com.android.tools.lint.detector.api.SourceCodeScanner
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiType
 import com.intellij.psi.impl.compiled.ClsMethodImpl
+import java.util.EnumSet
 import kotlinx.metadata.KmClassifier
 import org.jetbrains.kotlin.psi.KtCallableDeclaration
 import org.jetbrains.kotlin.psi.KtDeclarationWithBody
@@ -45,7 +44,7 @@ import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.psi.KtUserType
-import org.jetbrains.kotlin.psi.psiUtil.containingClass
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UMethod
 import org.jetbrains.uast.UThisExpression
@@ -55,7 +54,6 @@ import org.jetbrains.uast.resolveToUElement
 import org.jetbrains.uast.toUElement
 import org.jetbrains.uast.tryResolve
 import org.jetbrains.uast.visitor.AbstractUastVisitor
-import java.util.EnumSet
 
 /**
  * [Detector] that checks functions returning Modifiers for consistency with guidelines.
@@ -90,41 +88,26 @@ class ModifierDeclarationDetector : Detector(), SourceCodeScanner {
 
             // Ignore properties in some cases
             if (source is KtProperty) {
-                // If this node is inside a class, ignore it.
-                if (source.containingClass() != null) return
+                // If this node is inside a class or object, ignore it.
+                if (source.containingClassOrObject != null) return
                 // If this node is a var, ignore it.
                 if (source.isVar) return
                 // If this node is a val with no getter, ignore it.
                 if (source.getter == null) return
             }
             if (source is KtPropertyAccessor) {
-                // If this node is inside a class, ignore it.
-                if (source.property.containingClass() != null) return
+                // If this node is inside a class or object, ignore it.
+                if (source.property.containingClassOrObject != null) return
                 // If this node is a getter on a var, ignore it.
                 if (source.property.isVar) return
             }
 
-            node.checkComposability(context)
             node.checkReturnType(context, returnType)
             node.checkReceiver(context)
         }
     }
 
     companion object {
-        val ComposableModifierFactory = Issue.create(
-            "ComposableModifierFactory",
-            "Modifier factory functions should not be @Composable",
-            "Modifier factory functions that need to be aware of the composition should use " +
-                "androidx.compose.ui.composed {} in their implementation instead of being marked " +
-                "as @Composable. This allows Modifiers to be referenced in top level variables " +
-                "and constructed outside of the composition.",
-            Category.CORRECTNESS, 3, Severity.WARNING,
-            Implementation(
-                ModifierDeclarationDetector::class.java,
-                EnumSet.of(Scope.JAVA_FILE, Scope.TEST_SOURCES)
-            )
-        )
-
         val ModifierFactoryReturnType = Issue.create(
             "ModifierFactoryReturnType",
             "Modifier factory functions should return Modifier",
@@ -166,48 +149,6 @@ class ModifierDeclarationDetector : Detector(), SourceCodeScanner {
                 ModifierDeclarationDetector::class.java,
                 EnumSet.of(Scope.JAVA_FILE, Scope.TEST_SOURCES)
             )
-        )
-    }
-}
-
-/**
- * @see [ModifierDeclarationDetector.ComposableModifierFactory]
- */
-private fun UMethod.checkComposability(context: JavaContext) {
-    if (isComposable) {
-        val source = sourcePsi as KtDeclarationWithBody
-
-        val replaceWhitespaceRegex = "[\\s\\t\\n\\r]+"
-
-        val body = source.bodyExpression!!.text
-
-        val newBody = if (source.hasBlockBody()) {
-            "= composed " + body.replace("return$replaceWhitespaceRegex".toRegex(), "")
-        } else {
-            "composed { $body }"
-        }
-
-        val scope = if (source is KtPropertyAccessor) source.property else source
-
-        val functionWithoutComposable = scope.text
-            .replaceFirst("@Composable$replaceWhitespaceRegex".toRegex(), "")
-            .replaceFirst("@get:Composable$replaceWhitespaceRegex".toRegex(), "")
-
-        val newFunction = functionWithoutComposable.replace(body, newBody)
-        context.report(
-            ComposableModifierFactory,
-            this,
-            context.getNameLocation(this),
-            "Modifier factory functions should not be marked as @Composable, and should " +
-                "use composed instead",
-            LintFix.create()
-                .replace()
-                .name("Replace @Composable with composed call")
-                .range(context.getLocation(scope))
-                .all()
-                .with(newFunction)
-                .autoFix()
-                .build()
         )
     }
 }

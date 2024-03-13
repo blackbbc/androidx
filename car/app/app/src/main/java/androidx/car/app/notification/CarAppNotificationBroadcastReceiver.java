@@ -41,12 +41,12 @@ import androidx.car.app.utils.RemoteUtils;
  *
  * <p>This is only used for Android Auto.
  *
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP)
 public class CarAppNotificationBroadcastReceiver extends BroadcastReceiver {
     private static final String TAG = LogTags.TAG + ".NBR";
 
+    @SuppressWarnings("deprecation")
     @Override
     public void onReceive(@NonNull Context context, @NonNull Intent intent) {
         ComponentName appComponent =

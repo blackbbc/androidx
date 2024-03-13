@@ -16,27 +16,20 @@
 
 package androidx.core.net;
 
-import static android.net.ConnectivityManager.TYPE_BLUETOOTH;
-import static android.net.ConnectivityManager.TYPE_ETHERNET;
-import static android.net.ConnectivityManager.TYPE_MOBILE;
-import static android.net.ConnectivityManager.TYPE_MOBILE_DUN;
-import static android.net.ConnectivityManager.TYPE_MOBILE_HIPRI;
-import static android.net.ConnectivityManager.TYPE_MOBILE_MMS;
-import static android.net.ConnectivityManager.TYPE_MOBILE_SUPL;
-import static android.net.ConnectivityManager.TYPE_WIFI;
-import static android.net.ConnectivityManager.TYPE_WIMAX;
-
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Build;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RequiresPermission;
 import androidx.annotation.RestrictTo;
 
@@ -46,8 +39,8 @@ import java.lang.annotation.RetentionPolicy;
 /**
  * Helper for accessing features in {@link ConnectivityManager}.
  */
+@SuppressWarnings("unused")
 public final class ConnectivityManagerCompat {
-    /** @hide */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(value = {
@@ -95,35 +88,9 @@ public final class ConnectivityManagerCompat {
      *        {@code false}.
      */
     @SuppressWarnings("deprecation")
-    @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
+    @RequiresPermission(Manifest.permission.ACCESS_NETWORK_STATE)
     public static boolean isActiveNetworkMetered(@NonNull ConnectivityManager cm) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            return cm.isActiveNetworkMetered();
-        } else {
-            final NetworkInfo info = cm.getActiveNetworkInfo();
-            if (info == null) {
-                // err on side of caution
-                return true;
-            }
-
-            final int type = info.getType();
-            switch (type) {
-                case TYPE_MOBILE:
-                case TYPE_MOBILE_DUN:
-                case TYPE_MOBILE_HIPRI:
-                case TYPE_MOBILE_MMS:
-                case TYPE_MOBILE_SUPL:
-                case TYPE_WIMAX:
-                    return true;
-                case TYPE_WIFI:
-                case TYPE_BLUETOOTH:
-                case TYPE_ETHERNET:
-                    return false;
-                default:
-                    // err on side of caution
-                    return true;
-            }
-        }
+        return cm.isActiveNetworkMetered();
     }
 
     /**
@@ -133,9 +100,10 @@ public final class ConnectivityManagerCompat {
      * potentially-stale value from
      * {@link ConnectivityManager#EXTRA_NETWORK_INFO}. May be {@code null}.
      */
+    @SuppressWarnings("deprecation")
     @SuppressLint("ReferencesDeprecated")
     @Nullable
-    @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
+    @RequiresPermission(Manifest.permission.ACCESS_NETWORK_STATE)
     public static NetworkInfo getNetworkInfoFromBroadcast(@NonNull ConnectivityManager cm,
             @NonNull Intent intent) {
         final NetworkInfo info = intent.getParcelableExtra(ConnectivityManager.EXTRA_NETWORK_INFO);
@@ -157,11 +125,23 @@ public final class ConnectivityManagerCompat {
     @RestrictBackgroundStatus
     public static int getRestrictBackgroundStatus(@NonNull ConnectivityManager cm) {
         if (Build.VERSION.SDK_INT >= 24) {
-            return cm.getRestrictBackgroundStatus();
+            return Api24Impl.getRestrictBackgroundStatus(cm);
         } else {
             return RESTRICT_BACKGROUND_STATUS_ENABLED;
         }
     }
 
     private ConnectivityManagerCompat() {}
+
+    @RequiresApi(24)
+    static class Api24Impl {
+        private Api24Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static int getRestrictBackgroundStatus(ConnectivityManager connectivityManager) {
+            return connectivityManager.getRestrictBackgroundStatus();
+        }
+    }
 }

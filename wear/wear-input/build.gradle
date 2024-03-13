@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -33,10 +38,11 @@ dependencies {
     testImplementation(libs.testRunner)
     testImplementation(libs.testRules)
     testImplementation(libs.robolectric)
-    testImplementation(libs.mockitoCore)
+    testImplementation(libs.mockitoCore4)
     testImplementation(project(":wear:wear-input-testing"))
 
     compileOnly(fileTree(dir: "../wear_stubs", include: ["com.google.android.wearable-stubs.jar"]))
+    compileOnly(project(":annotation:annotation-sampled"))
 }
 
 android {
@@ -46,13 +52,15 @@ android {
 
     // Use Robolectric 4.+
     testOptions.unitTests.includeAndroidResources = true
+    namespace "androidx.wear.input"
 }
 
 androidx {
-    name = "Android Wear Support Input"
+    name = "Android Wear Input"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.WEAR
     mavenVersion = LibraryVersions.WEAR_INPUT
     inceptionYear = "2020"
     description = "Android Wear Support Input"
+    metalavaK2UastEnabled = true
+    samples(project(":wear:wear-input-samples"))
 }

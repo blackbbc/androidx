@@ -1,4 +1,10 @@
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -18,9 +24,13 @@ dependencies {
 }
 
 androidx {
-    name = "Android Support Palette"
+    name = "Palette"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.PALETTE
     inceptionYear = "2014"
     description = "Android Support Palette"
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.palette"
 }

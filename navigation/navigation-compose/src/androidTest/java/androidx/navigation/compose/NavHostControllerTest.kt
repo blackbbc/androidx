@@ -16,17 +16,17 @@
 
 package androidx.navigation.compose
 
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
+import androidx.navigation.NoOpNavigator
 import androidx.navigation.createGraph
 import androidx.navigation.get
-import androidx.navigation.plusAssign
-import androidx.navigation.testing.TestNavHostController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.testutils.TestNavigator
@@ -44,10 +44,69 @@ class NavHostControllerTest {
     val composeTestRule = createComposeRule()
 
     @Test
+    fun testRememberNavController() {
+        lateinit var navController: NavHostController
+
+        composeTestRule.setContent {
+            navController = rememberNavController()
+            // get state to trigger recompose on navigate
+            navController.currentBackStackEntryAsState().value
+            NavHost(navController, startDestination = "first") {
+                composable("first") { BasicText("first") }
+                composable("second") { BasicText("second") }
+            }
+        }
+
+        val navigator = composeTestRule.runOnIdle {
+            navController.navigatorProvider[ComposeNavigator::class]
+        }
+
+        // trigger recompose
+        composeTestRule.runOnIdle {
+            navController.navigate("second")
+        }
+
+        composeTestRule.runOnIdle {
+            assertThat(navController.navigatorProvider[ComposeNavigator::class])
+                .isEqualTo(navigator)
+        }
+    }
+
+    @Test
+    fun testRememberNavControllerAddsCustomNavigator() {
+        lateinit var navController: NavHostController
+
+        composeTestRule.setContent {
+            val customNavigator = remember { NoOpNavigator() }
+            navController = rememberNavController(customNavigator)
+            // get state to trigger recompose on navigate
+            navController.currentBackStackEntryAsState().value
+            NavHost(navController, startDestination = "first") {
+                composable("first") { BasicText("first") }
+                composable("second") { BasicText("second") }
+            }
+        }
+
+        val navigator = composeTestRule.runOnIdle {
+            navController.navigatorProvider[NoOpNavigator::class]
+        }
+
+        // trigger recompose
+        composeTestRule.runOnIdle {
+            navController.navigate("second")
+        }
+
+        composeTestRule.runOnIdle {
+            assertThat(navController.navigatorProvider[NoOpNavigator::class])
+                .isEqualTo(navigator)
+        }
+    }
+
+    @Test
     fun testCurrentBackStackEntrySetGraph() {
         var currentBackStackEntry: State<NavBackStackEntry?> = mutableStateOf(null)
         composeTestRule.setContent {
-            val navController = createNavController()
+            val navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -66,7 +125,7 @@ class NavHostControllerTest {
         var currentBackStackEntry: State<NavBackStackEntry?> = mutableStateOf(null)
         lateinit var navController: NavController
         composeTestRule.setContent {
-            navController = createNavController()
+            navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -92,9 +151,9 @@ class NavHostControllerTest {
     @Test
     fun testCurrentBackStackEntryPop() {
         var currentBackStackEntry: State<NavBackStackEntry?> = mutableStateOf(null)
-        lateinit var navController: TestNavHostController
+        lateinit var navController: NavHostController
         composeTestRule.setContent {
-            navController = createNavController()
+            navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -105,7 +164,7 @@ class NavHostControllerTest {
         }
 
         composeTestRule.runOnUiThread {
-            navController.setCurrentDestination(SECOND_DESTINATION)
+            navController.navigate(SECOND_DESTINATION)
             navController.popBackStack()
         }
 
@@ -119,7 +178,7 @@ class NavHostControllerTest {
         var currentBackStackEntry: State<NavBackStackEntry?> = mutableStateOf(null)
         lateinit var navController: NavController
         composeTestRule.setContent {
-            navController = createNavController()
+            navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -155,7 +214,7 @@ class NavHostControllerTest {
         var currentBackStackEntry: State<NavBackStackEntry?> = mutableStateOf(null)
         lateinit var navController: NavController
         composeTestRule.setContent {
-            navController = createNavController()
+            navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -191,10 +250,42 @@ class NavHostControllerTest {
     }
 
     @Test
+    fun testNavigateOptionSingleTopDifferentArguments() {
+        var value = ""
+        lateinit var navController: NavHostController
+        composeTestRule.setContent {
+            navController = rememberNavController()
+
+            NavHost(navController, startDestination = "first?arg={arg}") {
+                composable("first?arg={arg}") { entry ->
+                    if (entry.arguments?.containsKey("arg") == true) {
+                        value = entry.arguments?.getString("arg", "").toString()
+                    }
+                }
+            }
+        }
+
+        composeTestRule.runOnUiThread {
+            navController.navigate("first?arg=value2") {
+                launchSingleTop = true
+            }
+        }
+        composeTestRule.runOnIdle {
+            val navigator = navController.navigatorProvider.get<ComposeNavigator>(
+                navController.currentDestination?.navigatorName!!
+            )
+            assertWithMessage("there should be 1 destination on back stack when using singleTop")
+                .that(navigator.backStack.value.size)
+                .isEqualTo(1)
+            assertThat(value).isEqualTo("value2")
+        }
+    }
+
+    @Test
     fun testGetBackStackEntry() {
         lateinit var navController: NavController
         composeTestRule.setContent {
-            navController = createNavController()
+            navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -223,7 +314,7 @@ class NavHostControllerTest {
     fun testGetBackStackEntryNoEntryFound() {
         lateinit var navController: NavController
         composeTestRule.setContent {
-            navController = createNavController()
+            navController = rememberNavController(remember { TestNavigator() })
 
             navController.graph = navController.createGraph(startDestination = FIRST_DESTINATION) {
                 test(FIRST_DESTINATION)
@@ -245,14 +336,6 @@ class NavHostControllerTest {
                         navController.currentBackStackEntry?.destination
                 )
         }
-    }
-
-    @Composable
-    private fun createNavController(): TestNavHostController {
-        val navController = TestNavHostController(LocalContext.current)
-        val navigator = TestNavigator()
-        navController.navigatorProvider += navigator
-        return navController
     }
 }
 

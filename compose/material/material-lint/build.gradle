@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.BundleInsideHelper
-import androidx.build.LibraryGroups
 import androidx.build.LibraryType
 
 plugins {
@@ -42,7 +47,6 @@ dependencies {
 androidx {
     name = "Compose Material Lint Checks"
     type = LibraryType.LINT
-    mavenGroup = LibraryGroups.Compose.MATERIAL
     inceptionYear = "2021"
     description = "Compose Material Lint Checks"
 }

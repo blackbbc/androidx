@@ -16,8 +16,11 @@
 
 package androidx.core.app;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
@@ -30,9 +33,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
 import android.text.TextUtils;
+import android.view.Display;
 import android.view.DragEvent;
 import android.view.View;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.IdRes;
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
@@ -43,9 +48,13 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.LocusIdCompat;
 import androidx.core.view.DragAndDropPermissionsCompat;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Helper for accessing features in {@link android.app.Activity}.
@@ -101,7 +110,7 @@ public class ActivityCompat extends ContextCompat {
          * further requests for permission.
          *
          * @param activity The target activity.
-         * @param permissions The requested permissions. Must me non-null and not empty.
+         * @param permissions The requested permissions. Must be non-null and not empty.
          * @param requestCode Application specific request code to match with a result reported to
          *    {@link
          *    OnRequestPermissionsResultCallback#onRequestPermissionsResult(int, String[], int[])}.
@@ -136,7 +145,6 @@ public class ActivityCompat extends ContextCompat {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     public interface RequestPermissionsRequestCodeValidator {
@@ -165,8 +173,8 @@ public class ActivityCompat extends ContextCompat {
     }
 
     /**
-     * @hide
      */
+    @Nullable
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     public static PermissionCompatDelegate getPermissionCompatDelegate() {
         return sDelegate;
@@ -233,11 +241,7 @@ public class ActivityCompat extends ContextCompat {
      */
     public static void startActivityForResult(@NonNull Activity activity, @NonNull Intent intent,
             int requestCode, @Nullable Bundle options) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            activity.startActivityForResult(intent, requestCode, options);
-        } else {
-            activity.startActivityForResult(intent, requestCode);
-        }
+        activity.startActivityForResult(intent, requestCode, options);
     }
 
     /**
@@ -270,13 +274,8 @@ public class ActivityCompat extends ContextCompat {
             @NonNull IntentSender intent, int requestCode, @Nullable Intent fillInIntent,
             int flagsMask, int flagsValues, int extraFlags, @Nullable Bundle options)
             throws IntentSender.SendIntentException {
-        if (Build.VERSION.SDK_INT >= 16) {
-            activity.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask,
-                    flagsValues, extraFlags, options);
-        } else {
-            activity.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask,
-                    flagsValues, extraFlags);
-        }
+        activity.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask,
+                flagsValues, extraFlags, options);
     }
 
     /**
@@ -287,11 +286,7 @@ public class ActivityCompat extends ContextCompat {
      * method. For other platforms {@link Activity#finish()} will be called instead.</p>
      */
     public static void finishAffinity(@NonNull Activity activity) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            activity.finishAffinity();
-        } else {
-            activity.finish();
-        }
+        activity.finishAffinity();
     }
 
     /**
@@ -305,7 +300,7 @@ public class ActivityCompat extends ContextCompat {
      */
     public static void finishAfterTransition(@NonNull Activity activity) {
         if (Build.VERSION.SDK_INT >= 21) {
-            activity.finishAfterTransition();
+            Api21Impl.finishAfterTransition(activity);
         } else {
             activity.finish();
         }
@@ -327,10 +322,11 @@ public class ActivityCompat extends ContextCompat {
      * <p>Note that this is <em>not</em> a security feature -- you can not trust the
      * referrer information, applications can spoof it.</p>
      */
+    @SuppressWarnings("deprecation")
     @Nullable
     public static Uri getReferrer(@NonNull Activity activity) {
         if (Build.VERSION.SDK_INT >= 22) {
-            return activity.getReferrer();
+            return Api22Impl.getReferrer(activity);
         }
         Intent intent = activity.getIntent();
         Uri referrer = intent.getParcelableExtra("android.intent.extra.REFERRER");
@@ -354,6 +350,7 @@ public class ActivityCompat extends ContextCompat {
      * the target class type is unconstrained, an explicit cast may be
      * necessary.
      *
+     * @param activity activity in which to find a view.
      * @param id the ID to search for
      * @return a view with given ID
      * @see Activity#findViewById(int)
@@ -363,7 +360,7 @@ public class ActivityCompat extends ContextCompat {
     @NonNull
     public static <T extends View> T requireViewById(@NonNull Activity activity, @IdRes int id) {
         if (Build.VERSION.SDK_INT >= 28) {
-            return activity.requireViewById(id);
+            return Api28Impl.requireViewById(activity, id);
         }
 
         T view = activity.findViewById(id);
@@ -379,6 +376,7 @@ public class ActivityCompat extends ContextCompat {
      * will be called to handle shared elements on the <i>launched</i> Activity. This requires
      * {@link android.view.Window#FEATURE_CONTENT_TRANSITIONS}.
      *
+     * @param activity activity for which to set the callback.
      * @param callback Used to manipulate shared element transitions on the launched Activity.
      */
     public static void setEnterSharedElementCallback(@NonNull Activity activity,
@@ -387,7 +385,7 @@ public class ActivityCompat extends ContextCompat {
             android.app.SharedElementCallback frameworkCallback = callback != null
                     ? new SharedElementCallback21Impl(callback)
                     : null;
-            activity.setEnterSharedElementCallback(frameworkCallback);
+            Api21Impl.setEnterSharedElementCallback(activity, frameworkCallback);
         }
     }
 
@@ -398,6 +396,7 @@ public class ActivityCompat extends ContextCompat {
      * calls will only come when returning from the started Activity.
      * This requires {@link android.view.Window#FEATURE_CONTENT_TRANSITIONS}.
      *
+     * @param activity activity for which to set the callback.
      * @param callback Used to manipulate shared element transitions on the launching Activity.
      */
     public static void setExitSharedElementCallback(@NonNull Activity activity,
@@ -406,19 +405,19 @@ public class ActivityCompat extends ContextCompat {
             android.app.SharedElementCallback frameworkCallback = callback != null
                     ? new SharedElementCallback21Impl(callback)
                     : null;
-            activity.setExitSharedElementCallback(frameworkCallback);
+            Api21Impl.setExitSharedElementCallback(activity, frameworkCallback);
         }
     }
 
     public static void postponeEnterTransition(@NonNull Activity activity) {
         if (Build.VERSION.SDK_INT >= 21) {
-            activity.postponeEnterTransition();
+            Api21Impl.postponeEnterTransition(activity);
         }
     }
 
     public static void startPostponedEnterTransition(@NonNull Activity activity) {
         if (Build.VERSION.SDK_INT >= 21) {
-            activity.startPostponedEnterTransition();
+            Api21Impl.startPostponedEnterTransition(activity);
         }
     }
 
@@ -467,7 +466,7 @@ public class ActivityCompat extends ContextCompat {
      * </p>
      * <p>
      * Calling this API for permissions already granted to your app would show UI
-     * to the user to decided whether the app can still hold these permissions. This
+     * to the user to decide whether the app can still hold these permissions. This
      * can be useful if the way your app uses the data guarded by the permissions
      * changes significantly.
      * </p>
@@ -482,9 +481,18 @@ public class ActivityCompat extends ContextCompat {
      * RuntimePermissions</a> sample app demonstrates how to use this method to
      * request permissions at run time.
      * </p>
+     * <p>
+     * If {@link Manifest.permission#POST_NOTIFICATIONS} is requested before the device supports
+     * the notification permission, then {@link Manifest.permission#POST_NOTIFICATIONS} will be
+     * removed from {@link OnRequestPermissionsResultCallback#onRequestPermissionsResult}.
+     * For devices that don't support {@link Manifest.permission#POST_NOTIFICATIONS}, apps can
+     * send users to its notification settings to enable notifications. See
+     * {@link android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS} for more information
+     * on launching notification settings.
+     * </p>
      *
      * @param activity The target activity.
-     * @param permissions The requested permissions. Must me non-null and not empty.
+     * @param permissions The requested permissions. Must be non-null and not empty.
      * @param requestCode Application specific request code to match with a result
      *    reported to {@link OnRequestPermissionsResultCallback#onRequestPermissionsResult(int, String[], int[])}.
      *    Should be >= 0.
@@ -501,10 +509,31 @@ public class ActivityCompat extends ContextCompat {
             return;
         }
 
-        for (String permission : permissions) {
-            if (TextUtils.isEmpty(permission)) {
+        Set<Integer> indicesOfPermissionsToRemove = new HashSet<>();
+        for (int i = 0; i < permissions.length; i++) {
+            if (TextUtils.isEmpty(permissions[i])) {
                 throw new IllegalArgumentException("Permission request for permissions "
                         + Arrays.toString(permissions) + " must not contain null or empty values");
+            }
+
+            if (Build.VERSION.SDK_INT < 33) {
+                if (TextUtils.equals(permissions[i], Manifest.permission.POST_NOTIFICATIONS)) {
+                    indicesOfPermissionsToRemove.add(i);
+                }
+            }
+        }
+
+        int numPermissionsToRemove = indicesOfPermissionsToRemove.size();
+        final String[] permissionsArray = numPermissionsToRemove > 0
+                ? new String[permissions.length - numPermissionsToRemove] : permissions;
+        if (numPermissionsToRemove > 0) {
+            if (numPermissionsToRemove == permissions.length) {
+                return;
+            }
+            for (int i = 0, modifiedIndex = 0; i < permissions.length; i++) {
+                if (!indicesOfPermissionsToRemove.contains(i)) {
+                    permissionsArray[modifiedIndex++] = permissions[i];
+                }
             }
         }
 
@@ -513,25 +542,25 @@ public class ActivityCompat extends ContextCompat {
                 ((RequestPermissionsRequestCodeValidator) activity)
                         .validateRequestPermissionsRequestCode(requestCode);
             }
-            activity.requestPermissions(permissions, requestCode);
+            Api23Impl.requestPermissions(activity, permissions, requestCode);
         } else if (activity instanceof OnRequestPermissionsResultCallback) {
             Handler handler = new Handler(Looper.getMainLooper());
             handler.post(new Runnable() {
                 @Override
                 public void run() {
-                    final int[] grantResults = new int[permissions.length];
+                    final int[] grantResults = new int[permissionsArray.length];
 
                     PackageManager packageManager = activity.getPackageManager();
                     String packageName = activity.getPackageName();
 
-                    final int permissionCount = permissions.length;
+                    final int permissionCount = permissionsArray.length;
                     for (int i = 0; i < permissionCount; i++) {
                         grantResults[i] = packageManager.checkPermission(
-                                permissions[i], packageName);
+                                permissionsArray[i], packageName);
                     }
 
                     ((OnRequestPermissionsResultCallback) activity).onRequestPermissionsResult(
-                            requestCode, permissions, grantResults);
+                            requestCode, permissionsArray, grantResults);
                 }
             });
         }
@@ -544,13 +573,58 @@ public class ActivityCompat extends ContextCompat {
      * @param permission A permission your app wants to request.
      * @return Whether you should show permission rationale UI.
      *
-     * @see #checkSelfPermission(android.content.Context, String)
-     * @see #requestPermissions(android.app.Activity, String[], int)
+     * @see #checkSelfPermission(Context, String)
+     * @see #requestPermissions(Activity, String[], int)
      */
     public static boolean shouldShowRequestPermissionRationale(@NonNull Activity activity,
             @NonNull String permission) {
-        if (Build.VERSION.SDK_INT >= 23) {
-            return activity.shouldShowRequestPermissionRationale(permission);
+        if (Build.VERSION.SDK_INT < 33
+                && TextUtils.equals(Manifest.permission.POST_NOTIFICATIONS, permission)) {
+            // notification permission doesn't exist before T
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= 32) {
+            return Api32Impl.shouldShowRequestPermissionRationale(activity, permission);
+        } else if (Build.VERSION.SDK_INT == 31) {
+            return Api31Impl.shouldShowRequestPermissionRationale(activity, permission);
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            return Api23Impl.shouldShowRequestPermissionRationale(activity, permission);
+        }
+        return false;
+    }
+
+    /**
+     * Indicates whether this activity is launched from a bubble. A bubble is a floating shortcut
+     * on the screen that expands to show an activity.
+     *
+     * If your activity can be used normally or as a bubble, you might use this method to check
+     * if the activity is bubbled to modify any behaviour that might be different between the
+     * normal activity and the bubbled activity. For example, if you normally cancel the
+     * notification associated with the activity when you open the activity, you might not want to
+     * do that when you're bubbled as that would remove the bubble.
+     *
+     * @return {@code true} if the activity is launched from a bubble.
+     *
+     * @see NotificationCompat.Builder#setBubbleMetadata(NotificationCompat.BubbleMetadata)
+     * @see NotificationCompat.BubbleMetadata.Builder#Builder(String)
+     *
+     * Compatibility behavior:
+     * <ul>
+     *     <li>API 31 and above, this method matches platform behavior</li>
+     *     <li>API 29, 30, this method checks the window display ID</li>
+     *     <li>API 28 and earlier, this method is a no-op</li>
+     * </ul>
+     */
+    public static boolean isLaunchedFromBubble(@NonNull Activity activity) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            return Api31Impl.isLaunchedFromBubble(activity);
+        } else if (Build.VERSION.SDK_INT == 30) {
+            return Api30Impl.getDisplay(activity) != null
+                    && Api30Impl.getDisplay(activity).getDisplayId() != Display.DEFAULT_DISPLAY;
+        } else if (Build.VERSION.SDK_INT == 29) {
+            return activity.getWindowManager().getDefaultDisplay() != null
+                    && activity.getWindowManager().getDefaultDisplay().getDisplayId()
+                    != Display.DEFAULT_DISPLAY;
         }
         return false;
     }
@@ -558,14 +632,15 @@ public class ActivityCompat extends ContextCompat {
     /**
      * Create {@link DragAndDropPermissionsCompat} object bound to this activity and controlling
      * the access permissions for content URIs associated with the {@link android.view.DragEvent}.
+     * @param activity activity for which to request the permission.
      * @param dragEvent Drag event to request permission for
      * @return The {@link DragAndDropPermissionsCompat} object used to control access to the content
      * URIs. {@code null} if no content URIs are associated with the event or if permissions could
      * not be granted.
      */
     @Nullable
-    public static DragAndDropPermissionsCompat requestDragAndDropPermissions(Activity activity,
-            DragEvent dragEvent) {
+    public static DragAndDropPermissionsCompat requestDragAndDropPermissions(
+            @NonNull Activity activity, @NonNull DragEvent dragEvent) {
         return DragAndDropPermissionsCompat.request(activity, dragEvent);
     }
 
@@ -580,28 +655,17 @@ public class ActivityCompat extends ContextCompat {
         if (Build.VERSION.SDK_INT >= 28) {
             // On Android P and later, we can safely rely on the platform recreate()
             activity.recreate();
-        } else if (Build.VERSION.SDK_INT <= 23) {
+        } else {
             // Prior to Android M, we can't call recreate() before the Activity has fully resumed,
             // but we also can't inspect its current lifecycle state, so we'll just schedule the
             // recreate for later.
             Handler handler = new Handler(activity.getMainLooper());
-            handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    if (!activity.isFinishing()) {
-                        if (!ActivityRecreator.recreate(activity)) {
-                            // Fall back to the platform method if ActivityRecreator failed for any
-                            // reason.
-                            activity.recreate();
-                        }
-                    }
+            handler.post(() -> {
+                if (!activity.isFinishing() && !ActivityRecreator.recreate(activity)) {
+                    // Fall back to the platform method if ActivityRecreator failed for any reason.
+                    activity.recreate();
                 }
             });
-        } else {
-            if (!ActivityRecreator.recreate(activity)) {
-                // Fall back to the platform method if ActivityRecreator failed for any reason.
-                activity.recreate();
-            }
         }
     }
 
@@ -617,6 +681,7 @@ public class ActivityCompat extends ContextCompat {
      * so that the system can learn appropriate ranking signals linking the activity's
      * locus id with the matching shortcut.
      *
+     * @param activity activity for which to set locus id.
      * @param locusId  a unique, stable id that identifies this {@code Activity} instance. LocusId
      *      is an opaque ID that links this Activity's state to different Android concepts:
      *      {@link androidx.core.content.pm.ShortcutInfoCompat.Builder#setLocusId(LocusIdCompat)}.
@@ -643,7 +708,7 @@ public class ActivityCompat extends ContextCompat {
     }
 
     @RequiresApi(21)
-    private static class SharedElementCallback21Impl extends android.app.SharedElementCallback {
+    static class SharedElementCallback21Impl extends android.app.SharedElementCallback {
         private final SharedElementCallback mCallback;
 
         SharedElementCallback21Impl(SharedElementCallback callback) {
@@ -691,28 +756,163 @@ public class ActivityCompat extends ContextCompat {
         public void onSharedElementsArrived(List<String> sharedElementNames,
                 List<View> sharedElements, final OnSharedElementsReadyListener listener) {
             mCallback.onSharedElementsArrived(sharedElementNames, sharedElements,
-                    new SharedElementCallback.OnSharedElementsReadyListener() {
-                        @Override
-                        public void onSharedElementsReady() {
-                            listener.onSharedElementsReady();
-                        }
-                    });
+                    () -> Api23Impl.onSharedElementsReady(listener));
         }
     }
 
     @RequiresApi(30)
     static class Api30Impl {
-
-        /**
-         * This class should not be instantiated.
-         */
         private Api30Impl() {
-            // Not intented for instantiation.
+            // This class is not instantiable.
         }
 
+        @DoNotInline
         static void setLocusContext(@NonNull final Activity activity,
                 @Nullable final LocusIdCompat locusId, @Nullable final Bundle bundle) {
             activity.setLocusContext(locusId == null ? null : locusId.toLocusId(), bundle);
+        }
+
+        @DoNotInline
+        static Display getDisplay(ContextWrapper contextWrapper) {
+            return contextWrapper.getDisplay();
+        }
+    }
+
+    @RequiresApi(31)
+    static class Api31Impl  {
+        private Api31Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static boolean isLaunchedFromBubble(@NonNull final Activity activity)  {
+            return activity.isLaunchedFromBubble();
+        }
+
+        /**
+         * Fix memory leak on Android 12:
+         * <a href="https://github.com/androidx/androidx/pull/435">
+         *     https://github.com/androidx/androidx/pull/435
+         * </a>
+         */
+        @SuppressLint("BanUncheckedReflection")
+        @DoNotInline
+        static boolean shouldShowRequestPermissionRationale(Activity activity, String permission) {
+            try {
+                // 1. Background of the problem：Fix shouldShowRequestPermissionRationale causing memory leak in Android 12，
+                //    this problem has been fixed on the Android 12L system, but it is still a historical problem for the Android 12 system
+                // 2. The reason for the problem: The culprit is that the PermissionUsageHelper holds the Context object as a field,
+                //    and calls AppOpsManager.startWatchingStarted in the constructor to start the monitoring,
+                //    so that the PermissionUsageHelper object will be added to the AppOpsManager#mStartedWatchers collection,
+                //    which will lead to active calls in the Activity When finishing, stopWatchingStarted is not used to remove the watch,
+                //    which causes the Activity object to be held in the AppOpsManager#mStartedWatchers collection,
+                //    which indirectly causes the Activity object to not be recycled by the system.
+                // 3. The solution to the problem: The handling of this problem is also very simple and rude, that is,
+                //    to replace the Context parameter passed in the outer layer from the Activity object to the Application object,
+                //    because the Application life cycle is relatively long, but there is only the shouldShowRequestPermissionRationale method in the Activity,
+                //    and What if there is no such method in Application? Looking at the implementation of this method, in fact,
+                //    that method will eventually call the PackageManager.shouldShowRequestPermissionRationale method (hidden API, but not in the blacklist),
+                //    so as long as the PackageManager object can be obtained, and finally use reflection to execute this method , which avoids memory leaks.
+                PackageManager packageManager = activity.getApplication().getPackageManager();
+                Method method = PackageManager.class.getMethod("shouldShowRequestPermissionRationale", String.class);
+                return (boolean) method.invoke(packageManager, permission);
+            } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+                return activity.shouldShowRequestPermissionRationale(permission);
+            }
+        }
+    }
+
+    @RequiresApi(32)
+    static class Api32Impl  {
+        private Api32Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static boolean shouldShowRequestPermissionRationale(Activity activity, String permission) {
+            return activity.shouldShowRequestPermissionRationale(permission);
+        }
+    }
+
+    @RequiresApi(21)
+    static class Api21Impl {
+        private Api21Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void finishAfterTransition(Activity activity) {
+            activity.finishAfterTransition();
+        }
+
+        @DoNotInline
+        static void setEnterSharedElementCallback(Activity activity,
+                android.app.SharedElementCallback callback) {
+            activity.setEnterSharedElementCallback(callback);
+        }
+
+        @DoNotInline
+        static void setExitSharedElementCallback(Activity activity,
+                android.app.SharedElementCallback callback) {
+            activity.setExitSharedElementCallback(callback);
+        }
+
+        @DoNotInline
+        static void postponeEnterTransition(Activity activity) {
+            activity.postponeEnterTransition();
+        }
+
+        @DoNotInline
+        static void startPostponedEnterTransition(Activity activity) {
+            activity.startPostponedEnterTransition();
+        }
+    }
+
+    @RequiresApi(22)
+    static class Api22Impl {
+        private Api22Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static Uri getReferrer(Activity activity) {
+            return activity.getReferrer();
+        }
+    }
+
+    @RequiresApi(28)
+    static class Api28Impl {
+        private Api28Impl() {
+            // This class is not instantiable.
+        }
+
+        @SuppressWarnings({"unchecked", "TypeParameterUnusedInFormals"})
+        @DoNotInline
+        static <T> T requireViewById(Activity activity, int id) {
+            return (T) activity.requireViewById(id);
+        }
+    }
+
+    @RequiresApi(23)
+    static class Api23Impl {
+        private Api23Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void requestPermissions(Activity activity, String[] permissions, int requestCode) {
+            activity.requestPermissions(permissions, requestCode);
+        }
+
+        @DoNotInline
+        static boolean shouldShowRequestPermissionRationale(Activity activity, String permission) {
+            return activity.shouldShowRequestPermissionRationale(permission);
+        }
+
+        @DoNotInline
+        static void onSharedElementsReady(Object onSharedElementsReadyListener) {
+            ((android.app.SharedElementCallback.OnSharedElementsReadyListener)
+                    onSharedElementsReadyListener).onSharedElementsReady();
         }
     }
 }

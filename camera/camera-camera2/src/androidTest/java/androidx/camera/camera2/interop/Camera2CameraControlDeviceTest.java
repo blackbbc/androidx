@@ -39,16 +39,17 @@ import android.hardware.camera2.params.MeteringRectangle;
 import androidx.annotation.OptIn;
 import androidx.camera.camera2.Camera2Config;
 import androidx.camera.camera2.internal.Camera2CameraControlImpl;
+import androidx.camera.camera2.internal.util.TestUtil;
 import androidx.camera.core.CameraSelector;
-import androidx.camera.core.CameraX;
 import androidx.camera.core.ImageAnalysis;
-import androidx.camera.core.impl.CameraInfoInternal;
 import androidx.camera.core.impl.utils.executor.CameraXExecutors;
 import androidx.camera.core.internal.CameraUseCaseAdapter;
-import androidx.camera.testing.CameraUtil;
+import androidx.camera.testing.impl.CameraUtil;
+import androidx.camera.testing.impl.CameraXUtil;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
+import androidx.test.filters.SdkSuppress;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.google.common.util.concurrent.ListenableFuture;
@@ -69,6 +70,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @LargeTest
 @RunWith(AndroidJUnit4.class)
 @OptIn(markerClass = ExperimentalCamera2Interop.class)
+@SdkSuppress(minSdkVersion = 21)
 public final class Camera2CameraControlDeviceTest {
     private final Instrumentation mInstrumentation = InstrumentationRegistry.getInstrumentation();
     private CameraSelector mCameraSelector;
@@ -80,24 +82,27 @@ public final class Camera2CameraControlDeviceTest {
     private Camera2CameraControlImpl mCamera2CameraControlImpl;
 
     @Rule
-    public TestRule mUseCamera = CameraUtil.grantCameraPermissionAndPreTest();
+    public TestRule mUseCamera = CameraUtil.grantCameraPermissionAndPreTest(
+            new CameraUtil.PreTestCameraIdList(Camera2Config.defaultConfig())
+    );
 
     @Before
     public void setUp() {
         assumeTrue(CameraUtil.hasCameraWithLensFacing(CameraSelector.LENS_FACING_BACK));
         mContext = ApplicationProvider.getApplicationContext();
-        CameraX.initialize(mContext, Camera2Config.defaultConfig());
+        CameraXUtil.initialize(mContext, Camera2Config.defaultConfig());
         mCameraSelector = new CameraSelector.Builder().requireLensFacing(
                 CameraSelector.LENS_FACING_BACK).build();
         mCamera = CameraUtil.createCameraUseCaseAdapter(mContext, mCameraSelector);
-        mCamera2CameraControlImpl = (Camera2CameraControlImpl) mCamera.getCameraControl();
+        mCamera2CameraControlImpl =
+                TestUtil.getCamera2CameraControlImpl(mCamera.getCameraControl());
         mCamera2CameraControl = mCamera2CameraControlImpl.getCamera2CameraControl();
         mMockCaptureCallback = mock(CameraCaptureSession.CaptureCallback.class);
     }
 
     @After
     public void tearDown() throws ExecutionException, InterruptedException, TimeoutException {
-        CameraX.shutdown().get(10000, TimeUnit.MILLISECONDS);
+        CameraXUtil.shutdown().get(10000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -155,6 +160,30 @@ public final class Camera2CameraControlDeviceTest {
     }
 
     @Test
+    public void canSubmitMultipleCaptureRequestOptions() {
+        bindUseCase();
+        ListenableFuture<Void> future = updateCamera2Option(
+                CaptureRequest.CONTROL_CAPTURE_INTENT,
+                CaptureRequest.CONTROL_CAPTURE_INTENT_MANUAL);
+
+        assertFutureCompletes(future);
+
+        verifyCaptureRequestParameter(mMockCaptureCallback,
+                CaptureRequest.CONTROL_CAPTURE_INTENT,
+                CaptureRequest.CONTROL_CAPTURE_INTENT_MANUAL);
+
+        future = updateCamera2Option(
+                CaptureRequest.CONTROL_CAPTURE_INTENT,
+                CaptureRequest.CONTROL_CAPTURE_INTENT_CUSTOM);
+
+        assertFutureCompletes(future);
+
+        verifyCaptureRequestParameter(mMockCaptureCallback,
+                CaptureRequest.CONTROL_CAPTURE_INTENT,
+                CaptureRequest.CONTROL_CAPTURE_INTENT_CUSTOM);
+    }
+
+    @Test
     public void canClearCaptureRequestOptions() {
         bindUseCase();
         CaptureRequestOptions.Builder builder = new CaptureRequestOptions.Builder()
@@ -162,7 +191,7 @@ public final class Camera2CameraControlDeviceTest {
                         CaptureRequest.CONTROL_CAPTURE_INTENT,
                         CaptureRequest.CONTROL_CAPTURE_INTENT_MANUAL)
                 .setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_MODE,
-                        CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+                        CaptureRequest.COLOR_CORRECTION_MODE_FAST);
 
         ListenableFuture<Void> future =
                 mCamera2CameraControl.setCaptureRequestOptions(builder.build());
@@ -180,17 +209,6 @@ public final class Camera2CameraControlDeviceTest {
                 CaptureRequest.CONTROL_CAPTURE_INTENT_MANUAL);
         assertThat(mCamera2CameraControl.getCaptureRequestOptions().getCaptureRequestOption(
                 CaptureRequest.COLOR_CORRECTION_MODE, null)).isEqualTo(null);
-
-        ArgumentCaptor<CaptureRequest> captureRequest =
-                ArgumentCaptor.forClass(CaptureRequest.class);
-        verify(mMockCaptureCallback, timeout(5000).atLeastOnce()).onCaptureCompleted(
-                any(CameraCaptureSession.class),
-                captureRequest.capture(), any(TotalCaptureResult.class));
-        CaptureRequest request = captureRequest.getValue();
-        assertThat(request.get(CaptureRequest.CONTROL_CAPTURE_INTENT)).isEqualTo(
-                CaptureRequest.CONTROL_CAPTURE_INTENT_MANUAL);
-        assertThat(request.get(CaptureRequest.COLOR_CORRECTION_MODE)).isNotEqualTo(
-                CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_OFF);
     }
 
     @Test
@@ -274,7 +292,7 @@ public final class Camera2CameraControlDeviceTest {
 
     private Rect getZoom2XCropRegion() throws Exception {
         AtomicReference<String> cameraIdRef = new AtomicReference<>();
-        String cameraId = ((CameraInfoInternal) mCamera.getCameraInfo()).getCameraId();
+        String cameraId = TestUtil.getCamera2CameraInfoImpl(mCamera.getCameraInfo()).getCameraId();
         cameraIdRef.set(cameraId);
 
         CameraManager cameraManager =

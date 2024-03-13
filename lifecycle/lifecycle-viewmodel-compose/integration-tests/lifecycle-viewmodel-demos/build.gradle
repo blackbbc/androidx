@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -24,12 +31,7 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin projectOrArtifact(":compose:compiler:compiler")
     implementation(libs.kotlinStdlib)
-    implementation projectOrArtifact(":lifecycle:lifecycle-viewmodel-compose")
-    implementation projectOrArtifact(
-            ":lifecycle:lifecycle-viewmodel-compose:lifecycle-viewmodel-compose-samples"
-    )
 }
 
 androidx {
@@ -37,4 +39,8 @@ androidx {
     publish = Publish.NONE
     inceptionYear = "2021"
     description = "This is a project for Lifecycle ViewModel demos."
+}
+
+android {
+    namespace "androidx.lifecycle.viewmodel.compose.demos"
 }

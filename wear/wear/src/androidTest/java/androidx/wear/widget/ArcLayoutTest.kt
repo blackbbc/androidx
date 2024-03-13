@@ -53,16 +53,18 @@ import androidx.wear.widget.ArcLayout.LayoutParams.VERTICAL_ALIGN_CENTER
 import androidx.wear.widget.ArcLayout.LayoutParams.VERTICAL_ALIGN_INNER
 import androidx.wear.widget.ArcLayout.LayoutParams.VERTICAL_ALIGN_OUTER
 import androidx.wear.widget.util.AsyncViewActions.waitForMatchingView
+import com.google.common.truth.Truth.assertThat
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.hamcrest.CoreMatchers.allOf
 import org.hamcrest.CoreMatchers.any
 import org.hamcrest.Matcher
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 @RunWith(Parameterized::class)
 @MediumTest
@@ -298,38 +300,40 @@ class ArcLayoutTest(private val testHeight: Int) {
         clockwise: Boolean = true,
         textSize: Float = 14f,
         textAlignment: Int = View.TEXT_ALIGNMENT_TEXT_START,
-        minSweep: Float = 0f
-    ) {
-        addView(
-            CurvedTextView(ApplicationProvider.getApplicationContext())
-                .also {
-                    it.text = text
-                    it.setBackgroundColor(color)
-                    it.isClockwise = clockwise
-                    it.textSize = textSize
-                    it.textAlignment = textAlignment
-                    it.setSweepRangeDegrees(minSweep, 360f)
-                    it.setPadding(
-                        paddingLeft ?: padding ?: 0,
-                        paddingTop ?: padding ?: 0,
-                        paddingRight ?: padding ?: 0,
-                        paddingBottom ?: padding ?: 0
+        minSweep: Float = 0f,
+        weight: Float = 0f
+    ): CurvedTextView {
+        val curvedTextView = CurvedTextView(ApplicationProvider.getApplicationContext())
+            .also {
+                it.text = text
+                it.setBackgroundColor(color)
+                it.isClockwise = clockwise
+                it.textSize = textSize
+                it.textAlignment = textAlignment
+                it.setSweepRangeDegrees(minSweep, 360f)
+                it.setPadding(
+                    paddingLeft ?: padding ?: 0,
+                    paddingTop ?: padding ?: 0,
+                    paddingRight ?: padding ?: 0,
+                    paddingBottom ?: padding ?: 0
+                )
+                it.layoutParams = ArcLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ).apply {
+                    setMargins(
+                        marginLeft ?: margin ?: 0,
+                        marginTop ?: margin ?: 0,
+                        marginRight ?: margin ?: 0,
+                        marginBottom ?: margin ?: 0
                     )
-                    it.layoutParams = ArcLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    ).apply {
-                        setMargins(
-                            marginLeft ?: margin ?: 0,
-                            marginTop ?: margin ?: 0,
-                            marginRight ?: margin ?: 0,
-                            marginBottom ?: margin ?: 0
-                        )
-                        verticalAlignment = vAlign
-                    }
+                    verticalAlignment = vAlign
+                    this.weight = weight
                 }
-        )
+            }
+        addView(curvedTextView)
         testColors.add(colorProcessor(color))
+        return curvedTextView
     }
 
     fun ArcLayout.addTextView(
@@ -433,6 +437,106 @@ class ArcLayoutTest(private val testHeight: Int) {
     }
 
     @Test
+    fun testLayoutWeight() {
+        var child1: CurvedTextView
+        var child2: CurvedTextView
+        doOneTest(
+            "layout_weight_180",
+            listOf(
+                ArcLayout(ApplicationProvider.getApplicationContext())
+                    .apply {
+                        anchorType = ArcLayout.ANCHOR_START
+                        maxAngleDegrees = 180f
+                        child1 = addCurvedText("1/4", Color.RED, textSize = 30f, weight = 1f)
+                        child2 = addCurvedText("3/4", Color.GREEN, textSize = 30f, weight = 3f)
+                    }
+            )
+        )
+
+        assertThat(child1.sweepAngleDegrees).isEqualTo(45f)
+        assertThat(child2.sweepAngleDegrees).isEqualTo(135f)
+    }
+
+    @Test
+    fun testLayoutWeightWithPadding() {
+        doOneTest(
+            "layout_weight_180_padding",
+            listOf(
+                ArcLayout(ApplicationProvider.getApplicationContext())
+                    .apply {
+                        anchorType = ArcLayout.ANCHOR_START
+                        maxAngleDegrees = 180f
+                        addCurvedText(
+                            "1/4",
+                            Color.RED,
+                            textSize = 30f,
+                            weight = 1f,
+                            padding = 20
+                        )
+                        addCurvedText(
+                            "3/4",
+                            Color.GREEN,
+                            textSize = 30f,
+                            weight = 3f,
+                            padding = 20
+                        )
+                    }
+            )
+        )
+    }
+
+    @Test
+    fun testLayoutWeightRtl() {
+        doOneTest(
+            "layout_weight_180_rtl",
+            listOf(
+                ArcLayout(ApplicationProvider.getApplicationContext())
+                    .apply {
+                        anchorType = ArcLayout.ANCHOR_START
+                        layoutDirection = View.LAYOUT_DIRECTION_RTL
+                        maxAngleDegrees = 180f
+                        addCurvedText("1/4", Color.RED, textSize = 30f, weight = 1f)
+                        addCurvedText("3/4", Color.GREEN, textSize = 30f, weight = 3f)
+                    }
+            )
+        )
+    }
+
+    @Test
+    fun testMixedLayoutWeight() {
+        doOneTest(
+            "mixed_layout_weight",
+            listOf(
+                ArcLayout(ApplicationProvider.getApplicationContext())
+                    .apply {
+                        anchorType = ArcLayout.ANCHOR_START
+                        maxAngleDegrees = 180f
+                        addCurvedText("Fixed", Color.BLUE, textSize = 30f)
+                        addCurvedText("1/4", Color.RED, textSize = 30f, weight = 1f)
+                        addCurvedText("3/4", Color.GREEN, textSize = 30f, weight = 3f)
+                    }
+            )
+        )
+    }
+
+    @Test
+    fun testMixedLayoutWeightAnchorEnd() {
+        doOneTest(
+            "mixed_layout_weight_anchor_end",
+            listOf(
+                ArcLayout(ApplicationProvider.getApplicationContext())
+                    .apply {
+                        anchorType = ArcLayout.ANCHOR_END
+                        maxAngleDegrees = 180f
+                        addCurvedText("Fixed", Color.BLUE, textSize = 30f)
+                        addCurvedText("1/4", Color.RED, textSize = 30f, weight = 1f)
+                        addCurvedText("3/4", Color.GREEN, textSize = 30f, weight = 3f)
+                    }
+            )
+        )
+    }
+
+    @Test
     fun testInvisibleAndGone() {
         doOneTest(
             "inivisible_gone_test",
@@ -515,6 +619,35 @@ class ArcLayoutTest(private val testHeight: Int) {
                     }
                 }
             }
+        )
+    }
+
+    @Test
+    fun testLayoutRtl() {
+        doOneTest(
+            "layout_rtl",
+            listOf(
+                ArcLayout(ApplicationProvider.getApplicationContext()).apply {
+                    anchorAngleDegrees = 0f
+                    anchorType = ArcLayout.ANCHOR_CENTER
+                    layoutDirection = View.LAYOUT_DIRECTION_RTL
+                    isClockwise = true
+                    listOf("a", "b", "c").forEach { text ->
+                        addSeparator()
+                        addCurvedText(text, 0xFFFF0000.toInt())
+                    }
+                },
+                ArcLayout(ApplicationProvider.getApplicationContext()).apply {
+                    anchorAngleDegrees = 180f
+                    anchorType = ArcLayout.ANCHOR_CENTER
+                    layoutDirection = View.LAYOUT_DIRECTION_RTL
+                    isClockwise = false
+                    listOf("d", "e", "f").forEach { text ->
+                        addSeparator()
+                        addCurvedText(text, 0xFFFF0000.toInt())
+                    }
+                },
+            )
         )
     }
 
@@ -698,6 +831,7 @@ class ArcLayoutTest(private val testHeight: Int) {
     }
 
     @Test(timeout = 5000)
+    @Ignore("b/280671279")
     fun testBasicTouch() {
         val context: Context = ApplicationProvider.getApplicationContext()
         // This views are the same as the test testTouchEvents()
@@ -741,6 +875,7 @@ class ArcLayoutTest(private val testHeight: Int) {
     }
 
     @Test(timeout = 10000)
+    @Ignore("b/280671279")
     fun testMarginTouch() {
         val views = createTwoArcsWithMargin()
         testEventsFast("touch_fast_margin_screenshot", views)

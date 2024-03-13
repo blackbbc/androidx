@@ -37,6 +37,7 @@ import androidx.annotation.RestrictTo;
  *
  * TODO(peconn): Make this not abstract with API change.
  */
+@SuppressWarnings("HiddenSuperclass")
 public abstract class PostMessageServiceConnection
         implements PostMessageBackend, ServiceConnection {
     private static final String TAG = "PostMessageServConn";
@@ -61,7 +62,6 @@ public abstract class PostMessageServiceConnection
      * Sets the package name unique to the session.
      * @param packageName The package name for the client app for the owning session.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public void setPackageName(@NonNull String packageName) {
@@ -92,7 +92,6 @@ public abstract class PostMessageServiceConnection
      * {@link PostMessageServiceConnection#bindSessionToPostMessageService(Context, String)}.
      * Attempts to bind with the package name set during initialization.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public boolean bindSessionToPostMessageService(@NonNull Context appContext) {
@@ -131,7 +130,6 @@ public abstract class PostMessageServiceConnection
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @Override
@@ -175,7 +173,6 @@ public abstract class PostMessageServiceConnection
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @Override
@@ -206,7 +203,6 @@ public abstract class PostMessageServiceConnection
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @Override
@@ -230,7 +226,6 @@ public abstract class PostMessageServiceConnection
      * Cleans up any dependencies that this handler might have.
      * @param context Context to use for unbinding if necessary.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public void cleanup(@NonNull Context context) {

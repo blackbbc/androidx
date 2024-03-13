@@ -17,15 +17,19 @@
 
 package androidx.core.view;
 
-import static android.os.Build.VERSION.SDK_INT;
-
+import android.view.View;
 import android.view.ViewGroup;
+
+import androidx.annotation.NonNull;
 
 /**
  * Helper for accessing API features in
- * {@link android.view.ViewGroup.MarginLayoutParams MarginLayoutParams} in a backwards compatible
+ * {@link ViewGroup.MarginLayoutParams MarginLayoutParams} in a backwards compatible
  * way.
+ *
+ * @deprecated Use {@link ViewGroup.MarginLayoutParams} directly.
  */
+@Deprecated
 public final class MarginLayoutParamsCompat {
     /**
      * Get the relative starting margin that was set.
@@ -37,13 +41,11 @@ public final class MarginLayoutParamsCompat {
      *
      * @param lp LayoutParams to query
      * @return the margin along the starting edge in pixels
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#getMarginStart} directly.
      */
-    public static int getMarginStart(ViewGroup.MarginLayoutParams lp) {
-        if (SDK_INT >= 17) {
-            return lp.getMarginStart();
-        } else {
-            return lp.leftMargin;
-        }
+    @Deprecated
+    public static int getMarginStart(@NonNull ViewGroup.MarginLayoutParams lp) {
+        return lp.getMarginStart();
     }
 
     /**
@@ -56,13 +58,11 @@ public final class MarginLayoutParamsCompat {
      *
      * @param lp LayoutParams to query
      * @return the margin along the ending edge in pixels
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#getMarginStart} directly.
      */
-    public static int getMarginEnd(ViewGroup.MarginLayoutParams lp) {
-        if (SDK_INT >= 17) {
-            return lp.getMarginEnd();
-        } else {
-            return lp.rightMargin;
-        }
+    @Deprecated
+    public static int getMarginEnd(@NonNull ViewGroup.MarginLayoutParams lp) {
+        return lp.getMarginEnd();
     }
 
     /**
@@ -75,13 +75,11 @@ public final class MarginLayoutParamsCompat {
      *
      * @param lp LayoutParams to query
      * @param marginStart the desired start margin in pixels
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#setMarginStart} directly.
      */
-    public static void setMarginStart(ViewGroup.MarginLayoutParams lp, int marginStart) {
-        if (SDK_INT >= 17) {
-            lp.setMarginStart(marginStart);
-        } else {
-            lp.leftMargin = marginStart;
-        }
+    @Deprecated
+    public static void setMarginStart(@NonNull ViewGroup.MarginLayoutParams lp, int marginStart) {
+        lp.setMarginStart(marginStart);
     }
 
     /**
@@ -94,26 +92,22 @@ public final class MarginLayoutParamsCompat {
      *
      * @param lp LayoutParams to query
      * @param marginEnd the desired end margin in pixels
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#setMarginEnd} directly.
      */
-    public static void setMarginEnd(ViewGroup.MarginLayoutParams lp, int marginEnd) {
-        if (SDK_INT >= 17) {
-            lp.setMarginEnd(marginEnd);
-        } else {
-            lp.rightMargin = marginEnd;
-        }
+    @Deprecated
+    public static void setMarginEnd(@NonNull ViewGroup.MarginLayoutParams lp, int marginEnd) {
+        lp.setMarginEnd(marginEnd);
     }
 
     /**
      * Check if margins are relative.
      *
      * @return true if either marginStart or marginEnd has been set.
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#isMarginRelative} directly.
      */
-    public static boolean isMarginRelative(ViewGroup.MarginLayoutParams lp) {
-        if (SDK_INT >= 17) {
-            return lp.isMarginRelative();
-        } else {
-            return false;
-        }
+    @Deprecated
+    public static boolean isMarginRelative(@NonNull ViewGroup.MarginLayoutParams lp) {
+        return lp.isMarginRelative();
     }
 
     /**
@@ -121,20 +115,18 @@ public final class MarginLayoutParamsCompat {
      * {@link ViewCompat#LAYOUT_DIRECTION_RTL}.
      *
      * @return the layout direction.
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#getLayoutDirection} directly.
      */
-    public static int getLayoutDirection(ViewGroup.MarginLayoutParams lp) {
+    @Deprecated
+    public static int getLayoutDirection(@NonNull ViewGroup.MarginLayoutParams lp) {
         int result;
-        if (SDK_INT >= 17) {
-            result = lp.getLayoutDirection();
-        } else {
-            result = ViewCompat.LAYOUT_DIRECTION_LTR;
-        }
+        result = lp.getLayoutDirection();
 
-        if ((result != ViewCompat.LAYOUT_DIRECTION_LTR)
-                && (result != ViewCompat.LAYOUT_DIRECTION_RTL)) {
+        if ((result != View.LAYOUT_DIRECTION_LTR)
+                && (result != View.LAYOUT_DIRECTION_RTL)) {
             // This can happen on older platform releases where the default (unset) layout direction
             // is -1
-            result = ViewCompat.LAYOUT_DIRECTION_LTR;
+            result = View.LAYOUT_DIRECTION_LTR;
         }
         return result;
     }
@@ -142,26 +134,31 @@ public final class MarginLayoutParamsCompat {
     /**
      * Set the layout direction.
      *
+     * @param lp LayoutParameters for which to set the layout direction.
      * @param layoutDirection the layout direction.
      *        Should be either {@link ViewCompat#LAYOUT_DIRECTION_LTR}
      *                     or {@link ViewCompat#LAYOUT_DIRECTION_RTL}.
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#setLayoutDirection} directly.
      */
-    public static void setLayoutDirection(ViewGroup.MarginLayoutParams lp, int layoutDirection) {
-        if (SDK_INT >= 17) {
-            lp.setLayoutDirection(layoutDirection);
-        }
+    @Deprecated
+    public static void setLayoutDirection(@NonNull ViewGroup.MarginLayoutParams lp,
+            int layoutDirection) {
+        lp.setLayoutDirection(layoutDirection);
     }
 
     /**
-     * This will be called by {@link android.view.View#requestLayout()}. Left and Right margins
+     * This will be called by {@link View#requestLayout()}. Left and Right margins
      * may be overridden depending on layout direction.
+     *
+     * @deprecated Use {@link ViewGroup.MarginLayoutParams#resolveLayoutDirection} directly.
      */
-    public static void resolveLayoutDirection(ViewGroup.MarginLayoutParams lp,
+    @Deprecated
+    public static void resolveLayoutDirection(@NonNull ViewGroup.MarginLayoutParams lp,
             int layoutDirection) {
-        if (SDK_INT >= 17) {
-            lp.resolveLayoutDirection(layoutDirection);
-        }
+        lp.resolveLayoutDirection(layoutDirection);
     }
 
-    private MarginLayoutParamsCompat() {}
+    private MarginLayoutParamsCompat() {
+    }
+
 }

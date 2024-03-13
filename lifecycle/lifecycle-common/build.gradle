@@ -14,27 +14,75 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.PlatformIdentifier
 import androidx.build.Publish
+import org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 plugins {
     id("AndroidXPlugin")
-    id("java-library")
 }
 
-dependencies {
-    api("androidx.annotation:annotation:1.1.0")
+androidXMultiplatform {
+    jvm {
+        withJava()
+    }
+    mac()
+    linux()
+    ios()
 
-    testImplementation(libs.junit)
-    testImplementation(libs.mockitoCore)
+    kotlin {
+        explicitApi = ExplicitApiMode.Strict
+    }
+
+    defaultPlatform(PlatformIdentifier.JVM)
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                api(libs.kotlinStdlib)
+                api(libs.kotlinCoroutinesCore)
+                api(project(":annotation:annotation"))
+            }
+        }
+
+        jvmMain.dependsOn(commonMain)
+
+        jvmTest {
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.mockitoCore4)
+            }
+        }
+
+        nonJvmMain {
+            dependsOn(commonMain)
+            dependencies {
+                implementation(libs.atomicFu)
+            }
+        }
+
+        targets.all { target ->
+            if (target.platformType !in [KotlinPlatformType.jvm, KotlinPlatformType.common]) {
+                target.compilations["main"].defaultSourceSet {
+                    dependsOn(nonJvmMain)
+                }
+            }
+        }
+    }
 }
 
 androidx {
-    name = "Android Lifecycle-Common"
+    name = "Lifecycle-Common"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.LIFECYCLE
-    mavenGroup = LibraryGroups.LIFECYCLE
     inceptionYear = "2017"
     description = "Android Lifecycle-Common"
+    metalavaK2UastEnabled = true
 }

@@ -32,9 +32,25 @@ interface XConstructorElement : XExecutableElement {
             append("(")
             append(
                 parameters.joinToString(", ") {
-                    it.type.typeName.toString()
+                    it.type.asTypeName().java.toString()
                 }
             )
             append(")")
         }
+
+    /** The type representation of the method where more type parameters might be resolved. */
+    override val executableType: XConstructorType
+
+    /**
+     * Returns the constructor as if it is declared in [other].
+     *
+     * This is specifically useful if you have a constructor that has type arguments and there is a
+     * subclass ([other]) where type arguments are specified to actual types.
+     */
+    override fun asMemberOf(other: XType): XConstructorType
+
+    /**
+     * Denotes if this is a synthetic constructor generated via the usage of @JvmOverloads
+     */
+    fun isSyntheticConstructorForJvmOverloads(): Boolean
 }

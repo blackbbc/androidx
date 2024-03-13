@@ -16,59 +16,66 @@
 
 package androidx.room.writer
 
-import androidx.annotation.NonNull
-import androidx.room.compiler.processing.XElement
-import androidx.room.compiler.processing.addOriginatingElement
-import androidx.room.ext.L
+import androidx.room.compiler.codegen.CodeLanguage
+import androidx.room.compiler.codegen.VisibilityModifier
+import androidx.room.compiler.codegen.XCodeBlock
+import androidx.room.compiler.codegen.XFunSpec
+import androidx.room.compiler.codegen.XFunSpec.Builder.Companion.addStatement
+import androidx.room.compiler.codegen.XMemberName.Companion.packageMember
+import androidx.room.compiler.codegen.XTypeSpec
+import androidx.room.compiler.codegen.XTypeSpec.Builder.Companion.addOriginatingElement
+import androidx.room.compiler.codegen.XTypeSpec.Builder.Companion.addProperty
+import androidx.room.compiler.processing.XTypeElement
 import androidx.room.ext.RoomTypeNames
-import androidx.room.ext.S
-import androidx.room.ext.SupportDbTypeNames
-import androidx.room.ext.T
+import androidx.room.ext.SQLiteDriverMemberNames
+import androidx.room.ext.SQLiteDriverTypeNames.CONNECTION
 import androidx.room.migration.bundle.EntityBundle
 import androidx.room.migration.bundle.FtsEntityBundle
 import androidx.room.vo.AutoMigration
-import com.squareup.javapoet.FieldSpec
-import com.squareup.javapoet.MethodSpec
-import com.squareup.javapoet.ParameterSpec
-import com.squareup.javapoet.TypeName
-import com.squareup.javapoet.TypeSpec
-import javax.lang.model.element.Modifier
 
 /**
  * Writes the implementation of migrations that were annotated with @AutoMigration.
  */
 class AutoMigrationWriter(
-    private val dbElement: XElement,
-    val autoMigration: AutoMigration
-) : ClassWriter(autoMigration.implTypeName) {
+    private val dbElement: XTypeElement,
+    val autoMigration: AutoMigration,
+    codeLanguage: CodeLanguage
+) : TypeWriter(codeLanguage) {
     private val addedColumns = autoMigration.schemaDiff.addedColumns
     private val addedTables = autoMigration.schemaDiff.addedTables
     private val renamedTables = autoMigration.schemaDiff.renamedTables
     private val complexChangedTables = autoMigration.schemaDiff.complexChangedTables
     private val deletedTables = autoMigration.schemaDiff.deletedTables
 
-    override fun createTypeSpecBuilder(): TypeSpec.Builder {
-        val builder = TypeSpec.classBuilder(autoMigration.implTypeName)
+    override fun createTypeSpecBuilder(): XTypeSpec.Builder {
+        val builder = XTypeSpec.classBuilder(
+            codeLanguage,
+            autoMigration.getImplTypeName(dbElement.asClassName())
+        )
         builder.apply {
             addOriginatingElement(dbElement)
             superclass(RoomTypeNames.MIGRATION)
-
-            if (autoMigration.specClassName != null) {
-                val callbackField =
-                    FieldSpec.builder(
-                        RoomTypeNames.AUTO_MIGRATION_SPEC,
-                        "callback",
-                        Modifier.PRIVATE,
-                        Modifier.FINAL
-                    ).apply {
-                        if (!autoMigration.isSpecProvided) {
-                            initializer("new $T()", autoMigration.specClassName)
-                        }
-                    }
-                builder.addField(callbackField.build())
+            // Class is package-protected in Java (no visibility modifier) and internal in Kotlin
+            if (language == CodeLanguage.KOTLIN) {
+                setVisibility(VisibilityModifier.INTERNAL)
             }
-            addMethod(createConstructor())
-            addMethod(createMigrateMethod())
+            if (autoMigration.specClassName != null) {
+                builder.addProperty(
+                    name = "callback",
+                    typeName = RoomTypeNames.AUTO_MIGRATION_SPEC,
+                    visibility = VisibilityModifier.PRIVATE,
+                    initExpr = if (!autoMigration.isSpecProvided) {
+                        XCodeBlock.ofNewInstance(
+                            codeLanguage,
+                            autoMigration.specClassName
+                        )
+                    } else {
+                        null
+                    }
+                )
+            }
+            addFunction(createConstructor())
+            addFunction(createMigrateMethod())
         }
         return builder
     }
@@ -78,43 +85,38 @@ class AutoMigrationWriter(
      *
      * @return The constructor of the generated AutoMigration
      */
-    private fun createConstructor(): MethodSpec {
-        return MethodSpec.constructorBuilder().apply {
-            addModifiers(Modifier.PUBLIC)
-            addStatement(
-                "super($L, $L)",
-                autoMigration.from,
-                autoMigration.to
+    private fun createConstructor(): XFunSpec {
+        return XFunSpec.constructorBuilder(codeLanguage, VisibilityModifier.PUBLIC).apply {
+            callSuperConstructor(
+                XCodeBlock.of(codeLanguage, "%L", autoMigration.from),
+                XCodeBlock.of(codeLanguage, "%L", autoMigration.to),
             )
             if (autoMigration.isSpecProvided) {
                 addParameter(
-                    ParameterSpec.builder(
-                        RoomTypeNames.AUTO_MIGRATION_SPEC,
-                        "callback"
-                    ).addAnnotation(NonNull::class.java).build()
+                    typeName = RoomTypeNames.AUTO_MIGRATION_SPEC,
+                    name = "callback",
                 )
                 addStatement("this.callback = callback")
             }
         }.build()
     }
 
-    private fun createMigrateMethod(): MethodSpec? {
-        val migrateFunctionBuilder: MethodSpec.Builder = MethodSpec.methodBuilder("migrate")
-            .apply {
-                addParameter(
-                    ParameterSpec.builder(
-                        SupportDbTypeNames.DB,
-                        "database"
-                    ).addAnnotation(NonNull::class.java).build()
-                )
-                addAnnotation(Override::class.java)
-                addModifiers(Modifier.PUBLIC)
-                returns(TypeName.VOID)
-                addMigrationStatements(this)
-                if (autoMigration.specClassName != null) {
-                    addStatement("callback.onPostMigrate(database)")
-                }
+    private fun createMigrateMethod(): XFunSpec {
+        val migrateFunctionBuilder: XFunSpec.Builder = XFunSpec.builder(
+            language = codeLanguage,
+            name = "migrate",
+            visibility = VisibilityModifier.PUBLIC,
+            isOverride = true,
+        ).apply {
+            addParameter(
+                typeName = CONNECTION,
+                name = "connection",
+            )
+            addMigrationStatements(this)
+            if (autoMigration.specClassName != null) {
+                addStatement("callback.onPostMigrate(connection)")
             }
+        }
         return migrateFunctionBuilder.build()
     }
 
@@ -125,7 +127,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addMigrationStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addMigrationStatements(migrateBuilder: XFunSpec.Builder) {
         addDropViewStatements(migrateBuilder)
         addSimpleChangeStatements(migrateBuilder)
         addComplexChangeStatements(migrateBuilder)
@@ -137,7 +139,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addDropViewStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addDropViewStatements(migrateBuilder: XFunSpec.Builder) {
         autoMigration.schemaDiff.fromViews.forEach { view ->
             addDatabaseExecuteSqlStatement(migrateBuilder, "DROP VIEW ${view.viewName}")
         }
@@ -148,7 +150,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addRecreateViewStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addRecreateViewStatements(migrateBuilder: XFunSpec.Builder) {
         autoMigration.schemaDiff.toViews.forEach { view ->
             addDatabaseExecuteSqlStatement(migrateBuilder, view.createView())
         }
@@ -160,7 +162,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addComplexChangeStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addComplexChangeStatements(migrateBuilder: XFunSpec.Builder) {
         // Create a collection that is sorted such that FTS bundles are handled after the normal
         // tables have been processed
         complexChangedTables.values.sortedBy {
@@ -175,7 +177,7 @@ class AutoMigrationWriter(
             ) ->
 
             if (oldEntityBundle is FtsEntityBundle &&
-                !oldEntityBundle.ftsOptions.contentTable.isNullOrBlank()
+                oldEntityBundle.ftsOptions.contentTable.isNotBlank()
             ) {
                 addStatementsToMigrateFtsTable(
                     migrateBuilder,
@@ -211,7 +213,7 @@ class AutoMigrationWriter(
     }
 
     private fun addStatementsToMigrateFtsTable(
-        migrateBuilder: MethodSpec.Builder,
+        migrateBuilder: XFunSpec.Builder,
         oldTable: EntityBundle,
         newTable: EntityBundle,
         renamedColumnsMap: MutableMap<String, String>
@@ -242,9 +244,10 @@ class AutoMigrationWriter(
             migrateBuilder,
             buildString {
                 append(
-                    "INSERT INTO `${newTable.tableName}` (${newColumnSequence.joinToString(",")})" +
-                        " SELECT ${oldColumnSequence.joinToString(",")} FROM " +
-                        "`$selectFromTable`",
+                    "INSERT INTO `${newTable.tableName}` " +
+                        "(${newColumnSequence.joinToString(",") { "`$it`" }})" +
+                        " SELECT ${oldColumnSequence.joinToString(",") { "`$it`" }} " +
+                        "FROM `$selectFromTable`",
                 )
             }
         )
@@ -257,7 +260,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addSimpleChangeStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addSimpleChangeStatements(migrateBuilder: XFunSpec.Builder) {
         addDeleteTableStatements(migrateBuilder)
         addRenameTableStatements(migrateBuilder)
         addNewColumnStatements(migrateBuilder)
@@ -272,7 +275,7 @@ class AutoMigrationWriter(
      */
     private fun addStatementsToCreateNewTable(
         newTable: EntityBundle,
-        migrateBuilder: MethodSpec.Builder
+        migrateBuilder: XFunSpec.Builder
     ) {
         addDatabaseExecuteSqlStatement(
             migrateBuilder,
@@ -296,7 +299,7 @@ class AutoMigrationWriter(
         oldEntityBundle: EntityBundle,
         newEntityBundle: EntityBundle,
         renamedColumnsMap: MutableMap<String, String>,
-        migrateBuilder: MethodSpec.Builder
+        migrateBuilder: XFunSpec.Builder
     ) {
         val newColumnSequence = newEntityBundle.fieldsByColumnName.keys.filter {
             oldEntityBundle.fieldsByColumnName.keys.contains(it) ||
@@ -312,8 +315,8 @@ class AutoMigrationWriter(
             buildString {
                 append(
                     "INSERT INTO `$tableNameWithNewPrefix` " +
-                        "(${newColumnSequence.joinToString(",")})" +
-                        " SELECT ${oldColumnSequence.joinToString(",")} FROM " +
+                        "(${newColumnSequence.joinToString(",") { "`$it`" }})" +
+                        " SELECT ${oldColumnSequence.joinToString(",") { "`$it`" }} FROM " +
                         "`$oldTableName`",
                 )
             }
@@ -333,7 +336,7 @@ class AutoMigrationWriter(
         oldTableName: String,
         newTableName: String,
         tableNameWithNewPrefix: String,
-        migrateBuilder: MethodSpec.Builder
+        migrateBuilder: XFunSpec.Builder
     ) {
         addDatabaseExecuteSqlStatement(
             migrateBuilder,
@@ -353,7 +356,7 @@ class AutoMigrationWriter(
      */
     private fun addStatementsToRecreateIndexes(
         table: EntityBundle,
-        migrateBuilder: MethodSpec.Builder
+        migrateBuilder: XFunSpec.Builder
     ) {
         table.indices.forEach { index ->
             addDatabaseExecuteSqlStatement(
@@ -371,11 +374,11 @@ class AutoMigrationWriter(
      */
     private fun addStatementsToCheckForeignKeyConstraint(
         tableName: String,
-        migrateBuilder: MethodSpec.Builder
+        migrateBuilder: XFunSpec.Builder
     ) {
         migrateBuilder.addStatement(
-            "$T.foreignKeyCheck(database, $S)",
-            RoomTypeNames.DB_UTIL,
+            "%M(connection, %S)",
+            RoomTypeNames.DB_UTIL.packageMember("foreignKeyCheck"),
             tableName
         )
     }
@@ -385,7 +388,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addDeleteTableStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addDeleteTableStatements(migrateBuilder: XFunSpec.Builder) {
         deletedTables.forEach { tableName ->
             val deleteTableSql = buildString {
                 append(
@@ -404,7 +407,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addRenameTableStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addRenameTableStatements(migrateBuilder: XFunSpec.Builder) {
         renamedTables.forEach { (oldName, newName) ->
             val renameTableSql = buildString {
                 append(
@@ -423,17 +426,23 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addNewColumnStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addNewColumnStatements(migrateBuilder: XFunSpec.Builder) {
         addedColumns.forEach {
             val addNewColumnSql = buildString {
                 append(
-                    "ALTER TABLE `${it.value.tableName}` ADD COLUMN `${it.key}` " +
-                        "${it.value.fieldBundle.affinity} "
+                    "ALTER TABLE `${it.tableName}` ADD COLUMN `${it.fieldBundle.columnName}` " +
+                        "${it.fieldBundle.affinity}"
                 )
-                if (it.value.fieldBundle.isNonNull) {
-                    append("NOT NULL DEFAULT ${it.value.fieldBundle.defaultValue}")
+                if (it.fieldBundle.isNonNull) {
+                    append(" NOT NULL")
+                }
+                if (it.fieldBundle.defaultValue?.isNotEmpty() == true) {
+                    append(" DEFAULT ${it.fieldBundle.defaultValue}")
                 } else {
-                    append("DEFAULT NULL")
+                    check(
+                        !it.fieldBundle.isNonNull
+                    ) { "A Non-Null field should always have a default value." }
+                    append(" DEFAULT NULL")
                 }
             }
             addDatabaseExecuteSqlStatement(
@@ -448,7 +457,7 @@ class AutoMigrationWriter(
      *
      * @param migrateBuilder Builder for the migrate() function to be generated
      */
-    private fun addNewTableStatements(migrateBuilder: MethodSpec.Builder) {
+    private fun addNewTableStatements(migrateBuilder: XFunSpec.Builder) {
         addedTables.forEach { addedTable ->
             addDatabaseExecuteSqlStatement(
                 migrateBuilder,
@@ -466,12 +475,17 @@ class AutoMigrationWriter(
      * @param sql The SQL statement to be executed by the database
      */
     private fun addDatabaseExecuteSqlStatement(
-        migrateBuilder: MethodSpec.Builder,
+        migrateBuilder: XFunSpec.Builder,
         sql: String
     ) {
         migrateBuilder.addStatement(
-            "database.execSQL($S)",
-            sql
+            "%L",
+            XCodeBlock.ofExtensionCall(
+                language = codeLanguage,
+                memberName = SQLiteDriverMemberNames.CONNECTION_EXEC_SQL,
+                receiverVarName = "connection",
+                args = XCodeBlock.of(codeLanguage, "%S", sql)
+            )
         )
     }
 }

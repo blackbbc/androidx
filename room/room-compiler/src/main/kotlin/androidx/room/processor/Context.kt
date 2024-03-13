@@ -17,19 +17,21 @@
 package androidx.room.processor
 
 import androidx.room.RewriteQueriesToDropUnusedColumns
+import androidx.room.compiler.codegen.CodeLanguage
+import androidx.room.compiler.processing.XElement
+import androidx.room.compiler.processing.XProcessingEnv
+import androidx.room.compiler.processing.XType
+import androidx.room.ext.CommonTypeNames
 import androidx.room.log.RLog
 import androidx.room.parser.expansion.ProjectionExpander
 import androidx.room.parser.optimization.RemoveUnusedColumnQueryRewriter
 import androidx.room.preconditions.Checks
-import androidx.room.compiler.processing.XElement
-import androidx.room.compiler.processing.XProcessingEnv
-import androidx.room.compiler.processing.XType
 import androidx.room.processor.cache.Cache
 import androidx.room.solver.TypeAdapterStore
 import androidx.room.verifier.DatabaseVerifier
+import androidx.room.vo.BuiltInConverterFlags
 import androidx.room.vo.Warning
-import java.io.File
-import java.util.LinkedHashSet
+import javax.tools.Diagnostic
 
 class Context private constructor(
     val processingEnv: XProcessingEnv,
@@ -37,16 +39,28 @@ class Context private constructor(
     private val typeConverters: CustomConverterProcessor.ProcessResult,
     private val inheritedAdapterStore: TypeAdapterStore?,
     val cache: Cache,
-    private val canRewriteQueriesToDropUnusedColumns: Boolean
+    private val canRewriteQueriesToDropUnusedColumns: Boolean,
 ) {
     val checker: Checks = Checks(logger)
     val COMMON_TYPES = CommonTypes(processingEnv)
+
+    /**
+     * Checks whether we should use the TypeConverter store that has a specific heuristic for
+     * nullability. Defaults to true in KSP, false in javac.
+     */
+    val useNullAwareConverter: Boolean by lazy {
+        BooleanProcessorOptions.USE_NULL_AWARE_CONVERTER.getInputValue(processingEnv)
+            ?: (processingEnv.backend == XProcessingEnv.Backend.KSP)
+    }
 
     val typeAdapterStore by lazy {
         if (inheritedAdapterStore != null) {
             TypeAdapterStore.copy(this, inheritedAdapterStore)
         } else {
-            TypeAdapterStore.create(this, typeConverters.converters)
+            TypeAdapterStore.create(
+                this, typeConverters.builtInConverterFlags,
+                typeConverters.converters
+            )
         }
     }
 
@@ -71,6 +85,22 @@ class Context private constructor(
         }
     }
 
+    val codeLanguage: CodeLanguage by lazy {
+        if (BooleanProcessorOptions.GENERATE_KOTLIN.getValue(processingEnv)) {
+            if (processingEnv.backend == XProcessingEnv.Backend.KSP) {
+                CodeLanguage.KOTLIN
+            } else {
+                processingEnv.messager.printMessage(
+                    Diagnostic.Kind.ERROR,
+                    "${BooleanProcessorOptions.GENERATE_KOTLIN.argName} can only be enabled in KSP."
+                )
+                CodeLanguage.JAVA
+            }
+        } else {
+            CodeLanguage.JAVA
+        }
+    }
+
     companion object {
         val ARG_OPTIONS by lazy {
             ProcessorOptions.values().map { it.argName } +
@@ -90,30 +120,59 @@ class Context private constructor(
         logger = RLog(processingEnv.messager, emptySet(), null),
         typeConverters = CustomConverterProcessor.ProcessResult.EMPTY,
         inheritedAdapterStore = null,
-        cache = Cache(null, LinkedHashSet(), emptySet()),
+        cache = Cache(
+            parent = null,
+            converters = LinkedHashSet(),
+            suppressedWarnings = emptySet(),
+            builtInConverterFlags = BuiltInConverterFlags.DEFAULT
+        ),
         canRewriteQueriesToDropUnusedColumns = false
     )
 
     class CommonTypes(val processingEnv: XProcessingEnv) {
         val VOID: XType by lazy {
-            processingEnv.requireType("java.lang.Void")
+            processingEnv.requireType(CommonTypeNames.VOID)
         }
         val STRING: XType by lazy {
-            processingEnv.requireType("java.lang.String")
+            processingEnv.requireType(CommonTypeNames.STRING)
         }
         val READONLY_COLLECTION: XType by lazy {
-            if (processingEnv.backend == XProcessingEnv.Backend.KSP) {
-                processingEnv.requireType("kotlin.collections.Collection")
-            } else {
-                processingEnv.requireType("java.util.Collection")
-            }
+            processingEnv.requireType(CommonTypeNames.COLLECTION)
+        }
+        val LIST: XType by lazy {
+            processingEnv.requireType(CommonTypeNames.LIST)
+        }
+        val SET: XType by lazy {
+            processingEnv.requireType(CommonTypeNames.SET)
         }
     }
 
-    val schemaOutFolder by lazy {
-        val arg = processingEnv.options[ProcessorOptions.OPTION_SCHEMA_FOLDER.argName]
-        if (arg?.isNotEmpty() ?: false) {
-            File(arg)
+    val schemaInFolderPath by lazy {
+        val internalInputFolder =
+            processingEnv.options[ProcessorOptions.INTERNAL_SCHEMA_INPUT_FOLDER.argName]
+        val legacySchemaFolder =
+            processingEnv.options[ProcessorOptions.OPTION_SCHEMA_FOLDER.argName]
+        if (!internalInputFolder.isNullOrBlank()) {
+            internalInputFolder
+        } else if (!legacySchemaFolder.isNullOrBlank()) {
+            legacySchemaFolder
+        } else {
+            null
+        }
+    }
+
+    val schemaOutFolderPath by lazy {
+        val internalOutputFolder =
+            processingEnv.options[ProcessorOptions.INTERNAL_SCHEMA_OUTPUT_FOLDER.argName]
+        val legacySchemaFolder =
+            processingEnv.options[ProcessorOptions.OPTION_SCHEMA_FOLDER.argName]
+        if (!internalOutputFolder.isNullOrBlank() && !legacySchemaFolder.isNullOrBlank()) {
+            logger.e(ProcessorErrors.INVALID_GRADLE_PLUGIN_AND_SCHEMA_LOCATION_OPTION)
+        }
+        if (!internalOutputFolder.isNullOrBlank()) {
+            internalOutputFolder
+        } else if (!legacySchemaFolder.isNullOrBlank()) {
+            legacySchemaFolder
         } else {
             null
         }
@@ -134,10 +193,39 @@ class Context private constructor(
         return Pair(result, collector)
     }
 
-    fun fork(element: XElement, forceSuppressedWarnings: Set<Warning> = emptySet()): Context {
+    /**
+     * Forks the processor context adding suppressed warnings a type converters found in the
+     * given [element].
+     *
+     * @param element the element from which to create the fork.
+     * @param forceSuppressedWarnings the warning that will be silenced regardless if they are
+     * present or not in the [element].
+     * @param forceBuiltInConverters the built-in converter states that will be set regardless of
+     * the states found in the [element].
+     */
+    fun fork(
+        element: XElement,
+        forceSuppressedWarnings: Set<Warning> = emptySet(),
+        forceBuiltInConverters: BuiltInConverterFlags? = null
+    ): Context {
         val suppressedWarnings = SuppressWarningProcessor.getSuppressedWarnings(element)
-        val processConvertersResult = CustomConverterProcessor.findConverters(this, element)
-        val canReUseAdapterStore = processConvertersResult.classes.isEmpty()
+        val processConvertersResult =
+            CustomConverterProcessor.findConverters(this, element).let { result ->
+                if (forceBuiltInConverters != null) {
+                    result.copy(
+                        builtInConverterFlags =
+                            result.builtInConverterFlags.withNext(forceBuiltInConverters)
+                    )
+                } else {
+                    result
+                }
+            }
+        val subBuiltInConverterFlags = typeConverters.builtInConverterFlags.withNext(
+            processConvertersResult.builtInConverterFlags
+        )
+        val canReUseAdapterStore =
+            subBuiltInConverterFlags == typeConverters.builtInConverterFlags &&
+                processConvertersResult.classes.isEmpty()
         // order here is important since the sub context should give priority to new converters.
         val subTypeConverters = if (canReUseAdapterStore) {
             this.typeConverters
@@ -146,7 +234,12 @@ class Context private constructor(
         }
         val subSuppressedWarnings =
             forceSuppressedWarnings + suppressedWarnings + logger.suppressedWarnings
-        val subCache = Cache(cache, subTypeConverters.classes, subSuppressedWarnings)
+        val subCache = Cache(
+            parent = cache,
+            converters = subTypeConverters.classes,
+            suppressedWarnings = subSuppressedWarnings,
+            builtInConverterFlags = subBuiltInConverterFlags
+        )
         val subCanRemoveUnusedColumns = canRewriteQueriesToDropUnusedColumns ||
             element.hasRemoveUnusedColumnsAnnotation()
         val subContext = Context(
@@ -173,25 +266,50 @@ class Context private constructor(
         }
     }
 
+    fun reportMissingType(typeName: String) {
+        logger.e("${RLog.MISSING_TYPE_PREFIX}: Type '$typeName' is not present")
+    }
+
+    fun reportMissingTypeReference(containerName: String) {
+        logger.e(
+            "${RLog.MISSING_TYPE_PREFIX}: Element '$containerName' references a type that is " +
+                "not present"
+        )
+    }
+
     enum class ProcessorOptions(val argName: String) {
-        OPTION_SCHEMA_FOLDER("room.schemaLocation")
+        OPTION_SCHEMA_FOLDER("room.schemaLocation"),
+        INTERNAL_SCHEMA_INPUT_FOLDER("room.internal.schemaInput"),
+        INTERNAL_SCHEMA_OUTPUT_FOLDER("room.internal.schemaOutput"),
     }
 
     enum class BooleanProcessorOptions(val argName: String, private val defaultValue: Boolean) {
-        INCREMENTAL("room.incremental", true),
-        EXPAND_PROJECTION("room.expandProjection", false);
+        INCREMENTAL("room.incremental", defaultValue = true),
+        EXPAND_PROJECTION("room.expandProjection", defaultValue = false),
+        USE_NULL_AWARE_CONVERTER("room.useNullAwareTypeAnalysis", defaultValue = false),
+        GENERATE_KOTLIN("room.generateKotlin", defaultValue = false),
+        EXPORT_SCHEMA_RESOURCE("room.exportSchemaResource", defaultValue = false);
 
         /**
          * Returns the value of this option passed through the [XProcessingEnv]. If the value
          * is null or blank, it returns the default value instead.
          */
         fun getValue(processingEnv: XProcessingEnv): Boolean {
-            val value = processingEnv.options[argName]
-            return if (value.isNullOrBlank()) {
-                defaultValue
-            } else {
-                value.toBoolean()
-            }
+            return getInputValue(processingEnv) ?: defaultValue
+        }
+
+        fun getValue(options: Map<String, String>): Boolean {
+            return getInputValue(options) ?: defaultValue
+        }
+
+        fun getInputValue(processingEnv: XProcessingEnv): Boolean? {
+            return getInputValue(processingEnv.options)
+        }
+
+        private fun getInputValue(options: Map<String, String>): Boolean? {
+            return options[argName]?.takeIf {
+                it.isNotBlank()
+            }?.toBoolean()
         }
     }
 }

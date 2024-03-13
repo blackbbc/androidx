@@ -24,6 +24,7 @@ import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
 import android.text.InputFilter;
 import android.util.AttributeSet;
+import android.widget.TextView;
 import android.widget.ToggleButton;
 
 import androidx.annotation.DrawableRes;
@@ -32,6 +33,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.core.view.TintableBackgroundView;
 import androidx.core.view.ViewCompat;
+import androidx.core.widget.TintableCompoundDrawablesView;
 import androidx.resourceinspection.annotation.AppCompatShadowedAttributes;
 
 /**
@@ -51,7 +53,7 @@ import androidx.resourceinspection.annotation.AppCompatShadowedAttributes;
  */
 @AppCompatShadowedAttributes
 public class AppCompatToggleButton extends ToggleButton implements TintableBackgroundView,
-        EmojiCompatConfigurationView {
+        EmojiCompatConfigurationView, TintableCompoundDrawablesView {
 
     private final AppCompatBackgroundHelper mBackgroundTintHelper;
     private final AppCompatTextHelper mTextHelper;
@@ -101,7 +103,6 @@ public class AppCompatToggleButton extends ToggleButton implements TintableBackg
      * This should be accessed via
      * {@link ViewCompat#setBackgroundTintList(android.view.View, ColorStateList)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -115,7 +116,6 @@ public class AppCompatToggleButton extends ToggleButton implements TintableBackg
      * This should be accessed via
      * {@link ViewCompat#getBackgroundTintList(android.view.View)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -129,7 +129,6 @@ public class AppCompatToggleButton extends ToggleButton implements TintableBackg
      * This should be accessed via
      * {@link ViewCompat#setBackgroundTintMode(android.view.View, PorterDuff.Mode)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -143,7 +142,6 @@ public class AppCompatToggleButton extends ToggleButton implements TintableBackg
      * This should be accessed via
      * {@link ViewCompat#getBackgroundTintMode(android.view.View)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -196,5 +194,100 @@ public class AppCompatToggleButton extends ToggleButton implements TintableBackg
     @Override
     public boolean isEmojiCompatEnabled() {
         return getEmojiTextViewHelper().isEnabled();
+    }
+
+    @Override
+    public void setCompoundDrawables(@Nullable Drawable left, @Nullable Drawable top,
+            @Nullable Drawable right, @Nullable Drawable bottom) {
+        super.setCompoundDrawables(left, top, right, bottom);
+        if (mTextHelper != null) {
+            mTextHelper.onSetCompoundDrawables();
+        }
+    }
+
+    @Override
+    public void setCompoundDrawablesRelative(@Nullable Drawable start, @Nullable Drawable top,
+            @Nullable Drawable end, @Nullable Drawable bottom) {
+        super.setCompoundDrawablesRelative(start, top, end, bottom);
+        if (mTextHelper != null) {
+            mTextHelper.onSetCompoundDrawables();
+        }
+    }
+
+    /**
+     * This should be accessed via
+     * {@link androidx.core.widget.TextViewCompat#getCompoundDrawableTintList(TextView)}
+     *
+     * @return the tint applied to the compound drawables
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTint
+     * @see #setSupportCompoundDrawablesTintList(ColorStateList)
+     *
+     */
+    @Nullable
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public ColorStateList getSupportCompoundDrawablesTintList() {
+        return mTextHelper.getCompoundDrawableTintList();
+    }
+
+    /**
+     * This should be accessed via {@link
+     * androidx.core.widget.TextViewCompat#setCompoundDrawableTintList(TextView, ColorStateList)}
+     *
+     * Applies a tint to the compound drawables. Does not modify the current tint mode, which is
+     * {@link PorterDuff.Mode#SRC_IN} by default.
+     * <p>
+     * Subsequent calls to {@link #setCompoundDrawables(Drawable, Drawable, Drawable, Drawable)} and
+     * related methods will automatically mutate the drawables and apply the specified tint and tint
+     * mode using {@link Drawable#setTintList(ColorStateList)}.
+     *
+     * @param tintList the tint to apply, may be {@code null} to clear tint
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTint
+     * @see #getSupportCompoundDrawablesTintList()
+     *
+     */
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public void setSupportCompoundDrawablesTintList(@Nullable ColorStateList tintList) {
+        mTextHelper.setCompoundDrawableTintList(tintList);
+        mTextHelper.applyCompoundDrawablesTints();
+    }
+
+    /**
+     * This should be accessed via
+     * {@link androidx.core.widget.TextViewCompat#getCompoundDrawableTintMode(TextView)}
+     *
+     * Returns the blending mode used to apply the tint to the compound drawables, if specified.
+     *
+     * @return the blending mode used to apply the tint to the compound drawables
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTintMode
+     * @see #setSupportCompoundDrawablesTintMode(PorterDuff.Mode)
+     *
+     */
+    @Nullable
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public PorterDuff.Mode getSupportCompoundDrawablesTintMode() {
+        return mTextHelper.getCompoundDrawableTintMode();
+    }
+
+    /**
+     * This should be accessed via {@link
+     * androidx.core.widget.TextViewCompat#setCompoundDrawableTintMode(TextView, PorterDuff.Mode)}
+     *
+     * Specifies the blending mode used to apply the tint specified by
+     * {@link #setSupportCompoundDrawablesTintList(ColorStateList)} to the compound drawables. The
+     * default mode is {@link PorterDuff.Mode#SRC_IN}.
+     *
+     * @param tintMode the blending mode used to apply the tint, may be {@code null} to clear tint
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTintMode
+     * @see #setSupportCompoundDrawablesTintList(ColorStateList)
+     *
+     */
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public void setSupportCompoundDrawablesTintMode(@Nullable PorterDuff.Mode tintMode) {
+        mTextHelper.setCompoundDrawableTintMode(tintMode);
+        mTextHelper.applyCompoundDrawablesTints();
     }
 }

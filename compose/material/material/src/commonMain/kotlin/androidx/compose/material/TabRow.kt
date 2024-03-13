@@ -25,8 +25,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.UiComposable
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -47,6 +48,7 @@ import androidx.compose.ui.platform.debugInspectorInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.fastForEachIndexed
@@ -128,20 +130,23 @@ import kotlinx.coroutines.launch
  * space.
  */
 @Composable
+@UiComposable
 fun TabRow(
     selectedTabIndex: Int,
     modifier: Modifier = Modifier,
     backgroundColor: Color = MaterialTheme.colors.primarySurface,
     contentColor: Color = contentColorFor(backgroundColor),
-    indicator: @Composable (tabPositions: List<TabPosition>) -> Unit = @Composable { tabPositions ->
+    indicator: @Composable @UiComposable
+        (tabPositions: List<TabPosition>) -> Unit = @Composable { tabPositions ->
         TabRowDefaults.Indicator(
             Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex])
         )
     },
-    divider: @Composable () -> Unit = @Composable {
-        TabRowDefaults.Divider()
-    },
-    tabs: @Composable () -> Unit
+    divider: @Composable @UiComposable () -> Unit =
+        @Composable {
+            TabRowDefaults.Divider()
+        },
+    tabs: @Composable @UiComposable () -> Unit
 ) {
     Surface(
         modifier = modifier.selectableGroup(),
@@ -169,7 +174,7 @@ fun TabRow(
                 }
 
                 subcompose(TabSlots.Divider, divider).fastForEach {
-                    val placeable = it.measure(constraints)
+                    val placeable = it.measure(constraints.copy(minHeight = 0))
                     placeable.placeRelative(0, tabRowHeight - placeable.height)
                 }
 
@@ -219,21 +224,24 @@ fun TabRow(
  * up equal space.
  */
 @Composable
+@UiComposable
 fun ScrollableTabRow(
     selectedTabIndex: Int,
     modifier: Modifier = Modifier,
     backgroundColor: Color = MaterialTheme.colors.primarySurface,
     contentColor: Color = contentColorFor(backgroundColor),
     edgePadding: Dp = TabRowDefaults.ScrollableTabRowPadding,
-    indicator: @Composable (tabPositions: List<TabPosition>) -> Unit = @Composable { tabPositions ->
+    indicator: @Composable @UiComposable
+        (tabPositions: List<TabPosition>) -> Unit = @Composable { tabPositions ->
         TabRowDefaults.Indicator(
             Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex])
         )
     },
-    divider: @Composable () -> Unit = @Composable {
-        TabRowDefaults.Divider()
-    },
-    tabs: @Composable () -> Unit
+    divider: @Composable @UiComposable () -> Unit =
+        @Composable {
+            TabRowDefaults.Divider()
+        },
+    tabs: @Composable @UiComposable () -> Unit
 ) {
     Surface(
         modifier = modifier,
@@ -284,7 +292,11 @@ fun ScrollableTabRow(
                 // of the tab row, and then placed on top of the tabs.
                 subcompose(TabSlots.Divider, divider).fastForEach {
                     val placeable = it.measure(
-                        constraints.copy(minWidth = layoutWidth, maxWidth = layoutWidth)
+                        constraints.copy(
+                            minHeight = 0,
+                            minWidth = layoutWidth,
+                            maxWidth = layoutWidth
+                        )
                     )
                     placeable.placeRelative(0, layoutHeight - placeable.height)
                 }
@@ -409,7 +421,7 @@ object TabRowDefaults {
         )
         fillMaxWidth()
             .wrapContentSize(Alignment.BottomStart)
-            .offset(x = indicatorOffset)
+            .offset { IntOffset(x = indicatorOffset.roundToPx(), y = 0) }
             .width(currentTabWidth)
     }
 
@@ -463,11 +475,13 @@ private class ScrollableTabData(
                 // Scrolls to the tab with [tabPosition], trying to place it in the center of the
                 // screen or as close to the center as possible.
                 val calculatedOffset = it.calculateTabOffset(density, edgeOffset, tabPositions)
-                coroutineScope.launch {
-                    scrollState.animateScrollTo(
-                        calculatedOffset,
-                        animationSpec = ScrollableTabRowScrollSpec
-                    )
+                if (scrollState.value != calculatedOffset) {
+                    coroutineScope.launch {
+                        scrollState.animateScrollTo(
+                            calculatedOffset,
+                            animationSpec = ScrollableTabRowScrollSpec
+                        )
+                    }
                 }
             }
         }

@@ -40,7 +40,7 @@ internal class XTypeElementStore<BackingType, T : XTypeElement>(
             // just wrap without caching, likely an error or local type in kotlin
             return wrap(backingType)
         }
-        get(qName)?.let {
+        typeCache[qName]?.get()?.let {
             return it
         }
         val wrapped = wrap(backingType)
@@ -58,5 +58,9 @@ internal class XTypeElementStore<BackingType, T : XTypeElement>(
     private fun cache(qName: String, element: T): T {
         typeCache[qName] = WeakReference(element)
         return element
+    }
+
+    internal fun clear() {
+        typeCache.clear()
     }
 }

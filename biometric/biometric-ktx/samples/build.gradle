@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
 
 plugins {
@@ -29,16 +35,12 @@ dependencies {
 }
 
 androidx {
-    name = "AndroidX Biometric Samples"
+    name = "Biometric Samples"
     type = LibraryType.SAMPLES
-    mavenGroup = LibraryGroups.BIOMETRIC
     inceptionYear = "2021"
     description = "Contains the sample code for the AndroidX Biometric library"
 }
 
 android {
-    lintOptions {
-        // Crashes due tob/187418637
-        disable "EnforceSampledAnnotation"
-    }
+    namespace "androidx.biometric.samples"
 }

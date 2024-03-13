@@ -16,21 +16,21 @@
 
 package androidx.compose.ui.input.pointer
 
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collection.mutableVectorOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.fastMapNotNull
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.internal.JvmDefaultWithCompatibility
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.node.requireLayoutNode
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
-import androidx.compose.ui.platform.debugInspectorInfo
+import androidx.compose.ui.platform.synchronized
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.fastAll
-import kotlinx.coroutines.CancellableContinuation
-import kotlinx.coroutines.suspendCancellableCoroutine
+import androidx.compose.ui.util.fastMapNotNull
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
@@ -38,16 +38,27 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.RestrictsSuspension
 import kotlin.coroutines.createCoroutine
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.math.max
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * Receiver scope for awaiting pointer events in a call to [PointerInputScope.awaitPointerEventScope].
+ * Receiver scope for awaiting pointer events in a call to
+ * [PointerInputScope.awaitPointerEventScope].
  *
- * This is a restricted suspension scope. Code in this scope is always called undispatched and
+ * This is a restricted suspension scope. Code in this scope is always called un-dispatched and
  * may only suspend for calls to [awaitPointerEvent]. These functions
  * resume synchronously and the caller may mutate the result **before** the next await call to
  * affect the next stage of the input processing pipeline.
  */
 @RestrictsSuspension
+@JvmDefaultWithCompatibility
 interface AwaitPointerEventScope : Density {
     /**
      * The measured size of the pointer input region. Input events will be reported with
@@ -55,6 +66,13 @@ interface AwaitPointerEventScope : Density {
      * (0, 0) indicating the upper left corner.
      */
     val size: IntSize
+
+    /*
+     * The additional space applied to each side of the layout area. This can be
+     * non-[zero][Size.Zero] when `minimumTouchTargetSize` is set in [pointerInput].
+     */
+    val extendedTouchPadding: Size
+        get() = Size.Zero
 
     /**
      * The [PointerEvent] from the most recent touch event.
@@ -79,6 +97,24 @@ interface AwaitPointerEventScope : Density {
     suspend fun awaitPointerEvent(
         pass: PointerEventPass = PointerEventPass.Main
     ): PointerEvent
+
+    /**
+     * Runs [block] and returns the result of [block] or `null` if [timeMillis] has passed
+     * before [timeMillis].
+     */
+    suspend fun <T> withTimeoutOrNull(
+        timeMillis: Long,
+        block: suspend AwaitPointerEventScope.() -> T
+    ): T? = block()
+
+    /**
+     * Runs [block] and returns its results. An [PointerEventTimeoutCancellationException] is thrown
+     * if [timeMillis] has passed before [block] completes.
+     */
+    suspend fun <T> withTimeout(
+        timeMillis: Long,
+        block: suspend AwaitPointerEventScope.() -> T
+    ): T = block()
 }
 
 /**
@@ -91,6 +127,7 @@ interface AwaitPointerEventScope : Density {
 // gesture detectors as suspending extensions with a PointerInputScope receiver, also making this
 // interface implement CoroutineScope would be an invitation to break structured concurrency in
 // these extensions, leaving other launched coroutines running in the calling scope.
+@JvmDefaultWithCompatibility
 interface PointerInputScope : Density {
     /**
      * The measured size of the pointer input region. Input events will be reported with
@@ -100,17 +137,37 @@ interface PointerInputScope : Density {
     val size: IntSize
 
     /**
+     * The additional space applied to each side of the layout area when the layout is smaller
+     * than [ViewConfiguration.minimumTouchTargetSize].
+     */
+    val extendedTouchPadding: Size
+        get() = Size.Zero
+
+    /**
      * The [ViewConfiguration] used to tune gesture detectors.
      */
     val viewConfiguration: ViewConfiguration
+
+    /**
+     * Intercept pointer input that children receive even if the pointer is out of bounds.
+     *
+     * If `true`, and a child has been moved out of this layout and receives an event, this
+     * will receive that event. If `false`, a child receiving pointer input outside of the
+     * bounds of this layout will not trigger any events in this.
+     */
+    @Suppress("GetterSetterNames")
+    @get:Suppress("GetterSetterNames")
+    var interceptOutOfBoundsChildEvents: Boolean
+        get() = false
+        set(_) {}
 
     /**
      * Suspend and install a pointer input [block] that can await input events and respond to
      * them immediately. A call to [awaitPointerEventScope] will resume with [block]'s result after
      * it completes.
      *
-     * More than one [awaitPointerEventScope] can run concurrently in the same [PointerInputScope] by
-     * using [kotlinx.coroutines.launch]. [block]s are dispatched to in the order in which they
+     * More than one [awaitPointerEventScope] can run concurrently in the same [PointerInputScope]
+     * by using [kotlinx.coroutines.launch]. [block]s are dispatched to in the order in which they
      * were installed.
      */
     suspend fun <R> awaitPointerEventScope(
@@ -118,6 +175,7 @@ interface PointerInputScope : Density {
     ): R
 }
 
+@Suppress("ConstPropertyName")
 private const val PointerInputModifierNoParamError =
     "Modifier.pointerInput must provide one or more 'key' parameters that define the identity of " +
         "the modifier and determine when its previous input processing coroutine should be " +
@@ -131,9 +189,8 @@ private const val PointerInputModifierNoParamError =
 // This deprecated-error function shadows the varargs overload so that the varargs version
 // is not used without key parameters.
 @Suppress(
-    "DeprecatedCallableAddReplaceWith",
     "UNUSED_PARAMETER",
-    "unused",
+    "UnusedReceiverParameter",
     "ModifierFactoryUnreferencedReceiver"
 )
 @Deprecated(PointerInputModifierNoParamError, level = DeprecationLevel.ERROR)
@@ -149,25 +206,35 @@ fun Modifier.pointerInput(
  * pointer input events. Extension functions on [PointerInputScope] or [AwaitPointerEventScope]
  * may be defined to perform higher-level gesture detection. The pointer input handling [block]
  * will be cancelled and **re-started** when [pointerInput] is recomposed with a different [key1].
+ *
+ * When a [pointerInput] modifier is created by composition, if [block] captures any local
+ * variables to operate on, two patterns are common for working with changes to those variables
+ * depending on the desired behavior.
+ *
+ * Specifying the captured value as a [key][key1] parameter will cause [block] to cancel
+ * and restart from the beginning if the value changes:
+ *
+ * @sample androidx.compose.ui.samples.keyedPointerInputModifier
+ *
+ * If [block] should **not** restart when a captured value is changed but the value should still
+ * be updated for its next use, use
+ * [rememberUpdatedState][androidx.compose.runtime.rememberUpdatedState] to update a value holder
+ * that is accessed by [block]:
+ *
+ * @sample androidx.compose.ui.samples.rememberedUpdatedParameterPointerInputModifier
+ *
+ * ***Note*** Any removal operations on Android Views from `pointerInput` should wrap the `block`
+ * in a `post { }` block to guarantee the event dispatch completes before executing the removal.
+ * (You do not need to do this when removing a composable because Compose guarantees it completes
+ * via the snapshot state system.)
  */
 fun Modifier.pointerInput(
     key1: Any?,
     block: suspend PointerInputScope.() -> Unit
-): Modifier = composed(
-    inspectorInfo = debugInspectorInfo {
-        name = "pointerInput"
-        properties["key1"] = key1
-        properties["block"] = block
-    }
-) {
-    val density = LocalDensity.current
-    val viewConfiguration = LocalViewConfiguration.current
-    remember(density) { SuspendingPointerInputFilter(viewConfiguration, density) }.apply {
-        LaunchedEffect(this, key1) {
-            block()
-        }
-    }
-}
+): Modifier = this then SuspendPointerInputElement(
+    key1 = key1,
+    pointerInputHandler = block
+)
 
 /**
  * Create a modifier for processing pointer input within the region of the modified element.
@@ -178,27 +245,37 @@ fun Modifier.pointerInput(
  * may be defined to perform higher-level gesture detection. The pointer input handling [block]
  * will be cancelled and **re-started** when [pointerInput] is recomposed with a different [key1] or
  * [key2].
+ *
+ * When a [pointerInput] modifier is created by composition, if [block] captures any local
+ * variables to operate on, two patterns are common for working with changes to those variables
+ * depending on the desired behavior.
+ *
+ * Specifying the captured value as a [key][key1] parameter will cause [block] to cancel
+ * and restart from the beginning if the value changes:
+ *
+ * @sample androidx.compose.ui.samples.keyedPointerInputModifier
+ *
+ * If [block] should **not** restart when a captured value is changed but the value should still
+ * be updated for its next use, use
+ * [rememberUpdatedState][androidx.compose.runtime.rememberUpdatedState] to update a value holder
+ * that is accessed by [block]:
+ *
+ * @sample androidx.compose.ui.samples.rememberedUpdatedParameterPointerInputModifier
+ *
+ * ***Note*** Any removal operations on Android Views from `pointerInput` should wrap the `block`
+ * in a `post { }` block to guarantee the event dispatch completes before executing the removal.
+ * (You do not need to do this when removing a composable because Compose guarantees it completes
+ * via the snapshot state system.)
  */
 fun Modifier.pointerInput(
     key1: Any?,
     key2: Any?,
     block: suspend PointerInputScope.() -> Unit
-): Modifier = composed(
-    inspectorInfo = debugInspectorInfo {
-        name = "pointerInput"
-        properties["key1"] = key1
-        properties["key2"] = key2
-        properties["block"] = block
-    }
-) {
-    val density = LocalDensity.current
-    val viewConfiguration = LocalViewConfiguration.current
-    remember(density) { SuspendingPointerInputFilter(viewConfiguration, density) }.apply {
-        LaunchedEffect(this, key1, key2) {
-            block()
-        }
-    }
-}
+): Modifier = this then SuspendPointerInputElement(
+    key1 = key1,
+    key2 = key2,
+    pointerInputHandler = block
+)
 
 /**
  * Create a modifier for processing pointer input within the region of the modified element.
@@ -208,55 +285,160 @@ fun Modifier.pointerInput(
  * pointer input events. Extension functions on [PointerInputScope] or [AwaitPointerEventScope]
  * may be defined to perform higher-level gesture detection. The pointer input handling [block]
  * will be cancelled and **re-started** when [pointerInput] is recomposed with any different [keys].
+ *
+ * When a [pointerInput] modifier is created by composition, if [block] captures any local
+ * variables to operate on, two patterns are common for working with changes to those variables
+ * depending on the desired behavior.
+ *
+ * Specifying the captured value as a [key][keys] parameter will cause [block] to cancel
+ * and restart from the beginning if the value changes:
+ *
+ * @sample androidx.compose.ui.samples.keyedPointerInputModifier
+ *
+ * If [block] should **not** restart when a captured value is changed but the value should still
+ * be updated for its next use, use
+ * [rememberUpdatedState][androidx.compose.runtime.rememberUpdatedState] to update a value holder
+ * that is accessed by [block]:
+ *
+ * @sample androidx.compose.ui.samples.rememberedUpdatedParameterPointerInputModifier
+ *
+ * ***Note*** Any removal operations on Android Views from `pointerInput` should wrap the `block`
+ * in a `post { }` block to guarantee the event dispatch completes before executing the removal.
+ * (You do not need to do this when removing a composable because Compose guarantees it completes
+ * via the snapshot state system.)
  */
 fun Modifier.pointerInput(
     vararg keys: Any?,
     block: suspend PointerInputScope.() -> Unit
-): Modifier = composed(
-    inspectorInfo = debugInspectorInfo {
+): Modifier = this then SuspendPointerInputElement(
+    keys = keys,
+    pointerInputHandler = block
+)
+
+internal class SuspendPointerInputElement(
+    val key1: Any? = null,
+    val key2: Any? = null,
+    val keys: Array<out Any?>? = null,
+    val pointerInputHandler: suspend PointerInputScope.() -> Unit
+) : ModifierNodeElement<SuspendingPointerInputModifierNodeImpl>() {
+    override fun InspectorInfo.inspectableProperties() {
         name = "pointerInput"
+        properties["key1"] = key1
+        properties["key2"] = key2
         properties["keys"] = keys
-        properties["block"] = block
+        properties["pointerInputHandler"] = pointerInputHandler
     }
-) {
-    val density = LocalDensity.current
-    val viewConfiguration = LocalViewConfiguration.current
-    remember(density) { SuspendingPointerInputFilter(viewConfiguration, density) }.apply {
-        LaunchedEffect(this, *keys) {
-            block()
-        }
+
+    override fun create(): SuspendingPointerInputModifierNodeImpl {
+        return SuspendingPointerInputModifierNodeImpl(pointerInputHandler)
+    }
+
+    override fun update(node: SuspendingPointerInputModifierNodeImpl) {
+        node.pointerInputHandler = pointerInputHandler
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SuspendPointerInputElement) return false
+
+        if (key1 != other.key1) return false
+        if (key2 != other.key2) return false
+        if (keys != null) {
+            if (other.keys == null) return false
+            if (!keys.contentEquals(other.keys)) return false
+        } else if (other.keys != null) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = key1?.hashCode() ?: 0
+        result = 31 * result + (key2?.hashCode() ?: 0)
+        result = 31 * result + (keys?.contentHashCode() ?: 0)
+        return result
     }
 }
-
-private val DownChangeConsumed = ConsumedData(downChange = true)
 
 private val EmptyPointerEvent = PointerEvent(emptyList())
 
 /**
- * Implementation notes:
- * This class does a lot of lifting. It is both a [PointerInputModifier] and that modifier's
- * own [pointerInputFilter]. It is returned by way of a [Modifier.composed] from
- * the [Modifier.pointerInput] builder and is always 1-1 with an instance of application to
- * a LayoutNode.
- *
- * [SuspendingPointerInputFilter] implements the [PointerInputScope] used to offer the
- * [Modifier.pointerInput] DSL and carries the [Density] from [LocalDensity] at the point of
- * the modifier's materialization. Even if this value were returned to the [PointerInputFilter]
- * callbacks, we would still need the value at composition time in order for [Modifier.pointerInput]
- * to begin its internal [LaunchedEffect] for the provided code block.
+ * Supports suspending pointer event handling. This is used by [pointerInput], so in most cases you
+ * should just use [pointerInput] for suspending pointer input. Creating a
+ * [SuspendingPointerInputModifierNode] should only be needed when you want to delegate to
+ * suspending pointer input as part of the implementation of a complex [Modifier.Node].
  */
-// TODO: Suppressing deprecation for synchronized; need to move to atomicfu wrapper
-@Suppress("DEPRECATION_ERROR")
-internal class SuspendingPointerInputFilter(
-    override val viewConfiguration: ViewConfiguration,
-    density: Density = Density(1f)
-) : PointerInputFilter(),
-    PointerInputModifier,
-    PointerInputScope,
-    Density by density {
+fun SuspendingPointerInputModifierNode(
+    pointerInputHandler: suspend PointerInputScope.() -> Unit
+): SuspendingPointerInputModifierNode {
+    return SuspendingPointerInputModifierNodeImpl(pointerInputHandler)
+}
 
-    override val pointerInputFilter: PointerInputFilter
-        get() = this
+/**
+ * Extends [PointerInputModifierNode] with a handler to execute asynchronously when an event occurs
+ * and a function to reset that handler (cancels the existing coroutine and essentially resets the
+ * handler's execution).
+ * Note: The handler still executes lazily, meaning nothing will be done until a new event comes in.
+ */
+sealed interface SuspendingPointerInputModifierNode : PointerInputModifierNode {
+    /**
+     * Handler for pointer input events. When changed, any previously executing pointerInputHandler
+     * will be canceled.
+     */
+    var pointerInputHandler: suspend PointerInputScope.() -> Unit
+
+    /**
+     * Resets the underlying coroutine used to run the handler for input pointer events. This
+     * should be called whenever a large change has been made that forces the gesture detection to
+     * be completely invalid.
+     *
+     * For example, if [pointerInputHandler] has different modes for detecting a gesture
+     * (long press, double click, etc.), and by switching the modes, any currently-running gestures
+     * are no longer valid.
+     */
+    fun resetPointerInputHandler()
+}
+
+/**
+ * Implementation notes:
+ * This class does a lot of lifting. [PointerInputModifierNode] receives, interprets, and, consumes
+ * [PointerInputChange]s while the state (and the coroutineScope used to execute
+ * [pointerInputHandler]) is retained in [Modifier.Node].
+ *
+ * [SuspendingPointerInputModifierNodeImpl] implements the [PointerInputScope] used to offer the
+ * [Modifier.pointerInput] DSL and provides the [Density] from [LocalDensity] lazily from the
+ * layout node when it is needed.
+ *
+ * Note: The coroutine that executes the passed pointer event handler is launched lazily when the
+ * first event is fired (making it more efficient) and is cancelled via resetPointerInputHandler().
+ */
+internal class SuspendingPointerInputModifierNodeImpl(
+    pointerInputHandler: suspend PointerInputScope.() -> Unit
+) : Modifier.Node(),
+    SuspendingPointerInputModifierNode,
+    PointerInputScope,
+    Density {
+
+    override var pointerInputHandler = pointerInputHandler
+        set(value) {
+            resetPointerInputHandler()
+            field = value
+        }
+
+    override val density: Float
+        get() = requireLayoutNode().density.density
+
+    override val fontScale: Float
+        get() = requireLayoutNode().density.fontScale
+
+    override val viewConfiguration
+        get() = requireLayoutNode().viewConfiguration
+
+    override val size: IntSize
+        get() = boundsSize
+
+    // The handler for pointer input events is now executed lazily when the first event fires.
+    // This job indicates that pointer input handler job is running.
+    private var pointerInputJob: Job? = null
 
     private var currentEvent: PointerEvent = EmptyPointerEvent
 
@@ -264,7 +446,8 @@ internal class SuspendingPointerInputFilter(
      * Actively registered input handlers from currently ongoing calls to [awaitPointerEventScope].
      * Must use `synchronized(pointerHandlers)` to access.
      */
-    private val pointerHandlers = mutableVectorOf<PointerEventHandlerCoroutine<*>>()
+    private val pointerHandlers =
+        mutableVectorOf<SuspendingPointerInputModifierNodeImpl.PointerEventHandlerCoroutine<*>>()
 
     /**
      * Scratch list for dispatching to handlers for a particular phase.
@@ -272,7 +455,8 @@ internal class SuspendingPointerInputFilter(
      * resumed continuations may add/remove handlers without affecting the current dispatch pass.
      * Must only access on the UI thread.
      */
-    private val dispatchingPointerHandlers = mutableVectorOf<PointerEventHandlerCoroutine<*>>()
+    private val dispatchingPointerHandlers =
+        mutableVectorOf<SuspendingPointerInputModifierNodeImpl.PointerEventHandlerCoroutine<*>>()
 
     /**
      * The last pointer event we saw where at least one pointer was currently down; null otherwise.
@@ -289,6 +473,50 @@ internal class SuspendingPointerInputFilter(
      */
     private var boundsSize: IntSize = IntSize.Zero
 
+    override val extendedTouchPadding: Size
+        get() {
+            val minimumTouchTargetSize = viewConfiguration.minimumTouchTargetSize.toSize()
+            val size = size
+            val horizontal = max(0f, minimumTouchTargetSize.width - size.width) / 2f
+            val vertical = max(0f, minimumTouchTargetSize.height - size.height) / 2f
+            return Size(horizontal, vertical)
+        }
+
+    override var interceptOutOfBoundsChildEvents: Boolean = false
+
+    override fun onDetach() {
+        resetPointerInputHandler()
+        super.onDetach()
+    }
+
+    // The handler for incoming pointer input events needs to be reset if the density changes.
+    override fun onDensityChange() {
+        resetPointerInputHandler()
+    }
+
+    // The handler for incoming pointer input events needs to be reset if the view configuration
+    // changes.
+    override fun onViewConfigurationChange() {
+        resetPointerInputHandler()
+    }
+
+    /**
+     * This cancels the existing coroutine and essentially resets pointerInputHandler's execution.
+     * Note, the pointerInputHandler still executes lazily, meaning nothing will be done again
+     * until a new event comes in.
+     * More details: This is triggered from a LayoutNode if the Density or ViewConfiguration change
+     * (in an older implementation using composed, these values were used as keys so it would reset
+     * everything when either change, we do that manually now through this function). It is also
+     * used for testing.
+     */
+    override fun resetPointerInputHandler() {
+        val localJob = pointerInputJob
+        if (localJob != null) {
+            localJob.cancel(PointerInputResetException())
+            pointerInputJob = null
+        }
+    }
+
     /**
      * Snapshot the current [pointerHandlers] and run [block] on each one.
      * May not be called reentrant or concurrent with itself.
@@ -300,7 +528,7 @@ internal class SuspendingPointerInputFilter(
      */
     private inline fun forEachCurrentPointerHandler(
         pass: PointerEventPass,
-        block: (PointerEventHandlerCoroutine<*>) -> Unit
+        block: (SuspendingPointerInputModifierNodeImpl.PointerEventHandlerCoroutine<*>) -> Unit
     ) {
         // Copy handlers to avoid mutating the collection during dispatch
         synchronized(pointerHandlers) {
@@ -310,6 +538,7 @@ internal class SuspendingPointerInputFilter(
             when (pass) {
                 PointerEventPass.Initial, PointerEventPass.Final ->
                     dispatchingPointerHandlers.forEach(block)
+
                 PointerEventPass.Main ->
                     dispatchingPointerHandlers.forEachReversed(block)
             }
@@ -340,6 +569,15 @@ internal class SuspendingPointerInputFilter(
         if (pass == PointerEventPass.Initial) {
             currentEvent = pointerEvent
         }
+
+        // Coroutine lazily launches when first event comes in.
+        if (pointerInputJob == null) {
+            // 'start = CoroutineStart.UNDISPATCHED' required so handler doesn't miss first event.
+            pointerInputJob = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                pointerInputHandler()
+            }
+        }
+
         dispatchPointerEvent(pointerEvent, pass)
 
         lastPointerEvent = pointerEvent.takeIf { event ->
@@ -347,22 +585,27 @@ internal class SuspendingPointerInputFilter(
         }
     }
 
-    override fun onCancel() {
+    override fun onCancelPointerInput() {
         // Synthesize a cancel event for whatever state we previously saw, if one is applicable.
         // A cancel event is one where all previously down pointers are now up, the change in
-        // down-ness is consumed, and we omit any pointers that previously went up entirely.
+        // down-ness is consumed. Any pointers that were previously hovering are left unchanged.
         val lastEvent = lastPointerEvent ?: return
 
+        if (lastEvent.changes.fastAll { !it.pressed }) {
+            return // There aren't any pressed pointers, so we don't need to send any events.
+        }
         val newChanges = lastEvent.changes.fastMapNotNull { old ->
-            if (old.pressed) {
-                old.copy(
-                    currentPressed = false,
-                    previousPosition = old.position,
-                    previousTime = old.uptimeMillis,
-                    previousPressed = old.pressed,
-                    consumed = DownChangeConsumed
-                )
-            } else null
+            PointerInputChange(
+                id = old.id,
+                position = old.position,
+                uptimeMillis = old.uptimeMillis,
+                pressed = false,
+                pressure = old.pressure,
+                previousPosition = old.position,
+                previousUptimeMillis = old.uptimeMillis,
+                previousPressed = old.pressed,
+                isInitiallyConsumed = old.pressed
+            )
         }
 
         val cancelEvent = PointerEvent(newChanges)
@@ -392,7 +635,7 @@ internal class SuspendingPointerInputFilter(
             // We also create the coroutine with both a receiver and a completion continuation
             // of the handlerCoroutine itself; we don't use our currently available suspended
             // continuation as the resume point because handlerCoroutine needs to remove the
-            // ContinuationInterceptor from the supplied CoroutineContext to have undispatched
+            // ContinuationInterceptor from the supplied CoroutineContext to have un-dispatched
             // behavior in our restricted suspension scope. This is required so that we can
             // process event-awaits synchronously and affect the next stage in the pipeline
             // without running too late due to dispatch.
@@ -410,20 +653,25 @@ internal class SuspendingPointerInputFilter(
      *
      * [PointerEventHandlerCoroutine] implements [AwaitPointerEventScope] to provide the
      * input handler DSL, and [Continuation] so that it can wrap [completion] and remove the
-     * [ContinuationInterceptor] from the calling context and run undispatched.
+     * [ContinuationInterceptor] from the calling context and run un-dispatched.
      */
     private inner class PointerEventHandlerCoroutine<R>(
         private val completion: Continuation<R>,
-    ) : AwaitPointerEventScope, Density by this@SuspendingPointerInputFilter, Continuation<R> {
+    ) : AwaitPointerEventScope,
+        Density by this@SuspendingPointerInputModifierNodeImpl,
+        Continuation<R> {
+
         private var pointerAwaiter: CancellableContinuation<PointerEvent>? = null
         private var awaitPass: PointerEventPass = PointerEventPass.Main
 
         override val currentEvent: PointerEvent
-            get() = this@SuspendingPointerInputFilter.currentEvent
+            get() = this@SuspendingPointerInputModifierNodeImpl.currentEvent
         override val size: IntSize
-            get() = this@SuspendingPointerInputFilter.boundsSize
+            get() = this@SuspendingPointerInputModifierNodeImpl.boundsSize
         override val viewConfiguration: ViewConfiguration
-            get() = this@SuspendingPointerInputFilter.viewConfiguration
+            get() = this@SuspendingPointerInputModifierNodeImpl.viewConfiguration
+        override val extendedTouchPadding: Size
+            get() = this@SuspendingPointerInputModifierNodeImpl.extendedTouchPadding
 
         fun offerPointerEvent(event: PointerEvent, pass: PointerEventPass) {
             if (pass == awaitPass) {
@@ -457,5 +705,87 @@ internal class SuspendingPointerInputFilter(
             awaitPass = pass
             pointerAwaiter = continuation
         }
+
+        override suspend fun <T> withTimeoutOrNull(
+            timeMillis: Long,
+            block: suspend AwaitPointerEventScope.() -> T
+        ): T? {
+            return try {
+                withTimeout(timeMillis, block)
+            } catch (_: PointerEventTimeoutCancellationException) {
+                null
+            }
+        }
+
+        override suspend fun <T> withTimeout(
+            timeMillis: Long,
+            block: suspend AwaitPointerEventScope.() -> T
+        ): T {
+            if (timeMillis <= 0L) {
+                pointerAwaiter?.resumeWithException(
+                    PointerEventTimeoutCancellationException(timeMillis)
+                )
+            }
+
+            val job = coroutineScope.launch {
+                // Delay twice because the timeout continuation needs to be lower-priority than
+                // input events, not treated fairly in FIFO order. The second
+                // micro-delay reposts it to the back of the queue, after any input events
+                // that were posted but not processed during the first delay.
+                delay(timeMillis - 1)
+                delay(1)
+
+                pointerAwaiter?.resumeWithException(
+                    PointerEventTimeoutCancellationException(timeMillis)
+                )
+            }
+            try {
+                return block()
+            } finally {
+                job.cancel(CancelTimeoutCancellationException)
+            }
+        }
+    }
+}
+
+private val EmptyStackTraceElements = emptyArray<StackTraceElement>()
+
+/**
+ * An exception thrown from [AwaitPointerEventScope.withTimeout] when the execution time
+ * of the coroutine is too long.
+ */
+class PointerEventTimeoutCancellationException(
+    time: Long
+) : CancellationException("Timed out waiting for $time ms") {
+    override fun fillInStackTrace(): Throwable {
+        // Avoid null.clone() on Android <= 6.0 when accessing stackTrace
+        stackTrace = EmptyStackTraceElements
+        return this
+    }
+}
+
+/**
+ * Used in place of the standard Job cancellation pathway to avoid reflective
+ * javaClass.simpleName lookups to build the exception message and stack trace collection.
+ * Remove if these are changed in kotlinx.coroutines.
+ */
+private class PointerInputResetException : CancellationException("Pointer input was reset") {
+    override fun fillInStackTrace(): Throwable {
+        // Avoid null.clone() on Android <= 6.0 when accessing stackTrace
+        stackTrace = EmptyStackTraceElements
+        return this
+    }
+}
+
+/**
+ * Also used in place of standard Job cancellation pathway; since we control this code path
+ * we shouldn't need to worry about other code calling addSuppressed on this exception
+ * so a singleton instance is used
+ */
+private object CancelTimeoutCancellationException : CancellationException() {
+    override fun fillInStackTrace(): Throwable {
+        // Avoid null.clone() on Android <= 6.0 when accessing stackTrace
+        stackTrace = EmptyStackTraceElements
+        return this
     }
 }

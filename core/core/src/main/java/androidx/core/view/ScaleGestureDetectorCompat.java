@@ -16,8 +16,9 @@
 
 package androidx.core.view;
 
-import android.os.Build;
 import android.view.ScaleGestureDetector;
+
+import androidx.annotation.NonNull;
 
 /**
  * Helper for accessing features in {@link ScaleGestureDetector}.
@@ -30,6 +31,7 @@ public final class ScaleGestureDetectorCompat {
      * receive onScale callbacks when the user performs a doubleTap followed by a swipe. Note that
      * this is enabled by default if the app targets API 19 and newer.
      *
+     * @param scaleGestureDetector detector for which to set the scaling mode.
      * @param enabled true to enable quick scaling, false to disable
      *
      * @deprecated Use {@link #setQuickScaleEnabled(ScaleGestureDetector, boolean)} that takes
@@ -46,13 +48,12 @@ public final class ScaleGestureDetectorCompat {
      * receive onScale callbacks when the user performs a doubleTap followed by a swipe. Note that
      * this is enabled by default if the app targets API 19 and newer.
      *
+     * @param scaleGestureDetector detector for which to set the scaling mode.
      * @param enabled true to enable quick scaling, false to disable
      */
     public static void setQuickScaleEnabled(
-            ScaleGestureDetector scaleGestureDetector, boolean enabled) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            scaleGestureDetector.setQuickScaleEnabled(enabled);
-        }
+            @NonNull ScaleGestureDetector scaleGestureDetector, boolean enabled) {
+        scaleGestureDetector.setQuickScaleEnabled(enabled);
     }
 
     /**
@@ -74,11 +75,7 @@ public final class ScaleGestureDetectorCompat {
      * a swipe, should perform scaling. See
      * {@link #setQuickScaleEnabled(ScaleGestureDetector, boolean)}.
      */
-    public static boolean isQuickScaleEnabled(ScaleGestureDetector scaleGestureDetector) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            return scaleGestureDetector.isQuickScaleEnabled();
-        } else {
-            return false;
-        }
+    public static boolean isQuickScaleEnabled(@NonNull ScaleGestureDetector scaleGestureDetector) {
+        return scaleGestureDetector.isQuickScaleEnabled();
     }
 }

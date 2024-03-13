@@ -13,9 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.ui.platform
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.CommitTextCommand
 import androidx.compose.ui.text.input.DeleteSurroundingTextInCodePointsCommand
 import androidx.compose.ui.text.input.EditCommand
@@ -38,15 +41,28 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
-internal interface DesktopInputComponent {
+internal actual interface PlatformInputComponent {
     fun enableInput(inputMethodRequests: InputMethodRequests)
-    fun disableInput()
+
+    /**
+     * @param inputMethodRequests Optional [InputMethodRequests]. If specified, the requests will
+     * only be cleared if still set to this value.
+     */
+    fun disableInput(inputMethodRequests: InputMethodRequests? = null)
+
+    /**
+     * @see SkiaBasedOwner.textInputSession
+     */
+    actual suspend fun textInputSession(
+        session: suspend PlatformTextInputSessionScope.() -> Nothing
+    ): Nothing
+
     // Input service needs to know this information to implement Input Method support
     val locationOnScreen: Point
     val density: Density
 }
 
-internal class DesktopPlatformInput(val component: DesktopComponent) :
+internal actual class PlatformInput actual constructor(val component: PlatformComponent) :
     PlatformTextInputService {
     data class CurrentInput(
         var value: TextFieldValue,
@@ -96,6 +112,7 @@ internal class DesktopPlatformInput(val component: DesktopComponent) :
         }
     }
 
+    @Deprecated("This method should not be called, used BringIntoViewRequester instead.")
     override fun notifyFocusedRect(rect: Rect) {
         currentInput?.let { input ->
             input.focusedRect = rect
@@ -118,7 +135,7 @@ internal class DesktopPlatformInput(val component: DesktopComponent) :
             val composing = event.text.toStringFrom(event.committedCharacterCount)
             val ops = mutableListOf<EditCommand>()
 
-            if (needToDeletePreviousChar && isMac) {
+            if (needToDeletePreviousChar && isMac && input.value.selection.min > 0) {
                 needToDeletePreviousChar = false
                 ops.add(DeleteSurroundingTextInCodePointsCommand(1, 0))
             }
@@ -173,7 +190,9 @@ internal class DesktopPlatformInput(val component: DesktopComponent) :
             override fun getSelectedText(
                 attributes: Array<AttributedCharacterIterator.Attribute>?
             ): AttributedCharacterIterator {
-                needToDeletePreviousChar = charKeyPressed
+                if (charKeyPressed) {
+                    needToDeletePreviousChar = true
+                }
                 val str = input.value.text.substring(input.value.selection)
                 return AttributedString(str).iterator
             }
@@ -196,24 +215,17 @@ internal class DesktopPlatformInput(val component: DesktopComponent) :
 
                 val comp = input.value.composition
                 val text = input.value.text
+                val range = TextRange(beginIndex, endIndex.coerceAtMost(text.length))
                 if (comp == null) {
-                    val res = text.substring(beginIndex, endIndex)
+                    val res = text.substring(range)
                     return AttributedString(res).iterator
                 }
-
-                val composedStartIndex = comp.start
-                val composedEndIndex = comp.end
-
-                val committed: String
-                if (beginIndex < composedStartIndex) {
-                    val end = min(endIndex, composedStartIndex)
-                    committed = text.substring(beginIndex, end)
-                } else if (composedEndIndex <= endIndex) {
-                    val begin = max(composedEndIndex, beginIndex)
-                    committed = text.substring(begin, endIndex)
-                } else {
-                    committed = ""
-                }
+                val committed = text.substring(
+                    TextRange(
+                        min(range.min, comp.min),
+                        max(range.max, comp.max).coerceAtMost(text.length)
+                    )
+                )
                 return AttributedString(committed).iterator
             }
         }

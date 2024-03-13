@@ -16,71 +16,116 @@
 
 package androidx.camera.camera2.pipe.integration.adapter
 
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CaptureRequest
+import androidx.annotation.RequiresApi
 import androidx.camera.camera2.pipe.Request
 import androidx.camera.camera2.pipe.RequestTemplate
-import androidx.camera.camera2.pipe.StreamId
+import androidx.camera.camera2.pipe.integration.config.UseCaseCameraScope
+import androidx.camera.camera2.pipe.integration.config.UseCaseGraphConfig
+import androidx.camera.camera2.pipe.integration.impl.CAMERAX_TAG_BUNDLE
+import androidx.camera.camera2.pipe.integration.impl.Camera2ImplConfig
 import androidx.camera.camera2.pipe.integration.impl.CameraCallbackMap
+import androidx.camera.camera2.pipe.integration.impl.CameraProperties
+import androidx.camera.camera2.pipe.integration.impl.UseCaseThreads
+import androidx.camera.camera2.pipe.integration.impl.toParameters
 import androidx.camera.core.impl.CaptureConfig
-import androidx.camera.core.impl.DeferrableSurface
-import java.util.concurrent.Executor
+import androidx.camera.core.impl.Config
+import javax.inject.Inject
 
 /**
  * Maps a [CaptureConfig] issued by CameraX (e.g. by the image capture use case) to a [Request]
  * that CameraPipe can submit to the camera.
  */
-class CaptureConfigAdapter(
-    private val surfaceToStreamMap: Map<DeferrableSurface, StreamId>,
-    private val callbackExecutor: Executor,
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
+@UseCaseCameraScope
+class CaptureConfigAdapter @Inject constructor(
+    cameraProperties: CameraProperties,
+    private val useCaseGraphConfig: UseCaseGraphConfig,
+    private val threads: UseCaseThreads,
 ) {
+    private val isLegacyDevice = cameraProperties.metadata[
+        CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL
+    ] == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY
 
-    fun mapToRequest(captureConfig: CaptureConfig): Request {
+    fun mapToRequest(
+        captureConfig: CaptureConfig,
+        requestTemplate: RequestTemplate,
+        sessionConfigOptions: Config,
+        additionalListeners: List<Request.Listener> = emptyList(),
+    ): Request {
         val surfaces = captureConfig.surfaces
         check(surfaces.isNotEmpty()) {
             "Attempted to issue a capture without surfaces using $captureConfig"
         }
 
-        // TODO: It's assumed a single surface is used per use case, even though capture requests
-        //  can support multiple surfaces. Look into potentially bridging the gap between the two
-        //  in this layer.
-        val streamId = surfaceToStreamMap[surfaces.single()]
-        checkNotNull(streamId) { "Attempted to issue a capture with an unrecognized surface." }
-
-        val callbacks = CameraCallbackMap().apply {
-            captureConfig.cameraCaptureCallbacks.forEach { callback ->
-                addCaptureCallback(callback, callbackExecutor)
+        val streamIdList = surfaces.map {
+            checkNotNull(useCaseGraphConfig.surfaceToStreamMap[it]) {
+                "Attempted to issue a capture with an unrecognized surface."
             }
         }
 
-        val parameters = mutableMapOf<CaptureRequest.Key<*>, Any>()
-        val configOptions = captureConfig.implementationOptions
-
-        // Add potential capture options set through Camera2 interop
-        // TODO: When adding support for Camera2 interop, ensure interop options are correctly
-        //  being added to the capture request
-        for (configOption in configOptions.listOptions()) {
-            val requestKey = configOption.token as? CaptureRequest.Key<*> ?: continue
-            val value = configOptions.retrieveOption(configOption) ?: continue
-            parameters[requestKey] = value
+        val callbacks = CameraCallbackMap().apply {
+            captureConfig.cameraCaptureCallbacks.forEach { callback ->
+                addCaptureCallback(callback, threads.sequentialExecutor)
+            }
         }
+
+        val configOptions = captureConfig.implementationOptions
+        val optionBuilder = Camera2ImplConfig.Builder()
+
+        // The override priority for implementation options
+        // P1 Single capture options
+        // P2 SessionConfig options
+        optionBuilder.insertAllOptions(sessionConfigOptions)
+        optionBuilder.insertAllOptions(configOptions)
 
         // Add capture options defined in CaptureConfig
         if (configOptions.containsOption(CaptureConfig.OPTION_ROTATION)) {
-            parameters[CaptureRequest.JPEG_ORIENTATION] =
+            optionBuilder.setCaptureRequestOption(
+                CaptureRequest.JPEG_ORIENTATION,
                 configOptions.retrieveOption(CaptureConfig.OPTION_ROTATION)!!
+            )
         }
         if (configOptions.containsOption(CaptureConfig.OPTION_JPEG_QUALITY)) {
-            parameters[CaptureRequest.JPEG_QUALITY] =
+            optionBuilder.setCaptureRequestOption(
+                CaptureRequest.JPEG_QUALITY,
                 configOptions.retrieveOption(CaptureConfig.OPTION_JPEG_QUALITY)!!.toByte()
+            )
         }
 
-        // TODO: When adding support for extensions, also add support for passing capture request
-        //  tags with each request, since extensions may rely on these tags.
         return Request(
-            streams = listOf(streamId),
-            listeners = listOf(callbacks),
-            parameters = parameters,
-            template = RequestTemplate(captureConfig.templateType)
+            streams = streamIdList,
+            listeners = listOf(callbacks) + additionalListeners,
+            parameters = optionBuilder.build().toParameters(),
+            extras = mapOf(CAMERAX_TAG_BUNDLE to captureConfig.tagBundle),
+            template = captureConfig.getStillCaptureTemplate(requestTemplate, isLegacyDevice)
         )
+    }
+
+    companion object {
+        internal fun CaptureConfig.getStillCaptureTemplate(
+            sessionTemplate: RequestTemplate,
+            isLegacyDevice: Boolean,
+        ): RequestTemplate {
+            var templateToModify = CaptureConfig.TEMPLATE_TYPE_NONE
+            if (sessionTemplate == RequestTemplate(CameraDevice.TEMPLATE_RECORD) &&
+                !isLegacyDevice
+            ) {
+                // Always override template by TEMPLATE_VIDEO_SNAPSHOT when
+                // repeating template is TEMPLATE_RECORD. Note:
+                // TEMPLATE_VIDEO_SNAPSHOT is not supported on legacy device.
+                templateToModify = CameraDevice.TEMPLATE_VIDEO_SNAPSHOT
+            } else if (templateType == CaptureConfig.TEMPLATE_TYPE_NONE) {
+                templateToModify = CameraDevice.TEMPLATE_STILL_CAPTURE
+            }
+
+            return if (templateToModify != CaptureConfig.TEMPLATE_TYPE_NONE) {
+                RequestTemplate(templateToModify)
+            } else {
+                RequestTemplate(templateType)
+            }
+        }
     }
 }

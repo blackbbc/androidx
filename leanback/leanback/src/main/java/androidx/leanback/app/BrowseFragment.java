@@ -31,6 +31,8 @@ import android.view.ViewGroup.MarginLayoutParams;
 import android.view.ViewTreeObserver;
 
 import androidx.annotation.ColorInt;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.view.ViewCompat;
 import android.app.Fragment;
 import android.app.Activity;
@@ -843,7 +845,7 @@ public class BrowseFragment extends BaseFragment {
         allPresenters[allPresenters.length - 1] = invisibleRowPresenter;
         mAdapter.setPresenterSelector(new PresenterSelector() {
             @Override
-            public Presenter getPresenter(Object item) {
+            public Presenter getPresenter(@Nullable Object item) {
                 Row row = (Row) item;
                 if (row.isRenderedAsRowView()) {
                     return adapterPresenter.getPresenter(item);
@@ -1120,8 +1122,8 @@ public class BrowseFragment extends BaseFragment {
                         ? mHeadersFragment.getVerticalGridView() : mMainFragment.getView();
             }
 
-            boolean isRtl = ViewCompat.getLayoutDirection(focused)
-                    == ViewCompat.LAYOUT_DIRECTION_RTL;
+            boolean isRtl = focused.getLayoutDirection()
+                    == View.LAYOUT_DIRECTION_RTL;
             int towardStart = isRtl ? View.FOCUS_RIGHT : View.FOCUS_LEFT;
             int towardEnd = isRtl ? View.FOCUS_LEFT : View.FOCUS_RIGHT;
             if (mCanShowHeaders && direction == towardStart) {
@@ -1267,8 +1269,8 @@ public class BrowseFragment extends BaseFragment {
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
+    @Nullable
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
 
         if (getChildFragmentManager().findFragmentById(R.id.scale_frame) == null) {
             mHeadersFragment = onCreateHeadersFragment();

@@ -39,10 +39,12 @@ import androidx.car.app.R;
 import androidx.test.core.app.ApplicationProvider;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.internal.DoNotInstrument;
@@ -55,6 +57,9 @@ import java.util.List;
 @DoNotInstrument
 @Config(sdk = 23)
 public class HostValidatorTest {
+    @Rule
+    public final MockitoRule mockito = MockitoJUnit.rule();
+
     private static final String VALID_PACKAGE_NAME = "com.foo";
     private static final String ALTERNATIVE_VALID_PACKAGE_NAME = "com.bar";
     private static final Signature VALID_SIGNATURE = new Signature("0123");
@@ -75,8 +80,6 @@ public class HostValidatorTest {
 
     @Before
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
-
         ShadowLog.stream = System.out;
         Context context = spy(ApplicationProvider.getApplicationContext());
         when(context.getPackageManager()).thenReturn(mPackageManager);
@@ -195,7 +198,13 @@ public class HostValidatorTest {
         packageInfo.signatures = new Signature[] { signature };
         if (permission != null) {
             packageInfo.requestedPermissions = new String[] { permission };
-            packageInfo.requestedPermissionsFlags = new int[] { REQUESTED_PERMISSION_GRANTED };
+
+            // Per PackageParser#generatePackageInfo, a requestedPermissionsFlag for a permission
+            // is (REQUESTED_PERMISSION_REQUIRED | REQUESTED_PERMISSION_GRANTED). Since
+            // REQUESTED_PERMISSION_REQUIRED is deprecated but still used in PackageParser, hard
+            // code the granted flag here.
+            int requestedPermissionGranted = REQUESTED_PERMISSION_GRANTED | 1;
+            packageInfo.requestedPermissionsFlags = new int[] { requestedPermissionGranted };
         }
         try {
             when(mPackageManager.getPackageInfo(anyString(), anyInt())).thenReturn(packageInfo);

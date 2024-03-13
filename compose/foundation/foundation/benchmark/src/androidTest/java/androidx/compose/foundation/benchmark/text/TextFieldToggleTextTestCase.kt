@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.foundation.benchmark.text
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -30,11 +32,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.testutils.LayeredComposeTestCase
 import androidx.compose.testutils.ToggleableTestCase
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalTextInputService
-import androidx.compose.ui.text.benchmark.RandomTextGenerator
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.benchmark.RandomTextGenerator
 import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.ImeOptions
@@ -101,6 +102,5 @@ class TextFieldToggleTextTestCase(
         override fun updateState(oldValue: TextFieldValue?, newValue: TextFieldValue) {
             /*do nothing*/
         }
-        override fun notifyFocusedRect(rect: Rect) { /*do nothing*/ }
     }
 }

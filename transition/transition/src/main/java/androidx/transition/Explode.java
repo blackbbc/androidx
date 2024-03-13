@@ -79,10 +79,15 @@ public class Explode extends Visibility {
         captureValues(transitionValues);
     }
 
+    @Override
+    public boolean isSeekingSupported() {
+        return true;
+    }
+
     @Nullable
     @Override
-    public Animator onAppear(ViewGroup sceneRoot, View view,
-            TransitionValues startValues, TransitionValues endValues) {
+    public Animator onAppear(@NonNull ViewGroup sceneRoot, @NonNull View view,
+            @Nullable TransitionValues startValues, @Nullable TransitionValues endValues) {
         if (endValues == null) {
             return null;
         }
@@ -99,8 +104,8 @@ public class Explode extends Visibility {
 
     @Nullable
     @Override
-    public Animator onDisappear(ViewGroup sceneRoot, View view,
-            TransitionValues startValues, TransitionValues endValues) {
+    public Animator onDisappear(@NonNull ViewGroup sceneRoot, @NonNull View view,
+            @Nullable TransitionValues startValues, @Nullable TransitionValues endValues) {
         if (startValues == null) {
             return null;
         }

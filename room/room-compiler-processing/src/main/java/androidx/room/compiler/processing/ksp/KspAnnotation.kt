@@ -18,20 +18,22 @@ package androidx.room.compiler.processing.ksp
 
 import androidx.room.compiler.processing.InternalXAnnotation
 import androidx.room.compiler.processing.XAnnotationBox
-import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XAnnotationValue
-import androidx.room.compiler.processing.isArray
+import androidx.room.compiler.processing.XType
 import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.symbol.KSAnnotation
-import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSType
+import com.google.devtools.ksp.symbol.KSValueArgument
+import com.google.devtools.ksp.symbol.Origin
 
 internal class KspAnnotation(
     val env: KspProcessingEnv,
     val ksAnnotated: KSAnnotation
-) : InternalXAnnotation {
+) : InternalXAnnotation() {
 
-    val ksType: KSType by lazy { ksAnnotated.annotationType.resolve() }
+    val ksType: KSType by lazy {
+        ksAnnotated.annotationType.resolve()
+    }
 
     override val name: String
         get() = ksAnnotated.shortName.asString()
@@ -43,19 +45,57 @@ internal class KspAnnotation(
         env.wrap(ksType, allowPrimitives = true)
     }
 
-    override val annotationValues: List<XAnnotationValue> by lazy {
-        ksAnnotated.arguments.map { arg ->
-            KspAnnotationValue(
-                env, arg,
-                isListType = {
-                    (ksType.declaration as KSClassDeclaration).getConstructors()
-                        .singleOrNull()
-                        ?.parameters
-                        ?.firstOrNull { it.name == arg.name }
-                        ?.let { env.wrap(it.type).isArray() } == true
-                }
-            )
+    override val declaredAnnotationValues: List<XAnnotationValue> by lazy {
+        annotationValues.filterNot {
+          (it as KspAnnotationValue).valueArgument.origin == Origin.SYNTHETIC
         }
+    }
+
+    override val defaultValues: List<XAnnotationValue> by lazy {
+        wrap(ksAnnotated.defaultArguments)
+    }
+
+    override val annotationValues: List<XAnnotationValue> by lazy {
+        wrap(ksAnnotated.arguments)
+    }
+
+    private fun wrap(source: List<KSValueArgument>): List<XAnnotationValue> {
+        // KSAnnotated.arguments / KSAnnotated.defaultArguments isn't guaranteed to have the same
+        // ordering as declared in the annotation declaration, so we order it manually using a map
+        // from name to index.
+        val indexByName = typesByName.keys.mapIndexed { index, name -> name to index }.toMap()
+        return source.map {
+            val valueName = it.name?.asString()
+                ?: error("Value argument $it does not have a name.")
+            val valueType = typesByName[valueName]
+                ?: error("Value type not found for $valueName.")
+            KspAnnotationValue(env, this, valueType, it)
+        }.sortedBy { indexByName[it.name] }
+    }
+
+    // A map of annotation value name to type.
+    private val typesByName: Map<String, XType> by lazy {
+        buildMap {
+            typeElement.getDeclaredMethods()
+                .filter {
+                      // Whether the annotation value is being treated as property or
+                      // abstract method depends on the actual usage of the annotation.
+                      // If the annotation is being used on Java source, then the annotation
+                      // value will have a corresponding method element, otherwise, it
+                      // will become a kotlin property.
+                    if ((typeElement as KspTypeElement).declaration
+                            .getConstructors()
+                            .single().parameters
+                            .isNotEmpty()) {
+                        it.isKotlinPropertyMethod()
+                    } else {
+                        it.isAbstract()
+                    }
+                }.forEach {
+                    put(it.name, it.returnType)
+                    put(it.jvmName, it.returnType)
+                }
+            }
     }
 
     override fun <T : Annotation> asAnnotationBox(annotationClass: Class<T>): XAnnotationBox<T> {

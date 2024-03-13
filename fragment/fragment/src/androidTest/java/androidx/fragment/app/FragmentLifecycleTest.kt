@@ -24,7 +24,6 @@ import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.core.view.ViewCompat
 import androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks
 import androidx.fragment.app.test.EmptyFragmentTestActivity
 import androidx.fragment.app.test.FragmentTestActivity
@@ -39,11 +38,14 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.testutils.withActivity
+import androidx.testutils.withUse
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import leakcanary.DetectLeaksAfterTestSuccess
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.times
@@ -54,8 +56,12 @@ import org.mockito.Mockito.verify
 class FragmentLifecycleTest {
 
     @Suppress("DEPRECATION")
-    @get:Rule
     val activityRule = androidx.test.rule.ActivityTestRule(EmptyFragmentTestActivity::class.java)
+
+    // Detect leaks BEFORE and AFTER activity is destroyed
+    @get:Rule
+    val ruleChain: RuleChain = RuleChain.outerRule(DetectLeaksAfterTestSuccess())
+        .around(activityRule)
 
     @Test
     fun basicLifecycle() {
@@ -194,7 +200,7 @@ class FragmentLifecycleTest {
         val view = f1.requireView()
         assertWithMessage("fragment 1 returned null from getView").that(view).isNotNull()
         assertWithMessage("fragment 1's view is not attached to a window")
-            .that(ViewCompat.isAttachedToWindow(view)).isTrue()
+            .that(view.isAttachedToWindow()).isTrue()
 
         fm.beginTransaction().remove(f1).commit()
         executePendingTransactions(fm)
@@ -203,7 +209,7 @@ class FragmentLifecycleTest {
         assertWithMessage("fragment 1 returned non-null from getView after removal")
             .that(f1.view).isNull()
         assertWithMessage("fragment 1's previous view is still attached to a window")
-            .that(ViewCompat.isAttachedToWindow(view)).isFalse()
+            .that(view.isAttachedToWindow()).isFalse()
     }
 
     @Test
@@ -222,7 +228,7 @@ class FragmentLifecycleTest {
         val origView1 = f1.requireView()
         assertWithMessage("fragment 1 returned null view").that(origView1).isNotNull()
         assertWithMessage("fragment 1's view not attached")
-            .that(ViewCompat.isAttachedToWindow(origView1)).isTrue()
+            .that(origView1.isAttachedToWindow()).isTrue()
 
         fm.beginTransaction().replace(android.R.id.content, f2).addToBackStack("stack1").commit()
         executePendingTransactions(fm)
@@ -231,11 +237,11 @@ class FragmentLifecycleTest {
         assertWithMessage("fragment 2 is added").that(f2.isAdded).isTrue()
         assertWithMessage("fragment 1 returned non-null view").that(f1.view).isNull()
         assertWithMessage("fragment 1's old view still attached")
-            .that(ViewCompat.isAttachedToWindow(origView1)).isFalse()
+            .that(origView1.isAttachedToWindow()).isFalse()
         val origView2 = f2.requireView()
         assertWithMessage("fragment 2 returned null view").that(origView2).isNotNull()
         assertWithMessage("fragment 2's view not attached")
-            .that(ViewCompat.isAttachedToWindow(origView2)).isTrue()
+            .that(origView2.isAttachedToWindow()).isTrue()
 
         fm.popBackStack()
         executePendingTransactions(fm)
@@ -244,12 +250,12 @@ class FragmentLifecycleTest {
         assertWithMessage("fragment 2 is added").that(f2.isAdded).isFalse()
         assertWithMessage("fragment 2 returned non-null view").that(f2.view).isNull()
         assertWithMessage("fragment 2's view still attached")
-            .that(ViewCompat.isAttachedToWindow(origView2)).isFalse()
+            .that(origView2.isAttachedToWindow()).isFalse()
         val newView1 = f1.requireView()
         assertWithMessage("fragment 1 had same view from last attachment")
             .that(newView1).isNotSameInstanceAs(origView1)
         assertWithMessage("fragment 1's view not attached")
-            .that(ViewCompat.isAttachedToWindow(newView1)).isTrue()
+            .that(newView1.isAttachedToWindow()).isTrue()
     }
 
     @Test
@@ -1162,6 +1168,7 @@ class FragmentLifecycleTest {
 
     @Test
     @UiThreadTest
+    @Suppress("DEPRECATION")
     fun optionsMenu() {
         val viewModelStore = ViewModelStore()
         val fc = activityRule.startupFragmentController(viewModelStore)
@@ -1414,7 +1421,7 @@ class FragmentLifecycleTest {
 
     @Test
     fun inflatedFragmentTagAfterResume() {
-        with(ActivityScenario.launch(FragmentTestActivity::class.java)) {
+       withUse(ActivityScenario.launch(FragmentTestActivity::class.java)) {
             val fragment = withActivity {
                 setContentView(R.layout.activity_inflated_fragment)
                 val fm = supportFragmentManager
@@ -1428,7 +1435,7 @@ class FragmentLifecycleTest {
 
     @Test
     fun inflatedFragmentContainerViewAfterResume() {
-        with(ActivityScenario.launch(FragmentTestActivity::class.java)) {
+       withUse(ActivityScenario.launch(FragmentTestActivity::class.java)) {
             var fragment = withActivity {
                 setContentView(R.layout.inflated_fragment_container_view)
                 val fm = supportFragmentManager
@@ -1454,7 +1461,7 @@ class FragmentLifecycleTest {
 
     @Test
     fun inflatedFragmentContainerViewWithMultipleFragmentsAfterResume() {
-        with(ActivityScenario.launch(FragmentTestActivity::class.java)) {
+       withUse(ActivityScenario.launch(FragmentTestActivity::class.java)) {
             val addedFragment1 = StrictViewFragment()
             val addedFragment2 = StrictViewFragment()
             var fragment = withActivity {
@@ -1622,6 +1629,7 @@ class FragmentLifecycleTest {
         }
     }
 
+    @Suppress("DEPRECATION")
     class InvalidateOptionFragment : Fragment() {
         var onPrepareOptionsMenuCalled: Boolean = false
 

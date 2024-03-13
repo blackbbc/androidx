@@ -24,6 +24,8 @@ import android.view.MenuItem;
 import android.view.SubMenu;
 import android.view.View;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 
 /**
@@ -58,7 +60,7 @@ import androidx.annotation.RestrictTo;
  * </code></pre>
  * </li></ul></p>
  *
- * <h3>Creating a custom action provider</h3>
+ * ### Creating a custom action provider
  *
  * <p>To create a custom action provider, extend ActionProvider and implement
  * its callback methods as necessary. In particular, implement the following
@@ -130,13 +132,14 @@ public abstract class ActionProvider {
      *
      * @param context Context for accessing resources.
      */
-    public ActionProvider(Context context) {
+    public ActionProvider(@NonNull Context context) {
         mContext = context;
     }
 
     /**
      * Gets the context associated with this action provider.
      */
+    @NonNull
     public Context getContext() {
         return mContext;
     }
@@ -146,6 +149,7 @@ public abstract class ActionProvider {
      *
      * @return A new action view.
      */
+    @NonNull
     public abstract View onCreateActionView();
 
     /**
@@ -160,7 +164,9 @@ public abstract class ActionProvider {
      * @param forItem MenuItem to create the action view for
      * @return the new action view
      */
-    public View onCreateActionView(MenuItem forItem) {
+    @SuppressWarnings("unused")
+    @NonNull
+    public View onCreateActionView(@NonNull MenuItem forItem) {
         return onCreateActionView();
     }
 
@@ -259,14 +265,14 @@ public abstract class ActionProvider {
      *
      * @param subMenu Submenu that will be displayed
      */
-    public void onPrepareSubMenu(SubMenu subMenu) {
+    @SuppressWarnings("unused")
+    public void onPrepareSubMenu(@NonNull SubMenu subMenu) {
     }
 
     /**
      * Notify the system that the visibility of an action view's sub-UI such as an anchored popup
      * has changed. This will affect how other system visibility notifications occur.
      *
-     * @hide Pending future API approval
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public void subUiVisibilityChanged(boolean isVisible) {
@@ -276,10 +282,9 @@ public abstract class ActionProvider {
     }
 
     /**
-     * @hide Internal use only
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public void setSubUiVisibilityListener(SubUiVisibilityListener listener) {
+    public void setSubUiVisibilityListener(@Nullable SubUiVisibilityListener listener) {
         mSubUiVisibilityListener = listener;
     }
 
@@ -289,7 +294,7 @@ public abstract class ActionProvider {
      *
      * @param listener listener to set
      */
-    public void setVisibilityListener(VisibilityListener listener) {
+    public void setVisibilityListener(@Nullable VisibilityListener listener) {
         if (mVisibilityListener != null && listener != null) {
             Log.w(TAG, "setVisibilityListener: Setting a new ActionProvider.VisibilityListener " +
                     "when one is already set. Are you reusing this " + getClass().getSimpleName() +
@@ -299,7 +304,6 @@ public abstract class ActionProvider {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public void reset() {
@@ -308,7 +312,6 @@ public abstract class ActionProvider {
     }
 
     /**
-     * @hide Internal use only
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public interface SubUiVisibilityListener {

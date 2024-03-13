@@ -16,13 +16,14 @@
 
 package androidx.compose.foundation.text
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
+import androidx.compose.foundation.text.input.internal.CursorAnimationState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -30,27 +31,32 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.isUnspecified
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 
-@Suppress("ModifierInspectorInfo")
 internal fun Modifier.cursor(
-    state: TextFieldState,
+    state: LegacyTextFieldState,
     value: TextFieldValue,
     offsetMapping: OffsetMapping,
     cursorBrush: Brush,
     enabled: Boolean
 ) = if (enabled) composed {
-    val cursorAlpha = remember { Animatable(1f) }
+    val cursorAnimation = remember { CursorAnimationState() }
+    // Don't bother animating the cursor if it wouldn't draw any pixels.
     val isBrushSpecified = !(cursorBrush is SolidColor && cursorBrush.value.isUnspecified)
-    if (state.hasFocus && value.selection.collapsed && isBrushSpecified) {
-        LaunchedEffect(cursorBrush, value.annotatedString, value.selection) {
-            cursorAlpha.animateTo(0f, cursorAnimationSpec)
+    // Only animate the cursor when its window is actually focused. This also disables the cursor
+    // animation when the screen is off.
+    // TODO confirm screen-off behavior.
+    val isWindowFocused = LocalWindowInfo.current.isWindowFocused
+    if (isWindowFocused && state.hasFocus && value.selection.collapsed && isBrushSpecified) {
+        LaunchedEffect(value.annotatedString, value.selection) {
+            cursorAnimation.snapToVisibleAndAnimate()
         }
         drawWithContent {
             this.drawContent()
-            val cursorAlphaValue = cursorAlpha.value.coerceIn(0f, 1f)
+            val cursorAlphaValue = cursorAnimation.cursorAlpha
             if (cursorAlphaValue != 0f) {
                 val transformedOffset = offsetMapping
                     .originalToTransformed(value.selection.start)
@@ -58,7 +64,10 @@ internal fun Modifier.cursor(
                     ?: Rect(0f, 0f, 0f, 0f)
                 val cursorWidth = DefaultCursorThickness.toPx()
                 val cursorX = (cursorRect.left + cursorWidth / 2)
+                    // Do not use coerceIn because it is not guaranteed that the minimum value is
+                    // smaller than the maximum value.
                     .coerceAtMost(size.width - cursorWidth / 2)
+                    .coerceAtLeast(cursorWidth / 2)
 
                 drawLine(
                     cursorBrush,
@@ -74,15 +83,19 @@ internal fun Modifier.cursor(
     }
 } else this
 
-private val cursorAnimationSpec: AnimationSpec<Float>
-    get() = infiniteRepeatable(
-        animation = keyframes {
-            durationMillis = 1000
-            1f at 0
-            1f at 499
-            0f at 500
-            0f at 999
-        }
-    )
+private val cursorAnimationSpec: AnimationSpec<Float> = infiniteRepeatable(
+    animation = keyframes {
+        durationMillis = 1000
+        1f at 0
+        1f at 499
+        0f at 500
+        0f at 999
+    }
+)
 
 internal val DefaultCursorThickness = 2.dp
+
+private object FixedMotionDurationScale : MotionDurationScale {
+    override val scaleFactor: Float
+        get() = 1f
+}

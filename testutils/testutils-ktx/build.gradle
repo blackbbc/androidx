@@ -14,23 +14,45 @@
  * limitations under the License.
  */
 
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.LibraryType
 
 plugins {
     id("AndroidXPlugin")
-    id("kotlin")
 }
 
-dependencies {
-    api(libs.kotlinStdlib)
-    api(libs.kotlinCoroutinesCore)
-    api(libs.kotlinCoroutinesTest)
-    api(libs.junit)
-}
-
-// Allow usage of Kotlin's @OptIn.
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn"]
+androidXMultiplatform {
+    ios()
+    js {
+        nodejs()
+        binaries.executable()
     }
+    jvm()
+    linux()
+    mac()
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                api(libs.kotlinStdlib)
+                api(libs.kotlinCoroutinesCore)
+                api(libs.kotlinCoroutinesTest)
+            }
+        }
+        jvmMain {
+            dependencies {
+                api(libs.junit)
+            }
+        }
+    }
+}
+
+androidx {
+    type = LibraryType.INTERNAL_TEST_LIBRARY
 }

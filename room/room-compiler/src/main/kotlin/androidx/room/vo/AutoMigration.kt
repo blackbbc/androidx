@@ -16,31 +16,30 @@
 
 package androidx.room.vo
 
+import androidx.room.compiler.codegen.XClassName
 import androidx.room.compiler.processing.XTypeElement
 import androidx.room.migration.bundle.EntityBundle
 import androidx.room.migration.bundle.FieldBundle
 import androidx.room.util.SchemaDiffResult
-import com.squareup.javapoet.ClassName
 
 /**
  * Stores the changes detected in a database schema between the old and new versions.
  */
 data class AutoMigration(
-    val element: XTypeElement,
     val from: Int,
     val to: Int,
     val specElement: XTypeElement?,
     val schemaDiff: SchemaDiffResult,
     val isSpecProvided: Boolean,
 ) {
-    val implTypeName: ClassName by lazy {
-        ClassName.get(
-            element.className.packageName(),
-            "${element.className.simpleName()}_AutoMigration_${from}_${to}_Impl"
+    val specClassName = specElement?.asClassName()
+
+    fun getImplTypeName(databaseClassName: XClassName): XClassName {
+        return XClassName.get(
+            databaseClassName.packageName,
+            "${databaseClassName.simpleNames.joinToString("_")}_AutoMigration_${from}_${to}_Impl"
         )
     }
-
-    val specClassName = specElement?.className
 
     /**
      * Stores the table name and the relevant field bundle of a column that was added to a

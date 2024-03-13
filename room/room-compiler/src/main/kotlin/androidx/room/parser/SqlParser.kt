@@ -17,27 +17,26 @@
 package androidx.room.parser
 
 import androidx.room.ColumnInfo
+import androidx.room.compiler.codegen.XTypeName
 import androidx.room.compiler.processing.XProcessingEnv
 import androidx.room.compiler.processing.XType
 import androidx.room.ext.CommonTypeNames
-import com.squareup.javapoet.ArrayTypeName
-import com.squareup.javapoet.TypeName
+import androidx.room.parser.expansion.isCoreSelect
+import java.util.Locale
 import org.antlr.v4.runtime.tree.ParseTree
 import org.antlr.v4.runtime.tree.TerminalNode
-import java.util.Locale
 
-@Suppress("FunctionName")
 class QueryVisitor(
     private val original: String,
     private val syntaxErrors: List<String>,
-    statement: ParseTree,
-    private val forRuntimeQuery: Boolean
+    statement: ParseTree
 ) : SQLiteBaseVisitor<Void?>() {
     private val bindingExpressions = arrayListOf<BindParameterNode>()
     // table name alias mappings
     private val tableNames = mutableSetOf<Table>()
     private val withClauseNames = mutableSetOf<String>()
     private val queryType: QueryType
+    private var foundTopLevelStarProjection: Boolean = false
 
     init {
         queryType = (0 until statement.childCount).map {
@@ -82,6 +81,13 @@ class QueryVisitor(
         return super.visitExpr(ctx)
     }
 
+    override fun visitResult_column(ctx: SQLiteParser.Result_columnContext): Void? {
+        if (ctx.parent.isCoreSelect && ctx.text == "*" || ctx.text.endsWith(".*")) {
+            foundTopLevelStarProjection = true
+        }
+        return super.visitResult_column(ctx)
+    }
+
     /**
      * Check if a comma separated expression (where multiple binding parameters are accepted) is
      * part of a function expression that receives a fixed number of parameters. This is
@@ -107,6 +113,8 @@ class QueryVisitor(
             type = queryType,
             inputs = bindingExpressions.sortedBy { it.sourceInterval.a },
             tables = tableNames,
+            hasTopStarProjection =
+                if (queryType == QueryType.SELECT) foundTopLevelStarProjection else null,
             syntaxErrors = syntaxErrors,
         )
     }
@@ -197,8 +205,7 @@ class SqlParser {
                 QueryVisitor(
                     original = input,
                     syntaxErrors = syntaxErrors,
-                    statement = statement,
-                    forRuntimeQuery = false
+                    statement = statement
                 ).createParsedQuery()
             },
             fallback = { syntaxErrors ->
@@ -207,6 +214,7 @@ class SqlParser {
                     type = QueryType.UNKNOWN,
                     inputs = emptyList(),
                     tables = emptySet(),
+                    hasTopStarProjection = null,
                     syntaxErrors = syntaxErrors,
                 )
             }
@@ -224,6 +232,7 @@ class SqlParser {
                 type = QueryType.UNKNOWN,
                 inputs = emptyList(),
                 tables = tableNames.map { Table(name = it, alias = it) }.toSet(),
+                hasTopStarProjection = null,
                 syntaxErrors = emptyList(),
             )
         }
@@ -256,37 +265,45 @@ enum class SQLTypeAffinity {
     REAL,
     BLOB;
 
-    fun getTypeMirrors(env: XProcessingEnv): List<XType> {
+    fun getTypeMirrors(env: XProcessingEnv): List<XType>? {
         return when (this) {
             TEXT -> withBoxedAndNullableTypes(env, CommonTypeNames.STRING)
-            INTEGER -> withBoxedAndNullableTypes(
-                env, TypeName.INT, TypeName.BYTE, TypeName.CHAR,
-                TypeName.LONG, TypeName.SHORT
+            INTEGER -> withBoxedAndNullableTypes(env,
+                XTypeName.PRIMITIVE_INT, XTypeName.PRIMITIVE_BYTE, XTypeName.PRIMITIVE_CHAR,
+                XTypeName.PRIMITIVE_LONG, XTypeName.PRIMITIVE_SHORT
             )
-            REAL -> withBoxedAndNullableTypes(env, TypeName.DOUBLE, TypeName.FLOAT)
-            BLOB -> withBoxedAndNullableTypes(env, ArrayTypeName.of(TypeName.BYTE))
-            else -> emptyList()
+
+            REAL -> withBoxedAndNullableTypes(env,
+                XTypeName.PRIMITIVE_DOUBLE, XTypeName.PRIMITIVE_FLOAT
+            )
+
+            BLOB -> withBoxedAndNullableTypes(env,
+                XTypeName.getArrayName(XTypeName.PRIMITIVE_BYTE)
+            )
+
+            else -> null
         }
     }
 
     /**
      * produce acceptable variations of the given type names.
-     * If it is primitive, we'll add boxed version
-     * If environment is KSP, we'll add a nullable version as well.
+     * For JAVAC:
+     *  - If it is primitive, we'll add boxed version
+     * For KSP:
+     *  - We'll add a nullable version
      */
     private fun withBoxedAndNullableTypes(
         env: XProcessingEnv,
-        vararg typeNames: TypeName
+        vararg typeNames: XTypeName
     ): List<XType> {
         return typeNames.flatMap { typeName ->
             sequence {
                 val type = env.requireType(typeName)
                 yield(type)
-                if (typeName.isPrimitive) {
-                    yield(type.boxed())
-                }
                 if (env.backend == XProcessingEnv.Backend.KSP) {
                     yield(type.makeNullable())
+                } else if (typeName.isPrimitive) {
+                    yield(type.boxed())
                 }
             }
         }.toList()

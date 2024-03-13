@@ -20,8 +20,10 @@ import android.annotation.SuppressLint;
 import android.content.pm.PermissionInfo;
 import android.os.Build;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 
 import java.lang.annotation.Retention;
@@ -34,8 +36,7 @@ public final class PermissionInfoCompat {
     private PermissionInfoCompat() {
     }
 
-    /** @hide */
-    @IntDef(flag = false, value = {
+    @IntDef(value = {
             PermissionInfo.PROTECTION_NORMAL,
             PermissionInfo.PROTECTION_DANGEROUS,
             PermissionInfo.PROTECTION_SIGNATURE,
@@ -45,7 +46,6 @@ public final class PermissionInfoCompat {
     @Retention(RetentionPolicy.SOURCE)
     public @interface Protection {}
 
-    /** @hide */
     @SuppressLint("UniqueConstants") // because _SYSTEM and _PRIVILEGED are aliases.
     @IntDef(flag = true, value = {
             PermissionInfo.PROTECTION_FLAG_PRIVILEGED,
@@ -72,7 +72,7 @@ public final class PermissionInfoCompat {
     @Protection
     public static int getProtection(@NonNull PermissionInfo permissionInfo) {
         if (Build.VERSION.SDK_INT >= 28) {
-            return permissionInfo.getProtection();
+            return Api28Impl.getProtection(permissionInfo);
         } else {
             return permissionInfo.protectionLevel & PermissionInfo.PROTECTION_MASK_BASE;
         }
@@ -86,9 +86,26 @@ public final class PermissionInfoCompat {
     @ProtectionFlags
     public static int getProtectionFlags(@NonNull PermissionInfo permissionInfo) {
         if (Build.VERSION.SDK_INT >= 28) {
-            return permissionInfo.getProtectionFlags();
+            return Api28Impl.getProtectionFlags(permissionInfo);
         } else {
             return permissionInfo.protectionLevel & ~PermissionInfo.PROTECTION_MASK_BASE;
+        }
+    }
+
+    @RequiresApi(28)
+    static class Api28Impl {
+        private Api28Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static int getProtection(PermissionInfo permissionInfo) {
+            return permissionInfo.getProtection();
+        }
+
+        @DoNotInline
+        static int getProtectionFlags(PermissionInfo permissionInfo) {
+            return permissionInfo.getProtectionFlags();
         }
     }
 }

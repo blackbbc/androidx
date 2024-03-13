@@ -32,6 +32,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.app.Person;
 import androidx.core.graphics.drawable.IconCompat;
 
 import java.lang.reflect.Constructor;
@@ -74,7 +75,6 @@ import java.util.Set;
  * also serializable as per this list.
  * <li>Custom objects that hold only other objects as per defined in this list as fields.
  *
- * @hide
  */
 @RestrictTo(LIBRARY)
 public final class Bundler {
@@ -109,6 +109,7 @@ public final class Bundler {
     private static final int ENUM = 7;
     private static final int CLASS = 8;
     private static final int IBINDER = 9;
+    private static final int PERSON = 10;
 
     /**
      * Serializes an object into a {@link Bundle} for sending over IPC.
@@ -163,6 +164,8 @@ public final class Bundler {
                 throw new TracedBundlerException(
                         "Object serializing contains an array, use a list or a set instead",
                         trace);
+            } else if (obj instanceof Person) {
+                return serializePerson((Person) obj);
             } else {
                 return serializeObject(obj, trace);
             }
@@ -216,6 +219,8 @@ public final class Bundler {
                     return deserializeList(bundle, trace);
                 case IMAGE:
                     return deserializeImage(bundle, trace);
+                case PERSON:
+                    return deserializePerson(bundle);
                 case OBJECT:
                     return deserializeObject(bundle, trace);
                 case ENUM:
@@ -365,6 +370,12 @@ public final class Bundler {
         return bundle;
     }
 
+    private static Bundle serializePerson(Person person) {
+        Bundle bundle = person.toBundle();
+        bundle.putInt(TAG_CLASS_TYPE, PERSON);
+        return bundle;
+    }
+
     private static Bundle serializeObject(Object obj, Trace trace) throws BundlerException {
         String className = obj.getClass().getName();
         try {
@@ -398,6 +409,7 @@ public final class Bundler {
         return bundle;
     }
 
+    @SuppressWarnings("deprecation")
     private static Object deserializePrimitive(Bundle bundle, Trace trace) throws BundlerException {
         Object primitive = bundle.get(TAG_VALUE);
         if (primitive == null) {
@@ -451,7 +463,8 @@ public final class Bundler {
         return binder;
     }
 
-    @SuppressWarnings("argument.type.incompatible") // so that we can put null values in the map
+    // so that we can put null values in the map
+    @SuppressWarnings({"argument.type.incompatible", "deprecation"})
     private static Object deserializeMap(Bundle bundle, Trace trace) throws BundlerException {
         ArrayList<Parcelable> list = bundle.getParcelableArrayList(TAG_VALUE);
         if (list == null) {
@@ -481,6 +494,7 @@ public final class Bundler {
         return deserializeCollection(bundle, new ArrayList<>(), trace);
     }
 
+    @SuppressWarnings("deprecation")
     private static Object deserializeCollection(
             Bundle bundle, Collection<Object> collection, Trace trace) throws BundlerException {
         ArrayList<Parcelable> list = bundle.getParcelableArrayList(TAG_VALUE);
@@ -553,6 +567,11 @@ public final class Bundler {
         return iconCompat;
     }
 
+    private static Object deserializePerson(Bundle bundle) {
+        return Person.fromBundle(bundle);
+    }
+
+    @SuppressWarnings("deprecation")
     private static Object deserializeObject(Bundle bundle, Trace trace) throws BundlerException {
         String className = bundle.getString(TAG_CLASS_NAME);
         if (className == null) {
@@ -771,6 +790,7 @@ public final class Bundler {
             return new Trace(obj, display, parent.mFrames);
         }
 
+        @SuppressWarnings("deprecation")
         static String bundleToString(Bundle bundle) {
             int classType = bundle.getInt(TAG_CLASS_TYPE);
             String s = getBundledTypeName(classType);

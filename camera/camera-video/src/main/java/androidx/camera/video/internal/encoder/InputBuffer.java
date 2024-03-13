@@ -17,6 +17,7 @@
 package androidx.camera.video.internal.encoder;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -29,6 +30,7 @@ import java.nio.ByteBuffer;
  * {@link #cancel} must be called to return the request to the encoder, otherwise, it will cause
  * leakage or failure.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public interface InputBuffer {
 
     /**
@@ -41,7 +43,7 @@ public interface InputBuffer {
      *
      * <p>Getting ByteBuffer multiple times won't reset its internal position and data.
      *
-     * @throws {@link IllegalStateException} if InputBuffer is submitted or canceled.
+     * @throws IllegalStateException if InputBuffer is submitted or canceled.
      */
     @NonNull
     ByteBuffer getByteBuffer();
@@ -49,14 +51,14 @@ public interface InputBuffer {
     /**
      * Sets the timestamp of the input buffer in microseconds.
      *
-     * @throws {@link IllegalStateException} if InputBuffer is submitted or canceled.
+     * @throws IllegalStateException if InputBuffer is submitted or canceled.
      */
     void setPresentationTimeUs(long presentationTimeUs);
 
     /**
      * Denotes the input buffer is the end of the data stream.
      *
-     * @throws {@link IllegalStateException} if InputBuffer is submitted or canceled.
+     * @throws IllegalStateException if InputBuffer is submitted or canceled.
      */
     void setEndOfStream(boolean isEndOfStream);
 

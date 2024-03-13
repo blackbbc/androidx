@@ -16,13 +16,10 @@
 
 package androidx.wear.tiles.checkers
 
-import androidx.wear.tiles.LayoutElementBuilders.Box
-import androidx.wear.tiles.LayoutElementBuilders.Layout
-import androidx.wear.tiles.LayoutElementBuilders.LayoutElement
-import androidx.wear.tiles.ModifiersBuilders.Modifiers
-import androidx.wear.tiles.ModifiersBuilders.Semantics
+import androidx.wear.protolayout.LayoutElementBuilders
+import androidx.wear.protolayout.ModifiersBuilders
+import androidx.wear.protolayout.TimelineBuilders
 import androidx.wear.tiles.TilesTestRunner
-import androidx.wear.tiles.TimelineBuilders.TimelineEntry
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,7 +28,8 @@ import org.junit.runner.RunWith
 class CheckAccessibilityAvailableTest {
     @Test
     fun check_throwsWithNoSemantics() {
-        val entry = buildTimelineEntry(Box.builder().build())
+        val entry = buildTimelineEntry(
+            LayoutElementBuilders.Box.Builder().build())
 
         var exception: CheckerException? = null
 
@@ -46,16 +44,20 @@ class CheckAccessibilityAvailableTest {
 
     @Test
     fun check_doesntThrowIfSemanticsPresent() {
-        val entry = buildTimelineEntry(
-            Box.builder()
-                .setModifiers(
-                    Modifiers.builder()
-                        .setSemantics(
-                            Semantics.builder()
-                                .setContentDescription("Hello World")
-                        )
-                ).build()
-        )
+        val entry =
+            buildTimelineEntry(
+                LayoutElementBuilders.Box.Builder()
+                    .setModifiers(
+                        ModifiersBuilders.Modifiers.Builder()
+                            .setSemantics(
+                                ModifiersBuilders.Semantics.Builder()
+                                    .setContentDescription("Hello World")
+                                    .build()
+                            )
+                            .build()
+                    )
+                    .build()
+            )
 
         var exception: CheckerException? = null
 
@@ -70,19 +72,24 @@ class CheckAccessibilityAvailableTest {
 
     @Test
     fun check_doesntThrowIfSemanticsPresentOnNestedElement() {
-        val entry = buildTimelineEntry(
-            Box.builder()
-                .addContent(
-                    Box.builder()
-                        .setModifiers(
-                            Modifiers.builder()
-                                .setSemantics(
-                                    Semantics.builder()
-                                        .setContentDescription("Hello World")
-                                )
-                        )
-                ).build()
-        )
+        val entry =
+            buildTimelineEntry(
+                LayoutElementBuilders.Box.Builder()
+                    .addContent(
+                        LayoutElementBuilders.Box.Builder()
+                            .setModifiers(
+                                ModifiersBuilders.Modifiers.Builder()
+                                    .setSemantics(
+                                        ModifiersBuilders.Semantics.Builder()
+                                            .setContentDescription("Hello World")
+                                            .build()
+                                    )
+                                    .build()
+                            )
+                            .build()
+                    )
+                    .build()
+            )
 
         var exception: CheckerException? = null
 
@@ -95,8 +102,12 @@ class CheckAccessibilityAvailableTest {
         assertThat(exception).isNull()
     }
 
-    private fun buildTimelineEntry(layout: LayoutElement) =
-        TimelineEntry.builder().setLayout(
-            Layout.builder().setRoot(layout)
-        ).build()
+    private fun buildTimelineEntry(
+        layout: LayoutElementBuilders.LayoutElement
+    ) =
+        TimelineBuilders.TimelineEntry.Builder()
+            .setLayout(
+                LayoutElementBuilders.Layout.Builder().setRoot(layout).build()
+            )
+            .build()
 }

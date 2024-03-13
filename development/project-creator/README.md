@@ -17,12 +17,11 @@ is most appropriate for the project/module you are creating.
 2. [OWNERS] Add your name (and others) to the OWNERS file
 3. [build.grade] Check that the correct library version is assigned
 4. [build.grade] Fill out the project/module name
-5. [build.grade] Fill out the project/module description
-6. [package-info.java] Fill out the project/module package-info.java file
+5. [package-info.java] Fill out the project/module package-info.java file
 
 ### Project/Module Types
 
-The script leverages buildSrc/src/main/kotlin/androidx/build/LibraryType.kt
+The script leverages buildSrc/public/src/main/kotlin/androidx/build/LibraryType.kt
 to create the recommended defaults for your project.  However, you can override
 the options to best fit your requirements.
 
@@ -37,3 +36,21 @@ Script test suite
 ```bash
 ./test_project_creator.py
 ```
+
+### Debugging `No module named 'toml' errors
+
+If you see an error message `No module named 'toml'` try the following steps.
+
+*   Install necessary tools if they are not already installed
+    *   (Linux) `sudo apt-get install virtualenv python3-venv`
+    *   (Mac) `pip3 install virtualenv`
+*   Create a virtual environment with `virtualenv androidx_project_creator` (you
+    can choose another name for your virtualenv if you wish).
+*   Install the `toml` library in your virtual env with
+    `androidx_project_creator/bin/pip3 install toml`
+*   Run the project creator script from your virtual env with
+    `androidx_project_creator/bin/python3
+    ./development/project-creator/create_project.py androidx.foo foo-bar`
+*   Delete your virtual env with `rm -rf ./androidx-project_creator`
+    *   virtualenv will automatically .gitignore itself, but you may want to to
+        remove it anyway.

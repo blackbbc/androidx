@@ -21,7 +21,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 
-import androidx.core.view.ViewCompat;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 /**
  * A <code>TransitionPropagation</code> that propagates based on the distance to the side
@@ -71,8 +72,8 @@ public class SidePropagation extends VisibilityPropagation {
     }
 
     @Override
-    public long getStartDelay(ViewGroup sceneRoot, Transition transition,
-            TransitionValues startValues, TransitionValues endValues) {
+    public long getStartDelay(@NonNull ViewGroup sceneRoot, @NonNull Transition transition,
+            @Nullable TransitionValues startValues, @Nullable TransitionValues endValues) {
         if (startValues == null && endValues == null) {
             return 0;
         }
@@ -123,12 +124,12 @@ public class SidePropagation extends VisibilityPropagation {
             int left, int top, int right, int bottom) {
         final int side;
         if (mSide == Gravity.START) {
-            final boolean isRtl = ViewCompat.getLayoutDirection(sceneRoot)
-                    == ViewCompat.LAYOUT_DIRECTION_RTL;
+            final boolean isRtl = sceneRoot.getLayoutDirection()
+                    == View.LAYOUT_DIRECTION_RTL;
             side = isRtl ? Gravity.RIGHT : Gravity.LEFT;
         } else if (mSide == Gravity.END) {
-            final boolean isRtl = ViewCompat.getLayoutDirection(sceneRoot)
-                    == ViewCompat.LAYOUT_DIRECTION_RTL;
+            final boolean isRtl = sceneRoot.getLayoutDirection()
+                    == View.LAYOUT_DIRECTION_RTL;
             side = isRtl ? Gravity.LEFT : Gravity.RIGHT;
         } else {
             side = mSide;

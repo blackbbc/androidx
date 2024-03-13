@@ -17,21 +17,26 @@
 package androidx.camera.camera2.internal;
 
 import android.content.Context;
+import android.hardware.camera2.CameraDevice;
 import android.media.CamcorderProfile;
+import android.util.Pair;
 import android.util.Size;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
 import androidx.camera.camera2.internal.compat.CameraManagerCompat;
 import androidx.camera.core.CameraUnavailableException;
+import androidx.camera.core.impl.AttachedSurfaceInfo;
 import androidx.camera.core.impl.CameraDeviceSurfaceManager;
+import androidx.camera.core.impl.CameraMode;
+import androidx.camera.core.impl.StreamSpec;
 import androidx.camera.core.impl.SurfaceConfig;
 import androidx.camera.core.impl.UseCaseConfig;
 import androidx.core.util.Preconditions;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,12 +46,13 @@ import java.util.Set;
  * Camera device manager to provide the guaranteed supported stream capabilities related info for
  * all camera devices
  *
- * <p>{@link android.hardware.camera2.CameraDevice#createCaptureSession} defines the default
+ * <p>{@link CameraDevice#createCaptureSession} defines the default
  * guaranteed stream combinations for different hardware level devices. It defines what combination
  * of surface configuration type and size pairs can be supported for different hardware level camera
  * devices. This structure is used to store the guaranteed supported stream capabilities related
  * info.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceManager {
     private static final String TAG = "Camera2DeviceSurfaceManager";
     private final Map<String, SupportedSurfaceCombination> mCameraSupportedSurfaceCombinationMap =
@@ -55,8 +61,6 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
 
     /**
      * Creates a new, initialized Camera2DeviceSurfaceManager.
-     *
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     public Camera2DeviceSurfaceManager(@NonNull Context context,
@@ -69,6 +73,7 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
             }
 
             @Override
+            @SuppressWarnings("deprecation")
             public CamcorderProfile get(int cameraId, int quality) {
                 return CamcorderProfile.get(cameraId, quality);
             }
@@ -109,35 +114,9 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
     }
 
     /**
-     * Check whether the input surface configuration list is under the capability of any combination
-     * of this object.
-     *
-     * @param cameraId          the camera id of the camera device to be compared
-     * @param surfaceConfigList the surface configuration list to be compared
-     * @return the check result that whether it could be supported
-     * @throws IllegalStateException if not initialized
-     */
-    @Override
-    public boolean checkSupported(
-            @NonNull String cameraId, @Nullable List<SurfaceConfig> surfaceConfigList) {
-        if (surfaceConfigList == null || surfaceConfigList.isEmpty()) {
-            return true;
-        }
-
-        SupportedSurfaceCombination supportedSurfaceCombination =
-                mCameraSupportedSurfaceCombinationMap.get(cameraId);
-
-        boolean isSupported = false;
-        if (supportedSurfaceCombination != null) {
-            isSupported = supportedSurfaceCombination.checkSupported(surfaceConfigList);
-        }
-
-        return isSupported;
-    }
-
-    /**
      * Transform to a SurfaceConfig object with cameraId, image format and size info
      *
+     * @param cameraMode  the working camera mode.
      * @param cameraId    the camera id of the camera device to transform the object
      * @param imageFormat the image format info for the surface configuration object
      * @param size        the size info for the surface configuration object
@@ -146,7 +125,10 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
      */
     @Nullable
     @Override
-    public SurfaceConfig transformSurfaceConfig(@NonNull String cameraId, int imageFormat,
+    public SurfaceConfig transformSurfaceConfig(
+            @CameraMode.Mode int cameraMode,
+            @NonNull String cameraId,
+            int imageFormat,
             @NonNull Size size) {
         SupportedSurfaceCombination supportedSurfaceCombination =
                 mCameraSupportedSurfaceCombinationMap.get(cameraId);
@@ -154,21 +136,28 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
         SurfaceConfig surfaceConfig = null;
         if (supportedSurfaceCombination != null) {
             surfaceConfig =
-                    supportedSurfaceCombination.transformSurfaceConfig(imageFormat, size);
+                    supportedSurfaceCombination.transformSurfaceConfig(
+                            cameraMode,
+                            imageFormat,
+                            size);
         }
 
         return surfaceConfig;
     }
 
     /**
-     * Retrieves a map of suggested resolutions for the given list of use cases.
+     * Retrieves a map of suggested stream specifications for the given list of use cases.
      *
-     * @param cameraId          the camera id of the camera device used by the use cases
-     * @param existingSurfaces  list of surfaces already configured and used by the camera. The
-     *                          resolutions for these surface can not change.
-     * @param newUseCaseConfigs list of configurations of the use cases that will be given a
-     *                          suggested resolution
-     * @return map of suggested resolutions for given use cases
+     * @param cameraMode                        the working camera mode.
+     * @param cameraId                          the camera id of the camera device used by the
+     *                                          use cases
+     * @param existingSurfaces                  list of surfaces already configured and used by
+     *                                          the camera. The stream specifications for these
+     *                                          surface can not change.
+     * @param newUseCaseConfigsSupportedSizeMap map of configurations of the use cases to the
+     *                                          supported sizes list that will be given a
+     *                                          suggested stream specification
+     * @return map of suggested stream specifications for given use cases
      * @throws IllegalStateException    if not initialized
      * @throws IllegalArgumentException if {@code newUseCaseConfigs} is an empty list, if
      *                                  there isn't a supported combination of surfaces
@@ -177,22 +166,15 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
      */
     @NonNull
     @Override
-    public Map<UseCaseConfig<?>, Size> getSuggestedResolutions(
+    public Pair<Map<UseCaseConfig<?>, StreamSpec>, Map<AttachedSurfaceInfo, StreamSpec>>
+            getSuggestedStreamSpecs(
+            @CameraMode.Mode int cameraMode,
             @NonNull String cameraId,
-            @NonNull List<SurfaceConfig> existingSurfaces,
-            @NonNull List<UseCaseConfig<?>> newUseCaseConfigs) {
-        Preconditions.checkArgument(!newUseCaseConfigs.isEmpty(), "No new use cases to be bound.");
-
-        // Use the small size (640x480) for new use cases to check whether there is any possible
-        // supported combination first
-        List<SurfaceConfig> surfaceConfigs = new ArrayList<>(existingSurfaces);
-
-        for (UseCaseConfig<?> useCaseConfig : newUseCaseConfigs) {
-            surfaceConfigs.add(
-                    transformSurfaceConfig(cameraId,
-                            useCaseConfig.getInputFormat(),
-                            new Size(640, 480)));
-        }
+            @NonNull List<AttachedSurfaceInfo> existingSurfaces,
+            @NonNull Map<UseCaseConfig<?>, List<Size>> newUseCaseConfigsSupportedSizeMap,
+            boolean isPreviewStabilizationOn) {
+        Preconditions.checkArgument(!newUseCaseConfigsSupportedSizeMap.isEmpty(),
+                "No new use cases to be bound.");
 
         SupportedSurfaceCombination supportedSurfaceCombination =
                 mCameraSupportedSurfaceCombinationMap.get(cameraId);
@@ -202,15 +184,10 @@ public final class Camera2DeviceSurfaceManager implements CameraDeviceSurfaceMan
                     + cameraId);
         }
 
-        if (!supportedSurfaceCombination.checkSupported(surfaceConfigs)) {
-            throw new IllegalArgumentException(
-                    "No supported surface combination is found for camera device - Id : "
-                            + cameraId + ".  May be attempting to bind too many use cases. "
-                            + "Existing surfaces: " + existingSurfaces + " New configs: "
-                            + newUseCaseConfigs);
-        }
-
-        return supportedSurfaceCombination.getSuggestedResolutions(existingSurfaces,
-                newUseCaseConfigs);
+        return supportedSurfaceCombination.getSuggestedStreamSpecifications(
+                cameraMode,
+                existingSurfaces,
+                newUseCaseConfigsSupportedSizeMap,
+                isPreviewStabilizationOn);
     }
 }

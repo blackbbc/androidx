@@ -16,16 +16,18 @@
 
 package androidx.compose.foundation.text.selection
 
-import androidx.compose.foundation.text.detectDragGesturesWithObserver
-import androidx.compose.foundation.text.isInTouchMode
+import androidx.compose.foundation.text.ContextMenuArea
+import androidx.compose.foundation.text.detectDownAndDragGesturesWithObserver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -33,7 +35,7 @@ import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.util.fastForEach
 
 /**
- * Enables text selection for it's direct or indirection children.
+ * Enables text selection for its direct or indirect children.
  *
  * @sample androidx.compose.foundation.samples.SelectionSample
  */
@@ -51,7 +53,7 @@ fun SelectionContainer(modifier: Modifier = Modifier, content: @Composable () ->
 }
 
 /**
- * Disables text selection for it's direct or indirection children. To use this, simply add this
+ * Disables text selection for its direct or indirect children. To use this, simply add this
  * to wrap one or more text composables.
  *
  * @sample androidx.compose.foundation.samples.DisableSelectionSample
@@ -81,7 +83,10 @@ internal fun SelectionContainer(
     onSelectionChange: (Selection?) -> Unit,
     children: @Composable () -> Unit
 ) {
-    val registrarImpl = remember { SelectionRegistrarImpl() }
+    val registrarImpl = rememberSaveable(saver = SelectionRegistrarImpl.Saver) {
+        SelectionRegistrarImpl()
+    }
+
     val manager = remember { SelectionManager(registrarImpl) }
 
     manager.hapticFeedBack = LocalHapticFeedback.current
@@ -89,30 +94,47 @@ internal fun SelectionContainer(
     manager.textToolbar = LocalTextToolbar.current
     manager.onSelectionChange = onSelectionChange
     manager.selection = selection
-    manager.touchMode = isInTouchMode
 
-    CompositionLocalProvider(LocalSelectionRegistrar provides registrarImpl) {
-        // Get the layout coordinates of the selection container. This is for hit test of
-        // cross-composable selection.
-        SimpleLayout(modifier = modifier.then(manager.modifier)) {
-            children()
-            if (isInTouchMode && manager.hasFocus) {
-                manager.selection?.let {
-                    listOf(true, false).fastForEach { isStartHandle ->
-                        val observer = remember(isStartHandle) {
-                            manager.handleDragObserver(isStartHandle)
+    ContextMenuArea(manager) {
+        CompositionLocalProvider(LocalSelectionRegistrar provides registrarImpl) {
+            // Get the layout coordinates of the selection container. This is for hit test of
+            // cross-composable selection.
+            SimpleLayout(modifier = modifier.then(manager.modifier)) {
+                children()
+                if (manager.isInTouchMode &&
+                    manager.hasFocus &&
+                    !manager.isTriviallyCollapsedSelection()
+                ) {
+                    manager.selection?.let {
+                        listOf(true, false).fastForEach { isStartHandle ->
+                            val observer = remember(isStartHandle) {
+                                manager.handleDragObserver(isStartHandle)
+                            }
+
+                            val positionProvider: () -> Offset = remember(isStartHandle) {
+                                if (isStartHandle) {
+                                    { manager.startHandlePosition ?: Offset.Unspecified }
+                                } else {
+                                    { manager.endHandlePosition ?: Offset.Unspecified }
+                                }
+                            }
+
+                            val direction = if (isStartHandle) {
+                                it.start.direction
+                            } else {
+                                it.end.direction
+                            }
+
+                            SelectionHandle(
+                                offsetProvider = positionProvider,
+                                isStartHandle = isStartHandle,
+                                direction = direction,
+                                handlesCrossed = it.handlesCrossed,
+                                modifier = Modifier.pointerInput(observer) {
+                                    detectDownAndDragGesturesWithObserver(observer)
+                                },
+                            )
                         }
-                        SelectionHandle(
-                            startHandlePosition = manager.startHandlePosition,
-                            endHandlePosition = manager.endHandlePosition,
-                            isStartHandle = isStartHandle,
-                            directions = Pair(it.start.direction, it.end.direction),
-                            handlesCrossed = it.handlesCrossed,
-                            modifier = Modifier.pointerInput(observer) {
-                                detectDragGesturesWithObserver(observer)
-                            },
-                            content = null
-                        )
                     }
                 }
             }
@@ -121,7 +143,8 @@ internal fun SelectionContainer(
 
     DisposableEffect(manager) {
         onDispose {
-            manager.hideSelectionToolbar()
+            manager.onRelease()
+            manager.hasFocus = false
         }
     }
 }

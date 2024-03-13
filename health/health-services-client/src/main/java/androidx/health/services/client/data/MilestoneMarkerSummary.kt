@@ -16,84 +16,86 @@
 
 package androidx.health.services.client.data
 
-import android.os.Parcel
-import android.os.Parcelable
+import androidx.health.services.client.proto.DataProto
+import androidx.health.services.client.proto.DataProto.AchievedExerciseGoal
+import androidx.health.services.client.proto.DataProto.MilestoneMarkerSummary.SummaryMetricsEntry
 import java.time.Duration
 import java.time.Instant
 
 /**
  * The summary of metrics and state from the previously achieved milestone marker [ExerciseGoal].
  */
-public data class MilestoneMarkerSummary(
+@Suppress("ParcelCreator")
+public class MilestoneMarkerSummary(
     /** Returns the time at which this milestone marker started being tracked. */
-    val startTime: Instant,
+    public val startTime: Instant,
 
     /** Returns the time at which this milestone marker was reached. */
-    val endTime: Instant,
+    public val endTime: Instant,
 
     /**
      * Returns the total elapsed time for which the exercise was active during this milestone, i.e.
      * started but not paused.
      */
-    val activeDuration: Duration,
+    public val activeDuration: Duration,
 
-    /** The [AchievedExerciseGoal] that triggered this milestone summary. */
-    val achievedGoal: AchievedExerciseGoal,
+    /** The [ExerciseGoal] that triggered this milestone summary. */
+    public val achievedGoal: ExerciseGoal<out Number>,
 
     /**
-     * Returns the [DataPoint] for each aggregated metric keyed by [DataType] tracked between
-     * [startTime] and [endTime] i.e. during the duration of this milestone.
+     * Returns the [DataPointContainer] for aggregated metrics tracked between [startTime] and
+     * [endTime] i.e. during the duration of this milestone. This summary will only contain
+     * [DataPoint]s for [AggregateDataType]s.
      */
-    val summaryMetrics: Map<DataType, DataPoint>,
-) : Parcelable {
-    override fun describeContents(): Int = 0
+    public val summaryMetrics: DataPointContainer,
+) {
 
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeLong(startTime.toEpochMilli())
-        dest.writeLong(endTime.toEpochMilli())
-        dest.writeLong(activeDuration.toMillis())
-        dest.writeParcelable(achievedGoal, flags)
+    internal constructor(
+        proto: DataProto.MilestoneMarkerSummary
+    ) : this(
+        Instant.ofEpochMilli(proto.startTimeEpochMs),
+        Instant.ofEpochMilli(proto.endTimeEpochMs),
+        Duration.ofMillis(proto.activeDurationMs),
+        ExerciseGoal.fromProto(proto.achievedGoal.exerciseGoal),
+        DataPointContainer(proto.summaryMetricsList.map {
+                DataPoint.fromProto(it.aggregateDataPoint)
+        })
+    )
 
-        dest.writeInt(summaryMetrics.size)
-        for ((dataType, dataPoint) in summaryMetrics) {
-            dest.writeParcelable(dataType, flags)
-            dest.writeParcelable(dataPoint, flags)
-        }
-    }
-
-    public companion object {
-        @JvmField
-        public val CREATOR: Parcelable.Creator<MilestoneMarkerSummary> =
-            object : Parcelable.Creator<MilestoneMarkerSummary> {
-                override fun createFromParcel(source: Parcel): MilestoneMarkerSummary? {
-                    val startTime = Instant.ofEpochMilli(source.readLong())
-                    val endTime = Instant.ofEpochMilli(source.readLong())
-                    val activeDuration = Duration.ofMillis(source.readLong())
-                    val achievedGoal: AchievedExerciseGoal =
-                        source.readParcelable(AchievedExerciseGoal::class.java.classLoader)
-                            ?: return null
-
-                    val summaryMetrics = HashMap<DataType, DataPoint>()
-                    repeat(source.readInt()) {
-                        val dataType: DataType =
-                            source.readParcelable(DataType::class.java.classLoader) ?: return null
-                        val dataPoint: DataPoint =
-                            source.readParcelable(DataPoint::class.java.classLoader) ?: return null
-                        summaryMetrics[dataType] = dataPoint
+    internal val proto: DataProto.MilestoneMarkerSummary =
+        DataProto.MilestoneMarkerSummary.newBuilder()
+            .setStartTimeEpochMs(startTime.toEpochMilli())
+            .setEndTimeEpochMs(endTime.toEpochMilli())
+            .setActiveDurationMs(activeDuration.toMillis())
+            .setAchievedGoal(AchievedExerciseGoal.newBuilder().setExerciseGoal(achievedGoal.proto))
+            .addAllSummaryMetrics(
+                summaryMetrics.cumulativeDataPoints
+                    .map {
+                        SummaryMetricsEntry.newBuilder()
+                            .setDataType(it.dataType.proto)
+                            .setAggregateDataPoint(it.proto)
+                            .build()
                     }
+                    // Sorting to ensure equals() works correctly.
+                    .sortedBy { it.dataType.name }
+            )
+            .addAllSummaryMetrics(
+                summaryMetrics.statisticalDataPoints
+                    .map {
+                        SummaryMetricsEntry.newBuilder()
+                            .setDataType(it.dataType.proto)
+                            .setAggregateDataPoint(it.proto)
+                            .build()
+                    }
+                    // Sorting to ensure equals() works correctly.
+                    .sortedBy { it.dataType.name }
+            )
+            .build()
 
-                    return MilestoneMarkerSummary(
-                        startTime = startTime,
-                        endTime = endTime,
-                        activeDuration = activeDuration,
-                        achievedGoal = achievedGoal,
-                        summaryMetrics = summaryMetrics
-                    )
-                }
-
-                override fun newArray(size: Int): Array<MilestoneMarkerSummary?> {
-                    return arrayOfNulls(size)
-                }
-            }
-    }
+    override fun toString(): String =
+        "MilestoneMarkerSummary(" +
+            "startTime=$startTime, " +
+            "endTime=$endTime, " +
+            "achievedGoal=$achievedGoal, " +
+            "summaryMetrics=$summaryMetrics)"
 }

@@ -28,14 +28,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.appcompat.R;
-import androidx.core.view.ViewCompat;
 
 /**
  * This class acts as a container for the action bar view and action mode context views.
  * It applies special styles as needed to help handle animated transitions between them.
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class ActionBarContainer extends FrameLayout {
@@ -60,7 +60,7 @@ public class ActionBarContainer extends FrameLayout {
 
         // Set a transparent background so that we project appropriately.
         final Drawable bg = new ActionBarBackgroundDrawable(this);
-        ViewCompat.setBackground(this, bg);
+        setBackground(bg);
 
         TypedArray a = context.obtainStyledAttributes(attrs,
                 R.styleable.ActionBar);
@@ -103,7 +103,7 @@ public class ActionBarContainer extends FrameLayout {
                 mBackground == null && mStackedBackground == null);
         invalidate();
         if (Build.VERSION.SDK_INT >= 21) {
-            invalidateOutline();
+            Api21Impl.invalidateOutline(this);
         }
     }
 
@@ -124,7 +124,7 @@ public class ActionBarContainer extends FrameLayout {
                 mBackground == null && mStackedBackground == null);
         invalidate();
         if (Build.VERSION.SDK_INT >= 21) {
-            invalidateOutline();
+            Api21Impl.invalidateOutline(this);
         }
     }
 
@@ -144,7 +144,7 @@ public class ActionBarContainer extends FrameLayout {
                 mBackground == null && mStackedBackground == null);
         invalidate();
         if (Build.VERSION.SDK_INT >= 21) {
-            invalidateOutline();
+            Api21Impl.invalidateOutline(this);
         }
     }
 
@@ -158,7 +158,7 @@ public class ActionBarContainer extends FrameLayout {
     }
 
     @Override
-    protected boolean verifyDrawable(Drawable who) {
+    protected boolean verifyDrawable(@NonNull Drawable who) {
         return (who == mBackground && !mIsSplit) || (who == mStackedBackground && mIsStacked) ||
                 (who == mSplitBackground && mIsSplit) || super.verifyDrawable(who);
     }
@@ -343,6 +343,17 @@ public class ActionBarContainer extends FrameLayout {
 
         if (needsInvalidate) {
             invalidate();
+        }
+    }
+
+    @RequiresApi(21)
+    private static class Api21Impl {
+        private Api21Impl() {
+            // Non-instantiable.
+        }
+
+        public static void invalidateOutline(ActionBarContainer drawable) {
+            drawable.invalidateOutline();
         }
     }
 }

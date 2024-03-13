@@ -17,8 +17,6 @@
 package androidx.compose.foundation.benchmark.lazy
 
 import android.os.Build
-import android.view.MotionEvent
-import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
@@ -34,15 +32,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.testutils.ComposeTestCase
-import androidx.compose.testutils.assertNoPendingChanges
 import androidx.compose.testutils.benchmark.ComposeBenchmarkRule
-import androidx.compose.testutils.doFramesUntilNoChangesPending
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.test.filters.LargeTest
 import kotlinx.coroutines.runBlocking
@@ -79,6 +72,30 @@ class LazyListScrollingBenchmark(
                 addNewItemOnToggle = true,
                 content = testCase.content,
                 isVertical = testCase.isVertical
+            )
+        }
+    }
+
+    @Test
+    fun scrollProgrammatically_noNewItems_withoutKeys() {
+        benchmarkRule.toggleStateBenchmark {
+            ListRemeasureTestCase(
+                addNewItemOnToggle = false,
+                content = testCase.content,
+                isVertical = testCase.isVertical,
+                useKeys = false
+            )
+        }
+    }
+
+    @Test
+    fun scrollProgrammatically_newItemComposed_withoutKeys() {
+        benchmarkRule.toggleStateBenchmark {
+            ListRemeasureTestCase(
+                addNewItemOnToggle = true,
+                content = testCase.content,
+                isVertical = testCase.isVertical,
+                useKeys = false
             )
         }
     }
@@ -154,7 +171,7 @@ class LazyListScrollingBenchmark(
 class LazyListScrollingTestCase(
     private val name: String,
     val isVertical: Boolean,
-    val content: @Composable ListRemeasureTestCase.(LazyListState) -> Unit
+    val content: @Composable ListRemeasureTestCase.(LazyListState, useKeys: Boolean) -> Unit
 ) {
     override fun toString(): String {
         return name
@@ -164,12 +181,23 @@ class LazyListScrollingTestCase(
 private val LazyColumn = LazyListScrollingTestCase(
     "LazyColumn",
     isVertical = true
-) { state ->
-    LazyColumn(state = state, modifier = Modifier.requiredHeight(400.dp).fillMaxWidth()) {
-        item {
+) { state, useKeys ->
+    LazyColumn(
+        state = state,
+        modifier = Modifier
+            .requiredHeight(400.dp)
+            .fillMaxWidth(),
+        flingBehavior = NoFlingBehavior
+    ) {
+        item(key = if (useKeys) "header" else null) {
             FirstLargeItem()
         }
-        items(items) {
+        items(
+            items, key = if (useKeys) {
+                { it.index }
+            } else {
+                null
+            }) {
             RegularItem()
         }
     }
@@ -178,82 +206,38 @@ private val LazyColumn = LazyListScrollingTestCase(
 private val LazyRow = LazyListScrollingTestCase(
     "LazyRow",
     isVertical = false
-) { state ->
-    LazyRow(state = state, modifier = Modifier.requiredWidth(400.dp).fillMaxHeight()) {
-        item {
+) { state, useKeys ->
+    LazyRow(
+        state = state,
+        modifier = Modifier
+            .requiredWidth(400.dp)
+            .fillMaxHeight(),
+        flingBehavior = NoFlingBehavior
+    ) {
+        item(if (useKeys) "header" else null) {
             FirstLargeItem()
         }
-        items(items) {
+        items(items, key = if (useKeys) {
+            { it.index }
+        } else {
+            null
+        }) {
             RegularItem()
-        }
-    }
-}
-
-// TODO(b/169852102 use existing public constructs instead)
-private fun ComposeBenchmarkRule.toggleStateBenchmark(
-    caseFactory: () -> ListRemeasureTestCase
-) {
-    runBenchmarkFor(caseFactory) {
-        doFramesUntilNoChangesPending()
-
-        measureRepeated {
-            runWithTimingDisabled {
-                getTestCase().beforeToggle()
-                assertNoPendingChanges()
-            }
-            getTestCase().toggle()
-            runWithTimingDisabled {
-                assertNoPendingChanges()
-                getTestCase().afterToggle()
-            }
-        }
-    }
-}
-
-// TODO(b/169852102 use existing public constructs instead)
-private fun ComposeBenchmarkRule.toggleStateBenchmarkDraw(
-    caseFactory: () -> ListRemeasureTestCase
-) {
-    runBenchmarkFor(caseFactory) {
-        doFrame()
-
-        measureRepeated {
-            runWithTimingDisabled {
-                // reset the state and draw
-                getTestCase().beforeToggle()
-                measure()
-                layout()
-                drawPrepare()
-                draw()
-                drawFinish()
-                // toggle and prepare measuring draw
-                getTestCase().toggle()
-                measure()
-                layout()
-                drawPrepare()
-            }
-            draw()
-            runWithTimingDisabled {
-                getTestCase().afterToggle()
-                drawFinish()
-            }
         }
     }
 }
 
 class ListRemeasureTestCase(
     val addNewItemOnToggle: Boolean,
-    val content: @Composable ListRemeasureTestCase.(LazyListState) -> Unit,
+    val content: @Composable ListRemeasureTestCase.(LazyListState, useKeys: Boolean) -> Unit,
     val isVertical: Boolean,
-    val usePointerInput: Boolean = false
-) : ComposeTestCase {
+    val usePointerInput: Boolean = false,
+    val useKeys: Boolean = true
+) : LazyBenchmarkTestCase(isVertical, usePointerInput) {
 
-    val items = List(100) { ListItem(it) }
+    val items = List(100) { LazyItem(it) }
 
     private lateinit var listState: LazyListState
-    private lateinit var view: View
-    private var touchSlop: Float = 0f
-    private var scrollBy: Int = 0
 
     @Composable
     fun FirstLargeItem() {
@@ -262,99 +246,48 @@ class ListRemeasureTestCase(
 
     @Composable
     override fun Content() {
-        scrollBy = if (addNewItemOnToggle) {
+        val scrollBy = if (addNewItemOnToggle) {
             with(LocalDensity.current) { 15.dp.roundToPx() }
         } else {
             5
         }
-        view = LocalView.current
-        touchSlop = LocalViewConfiguration.current.touchSlop
+        InitializeScrollHelper(scrollAmount = scrollBy)
         listState = rememberLazyListState()
-        content(listState)
+        content(listState, useKeys)
     }
 
     @Composable
     fun RegularItem() {
-        Box(Modifier.requiredSize(20.dp).background(Color.Red, RoundedCornerShape(8.dp)))
+        Box(
+            Modifier
+                .requiredSize(20.dp)
+                .background(Color.Red, RoundedCornerShape(8.dp))
+        )
     }
 
-    fun beforeToggle() {
-        runBlocking {
-            listState.scrollToItem(0, 0)
-        }
-        if (usePointerInput) {
-            val size = if (isVertical) view.measuredHeight else view.measuredWidth
-            sendEvent(MotionEvent.ACTION_DOWN, size / 2f)
-            sendEvent(MotionEvent.ACTION_MOVE, touchSlop)
-        }
+    override fun beforeToggleCheck() {
         assertEquals(0, listState.firstVisibleItemIndex)
         assertEquals(0, listState.firstVisibleItemScrollOffset)
     }
 
-    fun toggle() {
-        if (usePointerInput) {
-            sendEvent(MotionEvent.ACTION_MOVE, -scrollBy.toFloat())
-        } else {
-            runBlocking {
-                listState.scrollBy(scrollBy.toFloat())
-            }
-        }
-    }
-
-    fun afterToggle() {
+    override fun afterToggleCheck() {
         assertEquals(0, listState.firstVisibleItemIndex)
-        assertEquals(scrollBy, listState.firstVisibleItemScrollOffset)
-        if (usePointerInput) {
-            sendEvent(MotionEvent.ACTION_UP, 0f)
+        assertEquals(scrollingHelper.scrollAmount, listState.firstVisibleItemScrollOffset)
+    }
+
+    override suspend fun programmaticScroll(amount: Int) {
+        runBlocking {
+            listState.scrollBy(amount.toFloat())
         }
     }
 
-    private var time = 0L
-    private var lastCoord: Float? = null
-
-    private fun sendEvent(
-        action: Int,
-        delta: Float
-    ) {
-        time += 10L
-
-        val coord = delta + (lastCoord ?: 0f)
-
-        if (action == MotionEvent.ACTION_UP) {
-            lastCoord = null
-        } else {
-            lastCoord = coord
+    override fun setUp() {
+        runBlocking {
+            listState.scrollToItem(0, 0)
         }
+    }
 
-        val locationOnScreen = IntArray(2) { 0 }
-        view.getLocationOnScreen(locationOnScreen)
-
-        val motionEvent = MotionEvent.obtain(
-            0,
-            time,
-            action,
-            1,
-            arrayOf(MotionEvent.PointerProperties()),
-            arrayOf(
-                MotionEvent.PointerCoords().apply {
-                    this.x = locationOnScreen[0] + if (!isVertical) coord else 1f
-                    this.y = locationOnScreen[1] + if (isVertical) coord else 1f
-                }
-            ),
-            0,
-            0,
-            0f,
-            0f,
-            0,
-            0,
-            0,
-            0
-        ).apply {
-            offsetLocation(-locationOnScreen[0].toFloat(), -locationOnScreen[1].toFloat())
-        }
-
-        view.dispatchTouchEvent(motionEvent)
+    override fun tearDown() {
+        // N/A
     }
 }
-
-data class ListItem(val index: Int)

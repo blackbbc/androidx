@@ -16,116 +16,331 @@
 
 package androidx.health.services.client.data
 
-import android.os.Parcel
-import android.os.Parcelable
+import androidx.annotation.RestrictTo
+import androidx.annotation.RestrictTo.Scope
+import androidx.health.services.client.data.ExerciseEndReason.Companion.toProto
+import androidx.health.services.client.data.ExerciseUpdate.ActiveDurationCheckpoint
+import androidx.health.services.client.proto.DataProto
+import androidx.health.services.client.proto.DataProto.AchievedExerciseGoal
+import androidx.health.services.client.proto.DataProto.ExerciseUpdate.LatestMetricsEntry as LatestMetricsEntryProto
 import java.time.Duration
 import java.time.Instant
 
 /** Contains the latest updated state and metrics for the current exercise. */
-public data class ExerciseUpdate(
-    /** Returns the current status of the exercise. */
-    val state: ExerciseState,
-
-    /** Returns the time at which the exercise was started. */
-    val startTime: Instant,
+@Suppress("ParcelCreator")
+public class ExerciseUpdate internal constructor(
+    /** Returns the list of the latest [DataPoint]s. */
+    public val latestMetrics: DataPointContainer,
 
     /**
-     * Returns the total elapsed time for which the exercise has been active, i.e. started but not
-     * paused.
+     * Returns the latest [ExerciseGoalType.ONE_TIME_GOAL] [ExerciseGoal]s that have been achieved.
+     * [ExerciseGoalType.MILESTONE] [ExerciseGoal]s will be returned via
+     * [latestMilestoneMarkerSummaries].
      */
-    val activeDuration: Duration,
+    public val latestAchievedGoals: Set<ExerciseGoal<out Number>>,
+
+    /** Returns the latest [MilestoneMarkerSummary]s. */
+    public val latestMilestoneMarkerSummaries: Set<MilestoneMarkerSummary>,
 
     /**
-     * Returns the list of latest [DataPoint] for each metric keyed by data type name. This allows a
-     * client to easily query for the "current" values of each metric since last call. There will
-     * only be one value for an Aggregated DataType.
+     * Returns the [ExerciseStateInfo] containing the current [ExerciseState] and
+     * [ExerciseEndReason], if applicable.
      */
-    val latestMetrics: Map<DataType, List<DataPoint>>,
+    public val exerciseStateInfo: ExerciseStateInfo,
 
     /**
-     * Returns the latest `#ONE_TIME_GOAL` [ExerciseGoal] s that have been achieved. `#MILESTONE`
-     * [ExerciseGoal] s will be returned via `#getLatestMilestoneMarkerSummaries` below.
+     * Returns the [ExerciseConfig] used by the exercise when the [ExerciseUpdate] was dispatched
+     * and returns `null` if the exercise is in prepare phase and hasn't been started yet.
      */
-    val latestAchievedGoals: Set<AchievedExerciseGoal>,
-
-    /** Returns the latest [MilestoneMarkerSummary] s. */
-    val latestMilestoneMarkerSummaries: Set<MilestoneMarkerSummary>,
+    public val exerciseConfig: ExerciseConfig? = null,
 
     /**
-     * Returns the [ExerciseConfig] used by the exercise when the [ExerciseUpdate] was dispatched.
+     * Returns the [ActiveDurationCheckpoint] which can be used to determine the active duration of
+     * the exercise in a way that is consistent with Health Services. Clients can anchor their
+     * application timers against this to ensure their view of the active duration matches the view
+     * of Health Services.
      */
-    val exerciseConfig: ExerciseConfig,
-) : Parcelable {
-    override fun describeContents(): Int = 0
+    public val activeDurationCheckpoint: ActiveDurationCheckpoint? = null,
 
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeInt(state.id)
-        dest.writeLong(startTime.toEpochMilli())
-        dest.writeLong(activeDuration.toMillis())
+    /** The duration since boot when this ExerciseUpdate was created. */
+    private val updateDurationFromBoot: Duration? = null,
 
-        dest.writeInt(latestMetrics.size)
-        for ((dataType, dataPoints) in latestMetrics) {
-            dest.writeParcelable(dataType, flags)
-            dest.writeInt(dataPoints.size)
-            dest.writeTypedArray(dataPoints.toTypedArray(), flags)
+    /**
+     * Returns the time at which the exercise was started or `null` if the exercise is in prepare
+     * phase and hasn't started yet.
+     */
+    public val startTime: Instant? = null,
+
+    internal val activeDurationLegacy: Duration,
+) {
+    @RestrictTo(Scope.LIBRARY)
+    public constructor(
+        proto: DataProto.ExerciseUpdate
+    ) : this(
+        exerciseUpdateProtoToDataPointContainer(proto),
+        proto.latestAchievedGoalsList.map { ExerciseGoal.fromProto(it.exerciseGoal) }.toSet(),
+        proto.mileStoneMarkerSummariesList.map { MilestoneMarkerSummary(it) }.toSet(),
+        ExerciseStateInfo(
+            ExerciseState.fromProto(proto.state)
+                ?: throw IllegalArgumentException("Invalid ExerciseState: ${proto.state}"),
+            ExerciseEndReason.fromProto(proto.exerciseEndReason)
+        ),
+        if (proto.hasExerciseConfig()) ExerciseConfig(proto.exerciseConfig) else null,
+        if (proto.hasActiveDurationCheckpoint()) {
+            ActiveDurationCheckpoint.fromProto(proto.activeDurationCheckpoint)
+        } else {
+            null
+        },
+        if (proto.hasUpdateDurationFromBootMs()) {
+            Duration.ofMillis(proto.updateDurationFromBootMs)
+        } else {
+            null
+        },
+        if (proto.hasStartTimeEpochMs()) Instant.ofEpochMilli(proto.startTimeEpochMs) else null,
+        Duration.ofMillis(proto.activeDurationMs),
+    )
+
+    /**
+     * This records the last time the exercise transitioned from an active to an inactive state or
+     * from an inactive to an active state, where inactive states match those found in
+     * [ExerciseState.isPaused] or [ExerciseState.isEnded]. This can be used to calculate the
+     * exercise active duration in a way that is consistent with Health Service's view of the
+     * exercise.
+     *
+     * If the exercise is currently inactive, the exercise’s active duration will match
+     * [activeDuration] below. If the exercise is active, the active duration can be calculated by
+     * `activeDuration + (now() - time)`.
+     */
+    public class ActiveDurationCheckpoint(
+        /**
+         * Returns the time at which the exercise last transitioned between the active or inactive
+         * states.
+         */
+        public val time: Instant,
+
+        /**
+         * Returns the active duration of the exercise at the time it last transitioned to "active",
+         * or the duration when it transitioned to inactive if it's currently paused or stopped.
+         */
+        public val activeDuration: Duration,
+    ) {
+
+        @RestrictTo(Scope.LIBRARY)
+        internal fun toProto(): DataProto.ExerciseUpdate.ActiveDurationCheckpoint =
+            DataProto.ExerciseUpdate.ActiveDurationCheckpoint.newBuilder()
+                .setTimeEpochMs(time.toEpochMilli())
+                .setActiveDurationMs(activeDuration.toMillis())
+                .build()
+
+        override fun toString(): String =
+            "ActiveDurationCheckpoint(time=$time, activeDuration=$activeDuration)"
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as ActiveDurationCheckpoint
+
+            if (time != other.time) return false
+            if (activeDuration != other.activeDuration) return false
+
+            return true
         }
 
-        dest.writeInt(latestAchievedGoals.size)
-        dest.writeTypedArray(latestAchievedGoals.toTypedArray(), flags)
+        override fun hashCode(): Int {
+            var result = time.hashCode()
+            result = 31 * result + activeDuration.hashCode()
+            return result
+        }
 
-        dest.writeInt(latestMilestoneMarkerSummaries.size)
-        dest.writeTypedArray(latestMilestoneMarkerSummaries.toTypedArray(), flags)
+        internal companion object {
+            @RestrictTo(Scope.LIBRARY)
+            internal fun fromProto(
+                proto: DataProto.ExerciseUpdate.ActiveDurationCheckpoint
+            ): ActiveDurationCheckpoint? =
+                ActiveDurationCheckpoint(
+                    Instant.ofEpochMilli(proto.timeEpochMs),
+                    Duration.ofMillis(proto.activeDurationMs)
+                )
+        }
+    }
 
-        dest.writeParcelable(exerciseConfig, flags)
+    internal val proto: DataProto.ExerciseUpdate = getExerciseUpdateProto()
+
+    private fun getExerciseUpdateProto(): DataProto.ExerciseUpdate {
+        val builder =
+            DataProto.ExerciseUpdate.newBuilder()
+                .setState(exerciseStateInfo.state.toProto())
+                .setActiveDurationMs(activeDurationLegacy.toMillis())
+                .addAllLatestMetrics(
+                    latestMetrics.sampleDataPoints
+                        .groupBy { it.dataType }
+                        .map {
+                            LatestMetricsEntryProto.newBuilder()
+                                .setDataType(it.key.proto)
+                                .addAllDataPoints(it.value.map(SampleDataPoint<*>::proto))
+                                .build()
+                        }
+                        // If we don't sort, equals() may not work.
+                        .sortedBy { entry -> entry.dataType.name }
+                )
+                .addAllLatestMetrics(
+                    latestMetrics.intervalDataPoints
+                        .groupBy { it.dataType }
+                        .map {
+                            LatestMetricsEntryProto.newBuilder()
+                                .setDataType(it.key.proto)
+                                .addAllDataPoints(it.value.map(IntervalDataPoint<*>::proto))
+                                .build()
+                        }
+                        // If we don't sort, equals() may not work.
+                        .sortedBy { entry -> entry.dataType.name }
+                )
+                .addAllLatestAggregateMetrics(
+                    latestMetrics.statisticalDataPoints
+                        .map { it.proto }
+                        // If we don't sort, equals() may not work.
+                        .sortedBy { entry -> entry.statisticalDataPoint.dataType.name }
+                ).addAllLatestAggregateMetrics(latestMetrics.cumulativeDataPoints
+                    .map { it.proto }
+                    // If we don't sort, equals() may not work.
+                    .sortedBy { entry -> entry.cumulativeDataPoint.dataType.name })
+                .addAllLatestAchievedGoals(latestAchievedGoals.map {
+                    AchievedExerciseGoal.newBuilder().setExerciseGoal(it.proto).build()
+                }).addAllMileStoneMarkerSummaries(latestMilestoneMarkerSummaries.map { it.proto })
+                .setExerciseEndReason((exerciseStateInfo.endReason).toProto())
+
+        startTime?.let { builder.setStartTimeEpochMs(startTime.toEpochMilli()) }
+        updateDurationFromBoot?.let {
+            builder.setUpdateDurationFromBootMs(updateDurationFromBoot.toMillis())
+        }
+        exerciseConfig?.let { builder.setExerciseConfig(exerciseConfig.toProto()) }
+        activeDurationCheckpoint?.let {
+            builder.setActiveDurationCheckpoint(activeDurationCheckpoint.toProto())
+        }
+
+        return builder.build()
+    }
+
+    /**
+     * Returns the duration since boot when this ExerciseUpdate was created.
+     *
+     * @throws IllegalStateException if this [ExerciseUpdate] does not contain a valid
+     * `updateDurationFromBoot` which may happen if the Health Services app is out of date
+     */
+    public fun getUpdateDurationFromBoot(): Duration =
+        updateDurationFromBoot
+            ?: error(
+                "updateDurationFromBoot unavailable; is the Health Services APK out of date?"
+            )
+
+    /**
+     * Returns the ActiveDuration of the exercise at the time of the provided [IntervalDataPoint].
+     * The provided [IntervalDataPoint] should be present in this [ExerciseUpdate].
+     *
+     * @throws IllegalArgumentException if [dataPoint] is not present in this [ExerciseUpdate]
+     * @throws IllegalStateException if this [ExerciseUpdate] does not contain a valid
+     * `updateDurationFromBoot` which may happen if the Health Services app is out of date
+     */
+    public fun getActiveDurationAtDataPoint(dataPoint: IntervalDataPoint<*>): Duration =
+        getActiveDurationAtDataPoint(dataPoint, dataPoint.endDurationFromBoot)
+
+    /**
+     * Returns the ActiveDuration of the exercise at the time of the provided [SampleDataPoint].
+     * The provided [SampleDataPoint] should be present in this [ExerciseUpdate].
+     *
+     * @throws IllegalArgumentException if [dataPoint] is not present in this [ExerciseUpdate]
+     */
+    public fun getActiveDurationAtDataPoint(dataPoint: SampleDataPoint<*>): Duration =
+        getActiveDurationAtDataPoint(dataPoint, dataPoint.timeDurationFromBoot)
+
+    private fun getActiveDurationAtDataPoint(
+        dataPoint: DataPoint<*>,
+        durationFromBoot: Duration
+    ): Duration {
+        val dataPointList = latestMetrics.dataPoints[dataPoint.dataType]
+        if (dataPointList?.indexOf(dataPoint) == -1) {
+            throw IllegalArgumentException("dataPoint not found in ExerciseUpdate")
+        }
+
+        // If activeDurationCheckpoint is null, user has not started their activity yet. Default to
+        // zero.
+        if (activeDurationCheckpoint == null) {
+            return Duration.ZERO
+        }
+
+        // If we are paused then the last active time applies to all updates.
+        if (exerciseStateInfo.state == ExerciseState.USER_PAUSED ||
+            exerciseStateInfo.state == ExerciseState.AUTO_PAUSED
+        ) {
+            return activeDurationCheckpoint.activeDuration
+        }
+
+        // Active duration applies to when this update was generated so calculate for the given time
+        // by working backwards.
+        // First find time since this point was generated.
+        val durationSinceProvidedTime = getUpdateDurationFromBoot().minus(durationFromBoot)
+        return activeDurationLegacy.minus(durationSinceProvidedTime)
+    }
+
+    override fun toString(): String =
+        "ExerciseUpdate(" +
+            "state=$exerciseStateInfo.state, " +
+            "startTime=$startTime, " +
+            "updateDurationFromBoot=$updateDurationFromBoot, " +
+            "latestMetrics=$latestMetrics, " +
+            "latestAchievedGoals=$latestAchievedGoals, " +
+            "latestMilestoneMarkerSummaries=$latestMilestoneMarkerSummaries, " +
+            "exerciseConfig=$exerciseConfig, " +
+            "activeDurationCheckpoint=$activeDurationCheckpoint, " +
+            "exerciseEndReason=${exerciseStateInfo.endReason}" +
+            ")"
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ExerciseUpdate) return false
+
+        if (startTime != other.startTime) return false
+        if (latestMetrics != other.latestMetrics) return false
+        if (latestAchievedGoals != other.latestAchievedGoals) return false
+        if (latestMilestoneMarkerSummaries != other.latestMilestoneMarkerSummaries) return false
+        if (exerciseConfig != other.exerciseConfig) return false
+        if (activeDurationCheckpoint != other.activeDurationCheckpoint) return false
+        if (exerciseStateInfo != other.exerciseStateInfo) return false
+        if (updateDurationFromBoot != other.updateDurationFromBoot) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = startTime?.hashCode() ?: 0
+        result = 31 * result + latestMetrics.hashCode()
+        result = 31 * result + latestAchievedGoals.hashCode()
+        result = 31 * result + latestMilestoneMarkerSummaries.hashCode()
+        result = 31 * result + (exerciseConfig?.hashCode() ?: 0)
+        result = 31 * result + (activeDurationCheckpoint?.hashCode() ?: 0)
+        result = 31 * result + exerciseStateInfo.hashCode()
+        result = 31 * result + (updateDurationFromBoot?.hashCode() ?: 0)
+        return result
     }
 
     public companion object {
-        @JvmField
-        public val CREATOR: Parcelable.Creator<ExerciseUpdate> =
-            object : Parcelable.Creator<ExerciseUpdate> {
-                override fun createFromParcel(source: Parcel): ExerciseUpdate? {
-                    val exerciseState = ExerciseState.fromId(source.readInt()) ?: return null
-                    val startTime = Instant.ofEpochMilli(source.readLong())
-                    val activeDuration = Duration.ofMillis(source.readLong())
+        internal fun exerciseUpdateProtoToDataPointContainer(
+            proto: DataProto.ExerciseUpdate
+        ): DataPointContainer {
+            val dataPoints = mutableListOf<DataPoint<*>>()
 
-                    val numMetrics = source.readInt()
-                    val latestMetrics = HashMap<DataType, List<DataPoint>>()
-                    repeat(numMetrics) {
-                        val dataType: DataType =
-                            source.readParcelable(DataType::class.java.classLoader) ?: return null
-                        val dataPointsArray = Array<DataPoint?>(source.readInt()) { null }
-                        source.readTypedArray(dataPointsArray, DataPoint.CREATOR)
-                        latestMetrics[dataType] = dataPointsArray.filterNotNull().toList()
-                    }
-
-                    val latestAchievedGoalsArray =
-                        Array<AchievedExerciseGoal?>(source.readInt()) { null }
-                    source.readTypedArray(latestAchievedGoalsArray, AchievedExerciseGoal.CREATOR)
-
-                    val latestMilestoneMarkerSummariesArray =
-                        Array<MilestoneMarkerSummary?>(source.readInt()) { null }
-                    source.readTypedArray(
-                        latestMilestoneMarkerSummariesArray,
-                        MilestoneMarkerSummary.CREATOR
-                    )
-
-                    val exerciseConfig: ExerciseConfig =
-                        source.readParcelable(ExerciseConfig::class.java.classLoader) ?: return null
-
-                    return ExerciseUpdate(
-                        exerciseState,
-                        startTime,
-                        activeDuration,
-                        latestMetrics,
-                        latestAchievedGoalsArray.filterNotNull().toSet(),
-                        latestMilestoneMarkerSummariesArray.filterNotNull().toSet(),
-                        exerciseConfig,
-                    )
+            proto.latestMetricsList
+                .flatMap { it.dataPointsList }
+                .forEach {
+                    dataPoints += DataPoint.fromProto(it)
+                }
+            proto.latestAggregateMetricsList
+                .forEach {
+                    dataPoints += DataPoint.fromProto(it)
                 }
 
-                override fun newArray(size: Int): Array<ExerciseUpdate?> {
-                    return arrayOfNulls(size)
-                }
-            }
+            return DataPointContainer(dataPoints)
+        }
     }
 }

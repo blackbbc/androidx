@@ -32,18 +32,16 @@ import androidx.annotation.RestrictTo;
  * separate class so that Android framework can successfully verify classes without
  * encountering the new APIs.
  *
- * @hide
  */
+@RequiresApi(Build.VERSION_CODES.O)
 @RestrictTo(RestrictTo.Scope.LIBRARY)
 class NotificationApiHelperForO {
-    @RequiresApi(Build.VERSION_CODES.O)
     static boolean isChannelEnabled(NotificationManager manager, String channelId) {
         NotificationChannel channel = manager.getNotificationChannel(channelId);
 
         return channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     @Nullable static Notification copyNotificationOntoChannel(Context context,
             NotificationManager manager, Notification notification, String channelId,
             String channelName) {

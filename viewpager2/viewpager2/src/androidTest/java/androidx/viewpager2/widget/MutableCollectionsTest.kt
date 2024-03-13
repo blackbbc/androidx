@@ -17,6 +17,7 @@
 package androidx.viewpager2.widget
 
 import android.widget.TextView
+import androidx.test.filters.FlakyTest
 import androidx.test.filters.LargeTest
 import androidx.testutils.PollingCheck
 import androidx.viewpager2.adapter.StatefulAdapter
@@ -29,15 +30,15 @@ import androidx.viewpager2.widget.ViewPager2.ORIENTATION_HORIZONTAL
 import androidx.viewpager2.widget.ViewPager2.ORIENTATION_VERTICAL
 import androidx.viewpager2.widget.swipe.PageView
 import androidx.viewpager2.widget.swipe.SelfChecking
-import org.hamcrest.Matchers.equalTo
-import org.junit.Assert.assertThat
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
 import java.util.Random
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import org.hamcrest.MatcherAssert.assertThat
+import org.hamcrest.Matchers.equalTo
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 
 private const val RANDOM_TESTS_PER_CONFIG = 0 // increase to have random tests generated
 
@@ -45,6 +46,7 @@ private const val RANDOM_TESTS_PER_CONFIG = 0 // increase to have random tests g
 @LargeTest
 class MutableCollectionsTest(private val testConfig: TestConfig) : BaseTest() {
 
+    @FlakyTest(bugId = 210157798)
     @Test
     fun test() {
         testConfig.apply {

@@ -16,14 +16,21 @@
 
 package androidx.compose.ui.util
 
-import androidx.compose.desktop.ComposeWindow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.awt.ComposeWindow
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.window.WindowSize
+import androidx.compose.ui.window.density
+import androidx.compose.ui.window.layoutDirection
 import java.awt.Dialog
+import java.awt.Dimension
 import java.awt.Frame
 import java.awt.Toolkit
 import java.awt.Window
@@ -33,7 +40,7 @@ import kotlin.math.roundToInt
  * Ignore size updating if window is maximized or in fullscreen.
  * Otherwise we will reset maximized / fullscreen state.
  */
-internal fun ComposeWindow.setSizeSafely(size: WindowSize) {
+internal fun ComposeWindow.setSizeSafely(size: DpSize) {
     if (placement == WindowPlacement.Floating) {
         (this as Window).setSizeSafely(size)
     }
@@ -54,10 +61,36 @@ internal fun ComposeWindow.setPositionSafely(
 /**
  * Limit the width and the height to a minimum of 0
  */
-internal fun Window.setSizeSafely(size: WindowSize) {
-    val width = size.width.value.roundToInt().coerceAtLeast(0)
-    val height = size.height.value.roundToInt().coerceAtLeast(0)
-    setSize(width, height)
+internal fun Window.setSizeSafely(size: DpSize) {
+    val screenBounds by lazy { graphicsConfiguration.bounds }
+
+    val isWidthSpecified = size.isSpecified && size.width.isSpecified
+    val isHeightSpecified = size.isSpecified && size.height.isSpecified
+
+    val width = if (isWidthSpecified) {
+        size.width.value.roundToInt().coerceAtLeast(0)
+    } else {
+        screenBounds.width
+    }
+
+    val height = if (isHeightSpecified) {
+        size.height.value.roundToInt().coerceAtLeast(0)
+    } else {
+        screenBounds.height
+    }
+
+    if (!isWidthSpecified || !isHeightSpecified) {
+        preferredSize = Dimension(width, height)
+        pack()
+        // if we set null, getPreferredSize will return the default inner size determined by
+        // the inner components (see the description of setPreferredSize)
+        preferredSize = null
+    }
+
+    setSize(
+        if (isWidthSpecified) width else preferredSize.width,
+        if (isHeightSpecified) height else preferredSize.height,
+    )
 }
 
 internal fun Window.setPositionSafely(
@@ -112,5 +145,24 @@ internal fun Frame.setUndecoratedSafely(value: Boolean) {
 internal fun Dialog.setUndecoratedSafely(value: Boolean) {
     if (this.isUndecorated != value) {
         this.isUndecorated = value
+    }
+}
+
+// In fact, this size doesn't affect anything on Windows/Linux, and isn't used by macOs (macOs
+// doesn't have separate Window icons). We specify it to support Painter's with
+// Unspecified intrinsicSize
+private val iconSize = Size(32f, 32f)
+
+internal fun Window.setIcon(painter: Painter?) {
+    setIconImage(painter?.toAwtImage(density, layoutDirection, iconSize))
+}
+
+internal fun Window.makeDisplayable() {
+    val oldPreferredSize = preferredSize
+    preferredSize = size
+    try {
+        pack()
+    } finally {
+        preferredSize = oldPreferredSize
     }
 }

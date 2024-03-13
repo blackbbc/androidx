@@ -16,13 +16,16 @@
 
 package androidx.room.solver.binderprovider
 
+import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XType
+import androidx.room.compiler.processing.isVoidObject
 import androidx.room.ext.GuavaUtilConcurrentTypeNames
 import androidx.room.ext.RoomGuavaTypeNames
 import androidx.room.parser.ParsedQuery
 import androidx.room.processor.Context
 import androidx.room.processor.ProcessorErrors
 import androidx.room.solver.QueryResultBinderProvider
+import androidx.room.solver.TypeAdapterExtras
 import androidx.room.solver.query.result.GuavaListenableFutureQueryResultBinder
 import androidx.room.solver.query.result.QueryResultBinder
 
@@ -45,15 +48,21 @@ class GuavaListenableFutureQueryResultBinderProviderImpl(
      *
      * <p>Emits a compiler error if the Guava Room extension library is not linked.
      */
-    override fun provide(declared: XType, query: ParsedQuery): QueryResultBinder {
+    override fun provide(
+        declared: XType,
+        query: ParsedQuery,
+        extras: TypeAdapterExtras
+    ): QueryResultBinder {
         // Use the type T inside ListenableFuture<T> as the type to adapt and to pass into
         // the binder.
         val adapter = context.typeAdapterStore.findQueryResultAdapter(
-            declared.typeArguments.first(), query
+            declared.typeArguments.first(), query, extras
         )
-        return GuavaListenableFutureQueryResultBinder(
-            declared.typeArguments.first(), adapter
-        )
+        val typeArg = declared.typeArguments.first()
+        if (typeArg.isVoidObject() && typeArg.nullability == XNullability.NONNULL) {
+            context.logger.e(ProcessorErrors.NONNULL_VOID)
+        }
+        return GuavaListenableFutureQueryResultBinder(typeArg, adapter)
     }
 
     /**
@@ -61,5 +70,5 @@ class GuavaListenableFutureQueryResultBinderProviderImpl(
      */
     override fun matches(declared: XType): Boolean =
         declared.typeArguments.size == 1 &&
-            declared.rawType.typeName == GuavaUtilConcurrentTypeNames.LISTENABLE_FUTURE
+            declared.rawType.asTypeName() == GuavaUtilConcurrentTypeNames.LISTENABLE_FUTURE
 }

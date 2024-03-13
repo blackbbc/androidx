@@ -1,3 +1,10 @@
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 plugins {
     id("AndroidXPlugin")
     id("com.android.application")
@@ -9,14 +16,17 @@ dependencies {
     implementation(project(":leanback:leanback-paging"))
     implementation(project(":leanback:leanback-tab"))
     implementation("com.google.code.gson:gson:2.6.2")
-    implementation("androidx.room:room-runtime:2.3.0-alpha01")
     implementation("androidx.lifecycle:lifecycle-extensions:2.2.0")
     implementation(libs.constraintLayout)
-    annotationProcessor("androidx.room:room-compiler:2.3.0-alpha01")
+
+    implementation(projectOrArtifact(":room:room-paging"))
+    implementation(projectOrArtifact(":room:room-runtime"))
+    annotationProcessor(projectOrArtifact(":room:room-compiler"))
 }
 
 android {
     defaultConfig {
         minSdkVersion 21
     }
+    namespace "com.example.android.leanback"
 }

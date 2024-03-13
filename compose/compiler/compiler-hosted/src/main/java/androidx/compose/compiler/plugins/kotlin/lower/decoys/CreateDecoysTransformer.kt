@@ -16,19 +16,14 @@
 
 package androidx.compose.compiler.plugins.kotlin.lower.decoys
 
-import androidx.compose.compiler.plugins.kotlin.ComposeFqNames
-import androidx.compose.compiler.plugins.kotlin.lower.AbstractComposeLowering
+import androidx.compose.compiler.plugins.kotlin.ModuleMetrics
+import androidx.compose.compiler.plugins.kotlin.analysis.StabilityInferencer
 import androidx.compose.compiler.plugins.kotlin.lower.ModuleLoweringPass
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
-import org.jetbrains.kotlin.backend.common.ir.addChild
-import org.jetbrains.kotlin.backend.common.ir.copyTo
-import org.jetbrains.kotlin.backend.common.ir.copyTypeParametersFrom
 import org.jetbrains.kotlin.backend.common.ir.moveBodyTo
-import org.jetbrains.kotlin.backend.common.ir.remapTypeParameters
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.backend.common.serialization.signature.IdSignatureSerializer
 import org.jetbrains.kotlin.ir.IrStatement
-import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.builders.declarations.IrFunctionBuilder
 import org.jetbrains.kotlin.ir.builders.declarations.buildConstructor
 import org.jetbrains.kotlin.ir.builders.declarations.buildFun
@@ -37,22 +32,27 @@ import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irReturn
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationContainer
-import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
+import org.jetbrains.kotlin.ir.declarations.IrValueParameter
+import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
+import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
-import org.jetbrains.kotlin.ir.types.IrSimpleType
-import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.util.DeepCopySymbolRemapper
+import org.jetbrains.kotlin.ir.util.addChild
 import org.jetbrains.kotlin.ir.util.constructors
+import org.jetbrains.kotlin.ir.util.copyTo
+import org.jetbrains.kotlin.ir.util.copyTypeParametersFrom
 import org.jetbrains.kotlin.ir.util.defaultType
-import org.jetbrains.kotlin.ir.util.hasAnnotation
-import org.jetbrains.kotlin.ir.util.isLocal
+import org.jetbrains.kotlin.ir.util.hasDefaultValue
 import org.jetbrains.kotlin.ir.util.patchDeclarationParents
+import org.jetbrains.kotlin.ir.util.remapTypeParameters
+import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
+import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.resolve.BindingTrace
 
 /**
  * Copies each IR declaration that won't match descriptors after Compose transforms (see [shouldBeRemapped]).
@@ -81,37 +81,45 @@ import org.jetbrains.kotlin.resolve.BindingTrace
 class CreateDecoysTransformer(
     pluginContext: IrPluginContext,
     symbolRemapper: DeepCopySymbolRemapper,
-    bindingTrace: BindingTrace,
-    override val signatureBuilder: IdSignatureSerializer
-) : AbstractComposeLowering(
-    context = pluginContext,
+    signatureBuilder: IdSignatureSerializer,
+    stabilityInferencer: StabilityInferencer,
+    metrics: ModuleMetrics,
+) : AbstractDecoysLowering(
+    pluginContext = pluginContext,
     symbolRemapper = symbolRemapper,
-    bindingTrace = bindingTrace
-),
-    ModuleLoweringPass,
-    DecoyTransformBase {
+    metrics = metrics,
+    stabilityInferencer = stabilityInferencer,
+    signatureBuilder = signatureBuilder
+), ModuleLoweringPass {
+
     private val originalFunctions: MutableMap<IrFunction, IrDeclarationParent> = mutableMapOf()
 
     private val decoyAnnotation by lazy {
-        getTopLevelClass(DecoyFqNames.Decoy).owner
+        getTopLevelClass(DecoyClassIds.Decoy).owner
     }
 
     private val decoyImplementationAnnotation by lazy {
-        getTopLevelClass(DecoyFqNames.DecoyImplementation).owner
+        getTopLevelClass(DecoyClassIds.DecoyImplementation).owner
     }
 
+    private val decoyImplementationDefaultsBitmaskAnnotation =
+        getTopLevelClass(DecoyClassIds.DecoyImplementationDefaultsBitMask).owner
+
     private val decoyStub by lazy {
-        getInternalFunction("illegalDecoyCallException").owner
+        getTopLevelFunction(DecoyCallableIds.illegalDecoyCallException).owner
     }
 
     override fun lower(module: IrModuleFragment) {
         module.transformChildrenVoid()
+        updateParents()
+        module.patchDeclarationParents()
+    }
 
+    fun updateParents() {
         originalFunctions.forEach { (f, parent) ->
             (parent as? IrDeclarationContainer)?.addChild(f)
         }
-
-        module.patchDeclarationParents()
+        originalFunctions.clear()
     }
 
     override fun visitSimpleFunction(declaration: IrSimpleFunction): IrStatement {
@@ -120,13 +128,21 @@ class CreateDecoysTransformer(
         }
 
         val newName = declaration.decoyImplementationName()
-        val original = super.visitSimpleFunction(declaration) as IrSimpleFunction
-        val copied = original.copyWithName(newName)
-        copied.parent = original.parent
-
+        val copied = declaration.copyWithName(newName) as IrSimpleFunction
+        copied.parent = declaration.parent
         originalFunctions += copied to declaration.parent
 
-        return original.apply {
+        // "copied" has new symbols (due to deepCopyWithSymbols).
+        // Therefore, we need to recurse into the copied version.
+        // Otherwise, inner `copied` functions can be added to a parent
+        // that is not in the IR tree anymore (due to a body removal from decoy - see `stubBody`).
+        // The use cases:
+        // 1) A @Composable function declaring an anonymous object implementing
+        // an interface with @Composable function.
+        // 2) A @Composable function declaring a local class with a @Composable function.
+        super.visitSimpleFunction(copied) as IrSimpleFunction
+
+        return declaration.apply {
             setDecoyAnnotation(newName.asString())
 
             valueParameters.forEach { it.defaultValue = null }
@@ -141,27 +157,30 @@ class CreateDecoysTransformer(
             return super.visitConstructor(declaration)
         }
 
-        val original = super.visitConstructor(declaration) as IrConstructor
         val newName = declaration.decoyImplementationName()
-
-        val copied = original.copyWithName(newName, context.irFactory::buildConstructor)
-
+        val copied = declaration.copyWithName(
+            newName, context.irFactory::buildConstructor
+        ) as IrConstructor
+        copied.parent = declaration.parent
         originalFunctions += copied to declaration.parent
 
-        return original.apply {
+        // "copied" has new symbols (due to deepCopyWithSymbols).
+        // Therefore, we need to recurse into the copied version.
+        // See the comment in visitSimpleFunction for an explanation.
+        super.visitConstructor(copied) as IrConstructor
+
+        return declaration.apply {
             setDecoyAnnotation(newName.asString())
             stubBody()
         }
     }
 
-    @OptIn(ObsoleteDescriptorBasedAPI::class)
     private fun IrFunction.decoyImplementationName(): Name {
         return dexSafeName(
             Name.identifier(name.asString() + IMPLEMENTATION_FUNCTION_SUFFIX)
         )
     }
 
-    @OptIn(ObsoleteDescriptorBasedAPI::class)
     private fun IrFunction.copyWithName(
         newName: Name,
         factory: (IrFunctionBuilder.() -> Unit) -> IrFunction = context.irFactory::buildFun
@@ -171,7 +190,8 @@ class CreateDecoysTransformer(
             updateFrom(original)
             name = newName
             returnType = original.returnType
-            isPrimary = false
+            isPrimary = (original as? IrConstructor)?.isPrimary ?: false
+            isOperator = false
         }
         newFunction.annotations = original.annotations
         newFunction.metadata = original.metadata
@@ -180,7 +200,7 @@ class CreateDecoysTransformer(
             newFunction.overriddenSymbols = (original as IrSimpleFunction).overriddenSymbols
             newFunction.correspondingPropertySymbol = null
         }
-        newFunction.origin = IrDeclarationOrigin.DEFINED
+        newFunction.origin = original.origin
 
         // here generic value parameters will be applied
         newFunction.copyTypeParametersFrom(original)
@@ -211,7 +231,41 @@ class CreateDecoysTransformer(
 
         newFunction.addDecoyImplementationAnnotation(newName.asString(), original.getSignatureId())
 
+        newFunction.valueParameters.forEach {
+            it.defaultValue?.transformDefaultValue(
+                originalFunction = original,
+                newFunction = newFunction
+            )
+        }
+
         return newFunction
+    }
+
+    /**
+     *  Expressions for default values can use other parameters.
+     *  In such cases we need to ensure that default values expressions use parameters of the new
+     *  function (new/copied value parameters).
+     *
+     *  Example:
+     *  fun Foo(a: String, b: String = a) {...}
+     */
+    private fun IrExpressionBody.transformDefaultValue(
+        originalFunction: IrFunction,
+        newFunction: IrFunction
+    ) {
+        transformChildrenVoid(object : IrElementTransformerVoid() {
+            override fun visitGetValue(expression: IrGetValue): IrExpression {
+                val original = super.visitGetValue(expression)
+                val valueParameter =
+                    (expression.symbol.owner as? IrValueParameter) ?: return original
+
+                val parameterIndex = valueParameter.index
+                if (parameterIndex < 0 || valueParameter.parent != originalFunction) {
+                    return super.visitGetValue(expression)
+                }
+                return irGet(newFunction.valueParameters[parameterIndex])
+            }
+        })
     }
 
     private fun IrFunction.stubBody() {
@@ -245,33 +299,18 @@ class CreateDecoysTransformer(
                 it.putValueArgument(0, irConst(name))
                 it.putValueArgument(1, irConst(signatureId))
             }
-    }
 
-    private fun IrFunction.shouldBeRemapped(): Boolean =
-        !isLocalFunction() && (hasComposableAnnotation() || hasComposableParameter())
-
-    private fun IrFunction.isLocalFunction(): Boolean =
-        origin == IrDeclarationOrigin.LOCAL_FUNCTION_FOR_LAMBDA ||
-            (isLocal && (this is IrSimpleFunction && !overridesComposable()))
-
-    private fun IrSimpleFunction.overridesComposable() =
-        overriddenSymbols.any {
-            it.owner.isDecoy() || it.owner.shouldBeRemapped()
-        }
-
-    private fun IrFunction.hasComposableParameter() =
-        valueParameters.any { it.type.hasComposable() } ||
-            extensionReceiverParameter?.type?.hasComposable() == true
-
-    private fun IrType.hasComposable(): Boolean {
-        if (hasAnnotation(ComposeFqNames.Composable)) {
-            return true
-        }
-
-        return when (this) {
-            is IrSimpleType -> arguments.any { (it as? IrType)?.hasComposable() == true }
-            else -> false
-        }
+        annotations = annotations +
+            IrConstructorCallImpl.fromSymbolOwner(
+                type = decoyImplementationDefaultsBitmaskAnnotation.defaultType,
+                constructorSymbol =
+                    decoyImplementationDefaultsBitmaskAnnotation.constructors.first().symbol
+            ).also {
+                val paramsWithDefaultsBitMask = bitMask(
+                    *valueParameters.map { it.hasDefaultValue() }.toBooleanArray()
+                )
+                it.putValueArgument(0, irConst(paramsWithDefaultsBitMask))
+            }
     }
 
     companion object {

@@ -18,6 +18,8 @@
 
 package androidx.compose.ui.graphics.colorspace
 
+import androidx.annotation.Size
+
 object ColorSpaces {
     internal val SrgbPrimaries = floatArrayOf(0.640f, 0.330f, 0.300f, 0.600f, 0.150f, 0.060f)
     internal val Ntsc1953Primaries = floatArrayOf(0.67f, 0.33f, 0.21f, 0.71f, 0.14f, 0.08f)
@@ -277,7 +279,7 @@ object ColorSpaces {
      * | Range                   | (L: `[0.0, 1.0]`, a: `[-2, 2]`, b: `[-2, 2]`)           |
      * ```
      */
-    internal val Oklab: ColorSpace = Oklab(
+    val Oklab: ColorSpace = Oklab(
         "Oklab",
         id = 17
     )
@@ -296,7 +298,7 @@ object ColorSpaces {
      * @return A non-null [ColorSpace] if a match is found, null otherwise
      */
     fun match(
-        /*@Size(9)*/
+        @Size(9)
         toXYZD50: FloatArray,
         function: TransferParameters
     ): ColorSpace? {

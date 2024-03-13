@@ -16,6 +16,7 @@
 
 package androidx.webkit;
 
+import android.app.PendingIntent;
 import android.os.Build;
 import android.webkit.SafeBrowsingResponse;
 import android.webkit.WebResourceError;
@@ -29,6 +30,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.UiThread;
+import androidx.webkit.internal.ApiHelperForLollipop;
 import androidx.webkit.internal.SafeBrowsingResponseImpl;
 import androidx.webkit.internal.WebResourceErrorImpl;
 import androidx.webkit.internal.WebViewFeatureInternal;
@@ -47,6 +49,7 @@ import java.lang.reflect.InvocationHandler;
 // ever invoke these methods (and WebView can only be updated on Lollipop and above). The app can
 // still construct a WebViewClientCompat on a pre-Lollipop devices, and explicitly invoke these
 // methods, so each of these methods must also handle this case.
+@SuppressWarnings("HiddenSuperclass")
 public class WebViewClientCompat extends WebViewClient implements WebViewClientBoundaryInterface {
     private static final String[] sSupportedFeatures = new String[] {
         Features.VISUAL_STATE_CALLBACK,
@@ -56,7 +59,6 @@ public class WebViewClientCompat extends WebViewClient implements WebViewClientB
         Features.SAFE_BROWSING_HIT,
     };
 
-    /** @hide */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @IntDef(value = {
             WebViewClient.SAFE_BROWSING_THREAT_UNKNOWN,
@@ -72,7 +74,6 @@ public class WebViewClientCompat extends WebViewClient implements WebViewClientB
      * Returns the list of features this client supports. This feature list should always be a
      * subset of the Features declared in WebViewFeature.
      *
-     * @hide
      */
     @Override
     @RestrictTo(RestrictTo.Scope.LIBRARY)
@@ -122,7 +123,6 @@ public class WebViewClientCompat extends WebViewClient implements WebViewClientB
      * Applications are not meant to override this, and should instead override the non-final {@link
      * #onReceivedError(WebView, WebResourceRequest, WebResourceErrorCompat)} method.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @Override
@@ -173,10 +173,10 @@ public class WebViewClientCompat extends WebViewClient implements WebViewClientB
             // If the WebView APK drops supports for these APIs in the future, simply do nothing.
             return;
         }
-        if (request.isForMainFrame()) {
+        if (ApiHelperForLollipop.isForMainFrame(request)) {
             onReceivedError(view,
                     error.getErrorCode(), error.getDescription().toString(),
-                    request.getUrl().toString());
+                    ApiHelperForLollipop.getUrl(request).toString());
         }
     }
 
@@ -206,7 +206,6 @@ public class WebViewClientCompat extends WebViewClient implements WebViewClientB
      * Applications are not meant to override this, and should instead override the non-final {@link
      * #onSafeBrowsingHit(WebView, WebResourceRequest, int, SafeBrowsingResponseCompat)} method.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @Override
@@ -293,6 +292,18 @@ public class WebViewClientCompat extends WebViewClient implements WebViewClientB
     public boolean shouldOverrideUrlLoading(@NonNull WebView view,
             @NonNull WebResourceRequest request) {
         if (Build.VERSION.SDK_INT < 21) return false;
-        return shouldOverrideUrlLoading(view, request.getUrl().toString());
+        return shouldOverrideUrlLoading(view, ApiHelperForLollipop.getUrl(request).toString());
+    }
+
+    /**
+     */
+    // TODO(crbug.com/1284805): Replace the missing override suppression annotation with @Override
+    // After the boundary interface is rolled.
+    @SuppressWarnings("MissingOverride")
+    @RestrictTo(RestrictTo.Scope.LIBRARY)
+    public boolean onWebAuthnIntent(@NonNull WebView view, @NonNull PendingIntent intent,
+            @NonNull /* WebAuthnCallbackBoundaryInterface */ InvocationHandler callback) {
+        // TODO(crbug.com/1284805): Implement the actual logic.
+        return false;
     }
 }

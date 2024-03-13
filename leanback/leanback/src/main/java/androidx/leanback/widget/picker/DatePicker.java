@@ -139,19 +139,8 @@ public class DatePicker extends Picker {
      */
     @VisibleForTesting
     String getBestYearMonthDayPattern(String datePickerFormat) {
-        final String yearPattern;
-        if (PickerUtility.SUPPORTS_BEST_DATE_TIME_PATTERN) {
-            yearPattern = android.text.format.DateFormat.getBestDateTimePattern(mConstant.locale,
-                    datePickerFormat);
-        } else {
-            final java.text.DateFormat dateFormat = android.text.format.DateFormat.getDateFormat(
-                    getContext());
-            if (dateFormat instanceof SimpleDateFormat) {
-                yearPattern = ((SimpleDateFormat) dateFormat).toLocalizedPattern();
-            } else {
-                yearPattern = DATE_FORMAT;
-            }
-        }
+        final String yearPattern = android.text.format.DateFormat.getBestDateTimePattern(
+                mConstant.locale, datePickerFormat);
         return TextUtils.isEmpty(yearPattern) ? DATE_FORMAT : yearPattern;
     }
 
@@ -303,16 +292,16 @@ public class DatePicker extends Picker {
     }
 
     @Override
-    public final void onColumnValueChanged(int column, int newVal) {
+    public final void onColumnValueChanged(int columnIndex, int newValue) {
         mTempDate.setTimeInMillis(mCurrentDate.getTimeInMillis());
         // take care of wrapping of days and months to update greater fields
-        int oldVal = getColumnAt(column).getCurrentValue();
-        if (column == mColDayIndex) {
-            mTempDate.add(Calendar.DAY_OF_MONTH, newVal - oldVal);
-        } else if (column == mColMonthIndex) {
-            mTempDate.add(Calendar.MONTH, newVal - oldVal);
-        } else if (column == mColYearIndex) {
-            mTempDate.add(Calendar.YEAR, newVal - oldVal);
+        int oldVal = getColumnAt(columnIndex).getCurrentValue();
+        if (columnIndex == mColDayIndex) {
+            mTempDate.add(Calendar.DAY_OF_MONTH, newValue - oldVal);
+        } else if (columnIndex == mColMonthIndex) {
+            mTempDate.add(Calendar.MONTH, newValue - oldVal);
+        } else if (columnIndex == mColYearIndex) {
+            mTempDate.add(Calendar.YEAR, newValue - oldVal);
         } else {
             throw new IllegalArgumentException();
         }

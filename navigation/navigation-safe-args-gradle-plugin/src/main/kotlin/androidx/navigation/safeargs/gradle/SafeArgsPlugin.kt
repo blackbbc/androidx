@@ -16,13 +16,16 @@
 
 package androidx.navigation.safeargs.gradle
 
-import com.android.build.api.extension.AndroidComponentsExtension
+import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.ApplicationVariant
 import com.android.build.api.variant.DynamicFeatureVariant
+import com.android.build.api.variant.LibraryVariant
 import com.android.build.gradle.AppExtension
 import com.android.build.gradle.BaseExtension
 import com.android.build.gradle.LibraryExtension
-import com.android.build.gradle.api.ApplicationVariant
-import com.android.build.gradle.api.BaseVariant
+import java.io.File
+import java.util.Locale
+import javax.inject.Inject
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -30,8 +33,6 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
-import java.io.File
-import javax.inject.Inject
 
 private const val PLUGIN_DIRNAME = "navigation-args"
 internal const val GENERATED_PATH = "generated/source/$PLUGIN_DIRNAME"
@@ -43,11 +44,15 @@ abstract class SafeArgsPlugin protected constructor(
 
     abstract val generateKotlin: Boolean
 
-    private fun forEachVariant(extension: BaseExtension, action: (BaseVariant) -> Unit) {
+    @Suppress("DEPRECATION") // For BaseVariant should be replaced in later studio versions
+    private fun forEachVariant(
+        extension: BaseExtension,
+        action: (com.android.build.gradle.api.BaseVariant) -> Unit
+    ) {
         when {
-            extension is AppExtension -> extension.applicationVariants.all(action)
+            extension is AppExtension -> extension.applicationVariants.configureEach(action)
             extension is LibraryExtension -> {
-                extension.libraryVariants.all(action)
+                extension.libraryVariants.configureEach(action)
             }
             else -> throw GradleException(
                 "safeargs plugin must be used with android app," +
@@ -66,43 +71,63 @@ abstract class SafeArgsPlugin protected constructor(
                 "androidx.navigation.safeargs.kotlin plugin must be used with kotlin plugin"
             )
         }
+        // applicationId determines the location of the generated class
         val applicationIds = mutableMapOf<String, Provider<String>>()
+        // namespace determines the package of the R file
+        val namespaces = mutableMapOf<String, Provider<String>>()
         val variantExtension =
             project.extensions.findByType(AndroidComponentsExtension::class.java)
                 ?: throw GradleException("safeargs plugin must be used with android plugin")
         variantExtension.onVariants { variant ->
             when (variant) {
-                is ApplicationVariant, is DynamicFeatureVariant ->
-                    // Using reflection for AGP 7.0+ cause it can't resolve that
-                    // DynamicFeatureVariant implements GeneratesApk so the `applicationId`
-                    // property is actually available. Once we upgrade to 7.0 we will use
-                    // getNamespace().
-                    variant::class.java.getDeclaredMethod("getApplicationId").let { method ->
-                        method.trySetAccessible()
-                        applicationIds.getOrPut(variant.name) {
-                            @kotlin.Suppress("UNCHECKED_CAST")
-                            method.invoke(variant) as Provider<String>
-                        }
+                is ApplicationVariant -> {
+                    applicationIds.getOrPut(variant.name) {
+                        variant.applicationId
+                    }
+                    namespaces.getOrPut(variant.name) {
+                        variant.namespace
+                    }
+                }
+                is DynamicFeatureVariant -> {
+                    applicationIds.getOrPut(variant.name) {
+                        variant.applicationId
+                    }
+                    namespaces.getOrPut(variant.name) {
+                        variant.namespace
+                    }
+                }
+                is LibraryVariant ->
+                    // we are putting the library names space in applicationId because
+                    // we want the generated class to use the namespace to determine its package
+                    applicationIds.getOrPut(variant.name) {
+                        variant.namespace
                     }
             }
         }
 
         forEachVariant(extension) { variant ->
-            val task = project.tasks.create(
-                "generateSafeArgs${variant.name.capitalize()}",
+            val task = project.tasks.register(
+                "generateSafeArgs${variant.name.replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString()
+                }}",
                 ArgumentsGenerationTask::class.java
             ) { task ->
                 task.applicationId.set(
-                    // this will only put in the case where the extension is a Library module
-                    // and should be superseded by `getNamespace()` in agp 7.0+
                     applicationIds.getOrPut(variant.name) {
                         providerFactory.provider { variant.applicationId }
                     }
                 )
-                task.rFilePackage.set(variant.rFilePackage())
+                // If there is a namespace available, we should always use that to reference the
+                // package of the R file, otherwise we assume the R file is in the same location as
+                // the class
+                task.rFilePackage.set(namespaces[variant.name] ?: task.applicationId)
                 task.navigationFiles.setFrom(navigationFiles(variant, project))
-                task.outputDir.set(File(project.buildDir, "$GENERATED_PATH/${variant.dirName}"))
-                task.incrementalFolder.set(File(project.buildDir, "$INCREMENTAL_PATH/${task.name}"))
+                task.outputDir.set(
+                    project.layout.buildDirectory.dir("$GENERATED_PATH/${variant.dirName}")
+                )
+                task.incrementalFolder.set(
+                    project.layout.buildDirectory.dir("$INCREMENTAL_PATH/${task.name}")
+                )
                 task.useAndroidX.set(
                     (project.findProperty("android.useAndroidX") == "true").also {
                         if (!it) {
@@ -115,21 +140,14 @@ abstract class SafeArgsPlugin protected constructor(
                 )
                 task.generateKotlin.set(generateKotlin)
             }
-            variant.registerJavaGeneratingTask(task, task.outputDir.asFile.get())
+            @Suppress("DEPRECATION") // For BaseVariant should be replaced in later studio versions
+            variant.registerJavaGeneratingTask(task, task.get().outputDir.asFile.get())
         }
     }
 
-    private fun BaseVariant.rFilePackage() = providerFactory.provider {
-        val mainSourceSet = sourceSets.find { it.name == "main" }
-        val sourceSet = mainSourceSet ?: sourceSets[0]
-        val manifest = sourceSet.manifestFile
-        @Suppress("DEPRECATION") // b/181913965
-        val parsed = groovy.util.XmlSlurper(false, false).parse(manifest)
-        parsed.getProperty("@package").toString()
-    }
-
+    @Suppress("DEPRECATION") // For BaseVariant should be replaced in later studio versions
     private fun navigationFiles(
-        variant: BaseVariant,
+        variant: com.android.build.gradle.api.BaseVariant,
         project: Project
     ): ConfigurableFileCollection {
         val fileProvider = providerFactory.provider {

@@ -16,9 +16,13 @@
 
 package androidx.car.app.model;
 
+import static androidx.car.app.model.Action.FLAG_PRIMARY;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
+
+import androidx.car.app.TestUtils;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -46,14 +50,15 @@ public class LongMessageTemplateTest {
     }
 
     @Test
-    public void noHeaderTitleOrAction_throws() {
+    public void header_unsupportedSpans_throws() {
+        CharSequence title = TestUtils.getCharSequenceWithColorSpan("Title");
         assertThrows(
-                IllegalStateException.class,
-                () -> new LongMessageTemplate.Builder(mMessage).build());
+                IllegalArgumentException.class,
+                () -> new LongMessageTemplate.Builder(mMessage).setTitle(title));
 
-        // Positive cases.
-        new LongMessageTemplate.Builder(mMessage).setTitle(mTitle).build();
-        new LongMessageTemplate.Builder(mMessage).setHeaderAction(Action.APP_ICON).build();
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title2 = TestUtils.getCharSequenceWithDistanceAndDurationSpans("Title");
+        new LongMessageTemplate.Builder(mMessage).setTitle(title2).build();
     }
 
     @Test
@@ -63,6 +68,52 @@ public class LongMessageTemplateTest {
                         .addAction(mAction)
                         .addAction(mAction)
                         .addAction(mAction));
+    }
+    @Test
+    public void twoPrimaryActions_throws() {
+        Action primaryAction = new Action.Builder().setTitle("primaryAction")
+                .setOnClickListener(
+                        ParkedOnlyOnClickListener.create(() -> {})
+                )
+                .setFlags(FLAG_PRIMARY).build();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new LongMessageTemplate.Builder(mMessage)
+                        .addAction(primaryAction)
+                        .addAction(primaryAction)
+                        .build());
+    }
+
+    @Test
+    public void action_unsupportedSpans_throws() {
+        CharSequence title1 = TestUtils.getCharSequenceWithClickableSpan("Title");
+        Action action1 =
+                new Action.Builder().setTitle(title1).setOnClickListener(
+                        ParkedOnlyOnClickListener.create(() -> {
+                        })).build();
+        assertThrows(IllegalArgumentException.class,
+                () -> new LongMessageTemplate.Builder(mMessage).addAction(action1));
+        CarText title2 = TestUtils.getCarTextVariantsWithDistanceAndDurationSpans("Title");
+        Action action2 =
+                new Action.Builder().setTitle(title2).setOnClickListener(
+                        ParkedOnlyOnClickListener.create(() -> {
+                        })).build();
+        assertThrows(IllegalArgumentException.class,
+                () -> new LongMessageTemplate.Builder(mMessage).addAction(action2));
+
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title3 = TestUtils.getCharSequenceWithColorSpan("Title");
+        Action action3 =
+                new Action.Builder().setTitle(title3).setOnClickListener(
+                        ParkedOnlyOnClickListener.create(() -> {
+                        })).build();
+        new LongMessageTemplate.Builder(mMessage).setTitle("Title").addAction(action3).build();
+        CarText title4 = TestUtils.getCarTextVariantsWithColorSpan("Title");
+        Action action4 =
+                new Action.Builder().setTitle(title4).setOnClickListener(
+                        ParkedOnlyOnClickListener.create(() -> {
+                        })).build();
+        new LongMessageTemplate.Builder(mMessage).setTitle("Title").addAction(action4).build();
     }
 
     @Test
@@ -75,6 +126,15 @@ public class LongMessageTemplateTest {
         assertThat(template.getTitle().toString()).isEqualTo("header");
         assertThat(template.getHeaderAction()).isNull();
         assertThat(template.getActions()).isEmpty();
+        assertThat(template.getActionStrip()).isNull();
+    }
+
+    @Test
+    public void createInstance_emptyHeader() {
+        LongMessageTemplate template = new LongMessageTemplate.Builder(mMessage).build();
+
+        assertThat(template.getHeaderAction()).isNull();
+        assertThat(template.getTitle()).isNull();
         assertThat(template.getActionStrip()).isNull();
     }
 

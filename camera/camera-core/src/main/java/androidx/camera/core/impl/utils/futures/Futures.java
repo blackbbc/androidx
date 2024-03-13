@@ -20,6 +20,7 @@ import static androidx.core.util.Preconditions.checkNotNull;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.arch.core.util.Function;
 import androidx.camera.core.impl.utils.executor.CameraXExecutors;
 import androidx.concurrent.futures.CallbackToFutureAdapter;
@@ -34,11 +35,15 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Utility class for generating specific implementations of {@link ListenableFuture}.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class Futures {
 
     /**
@@ -126,6 +131,7 @@ public final class Futures {
         checkNotNull(function);
         return transformAsync(input, new AsyncFunction<I, O>() {
 
+            @NonNull
             @Override
             public ListenableFuture<O> apply(I input) {
                 return immediateFuture(function.apply(input));
@@ -219,7 +225,7 @@ public final class Futures {
             }
 
             @Override
-            public void onFailure(Throwable t) {
+            public void onFailure(@NonNull Throwable t) {
                 completer.setException(t);
             }
         }, executor);
@@ -335,7 +341,12 @@ public final class Futures {
             try {
                 value = getDone(mFuture);
             } catch (ExecutionException e) {
-                mCallback.onFailure(e.getCause());
+                Throwable cause = e.getCause();
+                if (cause == null) {
+                    mCallback.onFailure(e);
+                } else {
+                    mCallback.onFailure(cause);
+                }
                 return;
             } catch (RuntimeException | Error e) {
                 mCallback.onFailure(e);
@@ -344,6 +355,7 @@ public final class Futures {
             mCallback.onSuccess(value);
         }
 
+        @NonNull
         @Override
         public String toString() {
             return getClass().getSimpleName() + "," + mCallback;
@@ -400,6 +412,74 @@ public final class Futures {
                 Thread.currentThread().interrupt();
             }
         }
+    }
+
+    /**
+     * Returns a future that delegates to the supplied future but will finish early
+     * (via a TimeoutException) if the specified duration expires.
+     *
+     * <p> The input future itself is not canceled at timeout and thus keeps continuing until it
+     * is completed (if ever). See
+     * {@link #makeTimeoutFuture(long, ScheduledExecutorService, Object, boolean, ListenableFuture)}
+     * if you need this behavior.
+     *
+     * @param timeoutMillis     When to time out the future in milliseconds.
+     * @param scheduledExecutor The executor service to enforce the timeout.
+     * @param input             The future to delegate to.
+     */
+    @NonNull
+    public static <V> ListenableFuture<V> makeTimeoutFuture(
+            long timeoutMillis,
+            @NonNull ScheduledExecutorService scheduledExecutor,
+            @NonNull ListenableFuture<V> input) {
+        return CallbackToFutureAdapter.getFuture(completer -> {
+            propagate(input, completer);
+            if (!input.isDone()) {
+                ScheduledFuture<?> timeoutFuture = scheduledExecutor.schedule(
+                        () -> completer.setException(new TimeoutException("Future[" + input + "] "
+                                + "is not done within " + timeoutMillis + " ms.")),
+                        timeoutMillis, TimeUnit.MILLISECONDS);
+                input.addListener(
+                        () -> timeoutFuture.cancel(true), CameraXExecutors.directExecutor());
+            }
+            return "TimeoutFuture[" + input + "]";
+        });
+    }
+
+    /**
+     * Returns a future that delegates to the supplied future but will finish early normally with
+     * the provided default value if the specified duration expires.
+     *
+     * @param timeoutMillis        When to time out the future in milliseconds.
+     * @param scheduledExecutor    The executor service to enforce the timeout.
+     * @param defaultValue         The default value to complete output future with in case of
+     *                             timeout.
+     * @param cancelInputAtTimeout If true, the input future will be canceled at timeout.
+     * @param input                The future to delegate to.
+     */
+    @NonNull
+    public static <V> ListenableFuture<V> makeTimeoutFuture(
+            long timeoutMillis,
+            @NonNull ScheduledExecutorService scheduledExecutor,
+            @Nullable V defaultValue,
+            boolean cancelInputAtTimeout,
+            @NonNull ListenableFuture<V> input) {
+        return CallbackToFutureAdapter.getFuture(completer -> {
+            propagate(input, completer);
+            if (!input.isDone()) {
+                ScheduledFuture<?> timeoutFuture = scheduledExecutor.schedule(
+                        () -> {
+                            completer.set(defaultValue);
+                            if (cancelInputAtTimeout) {
+                                input.cancel(true);
+                            }
+                        },
+                        timeoutMillis, TimeUnit.MILLISECONDS);
+                input.addListener(
+                        () -> timeoutFuture.cancel(true), CameraXExecutors.directExecutor());
+            }
+            return "TimeoutFuture[" + input + "]";
+        });
     }
 
     /**

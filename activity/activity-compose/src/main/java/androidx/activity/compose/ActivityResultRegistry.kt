@@ -16,6 +16,7 @@
 
 package androidx.activity.compose
 
+import androidx.activity.result.ActivityResultCaller
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
@@ -112,8 +113,8 @@ public fun <I, O> rememberLauncherForActivityResult(
 }
 
 /**
- * A launcher for a previously-{@link ActivityResultCaller#registerForActivityResult prepared call}
- * to start the process of executing an {@link ActivityResultContract}.
+ * A launcher for a previously-[prepared call][ActivityResultCaller.registerForActivityResult]
+ * to start the process of executing an [ActivityResultContract].
  *
  * This launcher does not support the [unregister] function. Attempting to use [unregister] will
  * result in an [IllegalStateException].
@@ -122,7 +123,7 @@ public fun <I, O> rememberLauncherForActivityResult(
  */
 public class ManagedActivityResultLauncher<I, O> internal constructor(
     private val launcher: ActivityResultLauncherHolder<I>,
-    private val contract: State<ActivityResultContract<I, O>>
+    private val currentContract: State<ActivityResultContract<I, O>>
 ) : ActivityResultLauncher<I>() {
     /**
      * This function should never be called and doing so will result in an
@@ -142,14 +143,14 @@ public class ManagedActivityResultLauncher<I, O> internal constructor(
         launcher.launch(input, options)
     }
 
-    @Suppress("UNCHECKED_CAST")
-    override fun getContract(): ActivityResultContract<I, *> = contract.value
+    override val contract: ActivityResultContract<I, O>
+        get() = currentContract.value
 }
 
 internal class ActivityResultLauncherHolder<I> {
     var launcher: ActivityResultLauncher<I>? = null
 
-    fun launch(input: I?, options: ActivityOptionsCompat?) {
+    fun launch(input: I, options: ActivityOptionsCompat?) {
         launcher?.launch(input, options) ?: error("Launcher has not been initialized")
     }
 

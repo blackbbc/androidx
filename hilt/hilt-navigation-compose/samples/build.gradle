@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
 import androidx.build.Publish
 
@@ -27,10 +32,9 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin("androidx.compose.compiler:compiler:1.0.0-rc01")
     implementation(libs.kotlinStdlib)
 
-    compileOnly(projectOrArtifact(":annotation:annotation-sampled"))
+    compileOnly(project(":annotation:annotation-sampled"))
     implementation(projectOrArtifact(":hilt:hilt-navigation-compose"))
 }
 
@@ -38,8 +42,11 @@ androidx {
     name = "Navigation Compose Hilt Extension Samples"
     publish = Publish.SNAPSHOT_AND_RELEASE
     type = LibraryType.SAMPLES
-    mavenGroup = LibraryGroups.HILT
     mavenVersion = LibraryVersions.HILT_NAVIGATION_COMPOSE
     inceptionYear = "2021"
     description = "Samples for the Navigation Compose Hilt Integration"
+}
+
+android {
+    namespace "androidx.hilt.navigation.compose.samples"
 }

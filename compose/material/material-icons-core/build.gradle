@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-
-import androidx.build.AndroidXComposePlugin
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
+import androidx.build.PlatformIdentifier
 import androidx.compose.material.icons.generator.tasks.IconGenerationTask
 
 plugins {
@@ -26,38 +31,72 @@ plugins {
     id("AndroidXComposePlugin")
 }
 
-AndroidXComposePlugin.applyAndConfigureKotlinPlugin(project)
+androidXMultiplatform {
+    android()
+    desktop()
 
-if (!AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-    dependencies {
-        /*
-         * When updating dependencies, make sure to make the an an analogous update in the
-         * corresponding block below
-         */
-        kotlinPlugin(project(":compose:compiler:compiler"))
+    defaultPlatform(PlatformIdentifier.ANDROID)
 
-        api(project(":compose:ui:ui"))
-        implementation(libs.kotlinStdlib)
-    }
-}
-
-if (AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-    kotlin {
-        android()
-        jvm("desktop")
-
-        /*
-         * When updating dependencies, make sure to make the an an analogous update in the
-         * corresponding block above
-         */
-        sourceSets {
-            commonMain.dependencies {
+    sourceSets {
+        commonMain {
+            dependencies {
                 implementation(libs.kotlinStdlibCommon)
-                api(project(":compose:ui:ui"))
+                api("androidx.compose.ui:ui:1.6.0")
             }
+        }
 
-            androidMain.dependencies {
+        commonTest {
+            dependencies {
+            }
+        }
+
+        jvmMain {
+            dependsOn(commonMain)
+            dependencies {
                 implementation(libs.kotlinStdlib)
+            }
+        }
+
+        skikoMain {
+            dependsOn(commonMain)
+            dependencies {
+            }
+        }
+
+        androidMain {
+            dependsOn(jvmMain)
+            dependencies {
+            }
+        }
+
+        desktopMain {
+            dependsOn(skikoMain)
+            dependsOn(jvmMain)
+            dependencies {
+            }
+        }
+
+        jvmTest {
+            dependsOn(commonTest)
+            dependencies {
+            }
+        }
+
+        androidInstrumentedTest {
+            dependsOn(jvmTest)
+            dependencies {
+            }
+        }
+
+        androidUnitTest {
+            dependsOn(jvmTest)
+            dependencies {
+            }
+        }
+
+        desktopTest {
+            dependsOn(jvmTest)
+            dependencies {
             }
         }
     }
@@ -66,14 +105,17 @@ if (AndroidXComposePlugin.isMultiplatformEnabled(project)) {
 IconGenerationTask.registerCoreIconProject(
         project,
         android,
-        AndroidXComposePlugin.isMultiplatformEnabled(project)
+        true
 )
 
 androidx {
     name = "Compose Material Icons Core"
-    type = LibraryType.PUBLISHED_LIBRARY
-    mavenGroup = LibraryGroups.Compose.MATERIAL
+    type = LibraryType.PUBLISHED_KOTLIN_ONLY_LIBRARY
     inceptionYear = "2020"
     description = "Compose Material Design core icons. This module contains the most commonly used set of Material icons."
     legacyDisableKotlinStrictApiMode = true
+}
+
+android {
+    namespace "androidx.compose.material.icons"
 }

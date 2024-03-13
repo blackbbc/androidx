@@ -16,56 +16,69 @@
 
 package androidx.compose.ui.focus
 
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.CustomDestinationResult.Cancelled
+import androidx.compose.ui.focus.CustomDestinationResult.None
+import androidx.compose.ui.focus.CustomDestinationResult.RedirectCancelled
+import androidx.compose.ui.focus.CustomDestinationResult.Redirected
+import androidx.compose.ui.focus.FocusDirection.Companion.Enter
+import androidx.compose.ui.focus.FocusRequester.Companion.Cancel
 import androidx.compose.ui.focus.FocusStateImpl.Active
 import androidx.compose.ui.focus.FocusStateImpl.ActiveParent
 import androidx.compose.ui.focus.FocusStateImpl.Captured
-import androidx.compose.ui.focus.FocusStateImpl.Disabled
 import androidx.compose.ui.focus.FocusStateImpl.Inactive
-import androidx.compose.ui.node.ModifiedFocusNode
+import androidx.compose.ui.node.Nodes.FocusTarget
+import androidx.compose.ui.node.nearestAncestor
+import androidx.compose.ui.node.observeReads
+import androidx.compose.ui.node.requireOwner
 
 /**
  * Request focus for this node.
  *
- * @param propagateFocus Whether the focus should be propagated to the node's children.
- *
- * In Compose, the parent [FocusNode][ModifiedFocusNode] controls focus for its focusable
+ * In Compose, the parent [FocusNode][FocusTargetNode] controls focus for its focusable
  * children. Calling this function will send a focus request to this
- * [FocusNode][ModifiedFocusNode]'s parent [FocusNode][ModifiedFocusNode].
+ * [FocusNode][FocusTargetNode]'s parent [FocusNode][FocusTargetNode].
  */
-internal fun ModifiedFocusNode.requestFocus(propagateFocus: Boolean = true) {
-    when (focusState) {
-        Active, Captured, Disabled -> {
-            // There is no change in focus state, but we send a focus event to notify the user
-            // that the focus request is completed.
-            sendOnFocusEvent(focusState)
-        }
-        ActiveParent -> {
-            val currentFocusedChild = focusedChild
-            requireNotNull(currentFocusedChild)
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun FocusTargetNode.requestFocus(): Boolean = requestFocus(Enter) ?: false
 
-            // We don't need to do anything if [propagateFocus] is true,
-            // since this subtree already has focus.
-            if (propagateFocus) {
-                sendOnFocusEvent(focusState)
-                return
-            }
-
-            if (currentFocusedChild.clearFocus()) {
-                grantFocus(propagateFocus)
-                focusedChild = null
-            }
+internal fun FocusTargetNode.requestFocus(focusDirection: FocusDirection): Boolean? {
+    return requireTransactionManager().withNewTransaction {
+        when (performCustomRequestFocus(focusDirection)) {
+            None -> performRequestFocus()
+            Redirected -> true
+            Cancelled, RedirectCancelled -> null
         }
+    }
+}
+
+/**
+ * This function performs the request focus action.
+ *
+ * Note: Do not call this directly, consider using [requestFocus], which will check if any
+ * custom focus [enter][FocusProperties.enter] and [exit][FocusProperties.exit]
+ * [properties][FocusProperties] have been specified.
+ */
+internal fun FocusTargetNode.performRequestFocus(): Boolean {
+   val success = when (focusState) {
+        Active, Captured -> true
+        ActiveParent -> clearChildFocus() && grantFocus()
         Inactive -> {
-            val focusParent = findParentFocusNode()
-            if (focusParent == null) {
-                if (requestFocusForOwner()) {
-                    grantFocus(propagateFocus)
+            val parent = nearestAncestor(FocusTarget)
+            if (parent != null) {
+                val prevState = parent.focusState
+                val success = parent.requestFocusForChild(this)
+                if (success && prevState !== parent.focusState) {
+                    parent.refreshFocusEventNodes()
                 }
+                success
             } else {
-                focusParent.requestFocusForChild(this, propagateFocus)
+                requestFocusForOwner() && grantFocus()
             }
         }
     }
+    if (success) refreshFocusEventNodes()
+    return success
 }
 
 /**
@@ -76,13 +89,16 @@ internal fun ModifiedFocusNode.requestFocus(propagateFocus: Boolean = true) {
  *
  * @return true if the focus was successfully captured. False otherwise.
  */
-internal fun ModifiedFocusNode.captureFocus() = when (focusState) {
-    Active -> {
-        focusState = Captured
-        true
+internal fun FocusTargetNode.captureFocus() = requireTransactionManager().withNewTransaction {
+    when (focusState) {
+        Active -> {
+            focusState = Captured
+            refreshFocusEventNodes()
+            true
+        }
+        Captured -> true
+        ActiveParent, Inactive -> false
     }
-    Captured -> true
-    else -> false
 }
 
 /**
@@ -92,163 +108,202 @@ internal fun ModifiedFocusNode.captureFocus() = when (focusState) {
  *
  * @return true if the captured focus was released. False Otherwise.
  */
-internal fun ModifiedFocusNode.freeFocus() = when (focusState) {
-    Captured -> {
-        focusState = Active
-        true
+internal fun FocusTargetNode.freeFocus() = requireTransactionManager().withNewTransaction {
+    when (focusState) {
+        Captured -> {
+            focusState = Active
+            refreshFocusEventNodes()
+            true
+        }
+        Active -> true
+        ActiveParent, Inactive -> false
     }
-    Active -> true
-    else -> false
 }
 
 /**
  * This function clears focus from this node.
  *
- * Note: This function should only be called by a parent [focus node][ModifiedFocusNode] to
- * clear focus from one of its child [focus node][ModifiedFocusNode]s. It does not change the
+ * Note: This function should only be called by a parent [focus node][FocusTargetNode] to
+ * clear focus from one of its child [focus node][FocusTargetNode]s. It does not change the
  * state of the parent.
  */
-internal fun ModifiedFocusNode.clearFocus(forcedClear: Boolean = false): Boolean {
-    return when (focusState) {
-        Active -> {
-            focusState = Inactive
-            true
-        }
-        /**
-         * If the node is [ActiveParent], we need to clear focus from the [Active] descendant
-         * first, before clearing focus of this node.
-         */
-        ActiveParent -> {
-            val currentFocusedChild = focusedChild
-            requireNotNull(currentFocusedChild)
-            currentFocusedChild.clearFocus(forcedClear).also { success ->
-                if (success) {
-                    focusState = Inactive
-                    focusedChild = null
-                }
-            }
-        }
-        /**
-         * If the node is [Captured], deny requests to clear focus, except for a forced clear.
-         */
-        Captured -> {
-            if (forcedClear) {
-                focusState = Inactive
-            }
-            forcedClear
-        }
-        /**
-         * Nothing to do if the node is not focused.
-         */
-        Inactive, Disabled -> true
+internal fun FocusTargetNode.clearFocus(
+    forced: Boolean = false,
+    refreshFocusEvents: Boolean
+): Boolean = when (focusState) {
+    Active -> {
+        focusState = Inactive
+        if (refreshFocusEvents) refreshFocusEventNodes()
+        true
     }
+    /**
+     * If the node is [ActiveParent], we need to clear focus from the [Active] descendant
+     * first, before clearing focus from this node.
+     */
+    ActiveParent -> if (clearChildFocus(forced, refreshFocusEvents)) {
+        focusState = Inactive
+        if (refreshFocusEvents) refreshFocusEventNodes()
+        true
+    } else {
+        false
+    }
+
+    /**
+     * If the node is [Captured], deny requests to clear focus, except for a forced clear.
+     */
+    Captured -> {
+        if (forced) {
+            focusState = Inactive
+            if (refreshFocusEvents) refreshFocusEventNodes()
+        }
+        forced
+    }
+    /**
+     * Nothing to do if the node is not focused.
+     */
+    Inactive -> true
 }
 
 /**
  * This function grants focus to this node.
- *
- * @param propagateFocus Whether the focus should be propagated to the node's children.
- *
- * Note: This function is private, and should only be called by a parent [ModifiedFocusNode] to
- * grant focus to one of its child [ModifiedFocusNode]s.
+ * Note: This is a private function that just changes the state of this node and does not affect any
+ * other nodes in the hierarchy.
  */
-private fun ModifiedFocusNode.grantFocus(propagateFocus: Boolean) {
-
-    // TODO (b/144126570) use ChildFocusability.
-    //  For now we assume children get focus before parent).
-
-    // TODO (b/144126759): Design a system to decide which child gets focus.
-    //  for now we grant focus to the first child.
-    val focusedCandidate = focusableChildren().firstOrNull()
-
-    if (focusedCandidate == null || !propagateFocus) {
-        // No Focused Children, or we don't want to propagate focus to children.
-        focusState = Active
-    } else {
-        focusState = ActiveParent
-        focusedChild = focusedCandidate
-        focusedCandidate.grantFocus(propagateFocus)
+private fun FocusTargetNode.grantFocus(): Boolean {
+    // When we grant focus to this node, we need to observe changes to the canFocus property.
+    // If canFocus is set to false, we need to clear focus.
+    observeReads { fetchFocusProperties() }
+    // No Focused Children, or we don't want to propagate focus to children.
+    when (focusState) {
+        Inactive, ActiveParent -> focusState = Active
+        Active, Captured -> { /* Already focused. */ }
     }
+    return true
 }
 
+/** This function clears any focus from the focused child. */
+private fun FocusTargetNode.clearChildFocus(
+    forced: Boolean = false,
+    refreshFocusEvents: Boolean = true
+): Boolean = activeChild?.clearFocus(forced, refreshFocusEvents) ?: true
+
 /**
- * Focusable children of this [focus node][ModifiedFocusNode] can use this function to request
+ * Focusable children of this [focus node][FocusTargetNode] can use this function to request
  * focus.
  *
  * @param childNode: The node that is requesting focus.
- * @param propagateFocus Whether the focus should be propagated to the node's children.
  * @return true if focus was granted, false otherwise.
  */
-private fun ModifiedFocusNode.requestFocusForChild(
-    childNode: ModifiedFocusNode,
-    propagateFocus: Boolean
-): Boolean {
+private fun FocusTargetNode.requestFocusForChild(childNode: FocusTargetNode): Boolean {
 
     // Only this node's children can ask for focus.
-    if (!focusableChildren().contains(childNode)) {
+    if (childNode.nearestAncestor(FocusTarget) != this) {
         error("Non child node cannot request focus.")
     }
 
     return when (focusState) {
-        /**
-         * If this node is [Active], it can give focus to the requesting child.
-         */
-        Active -> {
-            focusState = ActiveParent
-            focusedChild = childNode
-            childNode.grantFocus(propagateFocus)
-            true
+        // If this node is [Active], it can give focus to the requesting child.
+        Active -> childNode.grantFocus().also { success ->
+            if (success) focusState = ActiveParent
         }
-        /**
-         * If this node is [ActiveParent] ie, one of the parent's descendants is [Active],
-         * remove focus from the currently focused child and grant it to the requesting child.
-         */
+        // If this node is [ActiveParent] ie, one of the parent's descendants is [Active],
+        // remove focus from the currently focused child and grant it to the requesting child.
         ActiveParent -> {
-            val previouslyFocusedNode = focusedChild
-            requireNotNull(previouslyFocusedNode)
-            if (previouslyFocusedNode.clearFocus()) {
-                focusedChild = childNode
-                childNode.grantFocus(propagateFocus)
-                true
-            } else {
-                // Currently focused component does not want to give up focus.
-                false
-            }
+            requireActiveChild()
+            clearChildFocus() && childNode.grantFocus()
         }
-        /**
-         * If this node is not [Active], we must gain focus first before granting it
-         * to the requesting child.
-         */
+        // If this node is not [Active], we must gain focus first before granting it
+        // to the requesting child.
         Inactive -> {
-            val focusParent = findParentFocusNode()
-            if (focusParent == null) {
-                // If the owner successfully gains focus, proceed otherwise return false.
-                if (requestFocusForOwner()) {
-                    focusState = Active
-                    requestFocusForChild(childNode, propagateFocus)
-                } else {
-                    false
+            val focusParent = nearestAncestor(FocusTarget)
+            when {
+                // If this node is the root, request focus from the compose owner.
+                focusParent == null && requestFocusForOwner() -> {
+                    childNode.grantFocus().also { success ->
+                        if (success) focusState = ActiveParent
+                    }
                 }
-            } else if (focusParent.requestFocusForChild(this, propagateFocus = false)) {
-                requestFocusForChild(childNode, propagateFocus)
-            } else {
+                // For non-root nodes, request focus for this node before the child.
+                // We request focus even if this is a deactivated node, as we will end up taking
+                // focus away and granting it to the child.
+                focusParent != null && focusParent.requestFocusForChild(this) -> {
+                    requestFocusForChild(childNode).also { success ->
+                        // Verify that focus state was granted to the child.
+                        // If this child didn't take focus then we can end up in a situation where
+                        // a deactivated parent is focused.
+                        check(this.focusState == ActiveParent) { "Deactivated node is focused" }
+                        if (success) focusParent.refreshFocusEventNodes()
+                    }
+                }
+
                 // Could not gain focus, so have no focus to give.
-                false
+                else -> false
             }
         }
-        /**
-         * If this node is [Captured], decline requests from the children.
-         */
+        // If this node is [Captured], decline requests from the children.
         Captured -> false
-        /**
-         * Children of a [Disabled] parent should also be [Disabled].
-         */
-        Disabled -> error("non root FocusNode needs a focusable parent")
     }
 }
 
-private fun ModifiedFocusNode.requestFocusForOwner(): Boolean {
-    val owner = layoutNode.owner
-    requireNotNull(owner, { "Owner not initialized." })
-    return owner.requestFocus()
+private fun FocusTargetNode.requestFocusForOwner(): Boolean {
+    return requireOwner().focusOwner.requestFocusForOwner(null, null)
+}
+
+private fun FocusTargetNode.requireActiveChild(): FocusTargetNode {
+    return requireNotNull(activeChild) { "ActiveParent with no focused child" }
+}
+
+internal enum class CustomDestinationResult { None, Cancelled, Redirected, RedirectCancelled }
+
+internal fun FocusTargetNode.performCustomRequestFocus(
+    focusDirection: FocusDirection
+): CustomDestinationResult {
+    when (focusState) {
+        Active, Captured -> return None
+        ActiveParent ->
+            return requireActiveChild().performCustomClearFocus(focusDirection)
+        Inactive -> {
+            val focusParent = nearestAncestor(FocusTarget) ?: return None
+            return when (focusParent.focusState) {
+                Captured -> Cancelled
+                ActiveParent -> focusParent.performCustomRequestFocus(focusDirection)
+                Active -> focusParent.performCustomEnter(focusDirection)
+                Inactive ->
+                    focusParent.performCustomRequestFocus(focusDirection).takeUnless { it == None }
+                        ?: focusParent.performCustomEnter(focusDirection)
+            }
+        }
+    }
+}
+
+internal fun FocusTargetNode.performCustomClearFocus(
+    focusDirection: FocusDirection
+): CustomDestinationResult = when (focusState) {
+    Active, Inactive -> None
+    Captured -> Cancelled
+    ActiveParent ->
+        requireActiveChild().performCustomClearFocus(focusDirection).takeUnless { it == None }
+            ?: performCustomExit(focusDirection)
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun FocusTargetNode.performCustomEnter(
+    focusDirection: FocusDirection
+): CustomDestinationResult {
+    fetchCustomEnter(focusDirection) {
+        if (it === Cancel) return Cancelled
+        return if (it.focus()) Redirected else RedirectCancelled
+    }
+    return None
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun FocusTargetNode.performCustomExit(
+    focusDirection: FocusDirection
+): CustomDestinationResult {
+    fetchCustomExit(focusDirection) {
+        if (it === Cancel) return Cancelled
+        return if (it.focus()) Redirected else RedirectCancelled
+    }
+    return None
 }

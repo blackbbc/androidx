@@ -31,7 +31,9 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.car.app.CarContext.CarServiceType;
 import androidx.car.app.constraints.IConstraintHost;
+import androidx.car.app.media.IMediaPlaybackHost;
 import androidx.car.app.navigation.INavigationHost;
+import androidx.car.app.suggestion.ISuggestionHost;
 import androidx.car.app.utils.LogTags;
 import androidx.car.app.utils.RemoteUtils;
 import androidx.car.app.utils.ThreadUtils;
@@ -40,8 +42,6 @@ import java.security.InvalidParameterException;
 
 /**
  * Dispatches calls to the host and manages possible exceptions.
- *
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP) // Restrict to testing library
 public final class HostDispatcher {
@@ -53,6 +53,10 @@ public final class HostDispatcher {
     private IConstraintHost mConstraintHost;
     @Nullable
     private INavigationHost mNavigationHost;
+    @Nullable
+    private ISuggestionHost mSuggestionHost;
+    @Nullable
+    private IMediaPlaybackHost mPlaybackMediaHost;
 
     /**
      * Dispatches the {@code call} to the host for the given {@code hostType}.
@@ -128,8 +132,9 @@ public final class HostDispatcher {
      * Retrieves the {@link IInterface} for the given {@code hostType}.
      *
      * @throws RemoteException if the host is unresponsive
-     * @hide
      */
+    @SuppressWarnings({
+            "UnsafeOptInUsageError"})
     @RestrictTo(LIBRARY)
     @Nullable
     IInterface getHost(@CarServiceType String hostType) throws RemoteException {
@@ -139,7 +144,7 @@ public final class HostDispatcher {
             return null;
         }
 
-        IInterface host = null;
+        IInterface host;
         switch (hostType) {
             case CarContext.APP_SERVICE:
                 if (mAppHost == null) {
@@ -159,6 +164,30 @@ public final class HostDispatcher {
                                                     CarContext.CONSTRAINT_SERVICE)));
                 }
                 host = mConstraintHost;
+                break;
+            case CarContext.SUGGESTION_SERVICE:
+                if (mSuggestionHost == null) {
+                    mSuggestionHost =
+                            RemoteUtils.dispatchCallToHostForResult(
+                                    "getHost(Suggestion)", () ->
+                                            ISuggestionHost.Stub.asInterface(
+                                                    requireNonNull(mCarHost).getHost(
+                                                            CarContext.SUGGESTION_SERVICE))
+                            );
+                }
+                host = mSuggestionHost;
+                break;
+            case CarContext.MEDIA_PLAYBACK_SERVICE:
+                if (mPlaybackMediaHost == null) {
+                    mPlaybackMediaHost =
+                            RemoteUtils.dispatchCallToHostForResult(
+                                    "getHost(Media)", () ->
+                                            IMediaPlaybackHost.Stub.asInterface(
+                                                    requireNonNull(mCarHost).getHost(
+                                                            CarContext.MEDIA_PLAYBACK_SERVICE))
+                            );
+                }
+                host = mPlaybackMediaHost;
                 break;
             case CarContext.NAVIGATION_SERVICE:
                 if (mNavigationHost == null) {

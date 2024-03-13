@@ -250,10 +250,14 @@ public class LiveDataQueryTest extends TestDatabaseTest {
         PetsToys expected = new PetsToys();
         expected.petId = 123;
 
+        Pet testPet = TestUtil.createPet(123);
+        mPetDao.insertOrReplace(testPet);
+
         Toy toy = new Toy();
         toy.setId(1);
         toy.setPetId(123);
         toy.setName("ball");
+        toy.setPetId(123);
 
         final TestLifecycleOwner lifecycleOwner = new TestLifecycleOwner();
         final TestObserver<PetsToys> observer = new MyTestObserver<>();
@@ -357,7 +361,6 @@ public class LiveDataQueryTest extends TestDatabaseTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.JELLY_BEAN)
     public void withFtsTable() throws ExecutionException, InterruptedException, TimeoutException {
         final Context context = ApplicationProvider.getApplicationContext();
         final FtsTestDatabase db = Room.inMemoryDatabaseBuilder(context, FtsTestDatabase.class)
@@ -379,7 +382,6 @@ public class LiveDataQueryTest extends TestDatabaseTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.JELLY_BEAN)
     public void withExternalContentFtsTable()
             throws ExecutionException, InterruptedException, TimeoutException {
         final Context context = ApplicationProvider.getApplicationContext();

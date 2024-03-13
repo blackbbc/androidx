@@ -16,17 +16,34 @@
 
 package androidx.camera.core;
 
+import android.graphics.Matrix;
+
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
+import androidx.annotation.RestrictTo;
 import androidx.camera.core.impl.TagBundle;
 import androidx.camera.core.impl.utils.ExifData;
 
 import com.google.auto.value.AutoValue;
 
+/**
+ */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @AutoValue
-abstract class ImmutableImageInfo implements ImageInfo {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+public abstract class ImmutableImageInfo implements ImageInfo {
+
+    /**
+     * Creates an instance of {@link ImmutableImageInfo}.
+     */
+    @NonNull
     public static ImageInfo create(@NonNull TagBundle tag, long timestamp,
-            int rotationDegrees) {
-        return new AutoValue_ImmutableImageInfo(tag, timestamp, rotationDegrees);
+            int rotationDegrees, @NonNull Matrix sensorToBufferTransformMatrix) {
+        return new AutoValue_ImmutableImageInfo(
+                tag,
+                timestamp,
+                rotationDegrees,
+                sensorToBufferTransformMatrix);
     }
 
     @Override
@@ -38,6 +55,10 @@ abstract class ImmutableImageInfo implements ImageInfo {
 
     @Override
     public abstract int getRotationDegrees();
+
+    @NonNull
+    @Override
+    public abstract Matrix getSensorToBufferTransformMatrix();
 
     @Override
     public void populateExifData(@NonNull ExifData.Builder exifBuilder) {

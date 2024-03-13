@@ -28,7 +28,8 @@ import android.view.ViewGroup.MarginLayoutParams;
 import android.view.ViewTreeObserver;
 
 import androidx.annotation.ColorInt;
-import androidx.core.view.ViewCompat;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
@@ -820,7 +821,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
         allPresenters[allPresenters.length - 1] = invisibleRowPresenter;
         mAdapter.setPresenterSelector(new PresenterSelector() {
             @Override
-            public Presenter getPresenter(Object item) {
+            public Presenter getPresenter(@Nullable Object item) {
                 Row row = (Row) item;
                 if (row.isRenderedAsRowView()) {
                     return adapterPresenter.getPresenter(item);
@@ -1097,8 +1098,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
                         ? mHeadersSupportFragment.getVerticalGridView() : mMainFragment.getView();
             }
 
-            boolean isRtl = ViewCompat.getLayoutDirection(focused)
-                    == ViewCompat.LAYOUT_DIRECTION_RTL;
+            boolean isRtl = focused.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
             int towardStart = isRtl ? View.FOCUS_RIGHT : View.FOCUS_LEFT;
             int towardEnd = isRtl ? View.FOCUS_LEFT : View.FOCUS_RIGHT;
             if (mCanShowHeaders && direction == towardStart) {
@@ -1166,7 +1166,7 @@ public class BrowseSupportFragment extends BaseSupportFragment {
     };
 
     @Override
-    public void onSaveInstanceState(Bundle outState) {
+    public void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putInt(CURRENT_SELECTED_POSITION, mSelectedPosition);
         outState.putBoolean(IS_PAGE_ROW, mIsPageRow);
@@ -1244,8 +1244,9 @@ public class BrowseSupportFragment extends BaseSupportFragment {
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
+    @Nullable
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
 
         if (getChildFragmentManager().findFragmentById(R.id.scale_frame) == null) {
             mHeadersSupportFragment = onCreateHeadersSupportFragment();

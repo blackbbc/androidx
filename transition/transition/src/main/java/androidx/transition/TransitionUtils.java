@@ -27,15 +27,15 @@ import android.graphics.RectF;
 import android.os.Build;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewGroupOverlay;
 import android.widget.ImageView;
+
+import androidx.annotation.DoNotInline;
+import androidx.annotation.RequiresApi;
 
 class TransitionUtils {
 
     private static final int MAX_IMAGE_SIZE = 1024 * 1024;
-    private static final boolean HAS_IS_ATTACHED_TO_WINDOW =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT;
-    private static final boolean HAS_OVERLAY =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2;
     private static final boolean HAS_PICTURE_BITMAP =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P;
 
@@ -90,22 +90,18 @@ class TransitionUtils {
             ViewGroup sceneRoot) {
         final boolean addToOverlay;
         final boolean sceneRootIsAttached;
-        if (HAS_IS_ATTACHED_TO_WINDOW) {
-            addToOverlay = !view.isAttachedToWindow();
-            sceneRootIsAttached = sceneRoot == null ? false : sceneRoot.isAttachedToWindow();
-        } else {
-            addToOverlay = false;
-            sceneRootIsAttached = false;
-        }
+        addToOverlay = !view.isAttachedToWindow();
+        sceneRootIsAttached = sceneRoot != null && sceneRoot.isAttachedToWindow();
         ViewGroup parent = null;
         int indexInParent = 0;
-        if (HAS_OVERLAY && addToOverlay) {
+        if (addToOverlay) {
             if (!sceneRootIsAttached) {
                 return null;
             }
             parent = (ViewGroup) view.getParent();
             indexInParent = parent.indexOfChild(view);
-            sceneRoot.getOverlay().add(view);
+            ViewGroupOverlay result = sceneRoot.getOverlay();
+            result.add(view);
         }
         Bitmap bitmap = null;
         int bitmapWidth = Math.round(bounds.width());
@@ -124,7 +120,7 @@ class TransitionUtils {
                 canvas.concat(matrix);
                 view.draw(canvas);
                 picture.endRecording();
-                bitmap = Bitmap.createBitmap(picture);
+                bitmap = Api28Impl.createBitmap(picture);
             } else {
                 // Software rendering
                 bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888);
@@ -133,8 +129,9 @@ class TransitionUtils {
                 view.draw(canvas);
             }
         }
-        if (HAS_OVERLAY && addToOverlay) {
-            sceneRoot.getOverlay().remove(view);
+        if (addToOverlay) {
+            ViewGroupOverlay result = sceneRoot.getOverlay();
+            result.remove(view);
             parent.addView(view, indexInParent);
         }
         return bitmap;
@@ -174,6 +171,18 @@ class TransitionUtils {
 
     }
 
-    private TransitionUtils() {
+    private TransitionUtils() { }
+
+    @RequiresApi(28)
+    static class Api28Impl {
+        private Api28Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static Bitmap createBitmap(Picture source) {
+            return Bitmap.createBitmap(source);
+        }
+
     }
 }

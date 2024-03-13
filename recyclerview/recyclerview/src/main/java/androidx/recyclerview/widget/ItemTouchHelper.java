@@ -18,6 +18,7 @@ package androidx.recyclerview.widget;
 
 import android.animation.Animator;
 import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
 import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Rect;
@@ -35,7 +36,6 @@ import android.view.animation.Interpolator;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
-import androidx.core.view.GestureDetectorCompat;
 import androidx.core.view.ViewCompat;
 import androidx.recyclerview.R;
 import androidx.recyclerview.widget.RecyclerView.OnItemTouchListener;
@@ -305,7 +305,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
      * Used to detect long press.
      */
     @SuppressWarnings("WeakerAccess") /* synthetic access */
-    GestureDetectorCompat mGestureDetector;
+    GestureDetector mGestureDetector;
 
     /**
      * Callback for when long press occurs.
@@ -512,7 +512,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
 
     private void startGestureDetection() {
         mItemTouchHelperGestureListener = new ItemTouchHelperGestureListener();
-        mGestureDetector = new GestureDetectorCompat(mRecyclerView.getContext(),
+        mGestureDetector = new GestureDetector(mRecyclerView.getContext(),
                 mItemTouchHelperGestureListener);
     }
 
@@ -540,7 +540,11 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
     }
 
     @Override
-    public void onDrawOver(Canvas c, RecyclerView parent, RecyclerView.State state) {
+    public void onDrawOver(
+            @NonNull Canvas c,
+            @NonNull RecyclerView parent,
+            @NonNull RecyclerView.State state
+    ) {
         float dx = 0, dy = 0;
         if (mSelected != null) {
             getSelectedDxDy(mTmpPosition);
@@ -552,6 +556,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
     }
 
     @Override
+    @SuppressLint("UnknownNullness") // b/240775049: Cannot annotate properly
     public void onDraw(Canvas c, RecyclerView parent, RecyclerView.State state) {
         // we don't know if RV changed something so we should invalidate this index.
         mOverdrawChildPosition = -1;
@@ -930,6 +935,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
     }
 
     @Override
+    @SuppressLint("UnknownNullness") // b/240775049: Cannot annotate properly
     public void getItemOffsets(Rect outRect, View view, RecyclerView parent,
             RecyclerView.State state) {
         outRect.setEmpty();
@@ -1198,7 +1204,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
         final int originalMovementFlags = mCallback.getMovementFlags(mRecyclerView, viewHolder);
         final int absoluteMovementFlags = mCallback.convertToAbsoluteDirection(
                 originalMovementFlags,
-                ViewCompat.getLayoutDirection(mRecyclerView));
+                mRecyclerView.getLayoutDirection());
         final int flags = (absoluteMovementFlags
                 & ACTION_MODE_SWIPE_MASK) >> (ACTION_STATE_SWIPE * DIRECTION_FLAG_COUNT);
         if (flags == 0) {
@@ -1213,7 +1219,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
                 if ((originalFlags & swipeDir) == 0) {
                     // convert to relative
                     return Callback.convertToRelativeDirection(swipeDir,
-                            ViewCompat.getLayoutDirection(mRecyclerView));
+                            mRecyclerView.getLayoutDirection());
                 }
                 return swipeDir;
             }
@@ -1229,7 +1235,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
                 if ((originalFlags & swipeDir) == 0) {
                     // convert to relative
                     return Callback.convertToRelativeDirection(swipeDir,
-                            ViewCompat.getLayoutDirection(mRecyclerView));
+                            mRecyclerView.getLayoutDirection());
                 }
                 return swipeDir;
             }
@@ -1488,7 +1494,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
                 return flags; // does not have any abs flags, good.
             }
             flags &= ~masked; //remove left / right.
-            if (layoutDirection == ViewCompat.LAYOUT_DIRECTION_LTR) {
+            if (layoutDirection == View.LAYOUT_DIRECTION_LTR) {
                 // no change. just OR with 2 bits shifted mask and return
                 flags |= masked << 2; // START is 2 bits after LEFT, END is 2 bits after RIGHT.
                 return flags;
@@ -1579,7 +1585,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
                 return flags; // does not have any relative flags, good.
             }
             flags &= ~masked; //remove start / end
-            if (layoutDirection == ViewCompat.LAYOUT_DIRECTION_LTR) {
+            if (layoutDirection == View.LAYOUT_DIRECTION_LTR) {
                 // no change. just OR with 2 bits shifted mask and return
                 flags |= masked >> 2; // START is 2 bits after LEFT, END is 2 bits after RIGHT.
                 return flags;
@@ -1595,7 +1601,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
         final int getAbsoluteMovementFlags(RecyclerView recyclerView,
                 ViewHolder viewHolder) {
             final int flags = getMovementFlags(recyclerView, viewHolder);
-            return convertToAbsoluteDirection(flags, ViewCompat.getLayoutDirection(recyclerView));
+            return convertToAbsoluteDirection(flags, recyclerView.getLayoutDirection());
         }
 
         boolean hasDragFlag(RecyclerView recyclerView, ViewHolder viewHolder) {
@@ -1801,6 +1807,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
          * moved to.
          */
         @SuppressWarnings("WeakerAccess")
+        @SuppressLint("UnknownNullness") // b/240775049: Cannot annotate properly
         public ViewHolder chooseDropTarget(@NonNull ViewHolder selected,
                 @NonNull List<ViewHolder> dropTargets, int curX, int curY) {
             int right = curX + selected.itemView.getWidth();
@@ -2104,6 +2111,7 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
          * boolean)
          */
         public void onChildDrawOver(@NonNull Canvas c, @NonNull RecyclerView recyclerView,
+                @SuppressLint("UnknownNullness") // b/240775049: Cannot annotate properly
                 ViewHolder viewHolder,
                 float dX, float dY, int actionState, boolean isCurrentlyActive) {
             ItemTouchUIUtilImpl.INSTANCE.onDrawOver(c, recyclerView, viewHolder.itemView, dX, dY,

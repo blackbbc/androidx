@@ -20,6 +20,7 @@ import android.annotation.SuppressLint;
 import android.os.Build;
 import android.view.ViewGroup;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
@@ -40,36 +41,23 @@ class ViewGroupUtils {
     private static boolean sGetChildDrawingOrderMethodFetched;
 
     /**
-     * Backward-compatible {@link ViewGroup#getOverlay()}.
-     */
-    static ViewGroupOverlayImpl getOverlay(@NonNull ViewGroup group) {
-        if (Build.VERSION.SDK_INT >= 18) {
-            return new ViewGroupOverlayApi18(group);
-        }
-        return ViewGroupOverlayApi14.createFrom(group);
-    }
-
-    /**
      * Provides access to the hidden ViewGroup#suppressLayout method.
      */
     static void suppressLayout(@NonNull ViewGroup group, boolean suppress) {
         if (Build.VERSION.SDK_INT >= 29) {
-            group.suppressLayout(suppress);
-        } else if (Build.VERSION.SDK_INT >= 18) {
-            hiddenSuppressLayout(group, suppress);
+            Api29Impl.suppressLayout(group, suppress);
         } else {
-            ViewGroupUtilsApi14.suppressLayout(group, suppress);
+            hiddenSuppressLayout(group, suppress);
         }
     }
 
-    @RequiresApi(18)
     @SuppressLint("NewApi") // Lint doesn't know about the hidden method.
     private static void hiddenSuppressLayout(@NonNull ViewGroup group, boolean suppress) {
         if (sTryHiddenSuppressLayout) {
             // Since this was an @hide method made public, we can link directly against it with
             // a try/catch for its absence instead of doing the same through reflection.
             try {
-                group.suppressLayout(suppress);
+                Api29Impl.suppressLayout(group, suppress);
             } catch (NoSuchMethodError e) {
                 sTryHiddenSuppressLayout = false;
             }
@@ -81,7 +69,7 @@ class ViewGroupUtils {
      */
     static int getChildDrawingOrder(@NonNull ViewGroup viewGroup, int i) {
         if (Build.VERSION.SDK_INT >= 29) {
-            return viewGroup.getChildDrawingOrder(i);
+            return Api29Impl.getChildDrawingOrder(viewGroup, i);
         } else {
             if (!sGetChildDrawingOrderMethodFetched) {
                 try {
@@ -107,6 +95,22 @@ class ViewGroupUtils {
     }
 
 
-    private ViewGroupUtils() {
+    private ViewGroupUtils() { }
+
+    @RequiresApi(29)
+    static class Api29Impl {
+        private Api29Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void suppressLayout(ViewGroup viewGroup, boolean suppress) {
+            viewGroup.suppressLayout(suppress);
+        }
+
+        @DoNotInline
+        static int getChildDrawingOrder(ViewGroup viewGroup, int drawingPosition) {
+            return viewGroup.getChildDrawingOrder(drawingPosition);
+        }
     }
 }

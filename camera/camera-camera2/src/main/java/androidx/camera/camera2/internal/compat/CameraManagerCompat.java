@@ -29,10 +29,11 @@ import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.RequiresPermission;
-import androidx.annotation.RestrictTo;
+import androidx.annotation.VisibleForTesting;
 import androidx.camera.core.impl.utils.MainThreadAsyncHandler;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
@@ -75,9 +76,8 @@ public final class CameraManagerCompat {
     /**
      * Get a {@link CameraManagerCompat} instance from a provided {@link CameraManagerCompatImpl}.
      *
-     * @hide
      */
-    @RestrictTo(RestrictTo.Scope.TESTS)
+    @VisibleForTesting
     @NonNull
     public static CameraManagerCompat from(@NonNull final CameraManagerCompatImpl impl) {
         return new CameraManagerCompat(impl);
@@ -96,6 +96,24 @@ public final class CameraManagerCompat {
     @NonNull
     public String[] getCameraIdList() throws CameraAccessExceptionCompat {
         return mImpl.getCameraIdList();
+    }
+
+    /**
+     * Return set of set of camera ids, each set includes one combination of the camera ids that
+     * could operate concurrently.
+     *
+     * <p>This API is added in API Level 30, any lower API version will return empty set instead.
+     *
+     * <p>The behavior of this method matches that of {@link CameraManager#getConcurrentCameraIds()}
+     * except that {@link CameraAccessExceptionCompat} is thrown in place of
+     * {@link CameraAccessException} for convenience.
+     *
+     * @return Set of set of camera ids.
+     * @throws CameraAccessExceptionCompat
+     */
+    @NonNull
+    public Set<Set<String>> getConcurrentCameraIds() throws CameraAccessExceptionCompat {
+        return mImpl.getConcurrentCameraIds();
     }
 
     /**
@@ -166,15 +184,23 @@ public final class CameraManagerCompat {
         synchronized (mCameraCharacteristicsMap) {
             characteristics = mCameraCharacteristicsMap.get(cameraId);
             if (characteristics == null) {
-                characteristics =
-                        CameraCharacteristicsCompat.toCameraCharacteristicsCompat(
-                                mImpl.getCameraCharacteristics(cameraId));
-                mCameraCharacteristicsMap.put(cameraId, characteristics);
+                try {
+                    characteristics = CameraCharacteristicsCompat.toCameraCharacteristicsCompat(
+                            mImpl.getCameraCharacteristics(cameraId), cameraId);
+                    mCameraCharacteristicsMap.put(cameraId, characteristics);
+                } catch (AssertionError e) {
+                    // Some devices may throw AssertionError when creating CameraCharacteristics
+                    // and FPS ranges are null. Catch the AssertionError and throw a
+                    // CameraAccessExceptionCompat to make the app be able to receive an
+                    // exception to gracefully handle it.
+                    throw new CameraAccessExceptionCompat(
+                            CameraAccessExceptionCompat.CAMERA_CHARACTERISTICS_CREATION_ERROR,
+                            e.getMessage(), e);
+                }
             }
         }
         return characteristics;
     }
-
 
     /**
      * Open a connection to a camera with the given ID.
@@ -227,6 +253,12 @@ public final class CameraManagerCompat {
         @NonNull
         String[] getCameraIdList() throws CameraAccessExceptionCompat;
 
+        /**
+         * Return the set of concurrent camera id set which could operate concurrently.
+         */
+        @NonNull
+        Set<Set<String>> getConcurrentCameraIds() throws CameraAccessExceptionCompat;
+
         void registerAvailabilityCallback(
                 @NonNull /* @CallbackExecutor */ Executor executor,
                 @NonNull CameraManager.AvailabilityCallback callback);
@@ -258,7 +290,9 @@ public final class CameraManagerCompat {
         @NonNull
         static CameraManagerCompatImpl from(@NonNull Context context,
                 @NonNull Handler compatHandler) {
-            if (Build.VERSION.SDK_INT >= 29) {
+            if (Build.VERSION.SDK_INT >= 30) {
+                return new CameraManagerCompatApi30Impl(context);
+            } else if (Build.VERSION.SDK_INT >= 29) {
                 return new CameraManagerCompatApi29Impl(context);
             } else if (Build.VERSION.SDK_INT >= 28) {
                 // Can use Executor directly on API 28+
@@ -269,6 +303,7 @@ public final class CameraManagerCompat {
         }
     }
 
+    @RequiresApi(21)
     static final class AvailabilityCallbackExecutorWrapper extends
             CameraManager.AvailabilityCallback {
 
@@ -297,12 +332,8 @@ public final class CameraManagerCompat {
         public void onCameraAccessPrioritiesChanged() {
             synchronized (mLock) {
                 if (!mDisabled) {
-                    mExecutor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            ApiCompat.Api29Impl.onCameraAccessPrioritiesChanged(mWrappedCallback);
-                        }
-                    });
+                    mExecutor.execute(() -> ApiCompat.Api29Impl.onCameraAccessPrioritiesChanged(
+                            mWrappedCallback));
                 }
             }
         }
@@ -311,12 +342,7 @@ public final class CameraManagerCompat {
         public void onCameraAvailable(@NonNull final String cameraId) {
             synchronized (mLock) {
                 if (!mDisabled) {
-                    mExecutor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            mWrappedCallback.onCameraAvailable(cameraId);
-                        }
-                    });
+                    mExecutor.execute(() -> mWrappedCallback.onCameraAvailable(cameraId));
                 }
             }
         }
@@ -325,12 +351,7 @@ public final class CameraManagerCompat {
         public void onCameraUnavailable(@NonNull final String cameraId) {
             synchronized (mLock) {
                 if (!mDisabled) {
-                    mExecutor.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            mWrappedCallback.onCameraUnavailable(cameraId);
-                        }
-                    });
+                    mExecutor.execute(() -> mWrappedCallback.onCameraUnavailable(cameraId));
                 }
             }
         }

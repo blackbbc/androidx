@@ -18,21 +18,16 @@ package androidx.core.hardware.display;
 
 import android.content.Context;
 import android.hardware.display.DisplayManager;
-import android.os.Build;
 import android.view.Display;
-import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.util.WeakHashMap;
-
 /**
  * Helper for accessing features in {@link android.hardware.display.DisplayManager}.
  */
+@SuppressWarnings("unused")
 public final class DisplayManagerCompat {
-    private static final WeakHashMap<Context, DisplayManagerCompat> sInstances =
-            new WeakHashMap<Context, DisplayManagerCompat>();
 
     /**
      * Display category: Presentation displays.
@@ -59,14 +54,7 @@ public final class DisplayManagerCompat {
      */
     @NonNull
     public static DisplayManagerCompat getInstance(@NonNull Context context) {
-        synchronized (sInstances) {
-            DisplayManagerCompat instance = sInstances.get(context);
-            if (instance == null) {
-                instance = new DisplayManagerCompat(context);
-                sInstances.put(context, instance);
-            }
-            return instance;
-        }
+        return new DisplayManagerCompat(context);
     }
 
     /**
@@ -79,19 +67,11 @@ public final class DisplayManagerCompat {
      * @return The display object, or null if there is no valid display with the given id.
      */
     @Nullable
-    @SuppressWarnings("deprecation") /* getDefaultDisplay */
+    @SuppressWarnings("deprecation")
     public Display getDisplay(int displayId) {
-        if (Build.VERSION.SDK_INT >= 17) {
-            return ((DisplayManager) mContext.getSystemService(Context.DISPLAY_SERVICE))
-                    .getDisplay(displayId);
-        }
-
-        Display display = ((WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE))
-                .getDefaultDisplay();
-        if (display.getDisplayId() == displayId) {
-            return display;
-        }
-        return null;
+        DisplayManager displayManager =
+                (DisplayManager) mContext.getSystemService(Context.DISPLAY_SERVICE);
+        return displayManager.getDisplay(displayId);
     }
 
     /**
@@ -99,16 +79,10 @@ public final class DisplayManagerCompat {
      *
      * @return An array containing all displays.
      */
+    @SuppressWarnings("deprecation")
     @NonNull
     public Display[] getDisplays() {
-        if (Build.VERSION.SDK_INT >= 17) {
-            return ((DisplayManager) mContext.getSystemService(Context.DISPLAY_SERVICE))
-                    .getDisplays();
-        }
-
-        Display display = ((WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE))
-                .getDefaultDisplay();
-        return new Display[] { display };
+        return ((DisplayManager) mContext.getSystemService(Context.DISPLAY_SERVICE)).getDisplays();
     }
 
     /**
@@ -128,18 +102,8 @@ public final class DisplayManagerCompat {
      * @see #DISPLAY_CATEGORY_PRESENTATION
      */
     @NonNull
-    @SuppressWarnings("deprecation") /* getDefaultDisplay */
+    @SuppressWarnings("deprecation")
     public Display[] getDisplays(@Nullable String category) {
-        if (Build.VERSION.SDK_INT >= 17) {
-            return ((DisplayManager) mContext.getSystemService(Context.DISPLAY_SERVICE))
-                    .getDisplays(category);
-        }
-        if (category == null) {
-            return new Display[0];
-        }
-
-        Display display = ((WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE))
-                .getDefaultDisplay();
-        return new Display[] { display };
+        return ((DisplayManager) mContext.getSystemService(Context.DISPLAY_SERVICE)).getDisplays();
     }
 }

@@ -145,10 +145,8 @@ public abstract class ExploreByTouchHelper extends AccessibilityDelegateCompat {
         // Host view must be focusable so that we can delegate to virtual
         // views.
         host.setFocusable(true);
-        if (ViewCompat.getImportantForAccessibility(host)
-                == ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_AUTO) {
-            ViewCompat.setImportantForAccessibility(
-                    host, ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        if (host.getImportantForAccessibility() == View.IMPORTANT_FOR_ACCESSIBILITY_AUTO) {
+            host.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         }
     }
 
@@ -335,7 +333,8 @@ public abstract class ExploreByTouchHelper extends AccessibilityDelegateCompat {
     private static final FocusStrategy.BoundsAdapter<AccessibilityNodeInfoCompat> NODE_ADAPTER =
             new FocusStrategy.BoundsAdapter<AccessibilityNodeInfoCompat>() {
                 @Override
-                public void obtainBounds(AccessibilityNodeInfoCompat node, Rect outBounds) {
+                public void obtainBounds(@NonNull AccessibilityNodeInfoCompat node,
+                        @NonNull Rect outBounds) {
                     node.getBoundsInScreen(outBounds);
                 }
             };
@@ -380,7 +379,7 @@ public abstract class ExploreByTouchHelper extends AccessibilityDelegateCompat {
             case View.FOCUS_FORWARD:
             case View.FOCUS_BACKWARD:
                 final boolean isLayoutRtl =
-                        ViewCompat.getLayoutDirection(mHost) == ViewCompat.LAYOUT_DIRECTION_RTL;
+                        mHost.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
                 nextFocusedNode = FocusStrategy.findNextFocusInRelativeDirection(allNodes,
                         SPARSE_VALUES_ADAPTER, NODE_ADAPTER, focusedNode, direction, isLayoutRtl,
                         false);
@@ -872,7 +871,7 @@ public abstract class ExploreByTouchHelper extends AccessibilityDelegateCompat {
     }
 
     private boolean performActionForHost(int action, Bundle arguments) {
-        return ViewCompat.performAccessibilityAction(mHost, action, arguments);
+        return mHost.performAccessibilityAction(action, arguments);
     }
 
     private boolean performActionForChild(int virtualViewId, int action, Bundle arguments) {

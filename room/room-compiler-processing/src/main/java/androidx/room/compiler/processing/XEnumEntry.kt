@@ -23,17 +23,21 @@ import kotlin.contracts.contract
  */
 interface XEnumEntry : XElement {
     /**
-     * The name of this enum object.
+     * The parent enum type declaration that holds all entries for this enum type..
      */
-    val name: String
+    override val enclosingElement: XEnumTypeElement
 
     /**
      * The parent enum type declaration that holds all entries for this enum type..
      */
+    @Deprecated(message = "use XEnumEntry#enclosingElement() instead.",
+        replaceWith = ReplaceWith("enclosingElement")
+    )
     val enumTypeElement: XEnumTypeElement
+        get() = enclosingElement
 }
 
-fun XTypeElement.isEnumEntry(): Boolean {
+fun XElement.isEnumEntry(): Boolean {
     contract {
         returns(true) implies (this@isEnumEntry is XEnumEntry)
     }

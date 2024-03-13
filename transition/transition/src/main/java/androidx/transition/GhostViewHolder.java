@@ -23,7 +23,9 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 import java.util.ArrayList;
 
@@ -39,7 +41,7 @@ class GhostViewHolder extends FrameLayout {
         setClipChildren(false);
         mParent = parent;
         mParent.setTag(R.id.ghost_view_holder, this);
-        ViewGroupUtils.getOverlay(mParent).add(this);
+        mParent.getOverlay().add(this);
         mAttached = true;
     }
 
@@ -60,7 +62,7 @@ class GhostViewHolder extends FrameLayout {
         if ((getChildCount() == 1 && getChildAt(0) == child)
                 || getChildCount() == 0) {
             mParent.setTag(R.id.ghost_view_holder, null);
-            ViewGroupUtils.getOverlay(mParent).remove(this);
+            mParent.getOverlay().remove(this);
             mAttached = false;
         }
     }
@@ -75,8 +77,8 @@ class GhostViewHolder extends FrameLayout {
         }
         // we can't reuse the overlay object as this method can return another object after
         // calling remove as it was cleaned up because of no overlay view (in backport impl.)
-        ViewGroupUtils.getOverlay(mParent).remove(this);
-        ViewGroupUtils.getOverlay(mParent).add(this);
+        mParent.getOverlay().remove(this);
+        mParent.getOverlay().add(this);
     }
 
 
@@ -173,8 +175,8 @@ class GhostViewHolder extends FrameLayout {
         // From the implementation of ViewGroup.buildOrderedChildList() used by dispatchDraw:
         // The drawing order list is sorted by Z first.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            if (view.getZ() != comparedWith.getZ()) {
-                return view.getZ() > comparedWith.getZ();
+            if (Api21Impl.getZ(view) != Api21Impl.getZ(comparedWith)) {
+                return Api21Impl.getZ(view) > Api21Impl.getZ(comparedWith);
             }
         }
 
@@ -197,4 +199,15 @@ class GhostViewHolder extends FrameLayout {
         return isOnTop;
     }
 
+    @RequiresApi(21)
+    static class Api21Impl {
+        private Api21Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static float getZ(View view) {
+            return view.getZ();
+        }
+    }
 }

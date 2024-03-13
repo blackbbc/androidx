@@ -23,10 +23,14 @@ import androidx.camera.camera2.Camera2Config
 import androidx.camera.camera2.pipe.integration.CameraPipeConfig
 import androidx.camera.core.CameraX
 import androidx.camera.core.CameraXConfig
-import androidx.camera.testing.CameraUtil
-import androidx.camera.testing.CoreAppTestUtil
-import androidx.camera.testing.activity.Camera2TestActivity
-import androidx.camera.testing.activity.CameraXTestActivity
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.testing.impl.CameraPipeConfigTestRule
+import androidx.camera.testing.impl.CameraUtil
+import androidx.camera.testing.impl.CameraUtil.PreTestCameraIdList
+import androidx.camera.testing.impl.CoreAppTestUtil
+import androidx.camera.testing.impl.LabTestRule
+import androidx.camera.testing.impl.activity.Camera2TestActivity
+import androidx.camera.testing.impl.activity.CameraXTestActivity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
@@ -36,14 +40,13 @@ import androidx.test.espresso.IdlingResource
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
-import kotlinx.coroutines.runBlocking
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
-import java.util.concurrent.TimeUnit
 
 /** Tests for [CameraX] which varies use case combinations to run. */
 @LargeTest
@@ -54,7 +57,17 @@ class CameraDisconnectTest(
 ) {
 
     @get:Rule
-    val cameraRule = CameraUtil.grantCameraPermissionAndPreTest()
+    val cameraPipeConfigTestRule = CameraPipeConfigTestRule(
+        active = implName == CameraPipeConfig::class.simpleName,
+    )
+
+    @get:Rule
+    val cameraRule = CameraUtil.grantCameraPermissionAndPreTest(
+        PreTestCameraIdList(cameraConfig)
+    )
+
+    @get:Rule
+    val labTestRule = LabTestRule()
 
     companion object {
         @JvmStatic
@@ -67,15 +80,15 @@ class CameraDisconnectTest(
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private lateinit var cameraXActivityScenario: ActivityScenario<CameraXTestActivity>
+    private lateinit var cameraProvider: ProcessCameraProvider
 
     @Before
     fun setUp() {
         IdlingPolicies.setIdlingResourceTimeout(10, TimeUnit.SECONDS)
         CoreAppTestUtil.assumeCompatibleDevice()
         CoreAppTestUtil.assumeCanTestCameraDisconnect()
-        runBlocking {
-            CameraX.initialize(context, cameraConfig).get(10, TimeUnit.SECONDS)
-        }
+        ProcessCameraProvider.configureInstance(cameraConfig)
+        cameraProvider = ProcessCameraProvider.getInstance(context)[10, TimeUnit.SECONDS]
 
         // Clear the device UI and check if there is no dialog or lock screen on the top of the
         // window before start the test.
@@ -88,11 +101,12 @@ class CameraDisconnectTest(
             cameraXActivityScenario.close()
         }
 
-        runBlocking {
-            CameraX.shutdown().get(10, TimeUnit.SECONDS)
+        if (::cameraProvider.isInitialized) {
+            cameraProvider.shutdownAsync()[10, TimeUnit.SECONDS]
         }
     }
 
+    @LabTestRule.LabTestOnly
     @Test
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.M) // Known issue, checkout b/147393563.
     fun testCameraDisconnect() {

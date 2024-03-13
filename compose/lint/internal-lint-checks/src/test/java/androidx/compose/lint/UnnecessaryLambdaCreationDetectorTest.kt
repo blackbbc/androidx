@@ -19,15 +19,16 @@
 package androidx.compose.lint
 
 import androidx.compose.lint.test.Stubs
-import androidx.compose.lint.test.kotlinAndCompiledStub
-import com.android.tools.lint.checks.infrastructure.TestLintResult
-import org.junit.Test
-import org.junit.runner.RunWith
+import androidx.compose.lint.test.kotlinAndBytecodeStub
 import com.android.tools.lint.checks.infrastructure.LintDetectorTest
 import com.android.tools.lint.checks.infrastructure.TestFile
+import com.android.tools.lint.checks.infrastructure.TestLintResult
+import com.android.tools.lint.checks.infrastructure.TestMode
 import com.android.tools.lint.detector.api.Detector
 import com.android.tools.lint.detector.api.Issue
 import org.intellij.lang.annotations.Language
+import org.junit.Test
+import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 
 /* ktlint-disable max-line-length */
@@ -38,9 +39,10 @@ class UnnecessaryLambdaCreationDetectorTest(
     private val stub: TestFile
 ) : LintDetectorTest() {
     companion object {
-        private val stub = kotlinAndCompiledStub(
+        private val stub = kotlinAndBytecodeStub(
             filename = "Stub.kt",
             filepath = "test",
+            checksum = 0x8a5a4526,
             source = """
                 package test
 
@@ -64,30 +66,30 @@ class UnnecessaryLambdaCreationDetectorTest(
                 }
             """,
             """
-            test/StubKt.class:
-            H4sIAAAAAAAAAJVUW08TQRT+ZnvZpRRYKigtCohVCl621NsDxMSYEBsrGqr4
-            wNN0u+DQdtbsThsfiS/+Bp9M/Ae+oQ+G4Js/ynhmS7kjuknPmT3n+8535uxM
-            f/3+/gPAPTxk6FdeqJyqateeKROMwd7kHe40udxwXtQ2PZeiMQZrvS1dJXzJ
-            ECvMrjJknvitd37Ia01vaT91rVBp+KoppLPZaTk9Suj0EMUFTS2dh1rs5V9L
-            oRYeRaTrFS7rgS/q7x03UvacoC2VaHnOQScL1ELFDzacTU/VAi6oKJfSV7wr
-            sOyr5XazSSjT9aXypLKQZpg41I2gcCB50ylLFRBfuKGJQYZR963nNvYKvOQB
-            b3kEZJgpVI7Pa+FQpKqLbNAG0rAxnMIQMkf1Ttm9iRGGpJAdv+ExjBRmTyqk
-            cRGX+jGKMYap80bOMFaWBPBO+2JX8iK/nj87z8oM2RVPrAuvflp+IuL/BTDc
-            a++5p3idK079GK1OjM4f0yZBGg29MCj+XuhVkVb1eYbPO1sjqZ2tlGEbkRsz
-            uj8rnhu3d7ZyRpGVhm0jN5CJZ2hdjO1+SVLyqZmbtBNnZnc/Wj+3GdFn7KQG
-            TSetnS3bHDsHnbQtjd79YJiphLX7qVRkus0So30g09vk4amzV3TO9MW601AM
-            8Sd+nT7nUIUGvdxu1bzglR6U5voub67yQOj3vWBfVWxIrtoBrcdXuue8LDsi
-            FJR+fHCkGfLHs/uH8wgsVfXbgestCV09u8dZPVEP8zAQh37iyCKBJO3Oobcs
-            ug/7qg2KZHVK2yxMWATXsEWi6+jgXGZgGxfmviHL8EZzjIiTIp8kO4B+kgLS
-            XTT5HPlShOvD3b3qqehPCjBpmETQXYzvSz0lqEHe7krFFk8Vs+jKDdHd02IX
-            o3cLl3ElkrX/UdbOYoJoxn/JjpDs6BHZyWOyh+UM3I/sHTwgv0TRKRr+1TXE
-            ypgu4xpZ5Mu4jhtlzKCwBhZiFnNr6AthhrgZIh3iVohUiPEQEyFuh0j8ATwh
-            ftTnBQAA
+            META-INF/main.kotlin_module:
+            H4sIAAAAAAAA/2NgYGBmYGBgBGJOBijgEuNiKUktLhFiCy4pTfIG0iFAnneJ
+            EoMWAwBxHEvpMAAAAA==
             """,
             """
-            META-INF/main.kotlin_module:
-            H4sIAAAAAAAAAGNgYGBmYGBgBGJWKM3AJcbFUpJaXCLEFlxSmuQNpEOAPO8S
-            JQYtBgBDd0xtMAAAAA==
+            test/StubKt.class:
+            H4sIAAAAAAAA/51UXU8TQRQ9s4XuUoosFZQWxa8iBT+21G8hJoaEsLGiAcQH
+            nqbbBYe2s2Z32vhIfPE3+GTiP/BNfTAE3/xRxjtbiiBV1CZ7Z+bec+bcO3em
+            375//gLgJu4x9Cs/Us6KalYeKROMwd7iLe7Uudx0nlS2fI+8CQZroyk9JQLJ
+            kChMrTFk5oPGyyDilbq/sB+6VCjXAlUX0tlqNZwOJXI6iOKsppaOQ8114s+k
+            ULMPYtJEmctqGIjqK8eLlX0nbEolGr7zM5NZSqEchJvOlq8qIRe0KZcyULwt
+            sBSopWa9TijTC6TypbKQZhg/kI0gdyh53XGlCokvvMjECYYR74Xv1fY2eMpD
+            3vAJyDBZKP96XrMHPCt6k00qIA0bQykMInNYr0v1JoYZkkK2gprPMFyYOqqQ
+            ximc7scIRhnOH3fkDKOuJIDfrWNn8yK/kf99nLkM2WVfbAi/2i2+OLd6/2h+
+            D/6nw+NxKn/QGuqQHvuKV7niVJrRaCXoKjNt+rQB5VzTE4OCr4SeFWlWnWF4
+            t7M9nNrZThm2EQ+jRvuzenJj9s52ziiy0pBt5AYyPRmaFxO775MUXDRz5+ze
+            30Z331hfPzKiT9pJDbqYtHa2bXP0GHTStjR697Vhpnqt3belItNplpiuINOp
+            9GAX2SrdW/1Qr9cUQ898UKXrMVimxi01GxU/XNWnpbmBx+trPBR6vefsWxGb
+            kqtmSPOx5fa7cWVLRILCD38+EYb8r9H9y34IlloJmqHnLwi9e3aPs3ZkP8zA
+            QI9uC9ksepGk6mZolUX7xz7ELSuR1SFtszBhEVzD5oiuvSemMwMfcXL6E7IM
+            zzXHiDkpGpNkB9CPG7ROt9E05uI/OI3rw6293VM03qbPpMMkgs5ibF9qkaAG
+            jXZbKjHXVcyiJzxIb1mLnYrXFs7gbCxr/6WsncU40RL/JDtMsiOHZM93lT13
+            SNbAndgWcZfGBfJeoCZcXEfCxSUXeRcTuOxiEgUXU5heB4twBVfX0RfBjHAt
+            QjrC9QipCGMRxiM4EXp/AGJveMs/BgAA
             """
         )
 
@@ -95,7 +97,7 @@ class UnnecessaryLambdaCreationDetectorTest(
         @Parameterized.Parameters(name = "{0}")
         fun params(): Array<Any> = arrayOf(
             arrayOf("Source stubs", stub.kotlin),
-            arrayOf("Compiled stubs", stub.compiled)
+            arrayOf("Compiled stubs", stub.bytecode)
         )
     }
 
@@ -107,6 +109,7 @@ class UnnecessaryLambdaCreationDetectorTest(
     private fun check(@Language("kotlin") code: String): TestLintResult {
         return lint()
             .files(kotlin(code.trimIndent()), stub, Stubs.Composable)
+            .skipTestModes(TestMode.TYPE_ALIAS)
             .run()
     }
 
@@ -359,6 +362,60 @@ src/test/SomeScope.kt:24: Error: Creating an unnecessary lambda to emit a captur
             }
         """
         ).expectClean()
+    }
+
+    @Test
+    fun warnsForFunctionsReturningALambda() {
+        check(
+            """
+            package test
+
+            import androidx.compose.runtime.Composable
+
+            fun returnsLambda(): () -> Unit = {}
+            fun returnsComposableLambda(): @Composable () -> Unit = {}
+
+            @Composable
+            fun Test() {
+                ComposableFunction {
+                    returnsLambda()()
+                }
+
+                InlineComposableFunction {
+                    returnsLambda()()
+                }
+
+                ReifiedComposableFunction<Any> {
+                    returnsLambda()()
+                }
+
+                ComposableFunction {
+                    returnsComposableLambda()()
+                }
+
+                InlineComposableFunction {
+                    returnsComposableLambda()()
+                }
+
+                ReifiedComposableFunction<Any> {
+                    returnsComposableLambda()()
+                }
+            }
+        """
+        ).expect(
+            """
+src/test/test.kt:23: Error: Creating an unnecessary lambda to emit a captured lambda [UnnecessaryLambdaCreation]
+        returnsComposableLambda()()
+                                 ~
+src/test/test.kt:27: Error: Creating an unnecessary lambda to emit a captured lambda [UnnecessaryLambdaCreation]
+        returnsComposableLambda()()
+                                 ~
+src/test/test.kt:31: Error: Creating an unnecessary lambda to emit a captured lambda [UnnecessaryLambdaCreation]
+        returnsComposableLambda()()
+                                 ~
+3 errors, 0 warnings
+        """
+        )
     }
 }
 /* ktlint-enable max-line-length */

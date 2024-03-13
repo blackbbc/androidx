@@ -37,6 +37,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastFirst
 
 /**
  * A BadgeBox is used to decorate [content] with a [badge] that can contain dynamic information,
@@ -55,7 +56,6 @@ import androidx.compose.ui.unit.sp
  * @param content the anchor to which this badge will be positioned
  *
  */
-@ExperimentalMaterialApi
 @Composable
 fun BadgedBox(
     badge: @Composable BoxScope.() -> Unit,
@@ -77,13 +77,13 @@ fun BadgedBox(
         modifier = modifier
     ) { measurables, constraints ->
 
-        val badgePlaceable = measurables.first { it.layoutId == "badge" }.measure(
+        val badgePlaceable = measurables.fastFirst { it.layoutId == "badge" }.measure(
             // Measure with loose constraints for height as we don't want the text to take up more
             // space than it needs.
             constraints.copy(minHeight = 0)
         )
 
-        val anchorPlaceable = measurables.first { it.layoutId == "anchor" }.measure(constraints)
+        val anchorPlaceable = measurables.fastFirst { it.layoutId == "anchor" }.measure(constraints)
 
         val firstBaseline = anchorPlaceable[FirstBaseline]
         val lastBaseline = anchorPlaceable[LastBaseline]
@@ -127,7 +127,6 @@ fun BadgedBox(
  * @param content optional content to be rendered inside the badge
  *
  */
-@ExperimentalMaterialApi
 @Composable
 fun Badge(
     modifier: Modifier = Modifier,

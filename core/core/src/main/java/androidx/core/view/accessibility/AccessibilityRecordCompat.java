@@ -16,13 +16,15 @@
 
 package androidx.core.view.accessibility;
 
-import android.os.Build;
+import android.annotation.SuppressLint;
 import android.os.Parcelable;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityRecord;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.List;
 
@@ -35,7 +37,7 @@ public class AccessibilityRecordCompat {
     /**
      * @deprecated This is not type safe. If you want to modify an
      * {@link AccessibilityEvent}'s properties defined in
-     * {@link android.view.accessibility.AccessibilityRecord} use
+     * {@link AccessibilityRecord} use
      * {@link AccessibilityEventCompat#asRecord(AccessibilityEvent)}. This method will be removed
      * in a subsequent release of the support library.
      */
@@ -93,6 +95,7 @@ public class AccessibilityRecordCompat {
      *
      * @deprecated Use {@link AccessibilityRecord#setSource(View)} directly.
      */
+    @SuppressLint("KotlinPropertyAccess")
     @Deprecated
     public void setSource(View source) {
         mRecord.setSource(source);
@@ -134,20 +137,18 @@ public class AccessibilityRecordCompat {
      * @param root The root of the virtual subtree.
      * @param virtualDescendantId The id of the virtual descendant.
      */
-    public static void setSource(@NonNull AccessibilityRecord record, View root,
+    public static void setSource(@NonNull AccessibilityRecord record, @Nullable View root,
             int virtualDescendantId) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            record.setSource(root, virtualDescendantId);
-        }
+        record.setSource(root, virtualDescendantId);
     }
 
     /**
-     * Gets the {@link android.view.accessibility.AccessibilityNodeInfo} of
+     * Gets the {@link AccessibilityNodeInfo} of
      * the event source.
      * <p>
      * <strong>Note:</strong> It is a client responsibility to recycle the
      * received info by calling
-     * {@link android.view.accessibility.AccessibilityNodeInfo#recycle()
+     * {@link AccessibilityNodeInfo#recycle()
      * AccessibilityNodeInfo#recycle()} to avoid creating of multiple instances.
      *</p>
      *
@@ -155,6 +156,7 @@ public class AccessibilityRecordCompat {
      *
      * @deprecated Use {@link AccessibilityRecord#getSource()} directly.
      */
+    @SuppressLint("KotlinPropertyAccess")
     @Deprecated
     public AccessibilityNodeInfoCompat getSource() {
         return AccessibilityNodeInfoCompat.wrapNonNullInstance(mRecord.getSource());
@@ -478,12 +480,8 @@ public class AccessibilityRecordCompat {
      * @param record The {@link AccessibilityRecord} instance to use.
      * @return The max scroll.
      */
-    public static int getMaxScrollX(AccessibilityRecord record) {
-        if (Build.VERSION.SDK_INT >= 15) {
-            return record.getMaxScrollX();
-        } else {
-            return 0;
-        }
+    public static int getMaxScrollX(@NonNull AccessibilityRecord record) {
+        return record.getMaxScrollX();
     }
 
     /**
@@ -504,10 +502,8 @@ public class AccessibilityRecordCompat {
      * @param record The {@link AccessibilityRecord} instance to use.
      * @param maxScrollX The max scroll.
      */
-    public static void setMaxScrollX(AccessibilityRecord record, int maxScrollX) {
-        if (Build.VERSION.SDK_INT >= 15) {
-            record.setMaxScrollX(maxScrollX);
-        }
+    public static void setMaxScrollX(@NonNull AccessibilityRecord record, int maxScrollX) {
+        record.setMaxScrollX(maxScrollX);
     }
 
     /**
@@ -528,12 +524,8 @@ public class AccessibilityRecordCompat {
      * @param record The {@link AccessibilityRecord} instance to use.
      * @return The max scroll.
      */
-    public static int getMaxScrollY(AccessibilityRecord record) {
-        if (Build.VERSION.SDK_INT >= 15) {
-            return record.getMaxScrollY();
-        } else {
-            return 0;
-        }
+    public static int getMaxScrollY(@NonNull AccessibilityRecord record) {
+        return record.getMaxScrollY();
     }
 
     /**
@@ -554,10 +546,8 @@ public class AccessibilityRecordCompat {
      * @param record The {@link AccessibilityRecord} instance to use.
      * @param maxScrollY The max scroll.
      */
-    public static void setMaxScrollY(AccessibilityRecord record, int maxScrollY) {
-        if (Build.VERSION.SDK_INT >= 15) {
-            record.setMaxScrollY(maxScrollY);
-        }
+    public static void setMaxScrollY(@NonNull AccessibilityRecord record, int maxScrollY) {
+        record.setMaxScrollY(maxScrollY);
     }
 
     /**
@@ -768,12 +758,8 @@ public class AccessibilityRecordCompat {
         }
         AccessibilityRecordCompat other = (AccessibilityRecordCompat) obj;
         if (mRecord == null) {
-            if (other.mRecord != null) {
-                return false;
-            }
-        } else if (!mRecord.equals(other.mRecord)) {
-            return false;
+            return other.mRecord == null;
         }
-        return true;
+        return mRecord.equals(other.mRecord);
     }
 }

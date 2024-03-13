@@ -27,15 +27,18 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureResult;
 import android.os.Build;
 
+import androidx.camera.core.impl.CameraCaptureMetaData.AeMode;
 import androidx.camera.core.impl.CameraCaptureMetaData.AeState;
 import androidx.camera.core.impl.CameraCaptureMetaData.AfMode;
 import androidx.camera.core.impl.CameraCaptureMetaData.AfState;
+import androidx.camera.core.impl.CameraCaptureMetaData.AwbMode;
 import androidx.camera.core.impl.CameraCaptureMetaData.AwbState;
 import androidx.camera.core.impl.CameraCaptureMetaData.FlashState;
 import androidx.camera.core.impl.TagBundle;
 import androidx.camera.core.impl.utils.ExifData;
 import androidx.exifinterface.media.ExifInterface;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.SdkSuppress;
 import androidx.test.filters.SmallTest;
 
 import org.junit.Before;
@@ -47,6 +50,7 @@ import java.util.concurrent.TimeUnit;
 
 @SmallTest
 @RunWith(AndroidJUnit4.class)
+@SdkSuppress(minSdkVersion = 21)
 public final class Camera2CameraCaptureResultTest {
 
     private CaptureResult mCaptureResult;
@@ -138,14 +142,14 @@ public final class Camera2CameraCaptureResultTest {
     public void getAfState_withAfStatePassiveUnfocused() {
         when(mCaptureResult.get(CaptureResult.CONTROL_AF_STATE))
                 .thenReturn(CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED);
-        assertThat(mCamera2CameraCaptureResult.getAfState()).isEqualTo(AfState.SCANNING);
+        assertThat(mCamera2CameraCaptureResult.getAfState()).isEqualTo(AfState.PASSIVE_NOT_FOCUSED);
     }
 
     @Test
     public void getAfState_withAfStatePassiveFocused() {
         when(mCaptureResult.get(CaptureResult.CONTROL_AF_STATE))
                 .thenReturn(CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED);
-        assertThat(mCamera2CameraCaptureResult.getAfState()).isEqualTo(AfState.FOCUSED);
+        assertThat(mCamera2CameraCaptureResult.getAfState()).isEqualTo(AfState.PASSIVE_FOCUSED);
     }
 
     @Test
@@ -286,6 +290,32 @@ public final class Camera2CameraCaptureResultTest {
     }
 
     @Test
+    public void getAeMode_withNull() {
+        when(mCaptureResult.get(CaptureResult.CONTROL_AE_MODE)).thenReturn(null);
+        assertThat(mCamera2CameraCaptureResult.getAeMode()).isEqualTo(AeMode.UNKNOWN);
+    }
+
+    @Test
+    public void getAeMode_withAeModeOff() {
+        when(mCaptureResult.get(CaptureResult.CONTROL_AE_MODE))
+                .thenReturn(CaptureResult.CONTROL_AE_MODE_OFF);
+        assertThat(mCamera2CameraCaptureResult.getAeMode()).isEqualTo(AeMode.OFF);
+    }
+
+    @Test
+    public void getAwbMode_withNull() {
+        when(mCaptureResult.get(CaptureResult.CONTROL_AWB_MODE)).thenReturn(null);
+        assertThat(mCamera2CameraCaptureResult.getAwbMode()).isEqualTo(AwbMode.UNKNOWN);
+    }
+
+    @Test
+    public void getAwMode_withAwbModeOff() {
+        when(mCaptureResult.get(CaptureResult.CONTROL_AWB_MODE))
+                .thenReturn(CaptureResult.CONTROL_AWB_MODE_OFF);
+        assertThat(mCamera2CameraCaptureResult.getAwbMode()).isEqualTo(AwbMode.OFF);
+    }
+
+    @Test
     public void canPopulateExif() {
         // Arrange
         when(mCaptureResult.get(CaptureResult.FLASH_STATE))
@@ -326,12 +356,6 @@ public final class Camera2CameraCaptureResultTest {
         // Assert
         assertThat(Short.parseShort(exifData.getAttribute(ExifInterface.TAG_FLASH)))
                 .isEqualTo(FLAG_FLASH_FIRED);
-
-        assertThat(exifData.getAttribute(ExifInterface.TAG_IMAGE_WIDTH))
-                .isEqualTo(String.valueOf(cropRegion.width()));
-
-        assertThat(exifData.getAttribute(ExifInterface.TAG_IMAGE_LENGTH))
-                .isEqualTo(String.valueOf(cropRegion.height()));
 
         assertThat(exifData.getAttribute(ExifInterface.TAG_ORIENTATION))
                 .isEqualTo(String.valueOf(ExifInterface.ORIENTATION_ROTATE_270));

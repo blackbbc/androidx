@@ -17,34 +17,36 @@
 package androidx.compose.runtime
 
 /**
- * Remember the value produced by [calculation]. [calculation] will only be evaluated during the composition.
- * Recomposition will always return the value produced by composition.
+ * Remember the value produced by [calculation]. [calculation] will only be evaluated during the
+ * composition. Recomposition will always return the value produced by composition.
  */
 @Composable
-inline fun <T> remember(calculation: @DisallowComposableCalls () -> T): T =
+inline fun <T> remember(crossinline calculation: @DisallowComposableCalls () -> T): T =
     currentComposer.cache(false, calculation)
 
 /**
- * Remember the value returned by [calculation] if [key1] is equal to the previous composition,
- * otherwise produce and remember a new value by calling [calculation].
+ * Remember the value returned by [calculation] if [key1] compares equal (`==`) to the value it
+ * had in the previous composition, otherwise produce and remember a new value by calling
+ * [calculation].
  */
 @Composable
 inline fun <T> remember(
     key1: Any?,
-    calculation: @DisallowComposableCalls () -> T
+    crossinline calculation: @DisallowComposableCalls () -> T
 ): T {
     return currentComposer.cache(currentComposer.changed(key1), calculation)
 }
 
 /**
- * Remember the value returned by [calculation] if [key1] and [key2] are equal to the previous
- * composition, otherwise produce and remember a new value by calling [calculation].
+ * Remember the value returned by [calculation] if [key1] and [key2] are equal (`==`) to the
+ * values they had in the previous composition, otherwise produce and remember a new value by
+ * calling [calculation].
  */
 @Composable
 inline fun <T> remember(
     key1: Any?,
     key2: Any?,
-    calculation: @DisallowComposableCalls () -> T
+    crossinline calculation: @DisallowComposableCalls () -> T
 ): T {
     return currentComposer.cache(
         currentComposer.changed(key1) or currentComposer.changed(key2),
@@ -53,15 +55,16 @@ inline fun <T> remember(
 }
 
 /**
- * Remember the value returned by [calculation] if [key1], [key2] and [key3] are equal to the
- * previous composition, otherwise produce and remember a new value by calling [calculation].
+ * Remember the value returned by [calculation] if [key1], [key2] and [key3] are equal (`==`) to
+ * values they had in the previous composition, otherwise produce and remember a new value by
+ * calling [calculation].
  */
 @Composable
 inline fun <T> remember(
     key1: Any?,
     key2: Any?,
     key3: Any?,
-    calculation: @DisallowComposableCalls () -> T
+    crossinline calculation: @DisallowComposableCalls () -> T
 ): T {
     return currentComposer.cache(
         currentComposer.changed(key1) or
@@ -72,13 +75,14 @@ inline fun <T> remember(
 }
 
 /**
- * Remember the value returned by [calculation] if all values of [keys] are equal to the previous
- * composition, otherwise produce and remember a new value by calling [calculation].
+ * Remember the value returned by [calculation] if all values of [keys] are equal (`==`) to the
+ * values they had in the previous composition, otherwise produce and remember a new value by
+ * calling [calculation].
  */
 @Composable
 inline fun <T> remember(
     vararg keys: Any?,
-    calculation: @DisallowComposableCalls () -> T
+    crossinline calculation: @DisallowComposableCalls () -> T
 ): T {
     var invalid = false
     for (key in keys) invalid = invalid or currentComposer.changed(key)
@@ -148,6 +152,35 @@ inline fun ReusableContent(
 }
 
 /**
+ * An optional utility function used when hosting [ReusableContent]. If [active] is false the
+ * content is treated as if it is deleted by removing all remembered objects from the composition
+ * but the node produced for the tree are not removed. When the composition later becomes active
+ * then the nodes are able to be reused inside [ReusableContent] content without requiring the
+ * remembered state of the composition's lifetime being arbitrarily extended.
+ *
+ * @param active when [active] is `true` [content] is composed normally. When [active] is `false`
+ * then the content is deactivated and all remembered state is treated as if the content was
+ * deleted but the nodes managed by the composition's [Applier] are unaffected. A [active] becomes
+ * `true` any reusable nodes from the previously active composition are candidates for reuse.
+ * @param content the composable content that is managed by this composable.
+ */
+@Composable
+@ExplicitGroupsComposable
+inline fun ReusableContentHost(
+    active: Boolean,
+    crossinline content: @Composable () -> Unit
+) {
+    currentComposer.startReusableGroup(reuseKey, active)
+    val activeChanged = currentComposer.changed(active)
+    if (active) {
+        content()
+    } else {
+        currentComposer.deactivateToEndGroup(activeChanged)
+    }
+    currentComposer.endReusableGroup()
+}
+
+/**
  * TODO(lmr): provide documentation
  */
 val currentComposer: Composer
@@ -168,11 +201,24 @@ val currentRecomposeScope: RecomposeScope
     }
 
 /**
+ * Returns the current [CompositionLocalContext] which contains all
+ * [CompositionLocal]'s in the current composition and their values
+ * provided by [CompositionLocalProvider]'s.
+ * This context can be used to pass locals to another composition via [CompositionLocalProvider].
+ * That is usually needed if another composition is not a subcomposition of the current one.
+ */
+@OptIn(InternalComposeApi::class)
+val currentCompositionLocalContext: CompositionLocalContext
+    @Composable get() = CompositionLocalContext(
+        currentComposer.buildContext().getCompositionLocalScope()
+    )
+
+/**
  * This a hash value used to coordinate map externally stored state to the composition. For
  * example, this is used by saved instance state to preserve state across activity lifetime
  * boundaries.
  *
- * This value is not likely to be unique but is not guaranteed unique. There are known cases,
+ * This value is likely to be unique but is not guaranteed unique. There are known cases,
  * such as for loops without a [key], where the runtime does not have enough information to
  * make the compound key hash unique.
  */
@@ -248,9 +294,7 @@ val currentCompositeKeyHash: Int
     } else {
         currentComposer.useNode()
     }
-    currentComposer.disableReusing()
     Updater<T>(currentComposer).update()
-    currentComposer.enableReusing()
     currentComposer.endNode()
 }
 
@@ -329,9 +373,7 @@ inline fun <T : Any?, reified E : Applier<*>> ReusableComposeNode(
     } else {
         currentComposer.useNode()
     }
-    currentComposer.disableReusing()
     Updater<T>(currentComposer).update()
-    currentComposer.enableReusing()
     content()
     currentComposer.endNode()
 }
@@ -422,9 +464,7 @@ inline fun <T, reified E : Applier<*>> ReusableComposeNode(
     } else {
         currentComposer.useNode()
     }
-    currentComposer.disableReusing()
     Updater<T>(currentComposer).update()
-    currentComposer.enableReusing()
     SkippableUpdater<T>(currentComposer).skippableUpdate()
     currentComposer.startReplaceableGroup(0x7ab4aae9)
     content()

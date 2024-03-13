@@ -15,8 +15,7 @@
   -->
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="androidx.benchmark.integration.macrobenchmark.target">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:label="Jetpack Benchmark Macrobenchmark Target"
@@ -26,15 +25,17 @@
         tools:ignore="MissingApplicationIcon">
 
         <!-- Profileable to enable macrobenchmark profiling -->
-        <!--suppress AndroidElementNotAllowed -->
         <profileable android:shell="true"/>
 
         <!--
-        Activities need to be exported so the macrobenchmark can discover them
-        under the new package visibility changes for Android 11.
+        Activities need to be exported so the macrobenchmark can discover them.
+
+        Feel free to add the launcher intent filter to enable easier profiling,
+        just be sure to add a consistent label.
          -->
         <activity
             android:name=".TrivialStartupActivity"
+            android:label="B Trivial"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,24 +48,103 @@
         </activity>
 
         <activity
-            android:name=".RecyclerViewActivity"
+            android:name=".TrivialStartupFullyDrawnActivity"
             android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.TRIVIAL_STARTUP_FULLY_DRAWN_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".EmptyActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.EMPTY_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".RecyclerViewActivity"
+            android:label="B RecyclerView"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="androidx.benchmark.integration.macrobenchmark.target.RECYCLER_VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".AudioActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.AUDIO_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
-        <!--
-        Activities need to be exported so the macrobenchmark can discover them
-        under the new package visibility changes for Android 11.
-         -->
+        <activity
+            android:name=".BackgroundWorkActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.BACKGROUND_WORK_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SingleColorActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.SINGLE_COLOR_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".NotExportedActivity"
-            android:exported="false">
+            android:exported="false"> <!-- intentionally not exported -->
             <intent-filter>
                 <action android:name="androidx.benchmark.integration.macrobenchmark.target.NOT_EXPORTED_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SeparateProcessActivity"
+            android:process=":ui"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.SEPARATE_PROCESS_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".GridRecyclerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.GRID_RECYCLER_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".VectorsListActivity"
+            android:label="RecyclerView vectors list"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.benchmark.integration.macrobenchmark.target.VECTORS_LIST_ACTIVITY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>

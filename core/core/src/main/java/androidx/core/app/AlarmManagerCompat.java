@@ -16,11 +16,17 @@
 
 package androidx.core.app;
 
+import static android.app.AlarmManager.RTC_WAKEUP;
+
+import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.os.Build;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 /**
  * Compatibility library for {@link AlarmManager} with fallbacks for older platforms.
@@ -54,14 +60,14 @@ public final class AlarmManagerCompat {
      * @see android.content.Context#registerReceiver
      * @see android.content.Intent#filterEquals
      */
+    @SuppressLint("MissingPermission")
     public static void setAlarmClock(@NonNull AlarmManager alarmManager, long triggerTime,
             @NonNull PendingIntent showIntent, @NonNull PendingIntent operation) {
         if (Build.VERSION.SDK_INT >= 21) {
-            alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(triggerTime, showIntent),
-                    operation);
+            Api21Impl.setAlarmClock(alarmManager,
+                    Api21Impl.createAlarmClockInfo(triggerTime, showIntent), operation);
         } else {
-            AlarmManagerCompat.setExact(alarmManager, AlarmManager.RTC_WAKEUP, triggerTime,
-                    operation);
+            AlarmManagerCompat.setExact(alarmManager, RTC_WAKEUP, triggerTime, operation);
         }
     }
 
@@ -115,7 +121,7 @@ public final class AlarmManagerCompat {
     public static void setAndAllowWhileIdle(@NonNull AlarmManager alarmManager, int type,
             long triggerAtMillis, @NonNull PendingIntent operation) {
         if (Build.VERSION.SDK_INT >= 23) {
-            alarmManager.setAndAllowWhileIdle(type, triggerAtMillis, operation);
+            Api23Impl.setAndAllowWhileIdle(alarmManager, type, triggerAtMillis, operation);
         } else {
             alarmManager.set(type, triggerAtMillis, operation);
         }
@@ -159,11 +165,7 @@ public final class AlarmManagerCompat {
      */
     public static void setExact(@NonNull AlarmManager alarmManager, int type, long triggerAtMillis,
             @NonNull PendingIntent operation) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            alarmManager.setExact(type, triggerAtMillis, operation);
-        } else {
-            alarmManager.set(type, triggerAtMillis, operation);
-        }
+        alarmManager.setExact(type, triggerAtMillis, operation);
     }
 
     /**
@@ -220,12 +222,93 @@ public final class AlarmManagerCompat {
     public static void setExactAndAllowWhileIdle(@NonNull AlarmManager alarmManager, int type,
             long triggerAtMillis, @NonNull PendingIntent operation) {
         if (Build.VERSION.SDK_INT >= 23) {
-            alarmManager.setExactAndAllowWhileIdle(type, triggerAtMillis, operation);
+            Api23Impl.setExactAndAllowWhileIdle(alarmManager, type, triggerAtMillis, operation);
         } else {
             AlarmManagerCompat.setExact(alarmManager, type, triggerAtMillis, operation);
         }
     }
 
+    /**
+     * Called to check if the caller can schedule exact alarms.
+     * Your app schedules exact alarms when it calls any of the {@code setExact...} or
+     * {@link AlarmManager#setAlarmClock(AlarmManager.AlarmClockInfo, PendingIntent) setAlarmClock}
+     * API methods.
+     * <p>
+     * Apps targeting {@link Build.VERSION_CODES#S} or higher can schedule exact alarms only if they
+     * have the {@link Manifest.permission#SCHEDULE_EXACT_ALARM} permission or they are on the
+     * device's power-save exemption list.
+     * These apps can also
+     * start {@link android.provider.Settings#ACTION_REQUEST_SCHEDULE_EXACT_ALARM} to
+     * request this permission from the user.
+     * <p>
+     * Apps targeting lower sdk versions, can always schedule exact alarms.
+     *
+     * @param alarmManager AlarmManager instance used to set the alarm
+     * @return {@code true} if the caller can schedule exact alarms, {@code false} otherwise.
+     * @see android.provider.Settings#ACTION_REQUEST_SCHEDULE_EXACT_ALARM
+     * @see AlarmManager#setExact(int, long, PendingIntent)
+     * @see AlarmManager#setExactAndAllowWhileIdle(int, long, PendingIntent)
+     * @see AlarmManager#setAlarmClock(AlarmManager.AlarmClockInfo, PendingIntent)
+     * @see android.os.PowerManager#isIgnoringBatteryOptimizations(String)
+     */
+    public static boolean canScheduleExactAlarms(@NonNull AlarmManager alarmManager) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            return Api31Impl.canScheduleExactAlarms(alarmManager);
+        } else {
+            return true;
+        }
+    }
+
     private AlarmManagerCompat() {
+    }
+
+    @RequiresApi(21)
+    static class Api21Impl {
+        private Api21Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void setAlarmClock(AlarmManager alarmManager, Object info,
+                PendingIntent operation) {
+            alarmManager.setAlarmClock((AlarmManager.AlarmClockInfo) info, operation);
+        }
+
+        @DoNotInline
+        static AlarmManager.AlarmClockInfo createAlarmClockInfo(long triggerTime,
+                PendingIntent showIntent) {
+            return new AlarmManager.AlarmClockInfo(triggerTime, showIntent);
+        }
+    }
+
+    @RequiresApi(23)
+    static class Api23Impl {
+        private Api23Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void setAndAllowWhileIdle(AlarmManager alarmManager, int type, long triggerAtMillis,
+                PendingIntent operation) {
+            alarmManager.setAndAllowWhileIdle(type, triggerAtMillis, operation);
+        }
+
+        @DoNotInline
+        static void setExactAndAllowWhileIdle(AlarmManager alarmManager, int type,
+                long triggerAtMillis, PendingIntent operation) {
+            alarmManager.setExactAndAllowWhileIdle(type, triggerAtMillis, operation);
+        }
+    }
+
+    @RequiresApi(31)
+    static class Api31Impl {
+        private Api31Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static boolean canScheduleExactAlarms(AlarmManager alarmManager) {
+            return alarmManager.canScheduleExactAlarms();
+        }
     }
 }

@@ -24,6 +24,8 @@ import android.content.res.TypedArray;
 import android.util.AttributeSet;
 import android.widget.ImageView;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.preference.R;
 
@@ -32,7 +34,6 @@ import androidx.preference.R;
  *
  * Used by Car.
  *
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 @SuppressLint("AppCompatCustomView")
@@ -41,15 +42,16 @@ public class PreferenceImageView extends ImageView {
     private int mMaxWidth = Integer.MAX_VALUE;
     private int mMaxHeight = Integer.MAX_VALUE;
 
-    public PreferenceImageView(Context context) {
+    public PreferenceImageView(@NonNull Context context) {
         this(context, null);
     }
 
-    public PreferenceImageView(Context context, AttributeSet attrs) {
+    public PreferenceImageView(@NonNull Context context, @Nullable AttributeSet attrs) {
         this(context, attrs, 0);
     }
 
-    public PreferenceImageView(Context context, AttributeSet attrs, int defStyleAttr) {
+    public PreferenceImageView(@NonNull Context context, @Nullable AttributeSet attrs,
+            int defStyleAttr) {
         super(context, attrs, defStyleAttr);
 
         final TypedArray a = context.obtainStyledAttributes(

@@ -16,24 +16,22 @@
 
 package androidx.compose.ui.window
 
-import androidx.compose.desktop.AppManager
-import androidx.compose.desktop.AppWindow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.util.UpdateEffect
+import androidx.compose.ui.util.makeDisplayable
+import java.awt.Window
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.swing.Swing
-import java.awt.Window
 
 /**
  * Compose [Window] obtained from [create]. The [create] block will be called
@@ -52,8 +50,6 @@ import java.awt.Window
  * the default Compose functions [androidx.compose.ui.window.Window] or
  * [androidx.compose.ui.window.Dialog].
  *
- * This API is experimental and will eventually replace [AppWindow] / [AppManager].
- *
  * @param visible Is [Window] visible to user.
  * Note that if we set `false` - native resources will not be released. They will be released
  * only when [Window] will leave the composition.
@@ -64,9 +60,8 @@ import java.awt.Window
  */
 @OptIn(DelicateCoroutinesApi::class)
 @Suppress("unused")
-@ExperimentalComposeUiApi
 @Composable
-fun <T : Window> OwnerWindowScope.AwtWindow(
+fun <T : Window> AwtWindow(
     visible: Boolean = true,
     create: () -> T,
     dispose: (T) -> Unit,
@@ -74,17 +69,22 @@ fun <T : Window> OwnerWindowScope.AwtWindow(
 ) {
     val currentVisible by rememberUpdatedState(visible)
 
-    val window = remember { Ref<T>() }
+    val windowRef = remember { Ref<T>() }
+    fun window() = windowRef.value!!
 
     DisposableEffect(Unit) {
-        window.value = create()
+        windowRef.value = create()
         onDispose {
-            dispose(window.value!!)
+            dispose(window())
         }
     }
 
     UpdateEffect {
-        update(window.value!!)
+        val window = window()
+        update(window)
+        if (!window.isDisplayable) {
+            window.makeDisplayable()
+        }
     }
 
     val showJob = Ref<Job?>()
@@ -101,7 +101,7 @@ fun <T : Window> OwnerWindowScope.AwtWindow(
         // which will handle all the future Swing events while dialog is visible.
         //
         // We can't use LaunchedEffect or rememberCoroutineScope, because they have a dispatcher
-        // which is controlled by the Compose rendering loop (DesktopOwners.dispatcher) and we
+        // which is controlled by the Compose rendering loop (ComposeScene.dispatcher) and we
         // will block coroutine.
         //
         // 2.
@@ -118,14 +118,14 @@ fun <T : Window> OwnerWindowScope.AwtWindow(
 
         showJob.value?.cancel()
         showJob.value = GlobalScope.launch(Dispatchers.Swing) {
-            window.value!!.isVisible = currentVisible
+            window().isVisible = currentVisible
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             showJob.value?.cancel()
-            window.value!!.isVisible = false
+            window().isVisible = false
         }
     }
 }

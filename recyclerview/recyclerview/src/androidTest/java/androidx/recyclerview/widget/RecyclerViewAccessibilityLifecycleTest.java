@@ -20,6 +20,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
@@ -87,8 +88,7 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
             public TestViewHolder onCreateViewHolder(@NonNull ViewGroup parent,
                     int viewType) {
                 TestViewHolder vh = super.onCreateViewHolder(parent, viewType);
-                ViewCompat.setImportantForAccessibility(vh.itemView,
-                        ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_YES);
+                vh.itemView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
                 return vh;
             }
         };
@@ -103,10 +103,10 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
         lm.waitForLayout(2);
         recyclerView.waitUntilAnimations();
         assertThat(invocations, is(Arrays.asList(
-                ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
-                ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
-                ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_YES,
-                ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_YES)));
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
+                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
+                View.IMPORTANT_FOR_ACCESSIBILITY_YES,
+                View.IMPORTANT_FOR_ACCESSIBILITY_YES)));
 
         assertThat(calledA11DuringLayout.get(), is(false));
     }
@@ -228,6 +228,7 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                     AccessibilityNodeInfo info = recyclerView.getChildAt(i)
                             .createAccessibilityNodeInfo();
                     assertTrue("custom delegate sets isChecked", info.isChecked());
+                    assertNotNull(info.getCollectionItemInfo());
                     children.add(view);
                 }
             }
@@ -250,6 +251,7 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                     assertTrue(children.contains(view));
                     AccessibilityNodeInfo info = view.createAccessibilityNodeInfo();
                     assertTrue("custom delegate sets isChecked", info.isChecked());
+                    assertNotNull(info.getCollectionItemInfo());
                 }
             }
         });
@@ -299,6 +301,8 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                     View view = recyclerView.getChildAt(i);
                     assertEquals(i, recyclerView.getChildAdapterPosition(view));
                     assertTrue(accessibiltyDelegateIsItemDelegate(recyclerView, view));
+                    AccessibilityNodeInfo info = view.createAccessibilityNodeInfo();
+                    assertNotNull(info.getCollectionItemInfo());
                 }
             }
         });
@@ -365,7 +369,6 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                 });
     }
 
-    @SdkSuppress(minSdkVersion = 16)
     @Test
     public void onInitNodeInfoWithNestedDelegateReturnsNodeProvider() throws Throwable {
         final AccessibilityNodeProviderCompat expectedNodeProvider =
@@ -421,7 +424,6 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                 });
     }
 
-    @SdkSuppress(minSdkVersion = 16)
     @Test
     public void performActionWithhNestedDelegate() throws Throwable {
         final int expectedActionId = 42;
@@ -434,12 +436,11 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                     @Override
                     public void run() {
                         View itemView = mRecyclerView.getChildAt(0);
-                        assertTrue(ViewCompat.performAccessibilityAction(itemView, 42, null));
+                        assertTrue(itemView.performAccessibilityAction(42, null));
                     }
                 });
     }
 
-    @SdkSuppress(minSdkVersion = 16)
     @Test
     public void performActionWithhNestedDelegateCallsView() throws Throwable {
         final int expectedActionId = 42;
@@ -452,7 +453,7 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                     @Override
                     public void run() {
                         View itemView = mRecyclerView.getChildAt(0);
-                        assertTrue(ViewCompat.performAccessibilityAction(itemView, 42, null));
+                        assertTrue(itemView.performAccessibilityAction(42, null));
                     }
                 },
                 new TextViewCreator() {
@@ -467,7 +468,6 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
                 });
     }
 
-    @SdkSuppress(minSdkVersion = 16)
     @Test
     public void customItemDelegate() throws Throwable {
         final RecyclerView recyclerView = new RecyclerView(getActivity()) {
@@ -478,12 +478,13 @@ public class RecyclerViewAccessibilityLifecycleTest extends BaseRecyclerViewInst
         };
         recyclerView.setAccessibilityDelegateCompat(
                     new RecyclerViewAccessibilityDelegate(recyclerView) {
+                @NonNull
                 @Override
                 public AccessibilityDelegateCompat getItemDelegate() {
                     return new RecyclerViewAccessibilityDelegate.ItemDelegate(this) {
                         @Override
-                        public void onInitializeAccessibilityNodeInfo(View host,
-                                AccessibilityNodeInfoCompat info) {
+                        public void onInitializeAccessibilityNodeInfo(@NonNull View host,
+                                @NonNull AccessibilityNodeInfoCompat info) {
                             super.onInitializeAccessibilityNodeInfo(host, info);
                             info.setChecked(true);
                         }

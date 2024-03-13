@@ -34,7 +34,7 @@ class ActionBarBackgroundDrawable extends Drawable {
     }
 
     @Override
-    public void draw(Canvas canvas) {
+    public void draw(@NonNull Canvas canvas) {
         if (mContainer.mIsSplit) {
             if (mContainer.mSplitBackground != null) {
                 mContainer.mSplitBackground.draw(canvas);
@@ -67,13 +67,24 @@ class ActionBarBackgroundDrawable extends Drawable {
     public void getOutline(@NonNull Outline outline) {
         if (mContainer.mIsSplit) {
             if (mContainer.mSplitBackground != null) {
-                mContainer.mSplitBackground.getOutline(outline);
+                Api21Impl.getOutline(mContainer.mBackground, outline);
             }
         } else {
             // ignore the stacked background for shadow casting
             if (mContainer.mBackground != null) {
-                mContainer.mBackground.getOutline(outline);
+                Api21Impl.getOutline(mContainer.mBackground, outline);
             }
+        }
+    }
+
+    @RequiresApi(21)
+    private static class Api21Impl {
+        private Api21Impl() {
+            // Non-instantiable.
+        }
+
+        public static void getOutline(Drawable drawable, Outline outline) {
+            drawable.getOutline(outline);
         }
     }
 }

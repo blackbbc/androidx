@@ -16,25 +16,24 @@
 
 package androidx.room.processor
 
-import androidx.room.ext.GuavaUtilConcurrentTypeNames
-import androidx.room.ext.LifecyclesTypeNames
-import androidx.room.ext.RxJava2TypeNames
-import androidx.room.ext.RxJava3TypeNames
+import androidx.room.compiler.codegen.CodeLanguage
 import androidx.room.compiler.processing.XMethodElement
 import androidx.room.compiler.processing.XType
-import androidx.room.ext.KotlinTypeNames
+import androidx.room.compiler.processing.XTypeElement
+import androidx.room.ext.DEFERRED_TYPES
 import androidx.room.vo.TransactionMethod
 
 class TransactionMethodProcessor(
     baseContext: Context,
-    val containing: XType,
+    val containingElement: XTypeElement,
+    val containingType: XType,
     val executableElement: XMethodElement
 ) {
 
     val context = baseContext.fork(executableElement)
 
     fun process(): TransactionMethod {
-        val delegate = MethodProcessorDelegate.createFor(context, containing, executableElement)
+        val delegate = MethodProcessorDelegate.createFor(context, containingType, executableElement)
         val hasKotlinDefaultImpl = executableElement.hasKotlinDefaultImpl()
         context.checker.check(
             executableElement.isOverrideableIgnoringContainer() &&
@@ -46,9 +45,8 @@ class TransactionMethodProcessor(
         val rawReturnType = returnType.rawType
 
         DEFERRED_TYPES.firstOrNull { className ->
-            context.processingEnv.findType(className)?.let {
-                rawReturnType.isAssignableFrom(it)
-            } ?: false
+            context.processingEnv.findType(className.canonicalName)
+                ?.rawType?.isAssignableFrom(rawReturnType) ?: false
         }?.let { returnTypeName ->
             context.logger.e(
                 ProcessorErrors.transactionMethodAsync(returnTypeName.toString()),
@@ -57,38 +55,30 @@ class TransactionMethodProcessor(
         }
 
         val callType = when {
-            executableElement.isJavaDefault() ->
+            containingElement.isInterface() && executableElement.isJavaDefault() ->
                 TransactionMethod.CallType.DEFAULT_JAVA8
-            hasKotlinDefaultImpl ->
+            containingElement.isInterface() && hasKotlinDefaultImpl ->
                 TransactionMethod.CallType.DEFAULT_KOTLIN
             else ->
                 TransactionMethod.CallType.CONCRETE
         }
 
+        val parameters = delegate.extractParams()
+        val processedParamNames = parameters.map { param ->
+            // Apply spread operator when delegating to a vararg parameter in Kotlin.
+            if (context.codeLanguage == CodeLanguage.KOTLIN && param.isVarArgs()) {
+                "*${param.name}"
+            } else {
+                param.name
+            }
+        }
+
         return TransactionMethod(
             element = executableElement,
             returnType = returnType,
-            parameterNames = delegate.extractParams().map { it.name },
+            parameterNames = processedParamNames,
             callType = callType,
             methodBinder = delegate.findTransactionMethodBinder(callType)
-        )
-    }
-
-    companion object {
-        val DEFERRED_TYPES = listOf(
-            LifecyclesTypeNames.LIVE_DATA,
-            RxJava2TypeNames.FLOWABLE,
-            RxJava2TypeNames.OBSERVABLE,
-            RxJava2TypeNames.MAYBE,
-            RxJava2TypeNames.SINGLE,
-            RxJava2TypeNames.COMPLETABLE,
-            RxJava3TypeNames.FLOWABLE,
-            RxJava3TypeNames.OBSERVABLE,
-            RxJava3TypeNames.MAYBE,
-            RxJava3TypeNames.SINGLE,
-            RxJava3TypeNames.COMPLETABLE,
-            GuavaUtilConcurrentTypeNames.LISTENABLE_FUTURE,
-            KotlinTypeNames.FLOW
         )
     }
 }

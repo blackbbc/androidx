@@ -14,43 +14,59 @@
  * limitations under the License.
  */
 
+@file:OptIn(ExperimentalAnimationApi::class)
+
 package androidx.compose.animation
 
 import androidx.compose.animation.EnterExitState.PostExit
 import androidx.compose.animation.EnterExitState.PreEnter
 import androidx.compose.animation.EnterExitState.Visible
 import androidx.compose.animation.core.ExperimentalTransitionApi
+import androidx.compose.animation.core.InternalAnimationApi
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.createChildTransition
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.internal.JvmDefaultWithCompatibility
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.debugInspectorInfo
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastMap
 import androidx.compose.ui.util.fastMaxBy
-import kotlinx.coroutines.flow.collect
+import androidx.compose.ui.util.fastMaxOfOrNull
 
 /**
  * [AnimatedVisibility] composable animates the appearance and disappearance of its content, as
  * [visible] value changes. Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * Aside from these three types of [EnterTransition] and [ExitTransition], [AnimatedVisibility]
  * also supports custom enter/exit animations. Some use cases may benefit from custom enter/exit
@@ -107,17 +123,17 @@ import kotlinx.coroutines.flow.collect
  * @see shrinkOut
  * @see AnimatedVisibilityScope
  */
-@ExperimentalAnimationApi
 @Composable
 fun AnimatedVisibility(
     visible: Boolean,
     modifier: Modifier = Modifier,
     enter: EnterTransition = fadeIn() + expandIn(),
     exit: ExitTransition = shrinkOut() + fadeOut(),
+    label: String = "AnimatedVisibility",
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    val transition = updateTransition(visible)
-    AnimatedEnterExitImpl(transition, { it }, modifier, enter, exit, content)
+    val transition = updateTransition(visible, label)
+    AnimatedVisibilityImpl(transition, { it }, modifier, enter, exit, content = content)
 }
 
 /**
@@ -126,11 +142,11 @@ fun AnimatedVisibility(
  * specific to the [Row] layout. See more details below.
  *
  * Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale, and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * The default [enter] and [exit] transition is configured based on the horizontal layout of a
  * [Row]. [enter] defaults to a combination of fading in and expanding the content horizontally.
@@ -182,17 +198,17 @@ fun AnimatedVisibility(
  * @see ColumnScope.AnimatedVisibility
  * @see AnimatedVisibilityScope
  */
-@ExperimentalAnimationApi
 @Composable
 fun RowScope.AnimatedVisibility(
     visible: Boolean,
     modifier: Modifier = Modifier,
     enter: EnterTransition = fadeIn() + expandHorizontally(),
     exit: ExitTransition = fadeOut() + shrinkHorizontally(),
+    label: String = "AnimatedVisibility",
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    val transition = updateTransition(visible)
-    AnimatedEnterExitImpl(transition, { it }, modifier, enter, exit, content)
+    val transition = updateTransition(visible, label)
+    AnimatedVisibilityImpl(transition, { it }, modifier, enter, exit, content = content)
 }
 
 /**
@@ -201,11 +217,11 @@ fun RowScope.AnimatedVisibility(
  * specific to the [Column] layout. See more details below.
  *
  * Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * The default [enter] and [exit] transition is configured based on the vertical layout of a
  * [Column]. [enter] defaults to a combination of fading in and expanding the content vertically.
@@ -255,17 +271,17 @@ fun RowScope.AnimatedVisibility(
  * @see AnimatedVisibility
  * @see AnimatedVisibilityScope
  */
-@ExperimentalAnimationApi
 @Composable
 fun ColumnScope.AnimatedVisibility(
     visible: Boolean,
     modifier: Modifier = Modifier,
     enter: EnterTransition = fadeIn() + expandVertically(),
     exit: ExitTransition = fadeOut() + shrinkVertically(),
+    label: String = "AnimatedVisibility",
     content: @Composable AnimatedVisibilityScope.() -> Unit
 ) {
-    val transition = updateTransition(visible)
-    AnimatedEnterExitImpl(transition, { it }, modifier, enter, exit, content)
+    val transition = updateTransition(visible, label)
+    AnimatedVisibilityImpl(transition, { it }, modifier, enter, exit, content = content)
 }
 
 /**
@@ -307,11 +323,11 @@ enum class EnterExitState {
  * and `visibleState.currentState` returns the initial state of the current animations.
  *
  * Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * Aside from these three types of [EnterTransition] and [ExitTransition], [AnimatedVisibility]
  * also supports custom enter/exit animations. Some use cases may benefit from custom enter/exit
@@ -361,17 +377,17 @@ enum class EnterExitState {
  * @see Transition.AnimatedVisibility
  * @see AnimatedVisibilityScope
  */
-@ExperimentalAnimationApi
 @Composable
 fun AnimatedVisibility(
     visibleState: MutableTransitionState<Boolean>,
     modifier: Modifier = Modifier,
     enter: EnterTransition = fadeIn() + expandIn(),
     exit: ExitTransition = fadeOut() + shrinkOut(),
+    label: String = "AnimatedVisibility",
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    val transition = updateTransition(visibleState)
-    AnimatedEnterExitImpl(transition, { it }, modifier, enter, exit, content)
+    val transition = rememberTransition(visibleState, label)
+    AnimatedVisibilityImpl(transition, { it }, modifier, enter, exit, content = content)
 }
 
 /**
@@ -384,11 +400,11 @@ fun AnimatedVisibility(
  * animations.
  *
  * Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * The default [enter] and [exit] transition is configured based on the horizontal layout of a
  * [Row]. [enter] defaults to a combination of fading in and expanding the content horizontally.
@@ -436,17 +452,17 @@ fun AnimatedVisibility(
  * @see Transition.AnimatedVisibility
  * @see AnimatedVisibilityScope
  */
-@ExperimentalAnimationApi
 @Composable
 fun RowScope.AnimatedVisibility(
     visibleState: MutableTransitionState<Boolean>,
     modifier: Modifier = Modifier,
     enter: EnterTransition = expandHorizontally() + fadeIn(),
     exit: ExitTransition = shrinkHorizontally() + fadeOut(),
+    label: String = "AnimatedVisibility",
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    val transition = updateTransition(visibleState)
-    AnimatedEnterExitImpl(transition, { it }, modifier, enter, exit, content)
+    val transition = rememberTransition(visibleState, label)
+    AnimatedVisibilityImpl(transition, { it }, modifier, enter, exit, content = content)
 }
 
 /**
@@ -459,11 +475,11 @@ fun RowScope.AnimatedVisibility(
  * animations.
  *
  * Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * The default [enter] and [exit] transition is configured based on the vertical layout of a
  * [Column]. [enter] defaults to a combination of fading in and expanding the content vertically.
@@ -512,17 +528,17 @@ fun RowScope.AnimatedVisibility(
  * @see Transition.AnimatedVisibility
  * @see AnimatedVisibilityScope
  */
-@ExperimentalAnimationApi
 @Composable
 fun ColumnScope.AnimatedVisibility(
     visibleState: MutableTransitionState<Boolean>,
     modifier: Modifier = Modifier,
     enter: EnterTransition = expandVertically() + fadeIn(),
     exit: ExitTransition = shrinkVertically() + fadeOut(),
+    label: String = "AnimatedVisibility",
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    val transition = updateTransition(visibleState)
-    AnimatedEnterExitImpl(transition, { it }, modifier, enter, exit, content)
+    val transition = rememberTransition(visibleState, label)
+    AnimatedVisibilityImpl(transition, { it }, modifier, enter, exit, content = content)
 }
 
 /**
@@ -536,11 +552,11 @@ fun ColumnScope.AnimatedVisibility(
  * = [Transition.targetState]), and subsequently removes the content in the exit case.
  *
  * Different [EnterTransition]s and [ExitTransition]s can be defined in
- * [enter] and [exit] for the appearance and disappearance animation. There are 3 types of
- * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink and Slide. The enter transitions
- * and exit transitions can be combined using `+`. The order of the combination does not matter,
- * as the transition animations will start simultaneously. See [EnterTransition] and
- * [ExitTransition] for details on the three types of transition.
+ * [enter] and [exit] for the appearance and disappearance animation. There are 4 types of
+ * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+ * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+ * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+ * and [ExitTransition] for details on the three types of transition.
  *
  * Aside from these three types of [EnterTransition] and [ExitTransition], [AnimatedVisibility]
  * also supports custom enter/exit animations. Some use cases may benefit from custom enter/exit
@@ -595,7 +611,7 @@ fun <T> Transition<T>.AnimatedVisibility(
     enter: EnterTransition = fadeIn() + expandIn(),
     exit: ExitTransition = shrinkOut() + fadeOut(),
     content: @Composable() AnimatedVisibilityScope.() -> Unit
-) = AnimatedEnterExitImpl(this, visible, modifier, enter, exit, content)
+) = AnimatedVisibilityImpl(this, visible, modifier, enter, exit, content = content)
 
 /**
  * This is the scope for the content of [AnimatedVisibility]. In this scope, direct and
@@ -611,12 +627,15 @@ fun <T> Transition<T>.AnimatedVisibility(
  *
  * @sample androidx.compose.animation.samples.AVScopeAnimateEnterExit
  */
-@ExperimentalAnimationApi
+@JvmDefaultWithCompatibility
 interface AnimatedVisibilityScope {
     /**
      * [transition] allows custom enter/exit animations to be specified. It will run simultaneously
      * with the built-in enter/exit transitions specified in [AnimatedVisibility].
      */
+    @Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
+    @get:ExperimentalAnimationApi
+    @ExperimentalAnimationApi
     val transition: Transition<EnterExitState>
 
     /**
@@ -626,11 +645,11 @@ interface AnimatedVisibilityScope {
      * [AnimatedVisibility]'s animation and their own enter/exit animations.
      *
      * [enter] and [exit] defines different [EnterTransition]s and [ExitTransition]s that will be
-     * used for the appearance and disappearance animation. There are 3 types of
-     * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, and Slide. The enter transitions
-     * and exit transitions can be combined using `+`. The order of the combination does not matter,
-     * as the transition animations will start simultaneously. See [EnterTransition] and
-     * [ExitTransition] for details on the three types of transition.
+     * used for the appearance and disappearance animation. There are 4 types of
+     * [EnterTransition] and [ExitTransition]: Fade, Expand/Shrink, Scale and Slide. The enter
+     * transitions can be combined using `+`. Same for exit transitions. The order of the combination
+     * does not matter, as the transition animations will start simultaneously. See [EnterTransition]
+     * and [ExitTransition] for details on the three types of transition.
      *
      * By default, the enter transition will be a combination of [fadeIn] and [expandIn] of the
      * content from the bottom end. And the exit transition will be shrinking the content towards
@@ -645,17 +664,20 @@ interface AnimatedVisibilityScope {
      *
      * @sample androidx.compose.animation.samples.AnimateEnterExitPartialContent
      */
+    @ExperimentalAnimationApi
     fun Modifier.animateEnterExit(
         enter: EnterTransition = fadeIn() + expandIn(),
-        exit: ExitTransition = fadeOut() + shrinkOut()
+        exit: ExitTransition = fadeOut() + shrinkOut(),
+        label: String = "animateEnterExit"
     ): Modifier = composed(
         inspectorInfo = debugInspectorInfo {
             name = "animateEnterExit"
             properties["enter"] = enter
             properties["exit"] = exit
+            properties["label"] = label
         }
     ) {
-        this.then(transition.createModifier(enter, exit))
+        this.then(transition.createModifier(enter, exit, label))
     }
 }
 
@@ -701,12 +723,15 @@ fun AnimatedVisibility(
     content()
 }
 
-// RowScope and ColumnScope AnimatedEnterExit extensions and AnimatedEnterExit without a receiver
-// converge here.
-@OptIn(ExperimentalTransitionApi::class)
-@ExperimentalAnimationApi
+/**
+ * RowScope and ColumnScope AnimatedVisibility extensions and AnimatedVisibility without a receiver
+ * converge here.
+ * AnimatedVisibilityImpl sets up 2 things: 1) It adds a modifier to report 0 size in lookahead
+ * when animating out. 2) It sets up a criteria for when content should be disposed.
+ */
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
-private fun <T> AnimatedEnterExitImpl(
+internal fun <T> AnimatedVisibilityImpl(
     transition: Transition<T>,
     visible: (T) -> Boolean,
     modifier: Modifier,
@@ -714,86 +739,181 @@ private fun <T> AnimatedEnterExitImpl(
     exit: ExitTransition,
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    val isAnimationVisible = remember(transition) {
-        mutableStateOf(visible(transition.currentState))
-    }
-    if (visible(transition.targetState) || isAnimationVisible.value) {
-        val childTransition = transition.createChildTransition {
-            transition.targetEnterExit(visible, it)
-        }
-        LaunchedEffect(childTransition) {
-            snapshotFlow {
-                childTransition.currentState == EnterExitState.Visible ||
-                    childTransition.targetState == EnterExitState.Visible
-            }.collect {
-                isAnimationVisible.value = it
+    AnimatedEnterExitImpl(
+        transition = transition,
+        visible = visible,
+        modifier = modifier.layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            val (w, h) =
+                if (isLookingAhead && !visible(transition.targetState)) {
+                    IntSize.Zero
+                } else {
+                    IntSize(placeable.width, placeable.height)
+                }
+            layout(w, h) {
+                placeable.place(0, 0)
             }
-        }
-
-        AnimatedEnterExitImpl(
-            childTransition,
-            modifier,
-            enter = enter,
-            exit = exit,
-            content = content
-        )
-    }
+        },
+        enter = enter,
+        exit = exit,
+        shouldDisposeBlock = { current, target -> current == target && target == PostExit },
+        content = content
+    )
 }
 
-@OptIn(ExperimentalTransitionApi::class)
-@ExperimentalAnimationApi
+/**
+ * Observes lookahead size.
+ */
+internal fun interface OnLookaheadMeasured {
+    fun invoke(size: IntSize)
+}
+
+@OptIn(
+    ExperimentalTransitionApi::class,
+    InternalAnimationApi::class,
+    ExperimentalAnimationApi::class,
+)
 @Composable
-private inline fun AnimatedEnterExitImpl(
-    transition: Transition<EnterExitState>,
+internal fun <T> AnimatedEnterExitImpl(
+    transition: Transition<T>,
+    visible: (T) -> Boolean,
     modifier: Modifier,
     enter: EnterTransition,
     exit: ExitTransition,
+    shouldDisposeBlock: (EnterExitState, EnterExitState) -> Boolean,
+    onLookaheadMeasured: OnLookaheadMeasured? = null,
     content: @Composable() AnimatedVisibilityScope.() -> Unit
 ) {
-    // TODO: Get some feedback on whether there's a need to observe this state change in user
-    //  code. If there is, this if check will need to be moved to measure stage, along with some
-    //  structural changes.
-    if (transition.currentState == EnterExitState.Visible ||
-        transition.targetState == EnterExitState.Visible
+    if (visible(transition.targetState) || visible(transition.currentState) ||
+        transition.isSeeking || transition.hasInitialValueAnimations
     ) {
-        val scope = remember(transition) { AnimatedVisibilityScopeImpl(transition) }
-        Layout(
-            content = { scope.content() },
-            modifier = modifier.then(transition.createModifier(enter, exit))
-        ) { measureables, constraints ->
-            val placeables = measureables.map { it.measure(constraints) }
-            val maxWidth: Int = placeables.fastMaxBy { it.width }?.width ?: 0
-            val maxHeight = placeables.fastMaxBy { it.height }?.height ?: 0
-            // Position the children.
-            scope.targetSize.value = IntSize(maxWidth, maxHeight)
-            layout(maxWidth, maxHeight) {
-                placeables.fastForEach {
-                    it.place(0, 0)
+        val childTransition = transition.createChildTransition(label = "EnterExitTransition") {
+            transition.targetEnterExit(visible, it)
+        }
+
+        val shouldDisposeBlockUpdated by rememberUpdatedState(shouldDisposeBlock)
+
+        val shouldDisposeAfterExit by produceState(
+            initialValue = shouldDisposeBlock(
+                childTransition.currentState,
+                childTransition.targetState
+            )
+        ) {
+            snapshotFlow {
+                childTransition.exitFinished
+            }.collect {
+                value = if (it) {
+                    shouldDisposeBlockUpdated(
+                        childTransition.currentState,
+                        childTransition.targetState
+                    )
+                } else {
+                    false
                 }
             }
+        }
+
+        if (!childTransition.exitFinished || !shouldDisposeAfterExit) {
+            val scope = remember(transition) { AnimatedVisibilityScopeImpl(childTransition) }
+            Layout(
+                content = { scope.content() },
+                modifier = modifier
+                    .then(childTransition.createModifier(enter, exit, "Built-in")
+                        .then(if (onLookaheadMeasured != null) {
+                            Modifier.layout { measurable, constraints ->
+                                measurable.measure(constraints).run {
+                                    if (isLookingAhead) {
+                                        onLookaheadMeasured.invoke(IntSize(width, height))
+                                    }
+                                    layout(width, height) {
+                                        place(0, 0)
+                                    }
+                                }
+                            }
+                        } else Modifier)
+                    ),
+                measurePolicy = remember { AnimatedEnterExitMeasurePolicy(scope) }
+            )
         }
     }
 }
 
+private val Transition<EnterExitState>.exitFinished
+    get() = currentState == PostExit && targetState == PostExit
+
+@OptIn(ExperimentalAnimationApi::class)
+private class AnimatedEnterExitMeasurePolicy(
+    val scope: AnimatedVisibilityScopeImpl
+) : MeasurePolicy {
+    override fun MeasureScope.measure(
+        measurables: List<Measurable>,
+        constraints: Constraints
+    ): MeasureResult {
+        val placeables = measurables.fastMap { it.measure(constraints) }
+        val maxWidth: Int = placeables.fastMaxBy { it.width }?.width ?: 0
+        val maxHeight = placeables.fastMaxBy { it.height }?.height ?: 0
+        // Position the children.
+        scope.targetSize.value = IntSize(maxWidth, maxHeight)
+        return layout(maxWidth, maxHeight) {
+            placeables.fastForEach {
+                it.place(0, 0)
+            }
+        }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int
+    ) = measurables.fastMaxOfOrNull { it.minIntrinsicWidth(height) } ?: 0
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int
+    ) = measurables.fastMaxOfOrNull { it.minIntrinsicHeight(width) } ?: 0
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int
+    ) = measurables.fastMaxOfOrNull { it.maxIntrinsicWidth(height) } ?: 0
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int
+    ) = measurables.fastMaxOfOrNull { it.maxIntrinsicHeight(width) } ?: 0
+}
+
 // This converts Boolean visible to EnterExitState
-@ExperimentalAnimationApi
+@OptIn(InternalAnimationApi::class, ExperimentalAnimationApi::class)
 @Composable
 private fun <T> Transition<T>.targetEnterExit(
     visible: (T) -> Boolean,
     targetState: T
 ): EnterExitState = key(this) {
-    val hasBeenVisible = remember { mutableStateOf(false) }
-    if (visible(currentState)) {
-        hasBeenVisible.value = true
-    }
-    if (visible(targetState)) {
-        EnterExitState.Visible
-    } else {
-        // If never been visible, visible = false means PreEnter, otherwise PostExit
-        if (hasBeenVisible.value) {
-            EnterExitState.PostExit
+
+    if (this.isSeeking) {
+        if (visible(targetState)) {
+            Visible
         } else {
-            EnterExitState.PreEnter
+            if (visible(this.currentState)) {
+                PostExit
+            } else {
+                PreEnter
+            }
+        }
+    } else {
+        val hasBeenVisible = remember { mutableStateOf(false) }
+        if (visible(currentState)) {
+            hasBeenVisible.value = true
+        }
+        if (visible(targetState)) {
+            EnterExitState.Visible
+        } else {
+            // If never been visible, visible = false means PreEnter, otherwise PostExit
+            if (hasBeenVisible.value) {
+                EnterExitState.PostExit
+            } else {
+                EnterExitState.PreEnter
+            }
         }
     }
 }

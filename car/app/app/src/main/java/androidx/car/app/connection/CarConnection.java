@@ -24,6 +24,7 @@ import static java.util.Objects.requireNonNull;
 import android.content.Context;
 
 import androidx.annotation.IntDef;
+import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
 import androidx.annotation.RestrictTo;
 import androidx.lifecycle.LiveData;
@@ -54,7 +55,6 @@ public final class CarConnection {
     /**
      * Represents the types of connections that exist to a car head unit.
      *
-     * @hide
      */
     @IntDef({CONNECTION_TYPE_NOT_CONNECTED, CONNECTION_TYPE_NATIVE, CONNECTION_TYPE_PROJECTION})
     @Retention(RetentionPolicy.SOURCE)
@@ -85,6 +85,7 @@ public final class CarConnection {
      *
      * @throws NullPointerException if {@code context} is {@code null}
      */
+    @MainThread
     public CarConnection(@NonNull Context context) {
         requireNonNull(context);
         mConnectionTypeLiveData = isAutomotiveOS(context)

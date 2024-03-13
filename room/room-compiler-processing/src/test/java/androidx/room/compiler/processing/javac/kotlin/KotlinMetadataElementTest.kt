@@ -16,22 +16,28 @@
 
 package androidx.room.compiler.processing.javac.kotlin
 
+import androidx.kruth.assertThat
+import androidx.kruth.assertWithMessage
+import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.javac.JavacProcessingEnv
 import androidx.room.compiler.processing.util.Source
+import androidx.room.compiler.processing.util.XTestInvocation
 import androidx.room.compiler.processing.util.compileFiles
 import androidx.room.compiler.processing.util.runJavaProcessorTest
 import androidx.room.compiler.processing.util.runKaptTest
-import com.google.common.truth.Truth.assertThat
+import androidx.room.compiler.processing.util.sanitizeAsJavaParameterName
+import javax.lang.model.element.ExecutableElement
+import javax.lang.model.element.TypeElement
+import javax.lang.model.util.ElementFilter
 import org.junit.AssumptionViolatedException
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
-import javax.annotation.processing.ProcessingEnvironment
-import javax.lang.model.element.TypeElement
-import javax.lang.model.util.ElementFilter
+import org.junit.runners.Parameterized
 
-@RunWith(JUnit4::class)
-class KotlinMetadataElementTest {
+@RunWith(Parameterized::class)
+class KotlinMetadataElementTest(
+    private val preCompiled: Boolean
+) {
 
     @Test
     fun constructorParameters() {
@@ -47,9 +53,9 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { processingEnv ->
+        simpleRun(listOf(src)) { env ->
             val (testClassElement, metadataElement) = getMetadataElement(
-                processingEnv,
+                env,
                 "Subject"
             )
             val constructors = testClassElement.getConstructors()
@@ -101,9 +107,9 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { processingEnv ->
+        simpleRun(listOf(src)) { env ->
             val (testClassElement, metadataElement) = getMetadataElement(
-                processingEnv,
+                env,
                 "Subject"
             )
             testClassElement.getDeclaredMethod("functionWithParams")
@@ -149,15 +155,15 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
+        simpleRun(listOf(src)) { env ->
             val (testClassElement, metadataElement) = getMetadataElement(
-                invocation,
+                env,
                 "Subject"
             )
             assertThat(
                 testClassElement.getConstructors().map {
-                    val desc = it.descriptor()
-                    desc to (desc == metadataElement.findPrimaryConstructorSignature())
+                    val desc = it.descriptor(env.delegate)
+                    desc to (desc == metadataElement.primaryConstructorSignature)
                 }
             ).containsExactly(
                 "<init>(Ljava/lang/String;)V" to true,
@@ -183,21 +189,22 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
+        simpleRun(listOf(src)) { env ->
             val (testClassElement, metadataElement) = getMetadataElement(
-                invocation,
+                env,
                 "Subject"
             )
             assertThat(
                 testClassElement.getDeclaredMethods().map {
-                    it.simpleName.toString() to metadataElement.getFunctionMetadata(it)?.isSuspend()
+                    it.simpleName.toString() to metadataElement.getFunctionMetadata(it)
+                        ?.isSuspend
                 }
             ).containsExactly(
                 "emptyFunction" to false,
                 "suspendFunction" to true,
                 "functionWithParams" to false,
                 "suspendFunctionWithParams" to false,
-                "getConstructorParam" to null // synthetic getter for constructor property
+                "getConstructorParam" to false // synthetic getter for constructor property
             )
         }
     }
@@ -212,12 +219,12 @@ class KotlinMetadataElementTest {
             object AnObject
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
-            val (_, objectTypeMetadata) = getMetadataElement(invocation, "AnObject")
+        simpleRun(listOf(src)) { env ->
+            val (_, objectTypeMetadata) = getMetadataElement(env, "AnObject")
             assertThat(objectTypeMetadata.isObject()).isTrue()
-            val (_, classTypeMetadata) = getMetadataElement(invocation, "KotlinClass")
+            val (_, classTypeMetadata) = getMetadataElement(env, "KotlinClass")
             assertThat(classTypeMetadata.isObject()).isFalse()
-            val (_, interfaceMetadata) = getMetadataElement(invocation, "KotlinInterface")
+            val (_, interfaceMetadata) = getMetadataElement(env, "KotlinInterface")
             assertThat(interfaceMetadata.isObject()).isFalse()
         }
     }
@@ -233,9 +240,9 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
+        simpleRun(listOf(src)) { env ->
             val (testDaoElement, testDaoMetadata) = getMetadataElement(
-                invocation,
+                env,
                 "Subject"
             )
             val nonNullListMethod = testDaoElement.getDeclaredMethod("nonNullList")
@@ -265,43 +272,301 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
-            val (_, testMetadata) = getMetadataElement(
-                invocation,
+        simpleRun(listOf(src)) { env ->
+            val (typeElement, testMetadata) = getMetadataElement(
+                env,
                 "Properties"
             )
-            testMetadata.getPropertyMetadata("nonNull").let { property ->
+            testMetadata.getPropertyMetadata(
+                typeElement.getDeclaredField("nonNull")
+            ).let { property ->
                 assertThat(property?.name).isEqualTo("nonNull")
                 assertThat(property?.typeParameters).isEmpty()
                 assertThat(property?.isNullable()).isFalse()
             }
 
-            testMetadata.getPropertyMetadata("nullable").let { property ->
+            testMetadata.getPropertyMetadata(
+                typeElement.getDeclaredField("nullable")
+            ).let { property ->
                 assertThat(property?.name).isEqualTo("nullable")
                 assertThat(property?.typeParameters).isEmpty()
                 assertThat(property?.isNullable()).isTrue()
             }
 
-            testMetadata.getPropertyMetadata("nullableTypeArgument").let { property ->
+            testMetadata.getPropertyMetadata(
+                typeElement.getDeclaredField("nullableTypeArgument")
+            ).let { property ->
                 assertThat(property?.name).isEqualTo("nullableTypeArgument")
                 assertThat(property?.isNullable()).isFalse()
                 assertThat(property?.typeParameters).hasSize(1)
                 assertThat(property?.typeParameters?.single()?.isNullable()).isTrue()
             }
 
-            testMetadata.getPropertyMetadata("nonNullTypeArgument").let { property ->
+            testMetadata.getPropertyMetadata(
+                typeElement.getDeclaredField("nonNullTypeArgument")
+            ).let { property ->
                 assertThat(property?.name).isEqualTo("nonNullTypeArgument")
                 assertThat(property?.isNullable()).isFalse()
                 assertThat(property?.typeParameters).hasSize(1)
                 assertThat(property?.typeParameters?.single()?.isNullable()).isFalse()
             }
 
-            testMetadata.getPropertyMetadata("multipleTypeArguments").let { property ->
+            testMetadata.getPropertyMetadata(
+                typeElement.getDeclaredField("multipleTypeArguments")
+            ).let { property ->
                 assertThat(property?.name).isEqualTo("multipleTypeArguments")
                 assertThat(property?.isNullable()).isFalse()
                 assertThat(property?.typeParameters).hasSize(2)
                 assertThat(property?.typeParameters?.get(0)?.isNullable()).isFalse()
                 assertThat(property?.typeParameters?.get(1)?.isNullable()).isTrue()
+            }
+        }
+    }
+
+    @Test
+    fun accessors() {
+        val src = Source.kotlin(
+            "Kotlin.kt",
+            """
+            @JvmInline
+            value class ValueClass(val value: String)
+            class Subject {
+                val immutableProperty: String = ""
+                var mutableProperty: String = ""
+                var isProperty: String? = ""
+                var customSetter: String=  ""
+                    get(): String = ""
+                    set(myValue) { field = myValue }
+                var privateSetter: String = ""
+                    private set
+                internal var internalProp: String? = ""
+                internal var isInternalProp2: String = ""
+                // these won't show up in KAPT stubs since they don't have a valid JVM name but
+                // we are still testing them for consistency as they'll show up in metadata
+                var valueProp: ValueClass? = null
+                // these won't show up in KAPT stubs since they don't have a valid JVM name but
+                // we are still testing them for consistency as they'll show up in metadata
+                internal var internalValueProp: ValueClass = ValueClass("?")
+            }
+        """.trimIndent()
+        )
+        simpleRun(listOf(src)) { env ->
+            val (element, metadata) = getMetadataElement(
+                env,
+                "Subject"
+            )
+
+            fun assertSetter(
+                kmFunction: KmFunctionContainer?,
+                name: String,
+                jvmName: String,
+                paramNullable: Boolean
+            ) {
+                checkNotNull(kmFunction)
+                assertWithMessage(kmFunction.toString()).apply {
+                    that(kmFunction.name).isEqualTo(name)
+                    that(kmFunction.jvmName).isEqualTo(jvmName)
+                    // void is non null
+                    that(kmFunction.returnType.nullability).isEqualTo(XNullability.NONNULL)
+                    that(kmFunction.parameters).hasSize(1)
+                    that(
+                        kmFunction.parameters.single().isNullable()
+                    ).isEqualTo(paramNullable)
+                }
+            }
+
+            fun assertSetter(
+                metadata: KmClassContainer,
+                method: ExecutableElement,
+                name: String,
+                jvmName: String,
+                paramNullable: Boolean
+            ) {
+                val kmFunction = metadata.getFunctionMetadata(method)
+                assertSetter(
+                    kmFunction = kmFunction,
+                    name = name,
+                    jvmName = jvmName,
+                    paramNullable = paramNullable
+                )
+                val paramName = kmFunction!!.parameters.single().name
+                val javacElementName = method.parameters.single().simpleName.toString()
+                assertWithMessage(
+                    kmFunction.toString()
+                ).that(
+                    paramName
+                ).isEqualTo(
+                    javacElementName.sanitizeAsJavaParameterName(0)
+                )
+            }
+
+            fun assertGetter(
+                kmFunction: KmFunctionContainer?,
+                name: String,
+                jvmName: String,
+                returnsNullable: Boolean
+            ) {
+                checkNotNull(kmFunction)
+                assertWithMessage(kmFunction.toString()).apply {
+                    that(kmFunction.name).isEqualTo(name)
+                    that(kmFunction.jvmName).isEqualTo(jvmName)
+                    that(kmFunction.returnType.isNullable()).isEqualTo(returnsNullable)
+                    that(kmFunction.parameters).isEmpty()
+                }
+            }
+            assertGetter(
+                kmFunction = metadata.getFunctionMetadata(
+                    element.getDeclaredMethod("getImmutableProperty")
+                ),
+                name = "getImmutableProperty",
+                jvmName = "getImmutableProperty",
+                returnsNullable = false
+            )
+            assertGetter(
+                kmFunction = metadata.getFunctionMetadata(
+                    element.getDeclaredMethod("getMutableProperty")
+                ),
+                name = "getMutableProperty",
+                jvmName = "getMutableProperty",
+                returnsNullable = false
+            )
+            assertSetter(
+                metadata = metadata,
+                method = element.getDeclaredMethod("setMutableProperty"),
+                name = "setMutableProperty",
+                jvmName = "setMutableProperty",
+                paramNullable = false
+            )
+            assertSetter(
+                metadata = metadata,
+                method = element.getDeclaredMethod("setProperty"),
+                name = "setProperty",
+                jvmName = "setProperty",
+                paramNullable = true
+            )
+            assertGetter(
+                kmFunction = metadata.getFunctionMetadata(
+                    element.getDeclaredMethod("isProperty")
+                ),
+                name = "isProperty",
+                jvmName = "isProperty",
+                returnsNullable = true
+            )
+            assertGetter(
+                kmFunction = metadata.getFunctionMetadata(
+                    element.getDeclaredMethod("getInternalProp\$main")
+                ),
+                name = "getInternalProp",
+                jvmName = "getInternalProp\$main",
+                returnsNullable = true
+            )
+            assertSetter(
+                metadata = metadata,
+                method = element.getDeclaredMethod("setInternalProp\$main"),
+                name = "setInternalProp",
+                jvmName = "setInternalProp\$main",
+                paramNullable = true
+            )
+            assertGetter(
+                kmFunction = metadata.getFunctionMetadata(
+                    element.getDeclaredMethod("isInternalProp2\$main")
+                ),
+                name = "isInternalProp2",
+                jvmName = "isInternalProp2\$main",
+                returnsNullable = false
+            )
+            assertSetter(
+                metadata = metadata,
+                method = element.getDeclaredMethod("setInternalProp2\$main"),
+                name = "setInternalProp2",
+                jvmName = "setInternalProp2\$main",
+                paramNullable = false
+            )
+            // read custom setter name properly
+            metadata.getFunctionMetadata(
+                element.getDeclaredMethod("setCustomSetter")
+            ).let { kmFunction ->
+                checkNotNull(kmFunction)
+                assertThat(
+                    kmFunction.parameters.single().name
+                ).isEqualTo("myValue")
+            }
+            // tests value class properties. They won't show up in KAPT stubs since they don't have
+            // valid java source names but we still validate them here for consistency. Maybe one
+            // day we'll change Javac element to include these if we support Kotlin codegen in KAPT
+            metadata.getPropertyMetadata(
+                element.getDeclaredField("valueProp")
+            ).let { valueProp ->
+                assertGetter(
+                    kmFunction = valueProp?.getter,
+                    name = "getValueProp",
+                    jvmName = "getValueProp-4LjoGxk",
+                    returnsNullable = true
+                )
+                assertSetter(
+                    kmFunction = valueProp?.setter,
+                    name = "setValueProp",
+                    jvmName = "setValueProp-d8IPsTA",
+                    paramNullable = true
+                )
+            }
+            metadata.getPropertyMetadata(
+                element.getDeclaredField("internalValueProp")
+            ).let { valueProp ->
+                assertGetter(
+                    kmFunction = valueProp?.getter,
+                    name = "getInternalValueProp",
+                    jvmName = "getInternalValueProp-NMFyIOA\$main",
+                    returnsNullable = false
+                )
+                assertSetter(
+                    kmFunction = valueProp?.setter,
+                    name = "setInternalValueProp",
+                    jvmName = "setInternalValueProp-FVOWAsA\$main",
+                    paramNullable = false
+                )
+            }
+        }
+    }
+
+    @Test
+    fun internalMethodName() {
+        val src = Source.kotlin(
+            "Kotlin.kt",
+            """
+            class Subject {
+                internal fun internalFun() {}
+                fun normalFun() {}
+                // there is no test case for functions receiving/returning value classes because
+                // they are not visible through KAPT
+            }
+        """.trimIndent()
+        )
+        simpleRun(listOf(src)) { env ->
+            val (element, metadata) = getMetadataElement(
+                env,
+                "Subject"
+            )
+            metadata.getFunctionMetadata(
+                element.getDeclaredMethod("internalFun\$main")
+            ).let { functionMetadata ->
+                assertThat(
+                    functionMetadata?.jvmName
+                ).isEqualTo("internalFun\$main")
+                assertThat(
+                    functionMetadata?.name
+                ).isEqualTo("internalFun")
+            }
+
+            metadata.getFunctionMetadata(
+                element.getDeclaredMethod("normalFun")
+            ).let { functionMetadata ->
+                assertThat(
+                    functionMetadata?.jvmName
+                ).isEqualTo("normalFun")
+                assertThat(
+                    functionMetadata?.name
+                ).isEqualTo("normalFun")
             }
         }
     }
@@ -326,12 +591,12 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
+        simpleRun(listOf(src)) { env ->
             val (testDaoElement, testDaoMetadata) = getMetadataElement(
-                invocation,
+                env,
                 "Subject"
             )
-            fun assertParams(params: List<KmValueParameter>?) {
+            fun assertParams(params: List<KmValueParameterContainer>?) {
                 assertThat(
                     params?.map {
                         Triple(
@@ -365,17 +630,17 @@ class KotlinMetadataElementTest {
         val src = Source.kotlin(
             "Subject.kt",
             """
-            interface Subject {
-                val nullableArrayWithNonNullComponent : Array<Int>?
-                val nullableArrayWithNullableComponent : Array<Int?>?
-                val nonNullArrayWithNonNullComponent : Array<Int>
-                val nonNullArrayWithNullableComponent : Array<Int?>
+            class Subject {
+                val nullableArrayWithNonNullComponent : Array<Int>? = TODO()
+                val nullableArrayWithNullableComponent : Array<Int?>? = TODO()
+                val nonNullArrayWithNonNullComponent : Array<Int> = TODO()
+                val nonNullArrayWithNullableComponent : Array<Int?> = TODO()
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
-            val (_, metadata) = getMetadataElement(
-                invocation,
+        simpleRun(listOf(src)) { env ->
+            val (typeElement, metadata) = getMetadataElement(
+                env,
                 "Subject"
             )
             val propertyNames = listOf(
@@ -386,7 +651,7 @@ class KotlinMetadataElementTest {
             )
             assertThat(
                 propertyNames
-                    .mapNotNull(metadata::getPropertyMetadata)
+                    .mapNotNull { metadata.getPropertyMetadata(typeElement.getDeclaredField(it)) }
                     .map {
                         Triple(it.name, it.isNullable(), it.typeParameters.single().isNullable())
                     }
@@ -417,23 +682,27 @@ class KotlinMetadataElementTest {
             abstract class WithSuperType : Map<String, Int?> {}
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
-            val (_, simple) = getMetadataElement(invocation, "Simple")
-            assertThat(simple.kmType.isNullable()).isFalse()
-            assertThat(simple.kmType.typeArguments).isEmpty()
+        simpleRun(listOf(src)) { env ->
+            val (_, simple) = getMetadataElement(env, "Simple")
+            assertThat(simple.type.isNullable()).isFalse()
+            assertThat(simple.type.typeArguments).isEmpty()
 
-            val (_, twoArgGeneric) = getMetadataElement(invocation, "TwoArgGeneric")
-            assertThat(twoArgGeneric.kmType.isNullable()).isFalse()
-            assertThat(twoArgGeneric.kmType.typeArguments).hasSize(2)
-            assertThat(twoArgGeneric.kmType.typeArguments[0].isNullable()).isFalse()
-            assertThat(twoArgGeneric.kmType.typeArguments[1].isNullable()).isFalse()
+            val (_, twoArgGeneric) = getMetadataElement(env, "TwoArgGeneric")
+            assertThat(twoArgGeneric.type.isNullable()).isFalse()
+            assertThat(twoArgGeneric.type.typeArguments).hasSize(2)
+            assertThat(twoArgGeneric.type.typeArguments[0].isNullable()).isFalse()
+            assertThat(twoArgGeneric.type.typeArguments[1].isNullable()).isFalse()
 
-            val (_, withUpperBounds) = getMetadataElement(invocation, "WithUpperBounds")
-            assertThat(withUpperBounds.kmType.typeArguments).hasSize(2)
-            assertThat(withUpperBounds.kmType.typeArguments[0].extendsBound?.isNullable()).isFalse()
-            assertThat(withUpperBounds.kmType.typeArguments[1].extendsBound?.isNullable()).isTrue()
+            val (_, withUpperBounds) = getMetadataElement(env, "WithUpperBounds")
+            assertThat(withUpperBounds.type.typeArguments).hasSize(2)
+            assertThat(withUpperBounds.type.typeArguments[0].upperBounds).hasSize(1)
+            assertThat(withUpperBounds.type.typeArguments[0].upperBounds[0].isNullable())
+                .isFalse()
+            assertThat(withUpperBounds.type.typeArguments[1].upperBounds).hasSize(1)
+            assertThat(withUpperBounds.type.typeArguments[1].upperBounds[0].isNullable())
+                .isTrue()
 
-            val (_, withSuperType) = getMetadataElement(invocation, "WithSuperType")
+            val (_, withSuperType) = getMetadataElement(env, "WithSuperType")
             assertThat(withSuperType.superType?.typeArguments?.get(0)?.isNullable()).isFalse()
             assertThat(withSuperType.superType?.typeArguments?.get(1)?.isNullable()).isTrue()
         }
@@ -451,17 +720,23 @@ class KotlinMetadataElementTest {
             }
             """.trimIndent()
         )
-        simpleRun(listOf(src)) { invocation ->
-            val (_, subject) = getMetadataElement(invocation, "Subject")
-            subject.getPropertyMetadata("simple")!!.type.erasure().let {
+        simpleRun(listOf(src)) { env ->
+            val (typeElement, subject) = getMetadataElement(env, "Subject")
+            subject.getPropertyMetadata(
+                typeElement.getDeclaredField("simple")
+            )!!.type.erasure().let {
                 assertThat(it.isNullable()).isFalse()
                 assertThat(it.typeArguments).isEmpty()
             }
-            subject.getPropertyMetadata("nullableGeneric")!!.type.erasure().let {
+            subject.getPropertyMetadata(
+                typeElement.getDeclaredField("nullableGeneric")
+            )!!.type.erasure().let {
                 assertThat(it.isNullable()).isTrue()
                 assertThat(it.typeArguments).isEmpty()
             }
-            subject.getPropertyMetadata("nonNullGeneric")!!.type.erasure().let {
+            subject.getPropertyMetadata(
+                typeElement.getDeclaredField("nonNullGeneric")
+            )!!.type.erasure().let {
                 assertThat(it.isNullable()).isFalse()
                 assertThat(it.typeArguments).isEmpty()
             }
@@ -470,6 +745,9 @@ class KotlinMetadataElementTest {
 
     @Test
     fun withoutKotlinInClasspath() {
+        if (preCompiled) {
+            throw AssumptionViolatedException("this test doesn't care for precompiled code")
+        }
         val libSource = Source.kotlin(
             "lib.kt",
             """
@@ -490,10 +768,205 @@ class KotlinMetadataElementTest {
         ) { invocation ->
             val (_, metadata) =
                 getMetadataElement(
-                    (invocation.processingEnv as JavacProcessingEnv).delegate,
+                    invocation.processingEnv as JavacProcessingEnv,
                     "KotlinClass"
                 )
             assertThat(metadata).isNotNull()
+        }
+    }
+
+    @Test
+    fun methods_localNestingKind() {
+        // Only private functions are relevant to the test since public (or internal) functions
+        // are required to declare their return type explicitly when right-hand side is ambiguous.
+        // b/232742201
+        val src = Source.kotlin(
+            "Subject.kt",
+            """
+            object Subject {
+                private fun localA() = object : A { }
+                private fun localAB() = object : A, B { }
+                private fun localABC() = object : C(), A, B { }
+                private fun localC() = object : C() { }
+                private fun localAC() = object : C(), A { }
+                private fun localAB_declaredA(): A = object : A, B { }
+                private fun localAB_declaredB(): B = object : A, B { }
+                private fun localABC_declaredC(): C = object : C(), A, B { }
+            }
+            interface A
+            interface B
+            abstract class C
+            """.trimIndent()
+        )
+        simpleRun(listOf(src)) { env ->
+            val (subjectElement, subjectMetadata) = getMetadataElement(env, "Subject")
+            fun assertKmFunctionFound(functionName: String) {
+                val kmFunction = subjectMetadata.getFunctionMetadata(
+                    subjectElement.getDeclaredMethod(functionName)
+                )
+                assertThat(kmFunction).isNotNull()
+            }
+            subjectElement.getDeclaredMethods().forEach {
+                assertKmFunctionFound(it.simpleName.toString())
+            }
+        }
+    }
+
+    @Test
+    fun properties_anonymousNestingKind() {
+        // Only private functions are relevant to the test since public (or internal) properties
+        // are required to declare their type explicitly when right-hand side is ambiguous.
+        // b/232742201
+        val src = Source.kotlin(
+            "Subject.kt",
+            """
+            class Subject {
+                private val lazyA by lazy {
+                    object: A { }
+                }
+                private val lazyAB by lazy {
+                    object: A, B { }
+                }
+                private val lazyABC by lazy {
+                    object: C(), A, B { }
+                }
+                private val lazyC by lazy {
+                    object: C() { }
+                }
+                private val lazyAC by lazy {
+                    object: C(), A { }
+                }
+                private val lazyAB_declaredA: A by lazy {
+                    object: A, B { }
+                }
+                private val lazyAB_declaredB: B by lazy {
+                    object: A, B { }
+                }
+                private val lazyABC_declaredC: C by lazy {
+                    object: C(), A { }
+                }
+            }
+
+            interface A
+            interface B
+            abstract class C
+            """.trimIndent()
+        )
+        simpleRun(
+            sources = listOf(src)
+        ) { env ->
+            val subject = env.requireTypeElement("Subject")
+            subject.getDeclaredFields().forEach {
+                assertThat(it.getter).isNotNull()
+            }
+            subject.getDeclaredMethods().forEach {
+                assertThat(it.isKotlinPropertyMethod()).isTrue()
+            }
+        }
+    }
+
+    @Test
+    fun ignore_syntheticMetadata_defaultImpls() {
+        val src = Source.kotlin(
+            "Subject.kt",
+            """
+            interface Subject {
+              fun instance(): String = "Hello"
+            }
+            """.trimIndent()
+        )
+        simpleRun(
+            sources = listOf(src),
+            kotlincArgs = listOf("-Xjvm-default=disable")
+        ) { env ->
+            val subjectElement = env.requireTypeElement("Subject.DefaultImpls")
+            // Call metadata derived API causing it to be read
+            assertThat(subjectElement.isKotlinObject()).isFalse()
+            assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun ignore_syntheticMetadata_whenMappings() {
+        val src = Source.kotlin(
+            "Subject.kt",
+            """
+            class Subject {
+              enum class Fruit {
+                APPLE,
+                STRAWBERRY
+              }
+
+              fun printName(fruit: Fruit) {
+                println(
+                  when(fruit) {
+                    Fruit.APPLE -> "manzana"
+                    Fruit.STRAWBERRY -> "fresa"
+                  }
+                )
+              }
+            }
+            """.trimIndent()
+        )
+        simpleRun(
+            sources = listOf(src),
+        ) { env ->
+            assertThat(env.findTypeElement("Subject.Fruit")).isNotNull()
+            val subjectElement = env.findTypeElement("Subject.WhenMappings")
+                // Currently $WhenMapping has the ACC_SYNTHETIC flag making it unreadable by
+                // annotation processors making it impossible to verify synthetic metadata is
+                // ignored.
+                ?: throw AssumptionViolatedException("No test if WhenMappings is not found")
+            // Call metadata derived API causing it to be read
+            assertThat(subjectElement.isKotlinObject()).isFalse()
+            assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun ignore_fileFacadeMetadata() {
+        val aSrc = Source.kotlin(
+            "A.kt",
+            """
+            @file:JvmMultifileClass
+            @file:JvmName("Subject")
+
+            fun a() { }
+            """.trimIndent()
+        )
+        val bSrc = Source.kotlin(
+            "B.kt",
+            """
+            @file:JvmMultifileClass
+            @file:JvmName("Subject")
+
+            fun b() { }
+            """.trimIndent()
+        )
+        simpleRun(
+            sources = listOf(aSrc, bSrc),
+        ) { env ->
+            // Find the multi file class facade element
+            val facadeElement = env.requireTypeElement("Subject")
+            // Call metadata derived API causing it to be read
+            assertThat(facadeElement.isKotlinObject()).isFalse()
+
+            // Try to find the multi file class part elements, currently these classes have the
+            // ACC_SYNTHETIC flag making them unreadable by annotation processors and impossible to
+            // verify that multi file metadata is ignored.
+            val facadePartOne = env.findTypeElement("Subject__AKt")
+                ?: throw AssumptionViolatedException("No test if MultiFileClassPart is not found")
+            assertThat(facadePartOne.isKotlinObject()).isFalse()
+            val facadePartTwo = env.findTypeElement("Subject__BKt")
+                ?: throw AssumptionViolatedException("No test if MultiFileClassPart is not found")
+            assertThat(facadePartTwo.isKotlinObject()).isFalse()
+            assertCompilationResult {
+                hasNoWarnings()
+            }
         }
     }
 
@@ -503,23 +976,43 @@ class KotlinMetadataElementTest {
         it.simpleName.toString() == name
     }
 
+    private fun TypeElement.getDeclaredField(name: String) =
+        ElementFilter.fieldsIn(enclosedElements).first { it.simpleName.toString() == name }
+
     private fun TypeElement.getConstructors() = ElementFilter.constructorsIn(enclosedElements)
 
+    @Suppress("NAME_SHADOWING") // intentional
     private fun simpleRun(
         sources: List<Source> = emptyList(),
-        handler: (ProcessingEnvironment) -> Unit
+        kotlincArgs: List<String> = emptyList(),
+        handler: XTestInvocation.(JavacProcessingEnv) -> Unit
     ) {
-        runKaptTest(sources) {
-            val processingEnv = it.processingEnv
-            if (processingEnv !is JavacProcessingEnv) {
+        val (sources, classpath) = if (preCompiled) {
+            emptyList<Source>() to compileFiles(sources)
+        } else {
+            sources to emptyList()
+        }
+        runKaptTest(
+            sources = sources,
+            classpath = classpath,
+            kotlincArguments = kotlincArgs
+        ) {
+            val env = it.processingEnv
+            if (env !is JavacProcessingEnv) {
                 throw AssumptionViolatedException("This test only works for java/kapt compilation")
             }
-            handler(processingEnv.delegate)
+            it.handler(env)
         }
     }
 
-    private fun getMetadataElement(processingEnv: ProcessingEnvironment, qName: String) =
-        processingEnv.elementUtils.getTypeElement(qName).let {
-            it to KotlinMetadataElement.createFor(it)!!
+    private fun getMetadataElement(env: JavacProcessingEnv, qName: String) =
+        env.elementUtils.getTypeElement(qName).let {
+            it to KmClassContainer.createFor(env, it)!!
         }
+
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "preCompiled_{0}")
+        fun params() = arrayOf(false, true)
+    }
 }

@@ -18,25 +18,15 @@ package androidx.room.solver.binderprovider
 
 import androidx.room.compiler.processing.XType
 import androidx.room.ext.KotlinTypeNames
-import androidx.room.ext.RoomCoroutinesTypeNames
 import androidx.room.parser.ParsedQuery
 import androidx.room.processor.Context
 import androidx.room.processor.ProcessorErrors
 import androidx.room.solver.QueryResultBinderProvider
+import androidx.room.solver.TypeAdapterExtras
 import androidx.room.solver.query.result.CoroutineFlowResultBinder
 import androidx.room.solver.query.result.QueryResultBinder
 
-@Suppress("FunctionName")
-fun CoroutineFlowResultBinderProvider(context: Context): QueryResultBinderProvider =
-    CoroutineFlowResultBinderProviderImpl(
-        context
-    ).requireArtifact(
-        context = context,
-        requiredType = RoomCoroutinesTypeNames.COROUTINES_ROOM,
-        missingArtifactErrorMsg = ProcessorErrors.MISSING_ROOM_COROUTINE_ARTIFACT
-    )
-
-private class CoroutineFlowResultBinderProviderImpl(
+class CoroutineFlowResultBinderProvider(
     val context: Context
 ) : QueryResultBinderProvider {
     companion object {
@@ -47,9 +37,13 @@ private class CoroutineFlowResultBinderProviderImpl(
         )
     }
 
-    override fun provide(declared: XType, query: ParsedQuery): QueryResultBinder {
+    override fun provide(
+        declared: XType,
+        query: ParsedQuery,
+        extras: TypeAdapterExtras
+    ): QueryResultBinder {
         val typeArg = declared.typeArguments.first()
-        val adapter = context.typeAdapterStore.findQueryResultAdapter(typeArg, query)
+        val adapter = context.typeAdapterStore.findQueryResultAdapter(typeArg, query, extras)
         val tableNames = (
             (adapter?.accessedTableNames() ?: emptyList()) +
                 query.tables.map { it.name }
@@ -64,9 +58,13 @@ private class CoroutineFlowResultBinderProviderImpl(
         if (declared.typeArguments.size != 1) {
             return false
         }
-        val typeName = declared.rawType.typeName
+        val typeName = declared.rawType.asTypeName()
         if (typeName in CHANNEL_TYPE_NAMES) {
-            context.logger.e(ProcessorErrors.invalidChannelType(typeName.toString()))
+            context.logger.e(
+                ProcessorErrors.invalidChannelType(
+                    typeName.toString(context.codeLanguage)
+                )
+            )
             return false
         }
         return typeName == KotlinTypeNames.FLOW

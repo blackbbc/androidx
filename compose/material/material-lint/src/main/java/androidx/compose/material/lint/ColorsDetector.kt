@@ -19,8 +19,8 @@
 package androidx.compose.material.lint
 
 import androidx.compose.lint.Name
-import androidx.compose.lint.Package
 import androidx.compose.lint.isInPackageName
+import androidx.compose.material.lint.MaterialNames.Material
 import com.android.tools.lint.client.api.UElementHandler
 import com.android.tools.lint.detector.api.Category
 import com.android.tools.lint.detector.api.Detector
@@ -33,6 +33,7 @@ import com.android.tools.lint.detector.api.SourceCodeScanner
 import com.android.tools.lint.detector.api.UastLintUtils
 import com.intellij.psi.PsiParameter
 import com.intellij.psi.PsiVariable
+import java.util.EnumSet
 import org.jetbrains.kotlin.asJava.elements.KtLightParameter
 import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UElement
@@ -40,7 +41,6 @@ import org.jetbrains.uast.UExpression
 import org.jetbrains.uast.toUElement
 import org.jetbrains.uast.tryResolve
 import org.jetbrains.uast.util.isConstructorCall
-import java.util.EnumSet
 
 /**
  * [Detector] that checks `Colors` definitions for correctness.
@@ -55,7 +55,7 @@ class ColorsDetector : Detector(), SourceCodeScanner {
     override fun createUastHandler(context: JavaContext) = object : UElementHandler() {
         override fun visitCallExpression(node: UCallExpression) {
             val method = node.resolve() ?: return
-            if (!method.isInPackageName(MaterialPackageName)) return
+            if (!method.isInPackageName(Material.PackageName)) return
 
             if (node.isConstructorCall()) {
                 if (method.containingClass?.name != Colors.shortName) return
@@ -229,7 +229,6 @@ private val OnColorMap = mapOf(
     "error" to "onError"
 )
 
-private val MaterialPackageName = Package("androidx.compose.material")
-private val LightColors = Name(MaterialPackageName, "lightColors")
-private val DarkColors = Name(MaterialPackageName, "darkColors")
-private val Colors = Name(MaterialPackageName, "Colors")
+private val LightColors = Name(Material.PackageName, "lightColors")
+private val DarkColors = Name(Material.PackageName, "darkColors")
+private val Colors = Name(Material.PackageName, "Colors")

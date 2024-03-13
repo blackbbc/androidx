@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.Publish
-import androidx.build.RunApiTasks
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.LibraryType
 
 plugins {
     id("AndroidXPlugin")
@@ -26,29 +31,36 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin "androidx.compose.compiler:compiler:1.0.0-rc01"
 
     implementation(libs.kotlinStdlib)
-    api "androidx.compose.runtime:runtime:1.0.0-rc01"
-    api "androidx.compose.runtime:runtime-saveable:1.0.0-rc01"
+    api("androidx.compose.runtime:runtime:1.0.1")
+    api("androidx.compose.runtime:runtime-saveable:1.0.1")
     api(projectOrArtifact(":activity:activity-ktx"))
-    api("androidx.compose.ui:ui:1.0.0-rc01")
+    api("androidx.lifecycle:lifecycle-viewmodel:2.6.1")
+    api("androidx.compose.ui:ui:1.0.1")
 
     androidTestImplementation projectOrArtifact(":compose:ui:ui-test-junit4")
     androidTestImplementation projectOrArtifact(":compose:material:material")
-    androidTestImplementation projectOrArtifact(":compose:test-utils")
-    androidTestImplementation("androidx.lifecycle:lifecycle-runtime-testing:2.3.1")
+    androidTestImplementation project(":compose:test-utils")
+    androidTestImplementation projectOrArtifact(":lifecycle:lifecycle-runtime-testing")
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.testExtJunitKtx)
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.truth)
+
+    lintChecks(projectOrArtifact(":activity:activity-compose-lint"))
+    lintPublish(projectOrArtifact(":activity:activity-compose-lint"))
 }
 
 androidx {
     name = "Activity Compose"
-    publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.ACTIVITY
+    type = LibraryType.PUBLISHED_KOTLIN_ONLY_LIBRARY
     inceptionYear = "2020"
     description = "Compose integration with Activity"
-    runApiTasks = new RunApiTasks.Yes()
+    metalavaK2UastEnabled = true
+    samples(projectOrArtifact(":activity:activity-compose:activity-compose-samples"))
+}
+
+android {
+    namespace "androidx.activity.compose"
 }

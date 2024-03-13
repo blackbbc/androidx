@@ -22,7 +22,9 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.wear.tiles.TileProvider
-import androidx.wear.tiles.TileProviderService
+import androidx.wear.tiles.TileService
+import java.util.concurrent.TimeUnit.SECONDS
+import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -36,8 +38,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.TimeUnit.SECONDS
-import kotlin.coroutines.resume
 
 /**
  * Connection binder for Tiles. This will connect to a {@link TileProvider} (with a timeout), and
@@ -135,7 +135,7 @@ internal class TilesConnectionBinder(
     private suspend fun connectToService(): TileProvider = coroutineScope {
         val bindJob = async(backgroundCoroutineDispatcher) {
             suspendCancellableCoroutine<TileProvider> { continuation ->
-                val bindIntent = Intent(TileProviderService.ACTION_BIND_TILE_PROVIDER)
+                val bindIntent = Intent(TileService.ACTION_BIND_TILE_PROVIDER)
                 bindIntent.component = componentName
 
                 val myConnection = object : ServiceConnection {

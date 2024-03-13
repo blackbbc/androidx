@@ -21,70 +21,148 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
-import androidx.camera.core.impl.utils.executor.CameraXExecutors
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.core.CameraEffect
+import androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+import androidx.camera.core.CameraSelector.DEFAULT_FRONT_CAMERA
+import androidx.camera.core.CameraSelector.LENS_FACING_BACK
+import androidx.camera.core.CameraSelector.LENS_FACING_FRONT
+import androidx.camera.view.CameraController
+import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Button
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.LifecycleOwner
 
+/**
+ * A fragment that demonstrates how to use [ComposeView] to display a [PreviewView].
+ */
 class ComposeUiFragment : Fragment() {
+
+    private var currentScaleType = PreviewView.ScaleType.FILL_CENTER
+
+    private lateinit var cameraController: LifecycleCameraController
+    private lateinit var toneMappingEffect: ToneMappingSurfaceEffect
+    private var hasEffect = false
+    private var lensFacing = LENS_FACING_BACK
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        val cameraProvider = ProcessCameraProvider.getInstance(requireContext()).get()
+    ): View {
+        val bundle: Bundle? = requireActivity().intent.extras
+        if (bundle != null) {
+            val scaleTypeId = bundle.getInt(
+                MainActivity.INTENT_EXTRA_SCALE_TYPE,
+                MainActivity.DEFAULT_SCALE_TYPE_ID
+            )
+            currentScaleType = PreviewView.ScaleType.values()[scaleTypeId]
+        }
         val previewView = PreviewView(requireContext())
+        previewView.scaleType = currentScaleType
 
-        return ComposeView(requireContext()).apply {
-            setContent {
-                addPreviewView(
-                    cameraProvider,
-                    previewView
-                )
-            }
+        toneMappingEffect = ToneMappingSurfaceEffect(
+            CameraEffect.PREVIEW or CameraEffect.VIDEO_CAPTURE
+        )
+
+        cameraController = LifecycleCameraController(requireContext())
+        cameraController.setEnabledUseCases(
+            CameraController.VIDEO_CAPTURE or CameraController.IMAGE_CAPTURE
+        )
+        previewView.controller = cameraController
+        cameraController.bindToLifecycle(viewLifecycleOwner)
+
+        return ComposeView(requireContext()).apply { setContent { AddPreviewView(previewView) } }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        toneMappingEffect.release()
+    }
+
+    private fun onToggleCamera() {
+        cameraController.cameraSelector = if (lensFacing == LENS_FACING_BACK) {
+            lensFacing = LENS_FACING_FRONT
+            DEFAULT_FRONT_CAMERA
+        } else {
+            lensFacing = LENS_FACING_BACK
+            DEFAULT_BACK_CAMERA
         }
     }
 
+    private fun onToggleEffect() {
+        hasEffect = if (hasEffect) {
+            cameraController.clearEffects()
+            false
+        } else {
+            cameraController.setEffects(setOf(toneMappingEffect))
+            true
+        }
+    }
+
+    private fun onTakePicture() {
+        TODO("Not yet implemented")
+    }
+
+    private fun onRecord() {
+        TODO("Not yet implemented")
+    }
+
     @Composable
-    private fun addPreviewView(cameraProvider: ProcessCameraProvider, previewView: PreviewView) {
+    private fun AddPreviewView(previewView: PreviewView) {
         previewView.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
-        previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
-
-        AndroidView(
-            factory = { _ ->
-                previewView
+        Box(modifier = Modifier.fillMaxSize()) {
+            AndroidView(
+                factory = {
+                    previewView
+                }
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround
+                    // Distribute buttons with spacing
+                ) {
+                    Button(
+                        onClick = ::onToggleEffect,
+                    ) {
+                        Text("Effect")
+                    }
+                    Button(onClick = ::onToggleCamera) {
+                        Text("Toggle")
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    Button(onClick = ::onTakePicture) { Text("Capture") }
+                    Button(onClick = ::onRecord) { Text("Record") }
+                }
             }
-        )
-
-        CameraXExecutors.mainThreadExecutor().execute(
-            Runnable {
-                bindPreview(cameraProvider, this, previewView)
-            }
-        )
-    }
-
-    private fun bindPreview(
-        cameraProvider: ProcessCameraProvider,
-        lifecycleOwner: LifecycleOwner,
-        previewView: PreviewView,
-    ) {
-        val preview: Preview = Preview.Builder()
-            .build()
-
-        val cameraSelector: CameraSelector = CameraSelector.Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-            .build()
-
-        preview.setSurfaceProvider(previewView.surfaceProvider)
-        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+        }
     }
 }

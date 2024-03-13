@@ -18,26 +18,23 @@ package androidx.room.compiler.processing.javac
 
 import androidx.room.compiler.processing.XMethodElement
 import androidx.room.compiler.processing.XMethodType
+import androidx.room.compiler.processing.XProcessingEnv
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
-import androidx.room.compiler.processing.XVariableElement
-import androidx.room.compiler.processing.javac.kotlin.KmFunction
+import androidx.room.compiler.processing.XTypeParameterElement
+import androidx.room.compiler.processing.javac.kotlin.KmFunctionContainer
 import com.google.auto.common.MoreElements
 import com.google.auto.common.MoreTypes
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.Modifier
 import javax.lang.model.element.TypeElement
+import javax.lang.model.type.TypeVariable
 
 internal class JavacMethodElement(
     env: JavacProcessingEnv,
-    containing: JavacTypeElement,
     element: ExecutableElement
-) : JavacExecutableElement(
-    env,
-    containing,
-    element
-),
+) : JavacExecutableElement(env, element),
     XMethodElement {
     init {
         check(element.kind == ElementKind.METHOD) {
@@ -45,31 +42,54 @@ internal class JavacMethodElement(
         }
     }
 
-    override val name: String
-        get() = element.simpleName.toString()
-
-    override val enclosingElement: XTypeElement by lazy {
-        element.requireEnclosingType(env)
+    override val propertyName: String? by lazy {
+        if (isKotlinPropertyMethod()) kotlinMetadata?.propertyName else null
     }
 
-    override val kotlinMetadata: KmFunction? by lazy {
+    override val name: String by lazy {
+        kotlinMetadata?.name ?: jvmName
+    }
+
+    override val jvmName: String
+        get() = element.simpleName.toString()
+
+    override val typeParameters: List<XTypeParameterElement> by lazy {
+        element.typeParameters.mapIndexed { index, typeParameter ->
+            val typeParameterMetadata = kotlinMetadata?.typeParameters?.get(index)
+            JavacTypeParameterElement(env, this, typeParameter, typeParameterMetadata)
+        }
+    }
+
+    override val parameters: List<JavacMethodParameter> by lazy {
+        element.parameters.mapIndexed { index, variable ->
+            JavacMethodParameter(
+                env = env,
+                enclosingElement = this,
+                element = variable,
+                kotlinMetadataFactory = {
+                    val metadataParamIndex = if (isExtensionFunction()) index - 1 else index
+                    kotlinMetadata?.parameters?.getOrNull(metadataParamIndex)
+                },
+                argIndex = index
+            )
+        }
+    }
+
+    override val kotlinMetadata: KmFunctionContainer? by lazy {
         (enclosingElement as? JavacTypeElement)?.kotlinMetadata?.getFunctionMetadata(element)
     }
 
     override val executableType: JavacMethodType by lazy {
-        val asMemberOf = env.typeUtils.asMemberOf(containing.type.typeMirror, element)
         JavacMethodType.create(
             env = env,
             element = this,
-            executableType = MoreTypes.asExecutable(asMemberOf)
+            executableType = MoreTypes.asExecutable(element.asType())
         )
     }
 
     override val returnType: JavacType by lazy {
-        val asMember = env.typeUtils.asMemberOf(containing.type.typeMirror, element)
-        val asExec = MoreTypes.asExecutable(asMember)
-        env.wrap<JavacType>(
-            typeMirror = asExec.returnType,
+        env.wrap(
+            typeMirror = element.returnType,
             kotlinType = if (isSuspendFunction()) {
                 // Don't use Kotlin metadata for suspend functions since we want the Java
                 // perspective. In Java, a suspend function returns Object and contains an extra
@@ -83,8 +103,12 @@ internal class JavacMethodElement(
         )
     }
 
+    val defaultValue: JavacAnnotationValue? = element.defaultValue?.let {
+        JavacAnnotationValue(env, this, element.defaultValue, returnType)
+    }
+
     override fun asMemberOf(other: XType): XMethodType {
-        return if (other !is JavacDeclaredType || containing.type.isSameType(other)) {
+        return if (other !is JavacDeclaredType || enclosingElement.type.isSameType(other)) {
             executableType
         } else {
             val asMemberOf = env.typeUtils.asMemberOf(other.typeMirror, element)
@@ -98,44 +122,56 @@ internal class JavacMethodElement(
 
     override fun isJavaDefault() = element.modifiers.contains(Modifier.DEFAULT)
 
-    override fun isSuspendFunction() = kotlinMetadata?.isSuspend() == true
+    override fun isSuspendFunction() = kotlinMetadata?.isSuspend == true
+
+    override fun isExtensionFunction() = kotlinMetadata?.isExtension() == true
 
     override fun overrides(other: XMethodElement, owner: XTypeElement): Boolean {
         check(other is JavacMethodElement)
         check(owner is JavacTypeElement)
-        return env.elementUtils.overrides(element, other.element, owner.element)
-    }
-
-    override fun copyTo(newContainer: XTypeElement): XMethodElement {
-        check(newContainer is JavacTypeElement)
-        return JavacMethodElement(
-            env = env,
-            containing = newContainer,
-            element = element
-        )
+        if (
+            env.backend == XProcessingEnv.Backend.JAVAC &&
+            this.isSuspendFunction() &&
+            other.isSuspendFunction()
+        ) {
+            // b/222240938 - Special case suspend functions in KAPT
+            return suspendOverrides(element, other.element, owner.element, env.typeUtils)
+        }
+        // Use auto-common's overrides, which provides consistency across javac and ejc (Eclipse).
+        return MoreElements.overrides(element, other.element, owner.element, env.typeUtils)
     }
 
     override fun hasKotlinDefaultImpl(): Boolean {
         fun paramsMatch(
-            ourParams: List<XVariableElement>,
-            theirParams: List<XVariableElement>
+            ourParams: List<JavacMethodParameter>,
+            theirParams: List<JavacMethodParameter>
         ): Boolean {
             if (ourParams.size != theirParams.size - 1) {
                 return false
             }
-            ourParams.forEachIndexed { i, variableElement ->
+            return (ourParams.indices).all { paramIndex ->
                 // Plus 1 to their index because their first param is a self object.
-                if (!theirParams[i + 1].type.isSameType(
-                        variableElement.type
-                    )
-                ) {
-                    return false
+                // We specifically use `asType` here instead of XVariableElement.type because
+                // we want to ignore the containing type (so that generics etc are NOT resolved to
+                // the containing type)
+                val theirParamType = theirParams[paramIndex + 1].element.asType()
+                val ourParamType = ourParams[paramIndex].element.asType()
+                if (env.typeUtils.isSameType(ourParamType, theirParamType)) {
+                    true
+                } else {
+                    // if isSameType returns false, check for generics. b/199888180
+                    val ourTypeVar = ourParamType as? TypeVariable
+                    val theirTypeVar = theirParamType as? TypeVariable
+                    ourTypeVar != null && theirTypeVar != null &&
+                        env.typeUtils.isSameType(
+                            ourTypeVar.lowerBound,
+                            theirTypeVar.lowerBound
+                        )
                 }
             }
-            return true
         }
         return kotlinDefaultImplClass?.getDeclaredMethods()?.any {
-            it.name == this.name && paramsMatch(parameters, it.parameters)
+            it.jvmName == this.jvmName && paramsMatch(parameters, it.parameters)
         } ?: false
     }
 
@@ -149,4 +185,10 @@ internal class JavacMethodElement(
             env.wrapTypeElement(it)
         }
     }
+
+    override fun isKotlinPropertyMethod() = kotlinMetadata?.isPropertyFunction() ?: false
+
+    override fun isKotlinPropertySetter() = kotlinMetadata?.isPropertySetter() ?: false
+
+    override fun isKotlinPropertyGetter() = kotlinMetadata?.isPropertyGetter() ?: false
 }

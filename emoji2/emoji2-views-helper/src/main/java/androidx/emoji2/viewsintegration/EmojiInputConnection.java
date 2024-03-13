@@ -23,7 +23,6 @@ import android.widget.TextView;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.emoji2.text.EmojiCompat;
 
@@ -34,10 +33,8 @@ import androidx.emoji2.text.EmojiCompat;
  * <p/>
  * This class tries to correctly delete an emoji checking if there is an emoji span.
  *
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
-@RequiresApi(19)
 final class EmojiInputConnection extends InputConnectionWrapper {
     private final TextView mTextView;
     private final EmojiCompatDeleteHelper mEmojiCompatDeleteHelper;
@@ -93,7 +90,7 @@ final class EmojiInputConnection extends InputConnectionWrapper {
 
         public void updateEditorInfoAttrs(@NonNull final EditorInfo outAttrs) {
             if (EmojiCompat.isConfigured()) {
-                EmojiCompat.get().updateEditorInfoAttrs(outAttrs);
+                EmojiCompat.get().updateEditorInfo(outAttrs);
             }
         }
     }

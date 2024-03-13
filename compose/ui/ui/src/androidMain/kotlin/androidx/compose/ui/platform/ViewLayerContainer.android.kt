@@ -19,8 +19,8 @@ package androidx.compose.ui.platform
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.ui.R
 import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.R
 import androidx.compose.ui.graphics.nativeCanvas
 
 /**
@@ -44,6 +44,8 @@ internal class ViewLayerContainer(context: Context) : DrawChildContainer(context
  * The container we will use for [ViewLayer]s when [ViewLayer.shouldUseDispatchDraw] is true.
  */
 internal open class DrawChildContainer(context: Context) : ViewGroup(context) {
+    private var isDrawing = false
+
     init {
         clipChildren = false
 
@@ -60,12 +62,17 @@ internal open class DrawChildContainer(context: Context) : ViewGroup(context) {
         setMeasuredDimension(0, 0)
     }
 
+    @Suppress("MissingSuperCall")
+    override fun requestLayout() {
+        // we don't layout our children
+    }
+
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
         // We must updateDisplayListIfDirty for all invalidated Views.
 
         // We only want to call super.dispatchDraw() if there is an invalidated layer
         var doDispatch = false
-        for (i in 0 until childCount) {
+        for (i in 0 until super.getChildCount()) {
             val child = getChildAt(i) as ViewLayer
             if (child.isInvalidated) {
                 doDispatch = true
@@ -74,9 +81,20 @@ internal open class DrawChildContainer(context: Context) : ViewGroup(context) {
         }
 
         if (doDispatch) {
-            super.dispatchDraw(canvas)
+            isDrawing = true
+            try {
+                super.dispatchDraw(canvas)
+            } finally {
+                isDrawing = false
+            }
         }
     }
+
+    /**
+     * We don't want to advertise children to the transition system. ViewLayers shouldn't be
+     * watched for add/remove for transitions purposes.
+     */
+    override fun getChildCount(): Int = if (isDrawing) super.getChildCount() else 0
 
     // we change visibility for this method so ViewLayer can use it for drawing
     internal fun drawChild(canvas: Canvas, view: View, drawingTime: Long) {

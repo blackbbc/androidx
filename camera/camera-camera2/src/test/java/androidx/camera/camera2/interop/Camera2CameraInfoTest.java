@@ -25,6 +25,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.os.Build;
 
 import androidx.annotation.OptIn;
+import androidx.annotation.RequiresApi;
 import androidx.camera.camera2.internal.Camera2CameraInfoImpl;
 import androidx.camera.camera2.internal.compat.CameraCharacteristicsCompat;
 import androidx.camera.core.impl.CameraInfoInternal;
@@ -35,9 +36,14 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.internal.DoNotInstrument;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
-@Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
+@Config(minSdk = Build.VERSION_CODES.LOLLIPOP,
+        instrumentedPackages = { "androidx.camera.camera2.interop",
+                "androidx.camera.camera2.internal" })
 @OptIn(markerClass = ExperimentalCamera2Interop.class)
 public final class Camera2CameraInfoTest {
 
@@ -57,8 +63,10 @@ public final class Camera2CameraInfoTest {
         CameraCharacteristics characteristics = mock(CameraCharacteristics.class);
         when(characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)).thenReturn(
                 CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        String cameraId = "0";
         CameraCharacteristicsCompat cameraCharacteristicsCompat =
-                CameraCharacteristicsCompat.toCameraCharacteristicsCompat(characteristics);
+                CameraCharacteristicsCompat.toCameraCharacteristicsCompat(characteristics,
+                        cameraId);
         Camera2CameraInfoImpl impl = mock(Camera2CameraInfoImpl.class);
         when(impl.getCameraCharacteristicsCompat()).thenAnswer(
                 ignored -> cameraCharacteristicsCompat);
@@ -75,6 +83,7 @@ public final class Camera2CameraInfoTest {
         Camera2CameraInfo camera2CameraInfo = mock(Camera2CameraInfo.class);
         Camera2CameraInfoImpl cameraInfoImpl = mock(Camera2CameraInfoImpl.class);
         when(cameraInfoImpl.getCamera2CameraInfo()).thenAnswer(ignored -> camera2CameraInfo);
+        when(cameraInfoImpl.getImplementation()).thenAnswer(ignored -> cameraInfoImpl);
         Camera2CameraInfo resultCamera2CameraInfo = Camera2CameraInfo.from(cameraInfoImpl);
 
         assertThat(resultCamera2CameraInfo).isEqualTo(camera2CameraInfo);
@@ -85,4 +94,18 @@ public final class Camera2CameraInfoTest {
         CameraInfoInternal wrongCameraInfo = mock(CameraInfoInternal.class);
         Camera2CameraInfo.from(wrongCameraInfo);
     }
+
+    @Config(minSdk = 28)
+    @RequiresApi(28)
+    @Test
+    public void canGetCameraCharacteristicsMap_fromCamera2CameraInfo() {
+        Camera2CameraInfoImpl impl = mock(Camera2CameraInfoImpl.class);
+        Map<String, CameraCharacteristics> characteristicsMap = new HashMap<>();
+        when(impl.getCameraCharacteristicsMap()).thenReturn(characteristicsMap);
+        Camera2CameraInfo camera2CameraInfo = new Camera2CameraInfo(impl);
+
+        Map<String, CameraCharacteristics> map = camera2CameraInfo.getCameraCharacteristicsMap();
+        assertThat(map).isSameInstanceAs(characteristicsMap);
+    }
+
 }

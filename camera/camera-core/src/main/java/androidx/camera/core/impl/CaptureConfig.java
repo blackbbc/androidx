@@ -19,10 +19,13 @@ package androidx.camera.core.impl;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureRequest;
+import android.util.Range;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
+import androidx.camera.core.impl.stabilization.StabilizationMode;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,7 +40,11 @@ import java.util.Set;
  * <p>The CaptureConfig contains all the {@link android.hardware.camera2} parameters that are
  * required to issue a {@link CaptureRequest}.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class CaptureConfig {
+    /** Indicates template type is not set. */
+    public static final int TEMPLATE_TYPE_NONE = -1;
+
     /**
      * Request that the implementation rotate the image.
      *
@@ -59,6 +66,11 @@ public final class CaptureConfig {
     public static final Config.Option<Integer> OPTION_JPEG_QUALITY =
             Config.Option.create("camerax.core.captureConfig.jpegQuality", Integer.class);
 
+    /** Key to get/set the CaptureConfig ID from the TagBundle */
+    public static final String CAPTURE_CONFIG_ID_TAG_KEY = "CAPTURE_CONFIG_ID_KEY";
+
+    public static final int DEFAULT_ID = -1;
+
     /** The set of {@link Surface} that data from the camera will be put into. */
     final List<DeferrableSurface> mSurfaces;
 
@@ -69,6 +81,16 @@ public final class CaptureConfig {
      * defined by {@link CameraDevice}
      */
     final int mTemplateType;
+
+    final Range<Integer> mExpectedFrameRateRange;
+
+    @StabilizationMode.Mode
+    final int mPreviewStabilizationMode;
+
+    @StabilizationMode.Mode
+    final int mVideoStabilizationMode;
+
+    final boolean mPostviewEnabled;
 
     /** The camera capture callback for a {@link CameraCaptureSession}. */
     final List<CameraCaptureCallback> mCameraCaptureCallbacks;
@@ -81,6 +103,12 @@ public final class CaptureConfig {
     private final TagBundle mTagBundle;
 
     /**
+     * The camera capture result for reprocessing capture request.
+     */
+    @Nullable
+    private final CameraCaptureResult mCameraCaptureResult;
+
+    /**
      * Private constructor for a CaptureConfig.
      *
      * <p>In practice, the {@link CaptureConfig.Builder} will be used to construct a CaptureConfig.
@@ -91,27 +119,52 @@ public final class CaptureConfig {
      * @param templateType           The template for parameters of the CaptureRequest. This
      *                               must match the
      *                               constants defined by {@link CameraDevice}.
+     * @param expectedFrameRateRange The expected frame rate range.
+     * @param previewStabilizationMode The preview stabilization mode.
+     * @param videoStabilizationMode The video stabilization mode.
      * @param cameraCaptureCallbacks All camera capture callbacks.
+     * @param cameraCaptureResult     The {@link CameraCaptureResult} for reprocessing capture
+     *                               request.
      */
     CaptureConfig(
             List<DeferrableSurface> surfaces,
             Config implementationOptions,
             int templateType,
+            @NonNull Range<Integer> expectedFrameRateRange,
+            int previewStabilizationMode,
+            int videoStabilizationMode,
+            boolean postviewEnabled,
             List<CameraCaptureCallback> cameraCaptureCallbacks,
             boolean useRepeatingSurface,
-            @NonNull TagBundle tagBundle) {
+            @NonNull TagBundle tagBundle,
+            @Nullable CameraCaptureResult cameraCaptureResult) {
         mSurfaces = surfaces;
         mImplementationOptions = implementationOptions;
         mTemplateType = templateType;
+        mExpectedFrameRateRange = expectedFrameRateRange;
+        mPreviewStabilizationMode = previewStabilizationMode;
+        mVideoStabilizationMode = videoStabilizationMode;
         mCameraCaptureCallbacks = Collections.unmodifiableList(cameraCaptureCallbacks);
         mUseRepeatingSurface = useRepeatingSurface;
         mTagBundle = tagBundle;
+        mCameraCaptureResult = cameraCaptureResult;
+        mPostviewEnabled = postviewEnabled;
     }
 
     /** Returns an instance of a capture configuration with minimal configurations. */
     @NonNull
     public static CaptureConfig defaultEmptyCaptureConfig() {
         return new CaptureConfig.Builder().build();
+    }
+
+    /**
+     * Returns an instance of {@link CameraCaptureResult} for reprocessing capture request.
+     *
+     * @return {@link CameraCaptureResult}.
+     */
+    @Nullable
+    public CameraCaptureResult getCameraCaptureResult() {
+        return mCameraCaptureResult;
     }
 
     /** Get all the surfaces that the request will write data to. */
@@ -125,8 +178,47 @@ public final class CaptureConfig {
         return mImplementationOptions;
     }
 
+    /**
+     * Gets the template type.
+     *
+     * <p>If not set, returns {@link #TEMPLATE_TYPE_NONE}.
+     */
     public int getTemplateType() {
         return mTemplateType;
+    }
+
+    /**
+     * Returns the ID of the {@link CaptureConfig} that identifies which {@link CaptureConfig} is
+     * triggering the {@link CameraCaptureCallback} callback methods upon its submission.
+     *
+     * <p>The ID will be passed in every methods in {@link CameraCaptureCallback}. Callers have
+     * to set the ID explicitly otherwise it returns {@link #DEFAULT_ID} by default.
+     */
+    public int getId() {
+        Object id = mTagBundle.getTag(CAPTURE_CONFIG_ID_TAG_KEY);
+        if (id == null) {
+            return DEFAULT_ID;
+        }
+        return (int) id;
+    }
+
+    @NonNull
+    public Range<Integer> getExpectedFrameRateRange() {
+        return mExpectedFrameRateRange;
+    }
+
+    @StabilizationMode.Mode
+    public int getPreviewStabilizationMode() {
+        return mPreviewStabilizationMode;
+    }
+
+    @StabilizationMode.Mode
+    public int getVideoStabilizationMode() {
+        return mVideoStabilizationMode;
+    }
+
+    public boolean isPostviewEnabled() {
+        return mPostviewEnabled;
     }
 
     public boolean isUseRepeatingSurface() {
@@ -164,10 +256,18 @@ public final class CaptureConfig {
     public static final class Builder {
         private final Set<DeferrableSurface> mSurfaces = new HashSet<>();
         private MutableConfig mImplementationOptions = MutableOptionsBundle.create();
-        private int mTemplateType = -1;
+        private int mTemplateType = TEMPLATE_TYPE_NONE;
+        private Range<Integer> mExpectedFrameRateRange = StreamSpec.FRAME_RATE_RANGE_UNSPECIFIED;
+        @StabilizationMode.Mode
+        private int mPreviewStabilizationMode = StabilizationMode.UNSPECIFIED;
+        @StabilizationMode.Mode
+        private int mVideoStabilizationMode = StabilizationMode.UNSPECIFIED;
+        private boolean mPostviewEnabled = false;
         private List<CameraCaptureCallback> mCameraCaptureCallbacks = new ArrayList<>();
         private boolean mUseRepeatingSurface = false;
         private MutableTagBundle mMutableTagBundle = MutableTagBundle.create();
+        @Nullable
+        private CameraCaptureResult mCameraCaptureResult;
 
         public Builder() {
         }
@@ -176,9 +276,13 @@ public final class CaptureConfig {
             mSurfaces.addAll(base.mSurfaces);
             mImplementationOptions = MutableOptionsBundle.from(base.mImplementationOptions);
             mTemplateType = base.mTemplateType;
+            mExpectedFrameRateRange = base.mExpectedFrameRateRange;
+            mVideoStabilizationMode = base.mVideoStabilizationMode;
+            mPreviewStabilizationMode = base.mPreviewStabilizationMode;
             mCameraCaptureCallbacks.addAll(base.getCameraCaptureCallbacks());
             mUseRepeatingSurface = base.isUseRepeatingSurface();
             mMutableTagBundle = MutableTagBundle.from(base.getTagBundle());
+            mPostviewEnabled = base.mPostviewEnabled;
         }
 
         /**
@@ -208,8 +312,22 @@ public final class CaptureConfig {
             return new Builder(base);
         }
 
+        /**
+         * Set the {@link CameraCaptureResult} for reprocessable capture request.
+         *
+         * @param cameraCaptureResult {@link CameraCaptureResult}.
+         */
+        public void setCameraCaptureResult(@NonNull CameraCaptureResult cameraCaptureResult) {
+            mCameraCaptureResult = cameraCaptureResult;
+        }
+
         public int getTemplateType() {
             return mTemplateType;
+        }
+
+        @Nullable
+        public Range<Integer> getExpectedFrameRateRange() {
+            return mExpectedFrameRateRange;
         }
 
         /**
@@ -223,7 +341,40 @@ public final class CaptureConfig {
         }
 
         /**
-         * Adds a {@link CameraCaptureSession.StateCallback} callback.
+         * Set the expected frame rate range of the CaptureConfig.
+         * @param expectedFrameRateRange The frame rate range calculated from the UseCases for
+         * {@link CameraDevice}
+         */
+        public void setExpectedFrameRateRange(@NonNull Range<Integer> expectedFrameRateRange) {
+            mExpectedFrameRateRange = expectedFrameRateRange;
+        }
+
+        /**
+         * Set the preview stabilization mode of the CaptureConfig.
+         * @param mode {@link StabilizationMode}
+         */
+        public void setPreviewStabilization(@StabilizationMode.Mode int mode) {
+            if (mode != StabilizationMode.UNSPECIFIED) {
+                mPreviewStabilizationMode = mode;
+            }
+        }
+
+        /**
+         * Set the video stabilization mode of the CaptureConfig.
+         * @param mode {@link StabilizationMode}
+         */
+        public void setVideoStabilization(@StabilizationMode.Mode int mode) {
+            if (mode != StabilizationMode.UNSPECIFIED) {
+                mVideoStabilizationMode = mode;
+            }
+        }
+
+        public void setPostviewEnabled(boolean postviewEnabled) {
+            mPostviewEnabled = postviewEnabled;
+        }
+
+        /**
+         * Adds a {@link CameraCaptureCallback} callback.
          */
         public void addCameraCaptureCallback(@NonNull CameraCaptureCallback cameraCaptureCallback) {
             if (mCameraCaptureCallbacks.contains(cameraCaptureCallback)) {
@@ -233,13 +384,24 @@ public final class CaptureConfig {
         }
 
         /**
-         * Adds all {@link CameraCaptureSession.StateCallback} callbacks.
+         * Adds all {@link CameraCaptureCallback} callbacks.
          */
         public void addAllCameraCaptureCallbacks(
                 @NonNull Collection<CameraCaptureCallback> cameraCaptureCallbacks) {
             for (CameraCaptureCallback c : cameraCaptureCallbacks) {
                 addCameraCaptureCallback(c);
             }
+        }
+
+        /**
+         * Removes a previously added {@link CameraCaptureCallback} callback.
+         * @param cameraCaptureCallback The callback to remove.
+         * @return {@code true} if the callback was successfully removed. {@code false} if the
+         * callback wasn't present in this builder.
+         */
+        public boolean removeCameraCaptureCallback(
+                @NonNull CameraCaptureCallback cameraCaptureCallback) {
+            return mCameraCaptureCallbacks.remove(cameraCaptureCallback);
         }
 
         /** Add a surface that the request will write data to. */
@@ -299,7 +461,7 @@ public final class CaptureConfig {
             return mImplementationOptions;
         }
 
-        boolean isUseRepeatingSurface() {
+        public boolean isUseRepeatingSurface() {
             return mUseRepeatingSurface;
         }
 
@@ -321,6 +483,18 @@ public final class CaptureConfig {
         }
 
         /**
+         * Sets the ID of the {@link CaptureConfig} that helps identify which
+         * {@link CaptureConfig} is triggering the {@link CameraCaptureCallback} callback methods
+         * upon its submission.
+         *
+         * <p>The ID will be passed in every methods in {@link CameraCaptureCallback}. To ensure
+         * it uniquely identifies the {@link CaptureConfig}, set a unique ID for every
+         * CaptureConfig.
+         */
+        public void setId(int id) {
+            mMutableTagBundle.putTag(CAPTURE_CONFIG_ID_TAG_KEY, id);
+        }
+        /**
          * Adds a TagBundle to CaptureConfig.
          */
         public void addAllTags(@NonNull TagBundle bundle) {
@@ -337,9 +511,14 @@ public final class CaptureConfig {
                     new ArrayList<>(mSurfaces),
                     OptionsBundle.from(mImplementationOptions),
                     mTemplateType,
-                    mCameraCaptureCallbacks,
+                    mExpectedFrameRateRange,
+                    mPreviewStabilizationMode,
+                    mVideoStabilizationMode,
+                    mPostviewEnabled,
+                    new ArrayList<>(mCameraCaptureCallbacks),
                     mUseRepeatingSurface,
-                    TagBundle.from(mMutableTagBundle));
+                    TagBundle.from(mMutableTagBundle),
+                    mCameraCaptureResult);
         }
     }
 }

@@ -14,14 +14,13 @@
   limitations under the License.
   -->
 
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="androidx.camera.integration.uiwidgets">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
-        <activity android:name=".MainActivity">
+        <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -30,30 +29,47 @@
         </activity>
 
         <activity
+            android:exported="false"
             android:name=".viewpager.ViewPager2Activity"
             android:label="ViewPager2 CameraX Test" />
 
         <activity
+            android:exported="false"
             android:name=".viewpager.ViewPagerActivity"
             android:label="ViewPager CameraX Test" />
 
         <activity
+            android:exported="false"
             android:name=".rotations.UnlockedOrientationActivity"
             android:label="Rotation - Unlocked orientation" />
 
         <activity
+            android:exported="false"
             android:name=".rotations.LockedOrientationActivity"
             android:label="Rotation - Locked orientation"
             android:screenOrientation="portrait" />
 
         <activity
+            android:exported="false"
             android:name=".rotations.OrientationConfigChangesOverriddenActivity"
-            android:configChanges="orientation|screenSize"
+            android:configChanges="orientation|screenSize|screenLayout"
             android:label="Rotation - ConfigChanges overridden" />
 
+        <activity
+            android:exported="false"
+            android:name=".foldable.FoldableCameraActivity"
+            android:label="Foldable Test" />
+
+        <activity
+            android:exported="false"
+            android:name=".compose.ComposeCameraActivity"
+            android:label="Compose"
+            android:screenOrientation="portrait"/>
     </application>
 
+    <uses-feature android:name="android.hardware.camera.any" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
 </manifest>

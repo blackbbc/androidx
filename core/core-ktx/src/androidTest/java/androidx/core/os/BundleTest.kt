@@ -29,20 +29,22 @@ import androidx.test.filters.SdkSuppress
 import androidx.test.filters.SmallTest
 import androidx.testutils.assertThrows
 import com.google.common.truth.Truth.assertThat
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
-import java.util.concurrent.atomic.AtomicInteger
 
 @SmallTest
 class BundleTest {
+    @Suppress("DEPRECATION")
     @Test fun bundleOfValid() {
         val bundleValue = Bundle()
         val charSequenceValue = "hey"
         val parcelableValue = Rect(1, 2, 3, 4)
         val serializableValue = AtomicInteger(1)
+        val binderValue = object : IBinder by Binder() {}
 
         val bundle = bundleOf(
             "null" to null,
@@ -59,6 +61,7 @@ class BundleTest {
             "bundle" to bundleValue,
             "charSequence" to charSequenceValue,
             "parcelable" to parcelableValue,
+            "binder" to binderValue,
 
             "booleanArray" to booleanArrayOf(),
             "byteArray" to byteArrayOf(),
@@ -77,7 +80,7 @@ class BundleTest {
             "serializable" to serializableValue
         )
 
-        assertEquals(25, bundle.size())
+        assertEquals(26, bundle.size())
 
         assertNull(bundle["null"])
 
@@ -93,6 +96,7 @@ class BundleTest {
         assertSame(bundleValue, bundle["bundle"])
         assertSame(charSequenceValue, bundle["charSequence"])
         assertSame(parcelableValue, bundle["parcelable"])
+        assertSame(binderValue, bundle["binder"])
 
         assertArrayEquals(booleanArrayOf(), bundle["booleanArray"] as BooleanArray)
         assertArrayEquals(byteArrayOf(), bundle["byteArray"] as ByteArray)
@@ -112,14 +116,8 @@ class BundleTest {
         assertSame(serializableValue, bundle["serializable"])
     }
 
-    @SdkSuppress(minSdkVersion = 18)
-    @Test fun bundleOfValidApi18() {
-        val binderValue = object : IBinder by Binder() {}
-        val bundle = bundleOf("binder" to binderValue)
-        assertSame(binderValue, bundle["binder"])
-    }
-
     @SdkSuppress(minSdkVersion = 21)
+    @Suppress("DEPRECATION")
     @Test fun bundleOfValidApi21() {
         val sizeValue = Size(1, 1)
         val sizeFValue = SizeF(1f, 1f)
@@ -143,5 +141,9 @@ class BundleTest {
                 "nopes" to arrayOf(View(ApplicationProvider.getApplicationContext() as Context))
             )
         }.hasMessageThat().isEqualTo("Illegal value array type android.view.View for key \"nopes\"")
+    }
+
+    @Test fun bundleOfEmpty() {
+        assertEquals(0, bundleOf().size())
     }
 }

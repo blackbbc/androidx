@@ -20,10 +20,8 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import android.view.View
-import android.view.View.OVER_SCROLL_NEVER
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD
@@ -62,19 +60,19 @@ import androidx.viewpager2.widget.swipe.SelfChecking
 import androidx.viewpager2.widget.swipe.TestActivity
 import androidx.viewpager2.widget.swipe.ViewAdapter
 import androidx.viewpager2.widget.swipe.WaitForInjectMotionEventsAction.Companion.waitForInjectMotionEvents
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.Matcher
+import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.greaterThanOrEqualTo
 import org.hamcrest.Matchers.lessThan
 import org.hamcrest.Matchers.lessThanOrEqualTo
 import org.junit.After
-import org.junit.Assert.assertThat
 import org.junit.Before
 import org.junit.Rule
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
 open class BaseTest {
     companion object {
@@ -120,14 +118,9 @@ open class BaseTest {
         val viewPager: ViewPager2 = activityTestRule.activity.findViewById(R.id.view_pager)
         activityTestRule.runOnUiThread {
             viewPager.orientation = orientation
-            viewPager.setSystemExclusionRectsForEspressoSwipes()
+            viewPager.setSystemExclusionRectsForEspressoSwipes(requestLayout = true)
         }
         onView(withId(R.id.view_pager)).check(matches(isDisplayed()))
-
-        // animations getting in the way on API < 16
-        if (Build.VERSION.SDK_INT < 16) {
-            viewPager.recyclerView.overScrollMode = OVER_SCROLL_NEVER
-        }
 
         return Context(activityTestRule)
     }
@@ -147,7 +140,7 @@ open class BaseTest {
                 viewPager.orientation = orientation
                 viewPager.isUserInputEnabled = isUserInputEnabled
                 viewPager.adapter = adapterProvider(activity)
-                viewPager.setSystemExclusionRectsForEspressoSwipes()
+                viewPager.setSystemExclusionRectsForEspressoSwipes(requestLayout = false)
                 onCreateCallback(viewPager)
             }
             activity = activityTestRule.recreate()
@@ -160,19 +153,18 @@ open class BaseTest {
                 field = value
             }
 
-        fun runOnUiThreadSync(f: () -> Unit) {
+        fun <T> runOnUiThreadSync(f: () -> T): T {
             var thrownError: Throwable? = null
+            var result: T? = null
             activityTestRule.runOnUiThread {
                 try {
-                    f()
+                    result = f()
                 } catch (t: Throwable) {
                     thrownError = t
                 }
             }
-            val caughtError = thrownError
-            if (caughtError != null) {
-                throw caughtError
-            }
+            thrownError?.let { throw it }
+            return result!!
         }
 
         val viewPager: ViewPager2 get() = activity.findViewById(R.id.view_pager)
@@ -303,13 +295,9 @@ open class BaseTest {
                 isUserInputEnabled && isVerticalOrientation &&
                 currentPage < numPages - 1
 
-            val expectScrollBackwardAction =
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN && isUserInputEnabled &&
-                    currentPage > 0
+            val expectScrollBackwardAction = isUserInputEnabled && currentPage > 0
 
-            val expectScrollForwardAction =
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN && isUserInputEnabled &&
-                    currentPage < numPages - 1
+            val expectScrollForwardAction = isUserInputEnabled && currentPage < numPages - 1
 
             assertThat(
                 "Left action expected: $expectPageLeftAction",
@@ -333,7 +321,7 @@ open class BaseTest {
                 equalTo(expectPageDownAction)
             )
 
-            var node = AccessibilityNodeInfo.obtain()
+            @Suppress("DEPRECATION") var node = AccessibilityNodeInfo.obtain()
             runOnUiThreadSync { viewPager.onInitializeAccessibilityNodeInfo(node) }
             @Suppress("DEPRECATION") var standardActions = node.actions
 
@@ -414,12 +402,6 @@ open class BaseTest {
         }
 
         waitForRenderLatch.await(5, TimeUnit.SECONDS)
-
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
-            // Give slow devices some time to warm up,
-            // to prevent severe frame drops in the smooth scroll
-            Thread.sleep(1000)
-        }
     }
 
     fun ViewPager2.addWaitForLayoutChangeLatch(): CountDownLatch {
@@ -742,6 +724,6 @@ fun tryNTimes(n: Int, resetBlock: () -> Unit, tryBlock: () -> Unit) {
 }
 
 val View.isRtl: Boolean
-    get() = ViewCompat.getLayoutDirection(this) == ViewCompat.LAYOUT_DIRECTION_RTL
+    get() = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
 
 val ViewPager2.isHorizontal: Boolean get() = orientation == ORIENTATION_HORIZONTAL

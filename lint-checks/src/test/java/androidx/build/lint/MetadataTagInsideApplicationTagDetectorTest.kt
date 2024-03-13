@@ -29,14 +29,14 @@ class MetadataTagInsideApplicationTagDetectorTest : AbstractLintDetectorTest(
 ) {
 
     @Test
-    fun `Detect usage of metadata tag insice application tag`() {
+    fun `Detect usage of metadata tag inside application tag`() {
         val input = arrayOf(
             manifestSample()
         )
 
         /* ktlint-disable max-line-length */
         val expected = """
-AndroidManifest.xml:20: Error: Detected <application>-level meta-data tag. [MetadataTagInsideApplicationTag]
+AndroidManifest.xml:19: Error: Detected <application>-level meta-data tag. [MetadataTagInsideApplicationTag]
         <meta-data android:name="name" android:value="value" />
         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1 errors, 0 warnings

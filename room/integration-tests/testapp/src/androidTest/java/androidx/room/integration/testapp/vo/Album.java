@@ -19,19 +19,30 @@ package androidx.room.integration.testapp.vo;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
 
+import javax.annotation.Nullable;
+
 @Entity
 public class Album {
     @PrimaryKey
     public final int mAlbumId;
     public final String mAlbumName;
     public final String mAlbumArtist;
-    public final String mAlbumReleaseYear;
+    public final int mAlbumReleaseYear;
+    @Nullable
+    public final String mFeaturedArtist;
 
-    public Album(int albumId, String albumName, String albumArtist, String albumReleaseYear) {
+    public Album(
+            int albumId,
+            String albumName,
+            String albumArtist,
+            int albumReleaseYear,
+            @Nullable String featuredArtist
+    ) {
         mAlbumId = albumId;
         mAlbumName = albumName;
         mAlbumArtist = albumArtist;
         mAlbumReleaseYear = albumReleaseYear;
+        mFeaturedArtist = featuredArtist;
     }
 
     @Override
@@ -50,19 +61,15 @@ public class Album {
                 album.mAlbumArtist != null) {
             return false;
         }
-        if (mAlbumReleaseYear != null ? !mAlbumReleaseYear.equals(album.mAlbumReleaseYear) :
-                album.mAlbumReleaseYear != null) {
-            return false;
-        }
+        if (mAlbumReleaseYear != album.mAlbumReleaseYear) return false;
         return true;
     }
 
     @Override
     public int hashCode() {
-        int result = mAlbumId;
+        int result = mAlbumId + mAlbumReleaseYear;
         result = 31 * result + (mAlbumName != null ? mAlbumName.hashCode() : 0);
         result = 31 * result + (mAlbumArtist != null ? mAlbumArtist.hashCode() : 0);
-        result = 31 * result + (mAlbumReleaseYear != null ? mAlbumReleaseYear.hashCode() : 0);
         return result;
     }
 }

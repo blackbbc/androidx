@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -23,7 +29,7 @@ plugins {
 }
 
 dependencies {
-    api("androidx.core:core:1.3.2")
+    api("androidx.core:core:1.6.0")
     api("androidx.collection:collection:1.1.0")
     api(libs.guavaListenableFuture)
     implementation("androidx.concurrent:concurrent-futures:1.0.0")
@@ -37,9 +43,17 @@ dependencies {
 }
 
 androidx {
-    name = "AndroidX Share Target Support Library"
+    name = "Share Target"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.SHARETARGET
     inceptionYear = "2018"
     description = "ShareTarget"
+    metalavaK2UastEnabled = true
+}
+
+android {
+    buildTypes.all {
+        consumerProguardFiles "proguard-rules.pro"
+    }
+
+    namespace "androidx.sharetarget"
 }

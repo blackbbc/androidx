@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -28,28 +33,16 @@ plugins {
 dependencies {
     api(project(":lifecycle:lifecycle-livedata-core"))
     api(libs.kotlinStdlib)
-    testImplementation(project(":lifecycle:lifecycle-runtime"))
-    testImplementation("androidx.arch.core:core-testing:2.1.0")
-    testImplementation(project(":lifecycle:lifecycle-runtime-testing"))
-    testImplementation(libs.kotlinCoroutinesTest)
-    testImplementation(libs.junit)
-    testImplementation(libs.truth)
-
-    lintPublish(project(":lifecycle:lifecycle-livedata-core-ktx-lint"))
 }
 
 androidx {
     name = "LiveData Core Kotlin Extensions"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.LIFECYCLE
-    mavenGroup = LibraryGroups.LIFECYCLE
     inceptionYear = "2018"
     description = "Kotlin extensions for 'livedata-core' artifact"
+    metalavaK2UastEnabled = true
 }
 
-// Allow usage of Kotlin's @OptIn.
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn"]
-    }
+android {
+    namespace "androidx.lifecycle.livedata.core.ktx"
 }

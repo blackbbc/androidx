@@ -16,8 +16,6 @@
 
 package androidx.core.app;
 
-import static android.os.Build.VERSION.SDK_INT;
-
 import static androidx.core.util.Preconditions.checkNotNull;
 
 import android.app.Activity;
@@ -41,7 +39,6 @@ import android.widget.ShareActionProvider;
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.annotation.StringRes;
 import androidx.core.content.IntentCompat;
 
@@ -195,7 +192,7 @@ public final class ShareCompat {
      * @param intent Intent that was launched to share content
      * @return ComponentName of the calling activity
      */
-    @SuppressWarnings("WeakerAccess")
+    @SuppressWarnings({"WeakerAccess", "deprecation"})
     @Nullable
     static ComponentName getCallingActivity(@NonNull Intent intent) {
         ComponentName result = intent.getParcelableExtra(EXTRA_CALLING_ACTIVITY);
@@ -247,12 +244,6 @@ public final class ShareCompat {
                 + shareIntent.getContext().getClass().getName());
         provider.setShareIntent(shareIntent.getIntent());
         item.setActionProvider(provider);
-
-        if (SDK_INT < 16) {
-            if (!item.hasSubMenu()) {
-                item.setIntent(shareIntent.createChooserIntent());
-            }
-        }
     }
 
     /**
@@ -265,6 +256,7 @@ public final class ShareCompat {
      *
      * @deprecated Use the system sharesheet. See https://developer.android.com/training/sharing/send
      */
+    @SuppressWarnings("deprecation")
     @Deprecated
     public static void configureMenuItem(@NonNull Menu menu, @IdRes int menuItemId,
             @NonNull IntentBuilder shareIntent) {
@@ -368,21 +360,16 @@ public final class ShareCompat {
                 mIntent.setAction(Intent.ACTION_SEND);
                 if (mStreams != null && !mStreams.isEmpty()) {
                     mIntent.putExtra(Intent.EXTRA_STREAM, mStreams.get(0));
-                    if (SDK_INT >= 16) {
-                        Api16Impl.migrateExtraStreamToClipData(mIntent, mStreams);
-                    }
+                    migrateExtraStreamToClipData(mIntent, mStreams);
                 } else {
                     mIntent.removeExtra(Intent.EXTRA_STREAM);
-                    if (SDK_INT >= 16) {
-                        Api16Impl.removeClipData(mIntent);
-                    }
+                    mIntent.setClipData(null);
+                    mIntent.setFlags(mIntent.getFlags() & ~Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 }
             } else {
                 mIntent.setAction(Intent.ACTION_SEND_MULTIPLE);
                 mIntent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, mStreams);
-                if (SDK_INT >= 16) {
-                    Api16Impl.migrateExtraStreamToClipData(mIntent, mStreams);
-                }
+                migrateExtraStreamToClipData(mIntent, mStreams);
             }
 
             return mIntent;
@@ -831,42 +818,10 @@ public final class ShareCompat {
                 if (text instanceof Spanned) {
                     result = Html.toHtml((Spanned) text);
                 } else if (text != null) {
-                    if (SDK_INT >= 16) {
-                        result = Html.escapeHtml(text);
-                    } else {
-                        StringBuilder out = new StringBuilder();
-                        withinStyle(out, text, 0, text.length());
-                        result = out.toString();
-                    }
+                    result = Html.escapeHtml(text);
                 }
             }
             return result;
-        }
-
-        @SuppressWarnings("SameParameterValue")
-        private static void withinStyle(StringBuilder out, CharSequence text, int start, int end) {
-            for (int i = start; i < end; i++) {
-                char c = text.charAt(i);
-
-                if (c == '<') {
-                    out.append("&lt;");
-                } else if (c == '>') {
-                    out.append("&gt;");
-                } else if (c == '&') {
-                    out.append("&amp;");
-                } else if (c > 0x7E || c < ' ') {
-                    out.append("&#").append((int) c).append(";");
-                } else if (c == ' ') {
-                    while (i + 1 < end && text.charAt(i + 1) == ' ') {
-                        out.append("&nbsp;");
-                        i++;
-                    }
-
-                    out.append(' ');
-                } else {
-                    out.append(c);
-                }
-            }
         }
 
         /**
@@ -880,9 +835,10 @@ public final class ShareCompat {
          * @return A URI referring to a data stream to be shared or null if one was not supplied
          * @see Intent#EXTRA_STREAM
          */
+        @SuppressWarnings("deprecation")
         @Nullable
         public Uri getStream() {
-            return (Uri) mIntent.getParcelableExtra(Intent.EXTRA_STREAM);
+            return mIntent.getParcelableExtra(Intent.EXTRA_STREAM);
         }
 
         /**
@@ -894,6 +850,7 @@ public final class ShareCompat {
          * @see Intent#EXTRA_STREAM
          * @see Intent#ACTION_SEND_MULTIPLE
          */
+        @SuppressWarnings("deprecation")
         @Nullable
         public Uri getStream(int index) {
             if (mStreams == null && isMultipleShare()) {
@@ -916,6 +873,7 @@ public final class ShareCompat {
          *
          * @return Count of text items contained within the Intent
          */
+        @SuppressWarnings("deprecation")
         public int getStreamCount() {
             if (mStreams == null && isMultipleShare()) {
                 mStreams = mIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
@@ -1064,6 +1022,7 @@ public final class ShareCompat {
          *
          * @return The calling application's label or null if unknown
          */
+        @SuppressWarnings("deprecation")
         @Nullable
         public CharSequence getCallingApplicationLabel() {
             if (mCallingPackage == null) return null;
@@ -1078,32 +1037,21 @@ public final class ShareCompat {
         }
     }
 
-    @RequiresApi(16)
-    private static class Api16Impl {
-        // Prevent instantiation.
-        private Api16Impl() {}
+    static void migrateExtraStreamToClipData(@NonNull Intent intent,
+            @NonNull ArrayList<Uri> streams) {
+        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        String htmlText = intent.getStringExtra(IntentCompat.EXTRA_HTML_TEXT);
 
-        static void migrateExtraStreamToClipData(@NonNull Intent intent,
-                @NonNull ArrayList<Uri> streams) {
-            CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-            String htmlText = intent.getStringExtra(IntentCompat.EXTRA_HTML_TEXT);
+        ClipData clipData = new ClipData(
+                null, new String[] { intent.getType() },
+                new ClipData.Item(text, htmlText, null, streams.get(0)));
 
-            ClipData clipData = new ClipData(
-                    null, new String[] { intent.getType() },
-                    new ClipData.Item(text, htmlText, null, streams.get(0)));
-
-            for (int i = 1, end = streams.size(); i < end; i++) {
-                Uri uri = streams.get(i);
-                clipData.addItem(new ClipData.Item(uri));
-            }
-
-            intent.setClipData(clipData);
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        for (int i = 1, end = streams.size(); i < end; i++) {
+            Uri uri = streams.get(i);
+            clipData.addItem(new ClipData.Item(uri));
         }
 
-        static void removeClipData(@NonNull Intent intent) {
-            intent.setClipData(null);
-            intent.setFlags(intent.getFlags() & ~Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        }
+        intent.setClipData(clipData);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
     }
 }

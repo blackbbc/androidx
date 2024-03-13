@@ -17,7 +17,7 @@
 package androidx.transition;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
@@ -27,6 +27,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
+import androidx.annotation.NonNull;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.testutils.AnimationDurationScaleRule;
 import androidx.transition.test.R;
@@ -54,7 +55,7 @@ public abstract class BaseTransitionTest extends BaseTest {
         mRoot = (LinearLayout) rule.getActivity().findViewById(R.id.root);
         mTransitionTargets.clear();
         mTransition = createTransition();
-        mListener = mock(Transition.TransitionListener.class);
+        mListener = spy(new TransitionListenerAdapter());
         mTransition.addListener(mListener);
     }
 
@@ -112,7 +113,7 @@ public abstract class BaseTransitionTest extends BaseTest {
 
     void resetListener() {
         mTransition.removeListener(mListener);
-        mListener = mock(Transition.TransitionListener.class);
+        mListener = spy(new TransitionListenerAdapter());
         mTransition.addListener(mListener);
     }
 
@@ -123,15 +124,15 @@ public abstract class BaseTransitionTest extends BaseTest {
     public class TestTransition extends Visibility {
 
         @Override
-        public Animator onAppear(ViewGroup sceneRoot, View view, TransitionValues startValues,
-                TransitionValues endValues) {
+        public Animator onAppear(@NonNull ViewGroup sceneRoot, @NonNull View view,
+                TransitionValues startValues, TransitionValues endValues) {
             mTransitionTargets.add(endValues.view);
             return ObjectAnimator.ofFloat(BaseTransitionTest.this, "animatedValue", 0, 1);
         }
 
         @Override
-        public Animator onDisappear(ViewGroup sceneRoot, View view, TransitionValues startValues,
-                TransitionValues endValues) {
+        public Animator onDisappear(@NonNull ViewGroup sceneRoot, @NonNull View view,
+                TransitionValues startValues, TransitionValues endValues) {
             mTransitionTargets.add(startValues.view);
             return ObjectAnimator.ofFloat(BaseTransitionTest.this, "animatedValue", 1, 0);
         }

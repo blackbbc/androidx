@@ -18,12 +18,15 @@ package androidx.navigation
 
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
+import android.os.Parcel
+import android.os.Parcelable
 import androidx.navigation.common.test.R
 import androidx.test.filters.SmallTest
 import com.google.common.truth.Truth.assertThat
-import org.junit.Test
 import java.io.Serializable
+import org.junit.Test
 
 @SmallTest
 class NavTypeTest {
@@ -50,6 +53,7 @@ class NavTypeTest {
         private val en = Bitmap.Config.ALPHA_8
         private val enString = "ALPHA_8"
         private val enStringCasing = "alpha_8"
+        private val referenceString = "2131034161"
         private val serializable = Person()
         private val serializables = arrayOf(Bitmap.Config.ALPHA_8)
         private val parcelableNavType = NavType.ParcelableType(ActivityInfo::class.java)
@@ -253,4 +257,152 @@ class NavTypeTest {
         assertThat(enumNavType.parseValue(enStringCasing))
             .isEqualTo(en)
     }
+
+    @Test
+    fun parcelableArrayValueEquals() {
+        val type = NavType.ParcelableArrayType(TestParcelable::class.java)
+        val array1 = arrayOf(TestParcelable(1), TestParcelable(2))
+        val array2 = arrayOf(TestParcelable(1), TestParcelable(2))
+        assertThat(type.valueEquals(array1, array2)).isTrue()
+
+        // deep comparison, order matters
+        val array3 = arrayOf(TestParcelable(2), TestParcelable(1))
+        val array4 = arrayOf(TestParcelable(1), TestParcelable(2))
+        assertThat(type.valueEquals(array3, array4)).isFalse()
+    }
+
+    @Test
+    fun serializableArrayValueEquals() {
+        val type = NavType.SerializableArrayType(TestSerializable::class.java)
+        val array1 = arrayOf(TestSerializable(1), TestSerializable(2))
+        val array2 = arrayOf(TestSerializable(1), TestSerializable(2))
+        assertThat(type.valueEquals(array1, array2)).isTrue()
+
+        // deep comparison, order matters
+        val array3 = arrayOf(TestSerializable(2), TestSerializable(1))
+        val array4 = arrayOf(TestSerializable(1), TestSerializable(2))
+        assertThat(type.valueEquals(array3, array4)).isFalse()
+    }
+
+    @Test
+    fun primitiveArrayValueEquals() {
+        val type = NavType.IntArrayType
+        val array1 = intArrayOf(1, 2)
+        val array2 = intArrayOf(1, 2)
+        assertThat(type.valueEquals(array1, array2)).isTrue()
+
+        // deep comparison, order matters
+        val array3 = intArrayOf(2, 1)
+        val array4 = intArrayOf(1, 2)
+        assertThat(type.valueEquals(array3, array4)).isFalse()
+    }
+
+    @Test
+    fun serializeAsValues() {
+        assertThat((NavType.IntArrayType as CollectionNavType).serializeAsValues(
+            intArrayOf(0, 1))
+        ).containsExactly("0", "1").inOrder()
+        assertThat((NavType.BoolArrayType as CollectionNavType).serializeAsValues(
+            booleanArrayOf(true, false))
+        ).containsExactly("true", "false").inOrder()
+        assertThat((NavType.StringArrayType as CollectionNavType).serializeAsValues(
+            arrayOf("test", "test2"))
+        ).containsExactly("test", "test2").inOrder()
+        assertThat((NavType.FloatArrayType as CollectionNavType).serializeAsValues(
+            floatArrayOf(1F, 2F))
+        ).containsExactly("1.0", "2.0").inOrder()
+        assertThat((NavType.LongArrayType as CollectionNavType).serializeAsValues(
+            longArrayOf(1L, 2L))
+        ).containsExactly("1", "2").inOrder()
+    }
+
+    @Test
+    fun customType_defaultSerializeAsValue() {
+        val testItemType = object : NavType<TestItem> (false) {
+            override fun put(bundle: Bundle, key: String, value: TestItem) {
+                //
+            }
+
+            override fun get(bundle: Bundle, key: String): TestItem? {
+                return TestItem()
+            }
+
+            override fun parseValue(value: String): TestItem {
+                return TestItem()
+            }
+        }
+
+        val testItem = TestItem()
+        val serializedValue = testItemType.serializeAsValue(testItem)
+        assertThat(serializedValue).isEqualTo(testItem.toString())
+    }
+
+    @Test
+    fun customType_overrideSerializeAsValue() {
+        val testItemType = object : NavType<TestItem> (false) {
+            override fun put(bundle: Bundle, key: String, value: TestItem) {
+                //
+            }
+
+            override fun get(bundle: Bundle, key: String): TestItem? {
+                return TestItem()
+            }
+
+            override fun parseValue(value: String): TestItem {
+                return TestItem()
+            }
+
+            override fun serializeAsValue(value: TestItem): String {
+                return "MyTestItem"
+            }
+        }
+
+        val serializedValue = testItemType.serializeAsValue(TestItem())
+        assertThat(serializedValue).isEqualTo("MyTestItem")
+    }
+
+    @Test
+    fun stringType_defaultSerializeAsValue() {
+        val stringType = NavType.StringType
+        assertThat(stringType.serializeAsValue("test_string")).isEqualTo(
+            Uri.encode("test_string")
+        )
+    }
+
+    @Test
+    fun nullStringType_defaultSerializeAsValue() {
+        val stringType = NavType.StringType
+        assertThat(stringType.serializeAsValue(null)).isEqualTo(
+            "null"
+        )
+    }
+
+    @Test
+    fun nullStringType_parseValue() {
+        val stringType = NavType.StringType
+        assertThat(stringType.parseValue("null")).isEqualTo(
+            null
+        )
+    }
+
+    @Test
+    fun nullableType_defaultSerializeAsValue() {
+        val intArrayType = NavType.IntArrayType
+        assertThat(intArrayType.serializeAsValue(null)).isEqualTo(
+            "null"
+        )
+    }
 }
+
+private class TestItem {
+    override fun toString(): String {
+        return "TestItem"
+    }
+}
+
+private data class TestParcelable(val arg: Int) : Parcelable {
+    override fun describeContents(): Int = 0
+    override fun writeToParcel(dest: Parcel, flags: Int) {}
+}
+
+private data class TestSerializable(val arg: Int) : Serializable

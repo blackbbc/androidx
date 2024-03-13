@@ -32,6 +32,7 @@ import android.view.ActionMode;
 import android.view.DragEvent;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.view.textclassifier.TextClassifier;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -41,6 +42,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
+import androidx.annotation.UiThread;
 import androidx.appcompat.R;
 import androidx.core.view.ContentInfoCompat;
 import androidx.core.view.OnReceiveContentListener;
@@ -51,6 +53,7 @@ import androidx.core.view.inputmethod.EditorInfoCompat;
 import androidx.core.view.inputmethod.InputConnectionCompat;
 import androidx.core.widget.TextViewCompat;
 import androidx.core.widget.TextViewOnReceiveContentListener;
+import androidx.core.widget.TintableCompoundDrawablesView;
 import androidx.resourceinspection.annotation.AppCompatShadowedAttributes;
 
 /**
@@ -74,7 +77,7 @@ import androidx.resourceinspection.annotation.AppCompatShadowedAttributes;
  */
 @AppCompatShadowedAttributes
 public class AppCompatEditText extends EditText implements TintableBackgroundView,
-        OnReceiveContentViewBehavior, EmojiCompatConfigurationView {
+        OnReceiveContentViewBehavior, EmojiCompatConfigurationView, TintableCompoundDrawablesView {
 
     private final AppCompatBackgroundHelper mBackgroundTintHelper;
     private final AppCompatTextHelper mTextHelper;
@@ -82,6 +85,8 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
     private final TextViewOnReceiveContentListener mDefaultOnReceiveContentListener;
     @NonNull
     private final AppCompatEmojiEditTextHelper mAppCompatEmojiEditTextHelper;
+    @Nullable
+    private SuperCaller mSuperCaller;
 
     public AppCompatEditText(@NonNull Context context) {
         this(context, null);
@@ -109,7 +114,47 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
         mDefaultOnReceiveContentListener = new TextViewOnReceiveContentListener();
         mAppCompatEmojiEditTextHelper = new AppCompatEmojiEditTextHelper(this);
         mAppCompatEmojiEditTextHelper.loadFromAttributes(attrs, defStyleAttr);
-        mAppCompatEmojiEditTextHelper.initKeyListener();
+        initEmojiKeyListener(mAppCompatEmojiEditTextHelper);
+    }
+
+    /**
+     * Call from the constructor to safely add KeyListener for emoji2.
+     *
+     * This will always call super methods to avoid leaking a partially constructed this to
+     * overrides of non-final methods.
+     *
+     * @param appCompatEmojiEditTextHelper emojicompat helper
+     */
+    void initEmojiKeyListener(AppCompatEmojiEditTextHelper appCompatEmojiEditTextHelper) {
+        // setKeyListener will cause a reset both focusable and the inputType to the most basic
+        // style for the key listener. Since we're calling this from the View constructor, this
+        // will cause both focusable and inputType to reset from the XML attributes.
+        // See: b/191061070 and b/188049943 for details
+        //
+        // We will only reset this during ctor invocation, and default to the platform behavior
+        // for later calls to setKeyListener, to emulate the exact behavior that a regular
+        // EditText would provide.
+        //
+        // Since we're calling non-final methods from a ctor (setKeyListener, setRawInputType,
+        // setFocusable) move this out of AppCompatEmojiEditTextHelper and into the respective
+        // views to ensure we only call the super methods during construction  (b/208480173).
+        KeyListener currentKeyListener = getKeyListener();
+        if (appCompatEmojiEditTextHelper.isEmojiCapableKeyListener(currentKeyListener)) {
+            boolean wasFocusable = super.isFocusable();
+            boolean wasClickable = super.isClickable();
+            boolean wasLongClickable = super.isLongClickable();
+            int inputType = super.getInputType();
+            KeyListener wrappedKeyListener = appCompatEmojiEditTextHelper.getKeyListener(
+                    currentKeyListener);
+            // don't call parent setKeyListener if it's not wrapped
+            if (wrappedKeyListener == currentKeyListener) return;
+            super.setKeyListener(wrappedKeyListener);
+            // reset the input type and focusable attributes after calling setKeyListener
+            super.setRawInputType(inputType);
+            super.setFocusable(wasFocusable);
+            super.setClickable(wasClickable);
+            super.setLongClickable(wasLongClickable);
+        }
     }
 
     /**
@@ -146,7 +191,6 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
      * This should be accessed via
      * {@link androidx.core.view.ViewCompat#setBackgroundTintList(android.view.View, ColorStateList)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -160,7 +204,6 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
      * This should be accessed via
      * {@link androidx.core.view.ViewCompat#getBackgroundTintList(android.view.View)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -174,7 +217,6 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
      * This should be accessed via
      * {@link androidx.core.view.ViewCompat#setBackgroundTintMode(android.view.View, PorterDuff.Mode)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -188,7 +230,6 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
      * This should be accessed via
      * {@link androidx.core.view.ViewCompat#getBackgroundTintMode(android.view.View)}
      *
-     * @hide
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Override
@@ -230,10 +271,15 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
         mTextHelper.populateSurroundingTextIfNeeded(this, ic, outAttrs);
         ic = AppCompatHintHelper.onCreateInputConnection(ic, outAttrs, this);
 
-        String[] mimeTypes = ViewCompat.getOnReceiveContentMimeTypes(this);
-        if (ic != null && mimeTypes != null) {
-            EditorInfoCompat.setContentMimeTypes(outAttrs, mimeTypes);
-            ic = InputConnectionCompat.createWrapper(this, ic, outAttrs);
+        // On SDK 30 and below, we manually configure the InputConnection here to use
+        // ViewCompat.performReceiveContent. On S and above, the platform's BaseInputConnection
+        // implementation calls View.performReceiveContent by default.
+        if (ic != null && Build.VERSION.SDK_INT <= 30) {
+            String[] mimeTypes = ViewCompat.getOnReceiveContentMimeTypes(this);
+            if (mimeTypes != null) {
+                EditorInfoCompat.setContentMimeTypes(outAttrs, mimeTypes);
+                ic = InputConnectionCompat.createWrapper(this, ic, outAttrs);
+            }
         }
         return mAppCompatEmojiEditTextHelper.onCreateInputConnection(ic, outAttrs);
     }
@@ -256,6 +302,30 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
                 super.getCustomSelectionActionModeCallback());
     }
 
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        if (Build.VERSION.SDK_INT >= 30 && Build.VERSION.SDK_INT < 33) {
+            final InputMethodManager imm = (InputMethodManager) getContext().getSystemService(
+                    Context.INPUT_METHOD_SERVICE);
+            // Calling isActive() here implied a checkFocus() call to update the active served
+            // view for input method. This is a backport for mServedView was detached, but the
+            // next served view gets mistakenly cleared as well.
+            // https://android.googlesource.com/platform/frameworks/base/+/734613a500fb
+            imm.isActive(this);
+        }
+    }
+
+    @UiThread
+    @NonNull
+    @RequiresApi(26)
+    private SuperCaller getSuperCaller() {
+        if (mSuperCaller == null) {
+            mSuperCaller = new SuperCaller();
+        }
+        return mSuperCaller;
+    }
+
     /**
      * Sets the {@link TextClassifier} for this TextView.
      */
@@ -263,7 +333,7 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
     @RequiresApi(api = 26)
     public void setTextClassifier(@Nullable TextClassifier textClassifier) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P || mTextClassifierHelper == null) {
-            super.setTextClassifier(textClassifier);
+            getSuperCaller().setTextClassifier(textClassifier);
             return;
         }
         mTextClassifierHelper.setTextClassifier(textClassifier);
@@ -281,7 +351,7 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
         // The null check is necessary because getTextClassifier is called when we are invoking
         // the super class's constructor.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P || mTextClassifierHelper == null) {
-            return super.getTextClassifier();
+            return getSuperCaller().getTextClassifier();
         }
         return mTextClassifierHelper.getTextClassifier();
     }
@@ -349,5 +419,113 @@ public class AppCompatEditText extends EditText implements TintableBackgroundVie
     @Override
     public boolean isEmojiCompatEnabled() {
         return mAppCompatEmojiEditTextHelper.isEnabled();
+    }
+
+    @Override
+    public void setCompoundDrawables(@Nullable Drawable left, @Nullable Drawable top,
+            @Nullable Drawable right, @Nullable Drawable bottom) {
+        super.setCompoundDrawables(left, top, right, bottom);
+        if (mTextHelper != null) {
+            mTextHelper.onSetCompoundDrawables();
+        }
+    }
+
+    @Override
+    public void setCompoundDrawablesRelative(@Nullable Drawable start, @Nullable Drawable top,
+            @Nullable Drawable end, @Nullable Drawable bottom) {
+        super.setCompoundDrawablesRelative(start, top, end, bottom);
+        if (mTextHelper != null) {
+            mTextHelper.onSetCompoundDrawables();
+        }
+    }
+
+    /**
+     * This should be accessed via
+     * {@link androidx.core.widget.TextViewCompat#getCompoundDrawableTintList(TextView)}
+     *
+     * @return the tint applied to the compound drawables
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTint
+     * @see #setSupportCompoundDrawablesTintList(ColorStateList)
+     *
+     */
+    @Nullable
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public ColorStateList getSupportCompoundDrawablesTintList() {
+        return mTextHelper.getCompoundDrawableTintList();
+    }
+
+    /**
+     * This should be accessed via {@link
+     * androidx.core.widget.TextViewCompat#setCompoundDrawableTintList(TextView, ColorStateList)}
+     *
+     * Applies a tint to the compound drawables. Does not modify the current tint mode, which is
+     * {@link PorterDuff.Mode#SRC_IN} by default.
+     * <p>
+     * Subsequent calls to {@link #setCompoundDrawables(Drawable, Drawable, Drawable, Drawable)} and
+     * related methods will automatically mutate the drawables and apply the specified tint and tint
+     * mode using {@link Drawable#setTintList(ColorStateList)}.
+     *
+     * @param tintList the tint to apply, may be {@code null} to clear tint
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTint
+     * @see #getSupportCompoundDrawablesTintList()
+     *
+     */
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public void setSupportCompoundDrawablesTintList(@Nullable ColorStateList tintList) {
+        mTextHelper.setCompoundDrawableTintList(tintList);
+        mTextHelper.applyCompoundDrawablesTints();
+    }
+
+    /**
+     * This should be accessed via
+     * {@link androidx.core.widget.TextViewCompat#getCompoundDrawableTintMode(TextView)}
+     *
+     * Returns the blending mode used to apply the tint to the compound drawables, if specified.
+     *
+     * @return the blending mode used to apply the tint to the compound drawables
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTintMode
+     * @see #setSupportCompoundDrawablesTintMode(PorterDuff.Mode)
+     *
+     */
+    @Nullable
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public PorterDuff.Mode getSupportCompoundDrawablesTintMode() {
+        return mTextHelper.getCompoundDrawableTintMode();
+    }
+
+    /**
+     * This should be accessed via {@link
+     * androidx.core.widget.TextViewCompat#setCompoundDrawableTintMode(TextView, PorterDuff.Mode)}
+     *
+     * Specifies the blending mode used to apply the tint specified by
+     * {@link #setSupportCompoundDrawablesTintList(ColorStateList)} to the compound drawables. The
+     * default mode is {@link PorterDuff.Mode#SRC_IN}.
+     *
+     * @param tintMode the blending mode used to apply the tint, may be {@code null} to clear tint
+     * @attr ref androidx.appcompat.R.styleable#AppCompatTextView_drawableTintMode
+     * @see #setSupportCompoundDrawablesTintList(ColorStateList)
+     *
+     */
+    @Override
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public void setSupportCompoundDrawablesTintMode(@Nullable PorterDuff.Mode tintMode) {
+        mTextHelper.setCompoundDrawableTintMode(tintMode);
+        mTextHelper.applyCompoundDrawablesTints();
+    }
+
+    @RequiresApi(api = 26)
+    class SuperCaller {
+
+        @Nullable
+        public TextClassifier getTextClassifier() {
+            return AppCompatEditText.super.getTextClassifier();
+        }
+
+        public void setTextClassifier(TextClassifier textClassifier) {
+            AppCompatEditText.super.setTextClassifier(textClassifier);
+        }
     }
 }

@@ -18,6 +18,7 @@ package androidx.compose.ui.graphics
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.internal.JvmDefaultWithCompatibility
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
@@ -167,6 +168,7 @@ fun Canvas.scale(sx: Float, sy: Float = sx, pivotX: Float, pivotY: Float) {
  */
 expect val Canvas.nativeCanvas: NativeCanvas
 
+@JvmDefaultWithCompatibility
 interface Canvas {
 
     /**
@@ -308,12 +310,6 @@ interface Canvas {
      * Reduces the clip region to the intersection of the current clip and the
      * given rectangle.
      *
-     * If the clip is not axis-aligned with the display device, and
-     * [Paint.isAntiAlias] is true, then the clip will be anti-aliased. If
-     * multiple draw commands intersect with the clip boundary, this can result
-     * in incorrect blending at the clip boundary. See [saveLayer] for a
-     * discussion of how to address that.
-     *
      * Use [ClipOp.Difference] to subtract the provided rectangle from the
      * current clip.
      */
@@ -325,12 +321,6 @@ interface Canvas {
      * Reduces the clip region to the intersection of the current clip and the
      * given bounds.
      *
-     * If the clip is not axis-aligned with the display device, and
-     * [Paint.isAntiAlias] is true, then the clip will be anti-aliased. If
-     * multiple draw commands intersect with the clip boundary, this can result
-     * in incorrect blending at the clip boundary. See [saveLayer] for a
-     * discussion of how to address that.
-     *
      * Use [ClipOp.Difference] to subtract the provided rectangle from the
      * current clip.
      *
@@ -338,6 +328,7 @@ interface Canvas {
      * @param top Top bound of the clip region
      * @param right Right bound of the clip region
      * @param bottom Bottom bound of the clip region
+     * @param clipOp Clipping operation to conduct on the given bounds, defaults to [ClipOp.Intersect]
      */
     fun clipRect(
         left: Float,
@@ -350,11 +341,6 @@ interface Canvas {
     /**
      * Reduces the clip region to the intersection of the current clip and the
      * given [Path].
-     *
-     * If [Paint.isAntiAlias] is true, then the clip will be anti-aliased. If
-     * multiple draw commands intersect with the clip boundary, this can result
-     * in incorrect blending at the clip boundary. See [saveLayer] for a
-     * discussion of how to address that.
      */
     fun clipPath(path: Path, clipOp: ClipOp = ClipOp.Intersect)
 
@@ -492,6 +478,7 @@ interface Canvas {
      * @param startAngle Starting angle of the arc relative to 3 o'clock
      * @param sweepAngle Sweep angle in degrees clockwise
      * @param useCenter Flag indicating whether or not to include the center of the oval in the
+     * @param paint Paint used to draw the arc.
      * arc, and close it if it is being stroked. This will draw a wedge.
      */
     fun drawArc(

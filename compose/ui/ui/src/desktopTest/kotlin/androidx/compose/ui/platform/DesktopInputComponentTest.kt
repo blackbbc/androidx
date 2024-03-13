@@ -14,21 +14,25 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.ui.platform
 
+import androidx.compose.ui.isMacOs
 import androidx.compose.ui.text.InternalTextApi
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.EditProcessor
 import androidx.compose.ui.text.input.ImeOptions
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TextInputService
-import org.junit.Assert
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import java.awt.Component
 import java.awt.event.InputMethodEvent
 import java.text.AttributedString
+import org.junit.Assert
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.JUnit4
 
 private object DummyComponent : Component()
 
@@ -39,7 +43,7 @@ class DesktopInputComponentTest {
     fun replaceInputMethodText_basic() {
         val processor = EditProcessor()
 
-        val input = DesktopPlatformInput(DummyDesktopComponent)
+        val input = PlatformInput(DummyPlatformComponent)
         val inputService = TextInputService(input)
 
         val session = inputService.startInput(
@@ -68,5 +72,43 @@ class DesktopInputComponentTest {
 
         Assert.assertEquals("${familyEmoji}h", buffer.text)
         Assert.assertEquals(TextRange(11), buffer.selection)
+    }
+
+    @Test
+    fun longPressWorkaroundTest() {
+        assumeTrue(isMacOs)
+        val processor = EditProcessor()
+
+        val component = DummyPlatformComponent
+        val input = PlatformInput(component)
+        val inputService = TextInputService(input)
+
+        val session = inputService.startInput(
+            TextFieldValue(),
+            ImeOptions.Default,
+            processor::apply,
+            {}
+        )
+
+        input.charKeyPressed = true
+        processor.reset(TextFieldValue("a", selection = TextRange(1)), session)
+        component.enabledInput!!.getSelectedText(null)
+        input.charKeyPressed = false
+
+        input.replaceInputMethodText(
+            InputMethodEvent(
+                DummyComponent,
+                InputMethodEvent.INPUT_METHOD_TEXT_CHANGED,
+                AttributedString("ä").iterator,
+                1,
+                null,
+                null
+            )
+        )
+
+        val buffer = processor.toTextFieldValue()
+
+        Assert.assertEquals("ä", buffer.text)
+        Assert.assertEquals(TextRange(1), buffer.selection)
     }
 }

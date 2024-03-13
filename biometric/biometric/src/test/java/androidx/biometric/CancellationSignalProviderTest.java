@@ -22,8 +22,6 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import android.os.Build;
-
 import androidx.annotation.NonNull;
 
 import org.junit.Before;
@@ -36,6 +34,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.annotation.internal.DoNotInstrument;
 
 @RunWith(RobolectricTestRunner.class)
+@Config(instrumentedPackages = { "androidx.core.os" })
 @DoNotInstrument
 public class CancellationSignalProviderTest {
     @Mock private android.os.CancellationSignal mBiometricCancellationSignal;
@@ -44,6 +43,7 @@ public class CancellationSignalProviderTest {
     private CancellationSignalProvider.Injector mFieldMockInjector;
     private CancellationSignalProvider.Injector mNewMockInjector;
 
+    @SuppressWarnings("deprecation") // b/251211046
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
@@ -78,7 +78,6 @@ public class CancellationSignalProviderTest {
     }
 
     @Test
-    @Config(minSdk = Build.VERSION_CODES.JELLY_BEAN)
     public void testBiometricCancellationSignal_IsCached() {
         final CancellationSignalProvider provider = new CancellationSignalProvider();
         final android.os.CancellationSignal cancellationSignal =
@@ -87,7 +86,6 @@ public class CancellationSignalProviderTest {
     }
 
     @Test
-    @Config(minSdk = Build.VERSION_CODES.JELLY_BEAN)
     public void testBiometricCancellationSignal_ReceivesCancel() {
         final CancellationSignalProvider provider =
                 new CancellationSignalProvider(mFieldMockInjector);
@@ -122,7 +120,6 @@ public class CancellationSignalProviderTest {
     }
 
     @Test
-    @Config(minSdk = Build.VERSION_CODES.JELLY_BEAN)
     public void testBothCancellationSignals_ReceiveCancel() {
         final CancellationSignalProvider provider =
                 new CancellationSignalProvider(mFieldMockInjector);

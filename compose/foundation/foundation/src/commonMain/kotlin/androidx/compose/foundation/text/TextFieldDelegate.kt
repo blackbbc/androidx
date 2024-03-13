@@ -14,14 +14,18 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.foundation.text
 
+import androidx.compose.foundation.text.selection.visibleBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Paragraph
 import androidx.compose.ui.text.SpanStyle
@@ -29,7 +33,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextPainter
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.EditCommand
 import androidx.compose.ui.text.input.EditProcessor
 import androidx.compose.ui.text.input.ImeAction
@@ -45,8 +49,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import kotlin.jvm.JvmStatic
-import kotlin.math.ceil
-import kotlin.math.roundToInt
+import kotlin.math.max
+import kotlin.math.min
 
 // visible for testing
 internal const val DefaultWidthCharCount = 10 // min width for TextField is 10 chars long
@@ -66,7 +70,7 @@ internal val EmptyTextReplacement = "H".repeat(DefaultWidthCharCount) // just a 
 internal fun computeSizeForDefaultText(
     style: TextStyle,
     density: Density,
-    resourceLoader: Font.ResourceLoader,
+    fontFamilyResolver: FontFamily.Resolver,
     text: String = EmptyTextReplacement,
     maxLines: Int = 1
 ): IntSize {
@@ -77,13 +81,11 @@ internal fun computeSizeForDefaultText(
         maxLines = maxLines,
         ellipsis = false,
         density = density,
-        resourceLoader = resourceLoader,
-        width = Float.POSITIVE_INFINITY
+        fontFamilyResolver = fontFamilyResolver,
+        constraints = Constraints()
     )
-    return IntSize(paragraph.minIntrinsicWidth.toIntPx(), paragraph.height.toIntPx())
+    return IntSize(paragraph.minIntrinsicWidth.ceilToIntPx(), paragraph.height.ceilToIntPx())
 }
-
-private fun Float.toIntPx(): Int = ceil(this).roundToInt()
 
 @OptIn(InternalFoundationTextApi::class)
 internal class TextFieldDelegate {
@@ -136,8 +138,6 @@ internal class TextFieldDelegate {
         /**
          * Notify system that focused input area.
          *
-         * System is typically scrolled up not to be covered by keyboard.
-         *
          * @param value The editor model
          * @param textDelegate The text delegate
          * @param layoutCoordinates The layout coordinates
@@ -145,6 +145,7 @@ internal class TextFieldDelegate {
          * @param hasFocus True if focus is gained.
          * @param offsetMapping The mapper from/to editing buffer to/from visible text.
          */
+        // TODO(b/262648050) Try to find a better API.
         @JvmStatic
         internal fun notifyFocusedRect(
             value: TextFieldValue,
@@ -170,7 +171,7 @@ internal class TextFieldDelegate {
                     val defaultSize = computeSizeForDefaultText(
                         textDelegate.style,
                         textDelegate.density,
-                        textDelegate.resourceLoader
+                        textDelegate.fontFamilyResolver
                     )
                     Rect(0f, 0f, 1.0f, defaultSize.height.toFloat())
                 }
@@ -183,6 +184,42 @@ internal class TextFieldDelegate {
         }
 
         /**
+         * Notify the input service of layout and position changes.
+         *
+         * @param textInputSession the current input session
+         * @param textFieldValue the editor state
+         * @param offsetMapping the offset mapping for the visual transformation
+         * @param textLayoutResult the layout result
+         */
+        @JvmStatic
+        internal fun updateTextLayoutResult(
+            textInputSession: TextInputSession,
+            textFieldValue: TextFieldValue,
+            offsetMapping: OffsetMapping,
+            textLayoutResult: TextLayoutResultProxy
+        ) {
+            textLayoutResult.innerTextFieldCoordinates?.let { innerTextFieldCoordinates ->
+                if (!innerTextFieldCoordinates.isAttached) return
+                textLayoutResult.decorationBoxCoordinates?.let { decorationBoxCoordinates ->
+                    textInputSession.updateTextLayoutResult(
+                        textFieldValue,
+                        offsetMapping,
+                        textLayoutResult.value,
+                        { matrix ->
+                            innerTextFieldCoordinates.findRootCoordinates()
+                                .transformFrom(innerTextFieldCoordinates, matrix)
+                        },
+                        innerTextFieldCoordinates.visibleBounds(),
+                        innerTextFieldCoordinates.localBoundingBoxOf(
+                            decorationBoxCoordinates,
+                            clipBounds = false
+                        )
+                    )
+                }
+            }
+        }
+
+        /**
          * Called when edit operations are passed from TextInputService
          *
          * @param ops A list of edit operations.
@@ -190,12 +227,24 @@ internal class TextFieldDelegate {
          * @param onValueChange The callback called when the new editor state arrives.
          */
         @JvmStatic
-        private fun onEditCommand(
+        internal fun onEditCommand(
             ops: List<EditCommand>,
             editProcessor: EditProcessor,
-            onValueChange: (TextFieldValue) -> Unit
+            onValueChange: (TextFieldValue) -> Unit,
+            session: TextInputSession?
         ) {
-            onValueChange(editProcessor.apply(ops))
+            val newValue = editProcessor.apply(ops)
+
+            // Android: Some IME calls getTextBeforeCursor API just after the setComposingText. The
+            // getTextBeforeCursor may return the text without a text set by setComposingText
+            // because the text field state in the application code is updated on the next time
+            // composition. On the other hand, some IME gets confused and cancel the composition
+            // because the text set by setComposingText is not available.
+            // To avoid this problem, update the state in the TextInputService to the latest
+            // plausible state. When the real state comes, the TextInputService will compare and
+            // update the state if it is modified by developers.
+            session?.updateState(null, newValue)
+            onValueChange(newValue)
         }
 
         /**
@@ -240,12 +289,14 @@ internal class TextFieldDelegate {
             onValueChange: (TextFieldValue) -> Unit,
             onImeActionPerformed: (ImeAction) -> Unit
         ): TextInputSession {
-            return textInputService.startInput(
-                value = value.copy(),
+            var session: TextInputSession? = null
+            session = textInputService.startInput(
+                value = value,
                 imeOptions = imeOptions,
-                onEditCommand = { onEditCommand(it, editProcessor, onValueChange) },
+                onEditCommand = { onEditCommand(it, editProcessor, onValueChange, session) },
                 onImeActionPerformed = onImeActionPerformed
             )
+            return session
         }
 
         /**
@@ -267,7 +318,8 @@ internal class TextFieldDelegate {
             onValueChange: (TextFieldValue) -> Unit,
             onImeActionPerformed: (ImeAction) -> Unit
         ): TextInputSession {
-            val textInputSession = restartInput(
+            // The keyboard will automatically be shown when the new IME connection is started.
+            return restartInput(
                 textInputService = textInputService,
                 value = value,
                 editProcessor = editProcessor,
@@ -275,10 +327,6 @@ internal class TextFieldDelegate {
                 onValueChange = onValueChange,
                 onImeActionPerformed = onImeActionPerformed
             )
-
-            textInputSession.showSoftwareKeyboard()
-
-            return textInputSession
         }
 
         /**
@@ -295,7 +343,8 @@ internal class TextFieldDelegate {
             onValueChange: (TextFieldValue) -> Unit
         ) {
             onValueChange(editProcessor.toTextFieldValue().copy(composition = null))
-            textInputSession.hideSoftwareKeyboard()
+            // Don't hide the keyboard when losing focus. If the target system needs that behavior,
+            // it can be implemented in the PlatformTextInputService.
             textInputSession.dispose()
         }
 
@@ -311,16 +360,27 @@ internal class TextFieldDelegate {
         fun applyCompositionDecoration(
             compositionRange: TextRange,
             transformed: TransformedText
-        ): TransformedText =
-            TransformedText(
+        ): TransformedText {
+            val startPositionTransformed = transformed.offsetMapping.originalToTransformed(
+                compositionRange.start
+            )
+            val endPositionTransformed = transformed.offsetMapping.originalToTransformed(
+                compositionRange.end
+            )
+
+            // coerce into a valid range with start <= end
+            val start = min(startPositionTransformed, endPositionTransformed)
+            val coercedEnd = max(startPositionTransformed, endPositionTransformed)
+            return TransformedText(
                 AnnotatedString.Builder(transformed.text).apply {
                     addStyle(
                         SpanStyle(textDecoration = TextDecoration.Underline),
-                        transformed.offsetMapping.originalToTransformed(compositionRange.start),
-                        transformed.offsetMapping.originalToTransformed(compositionRange.end)
+                        start,
+                        coercedEnd
                     )
                 }.toAnnotatedString(),
                 transformed.offsetMapping
             )
+        }
     }
 }

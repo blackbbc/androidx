@@ -16,15 +16,20 @@
 
 package androidx.camera.integration.uiwidgets.rotations
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Environment
 import android.view.View
+import androidx.camera.camera2.Camera2Config
+import androidx.camera.camera2.pipe.integration.CameraPipeConfig
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.CameraX
+import androidx.camera.core.Logger
 import androidx.camera.integration.uiwidgets.R
-import androidx.camera.testing.CameraUtil
-import androidx.camera.testing.CoreAppTestUtil
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.testing.impl.CameraPipeConfigTestRule
+import androidx.camera.testing.impl.CameraUtil
+import androidx.camera.testing.impl.CoreAppTestUtil
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -33,12 +38,15 @@ import androidx.test.uiautomator.UiDevice
 import androidx.testutils.withActivity
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import java.io.Closeable
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Rule
-import org.junit.rules.TestRule
-import java.util.concurrent.TimeUnit
 
 /**
  * Base class for rotation image capture tests.
@@ -52,10 +60,25 @@ import java.util.concurrent.TimeUnit
  * - Wait for the image capture callback
  * - Verify the picture's rotation or resolution
  */
-abstract class ImageCaptureBaseTest<A : CameraActivity> {
+abstract class ImageCaptureBaseTest<A : CameraActivity>(
+    cameraXConfig: String = CameraActivity.CAMERA2_IMPLEMENTATION_OPTION
+) {
 
     @get:Rule
-    val mUseCameraRule: TestRule = CameraUtil.grantCameraPermissionAndPreTest(testCameraRule)
+    val cameraPipeConfigTestRule = CameraPipeConfigTestRule(
+        active = cameraXConfig == CameraActivity.CAMERA_PIPE_IMPLEMENTATION_OPTION,
+    )
+
+    @get:Rule
+    val useCameraRule = CameraUtil.grantCameraPermissionAndPreTest(
+        testCameraRule, CameraUtil.PreTestCameraIdList(
+            if (cameraXConfig == CameraActivity.CAMERA2_IMPLEMENTATION_OPTION) {
+                Camera2Config.defaultConfig()
+            } else {
+                CameraPipeConfig.defaultConfig()
+            }
+        )
+    )
 
     @get:Rule
     val mCameraActivityRules: GrantPermissionRule =
@@ -71,22 +94,32 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
             "Cuttlefish does not correctly handle rotating. Unable to test.",
             Build.MODEL.contains("Cuttlefish")
         )
+        assumeFalse(
+            "Known issue on this device. Please see b/199115443",
+            Build.MODEL.contains("k61v1_basic_ref")
+        )
 
         CoreAppTestUtil.assumeCompatibleDevice()
         assumeTrue(CameraUtil.hasCameraWithLensFacing(lensFacing))
 
+        // Ensure it's in a natural orientation. This change could delay around 1 sec, please
+        // call this earlier before launching the test activity.
+        mDevice.setOrientationNatural()
+
         // Clear the device UI and check if there is no dialog or lock screen on the top of the
         // window before start the test.
         CoreAppTestUtil.prepareDeviceUI(InstrumentationRegistry.getInstrumentation())
-        // Ensure it's in a natural orientation
-        mDevice.setOrientationNatural()
 
         // Create pictures folder if it doesn't exist on the device. If this fails, abort test.
         assumeTrue("Failed to create pictures directory", createPicturesFolder())
     }
 
-    protected fun tearDown() {
-        CameraX.shutdown().get(10, TimeUnit.SECONDS)
+    protected fun tearDown(): Unit = runBlocking {
+        withContext(Dispatchers.Main) {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val cameraProvider = ProcessCameraProvider.getInstance(context)[10, TimeUnit.SECONDS]
+            cameraProvider.shutdownAsync()[10, TimeUnit.SECONDS]
+        }
         mDevice.unfreezeRotation()
     }
 
@@ -102,10 +135,12 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
     protected inline fun <reified A : CameraActivity> verifyRotation(
         lensFacing: Int,
         captureMode: Int,
-        rotate: ActivityScenario<A>.() -> Unit
+        cameraXConfig: String = CameraActivity.CAMERA2_IMPLEMENTATION_OPTION,
+        rotate: ActivityScenario<A>.() -> Unit,
     ) {
-        val activityScenario: ActivityScenario<A> = launchActivity(lensFacing, captureMode)
-        activityScenario.use { scenario ->
+        val activityScenario: ActivityScenario<A> =
+            launchActivity(lensFacing, captureMode, cameraXConfig)
+        activityScenario.useAndCatchFinallyException { scenario ->
 
             // Wait until the camera is set up and analysis starts receiving frames
             scenario.waitOnCameraFrames()
@@ -150,9 +185,13 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
                 "The captured image rotation degrees [$imageRotationDegrees] was expected to be " +
                     "equal to [$sensorToTargetRotation], or the captured image's resolution " +
                     "[$imageSize] was expected to be equal to [$expectedResolution]"
-            )
-                .that(areRotationsEqual || areResolutionsEqual)
-                .isTrue()
+            ).that(areRotationsEqual || areResolutionsEqual).isTrue()
+
+            assertWithMessage(
+                "The captured image's resolution " +
+                    "[$imageSize] was expected to be equal to [$expectedResolution]"
+            ).that(expectedResolution.height * expectedResolution.width)
+                .isEqualTo(imageSize!!.height * imageSize.width)
 
             // Delete captured image
             scenario.withActivity { mCaptureResult?.delete() ?: Unit }
@@ -161,7 +200,8 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
 
     protected inline fun <reified A : CameraActivity> launchActivity(
         lensFacing: Int,
-        captureMode: Int
+        captureMode: Int,
+        cameraXConfig: String,
     ): ActivityScenario<A> {
         val intent = Intent(
             ApplicationProvider.getApplicationContext(),
@@ -169,13 +209,15 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
         ).apply {
             putExtra(CameraActivity.KEY_LENS_FACING, lensFacing)
             putExtra(CameraActivity.KEY_IMAGE_CAPTURE_MODE, captureMode)
+            putExtra(CameraActivity.KEY_CAMERA_IMPLEMENTATION, cameraXConfig)
+            putExtra(CameraActivity.KEY_CAMERA_IMPLEMENTATION_NO_HISTORY, true)
         }
         return ActivityScenario.launch<A>(intent)
     }
 
     protected inline fun <reified A : CameraActivity> ActivityScenario<A>.waitOnCameraFrames() {
         val analysisRunning = withActivity { mAnalysisRunning }
-        assertWithMessage("Timed out waiting on image analysis frames")
+        assertWithMessage("Timed out waiting on image analysis frames on $analysisRunning")
             .that(analysisRunning.tryAcquire(IMAGES_COUNT, TIMEOUT, TimeUnit.SECONDS))
             .isTrue()
     }
@@ -184,9 +226,33 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
         withActivity { mAnalysisRunning.drainPermits() }
     }
 
+    /**
+     * This function is similar to [kotlin.io.use] with additional handling for a known issue in
+     * older Android frameworks (bug b/316566763). This issue can cause the close() method of an
+     * ActivityScenario to throw an exception.
+     *
+     * Since the closing steps are already at the end of your test and device upgrades are
+     * unavailable, this function uses a try-catch block to suppress the exception and reduce test
+     * noise.
+     */
+    inline fun <T : Closeable?, R> T.useAndCatchFinallyException(block: (T) -> R): R {
+        try {
+            return block(this)
+        } finally {
+            when {
+                this == null -> {}
+                else -> try {
+                    close()
+                } catch (e: Throwable) {
+                    Logger.w("ImageCaptureBaseTest", "Exception in close()", e)
+                }
+            }
+        }
+    }
+
     companion object {
         protected const val IMAGES_COUNT = 30
-        protected const val TIMEOUT = 10L
+        protected const val TIMEOUT = 20L
         @JvmStatic
         protected val captureModes = arrayOf(
             CameraActivity.IMAGE_CAPTURE_MODE_IN_MEMORY,
@@ -195,8 +261,14 @@ abstract class ImageCaptureBaseTest<A : CameraActivity> {
             CameraActivity.IMAGE_CAPTURE_MODE_MEDIA_STORE
         )
         @JvmStatic
-        protected val lensFacing =
+        protected val lensFacingList =
             arrayOf(CameraSelector.LENS_FACING_BACK, CameraSelector.LENS_FACING_FRONT)
+
+        @JvmStatic
+        protected val cameraXConfigList = arrayOf(
+            CameraActivity.CAMERA2_IMPLEMENTATION_OPTION,
+            CameraActivity.CAMERA_PIPE_IMPLEMENTATION_OPTION
+        )
 
         @JvmStatic
         lateinit var testCameraRule: CameraUtil.PreTestCamera

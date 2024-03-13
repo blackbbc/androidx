@@ -17,187 +17,239 @@
 package androidx.health.services.client.impl
 
 import android.content.Context
+import androidx.annotation.GuardedBy
+import androidx.annotation.RestrictTo
 import androidx.core.content.ContextCompat
 import androidx.health.services.client.ExerciseClient
-import androidx.health.services.client.ExerciseUpdateListener
+import androidx.health.services.client.ExerciseUpdateCallback
+import androidx.health.services.client.data.BatchingMode
+import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.ExerciseCapabilities
 import androidx.health.services.client.data.ExerciseConfig
 import androidx.health.services.client.data.ExerciseGoal
 import androidx.health.services.client.data.ExerciseInfo
-import androidx.health.services.client.impl.ExerciseIpcClient.Companion.getServiceInterface
+import androidx.health.services.client.data.ExerciseTypeConfig
+import androidx.health.services.client.data.WarmUpConfig
+import androidx.health.services.client.impl.IpcConstants.EXERCISE_API_BIND_ACTION
+import androidx.health.services.client.impl.IpcConstants.SERVICE_PACKAGE_NAME
 import androidx.health.services.client.impl.internal.ExerciseInfoCallback
 import androidx.health.services.client.impl.internal.HsConnectionManager
 import androidx.health.services.client.impl.internal.StatusCallback
-import androidx.health.services.client.impl.ipc.ServiceOperation
+import androidx.health.services.client.impl.ipc.Client
+import androidx.health.services.client.impl.ipc.ClientConfiguration
 import androidx.health.services.client.impl.ipc.internal.ConnectionManager
 import androidx.health.services.client.impl.request.AutoPauseAndResumeConfigRequest
+import androidx.health.services.client.impl.request.BatchingModeConfigRequest
 import androidx.health.services.client.impl.request.CapabilitiesRequest
 import androidx.health.services.client.impl.request.ExerciseGoalRequest
+import androidx.health.services.client.impl.request.FlushRequest
+import androidx.health.services.client.impl.request.PrepareExerciseRequest
 import androidx.health.services.client.impl.request.StartExerciseRequest
-import androidx.health.services.client.impl.response.ExerciseCapabilitiesResponse
+import androidx.health.services.client.impl.request.UpdateExerciseTypeConfigRequest
+import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import java.util.concurrent.Executor
 
 /**
  * [ExerciseClient] implementation that is backed by Health Services.
  *
- * @hide
  */
-internal class ServiceBackedExerciseClient
-private constructor(private val context: Context, connectionManager: ConnectionManager) :
-    ExerciseClient {
+@RestrictTo(RestrictTo.Scope.LIBRARY)
+internal class ServiceBackedExerciseClient(
+    private val context: Context,
+    connectionManager: ConnectionManager = HsConnectionManager.getInstance(context)
+) :
+    ExerciseClient,
+    Client<IExerciseApiService>(
+        CLIENT_CONFIGURATION,
+        connectionManager,
+        { binder -> IExerciseApiService.Stub.asInterface(binder) },
+        { service -> service.apiVersion }
+    ) {
 
-    private val ipcClient: ExerciseIpcClient = ExerciseIpcClient(connectionManager)
+    private val requestedDataTypesLock = Any()
+    @GuardedBy("requestedDataTypesLock")
+    private val requestedDataTypes: MutableSet<DataType<*, *>> = mutableSetOf()
+    private val packageName = context.packageName
 
-    override fun startExercise(configuration: ExerciseConfig): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .startExercise(
-                        StartExerciseRequest(context.packageName, configuration),
-                        StatusCallback(resultFuture)
-                    )
-            }
-        return ipcClient.execute(serviceOperation)
-    }
-
-    override fun pauseExercise(): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .pauseExercise(context.packageName, StatusCallback(resultFuture))
-            }
-        return ipcClient.execute(serviceOperation)
-    }
-
-    override fun resumeExercise(): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .resumeExercise(context.packageName, StatusCallback(resultFuture))
-            }
-        return ipcClient.execute(serviceOperation)
-    }
-
-    override fun endExercise(): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .endExercise(context.packageName, StatusCallback(resultFuture))
-            }
-        return ipcClient.execute(serviceOperation)
-    }
-
-    override fun markLap(): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .markLap(context.packageName, StatusCallback(resultFuture))
-            }
-        return ipcClient.execute(serviceOperation)
-    }
-
-    override val currentExerciseInfo: ListenableFuture<ExerciseInfo>
-        get() {
-            val serviceOperation =
-                ServiceOperation<ExerciseInfo> { binder, resultFuture ->
-                    getServiceInterface(binder)
-                        .getCurrentExerciseInfo(
-                            context.packageName,
-                            ExerciseInfoCallback(resultFuture)
-                        )
+    override fun prepareExerciseAsync(configuration: WarmUpConfig): ListenableFuture<Void> =
+        execute { service, resultFuture ->
+            service.prepareExercise(
+                PrepareExerciseRequest(packageName, configuration),
+                object : StatusCallback(resultFuture) {
+                    override fun onSuccess() {
+                        synchronized(requestedDataTypesLock) {
+                            requestedDataTypes.clear()
+                            requestedDataTypes.addAll(configuration.dataTypes)
+                        }
+                        super.onSuccess()
+                    }
                 }
-            return ipcClient.execute(serviceOperation)
+            )
         }
 
-    override fun setUpdateListener(listener: ExerciseUpdateListener): ListenableFuture<Void> {
-        return setUpdateListener(listener, ContextCompat.getMainExecutor(context))
-    }
-
-    override fun setUpdateListener(
-        listener: ExerciseUpdateListener,
-        executor: Executor
-    ): ListenableFuture<Void> {
-        val listenerStub =
-            ExerciseUpdateListenerStub.ExerciseUpdateListenerCache.INSTANCE.getOrCreate(
-                listener,
-                executor
+    override fun startExerciseAsync(configuration: ExerciseConfig): ListenableFuture<Void> =
+        execute { service, resultFuture ->
+            service.startExercise(
+                StartExerciseRequest(packageName, configuration),
+                object : StatusCallback(resultFuture) {
+                    override fun onSuccess() {
+                        synchronized(requestedDataTypesLock) {
+                            requestedDataTypes.clear()
+                            requestedDataTypes.addAll(configuration.dataTypes)
+                        }
+                        super.onSuccess()
+                    }
+                }
             )
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .setUpdateListener(
-                        context.packageName,
-                        listenerStub,
-                        StatusCallback(resultFuture)
-                    )
-            }
-        return ipcClient.registerListener(listenerStub.listenerKey, serviceOperation)
+        }
+
+    override fun pauseExerciseAsync(): ListenableFuture<Void> = execute { service, resultFuture ->
+        service.pauseExercise(packageName, StatusCallback(resultFuture))
     }
 
-    override fun clearUpdateListener(listener: ExerciseUpdateListener): ListenableFuture<Void> {
+    override fun resumeExerciseAsync(): ListenableFuture<Void> = execute { service, resultFuture ->
+        service.resumeExercise(packageName, StatusCallback(resultFuture))
+    }
+
+    override fun endExerciseAsync(): ListenableFuture<Void> = execute { service, resultFuture ->
+        service.endExercise(packageName, StatusCallback(resultFuture))
+    }
+
+    override fun flushAsync(): ListenableFuture<Void> {
+        val request = FlushRequest(packageName)
+        return execute { service, resultFuture ->
+            service.flushExercise(request, StatusCallback(resultFuture))
+        }
+    }
+
+    override fun markLapAsync(): ListenableFuture<Void> = execute { service, resultFuture ->
+        service.markLap(packageName, StatusCallback(resultFuture))
+    }
+
+    override fun getCurrentExerciseInfoAsync(): ListenableFuture<ExerciseInfo> {
+        return execute { service, resultFuture ->
+            service.getCurrentExerciseInfo(packageName, ExerciseInfoCallback(resultFuture))
+        }
+    }
+
+    override fun setUpdateCallback(callback: ExerciseUpdateCallback) {
+        setUpdateCallback(ContextCompat.getMainExecutor(context), callback)
+    }
+
+    override fun setUpdateCallback(
+        executor: Executor,
+        callback: ExerciseUpdateCallback
+    ) {
         val listenerStub =
-            ExerciseUpdateListenerStub.ExerciseUpdateListenerCache.INSTANCE.remove(listener)
-                ?: return Futures.immediateFailedFuture(
-                    IllegalArgumentException("Given listener was not added.")
-                )
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .clearUpdateListener(
-                        context.packageName,
-                        listenerStub,
-                        StatusCallback(resultFuture)
-                    )
+            ExerciseUpdateListenerStub.ExerciseUpdateListenerCache.INSTANCE.create(
+                callback,
+                executor,
+                requestedDataTypesProvider = {
+                    synchronized(requestedDataTypesLock) {
+                        requestedDataTypes.toSet()
+                    }
+                }
+            )
+        val future =
+            registerListener(listenerStub.listenerKey) { service, result: SettableFuture<Void?> ->
+                service.setUpdateListener(packageName, listenerStub, StatusCallback(result))
             }
-        return ipcClient.unregisterListener(listenerStub.listenerKey, serviceOperation)
+        Futures.addCallback(
+            future,
+            object : FutureCallback<Void?> {
+                override fun onSuccess(result: Void?) {
+                    callback.onRegistered()
+                }
+
+                override fun onFailure(t: Throwable) {
+                    callback.onRegistrationFailed(t)
+                }
+            },
+            executor)
     }
 
-    override fun addGoalToActiveExercise(exerciseGoal: ExerciseGoal): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .addGoalToActiveExercise(
-                        ExerciseGoalRequest(context.packageName, exerciseGoal),
-                        StatusCallback(resultFuture)
-                    )
-            }
-        return ipcClient.execute(serviceOperation)
+    @Suppress("UNCHECKED_CAST")
+    override fun clearUpdateCallbackAsync(
+        callback: ExerciseUpdateCallback
+    ): ListenableFuture<Void> {
+        // Cast is unfortunately required as there is no non-null Void in Kotlin.
+        val listenerStub =
+            ExerciseUpdateListenerStub.ExerciseUpdateListenerCache.INSTANCE.remove(callback)
+                ?: return Futures.immediateFuture(null) as ListenableFuture<Void>
+        return unregisterListener(listenerStub.listenerKey) { service, resultFuture ->
+            service.clearUpdateListener(packageName, listenerStub, StatusCallback(resultFuture))
+        }
     }
 
-    override fun overrideAutoPauseAndResumeForActiveExercise(
+    override fun addGoalToActiveExerciseAsync(
+        exerciseGoal: ExerciseGoal<*>
+    ): ListenableFuture<Void> =
+        execute { service, resultFuture ->
+            service.addGoalToActiveExercise(
+                ExerciseGoalRequest(packageName, exerciseGoal),
+                StatusCallback(resultFuture)
+            )
+        }
+
+    override fun removeGoalFromActiveExerciseAsync(
+        exerciseGoal: ExerciseGoal<*>
+    ): ListenableFuture<Void> = execute { service, resultFuture ->
+        service.removeGoalFromActiveExercise(
+            ExerciseGoalRequest(packageName, exerciseGoal),
+            StatusCallback(resultFuture)
+        )
+    }
+
+    override fun overrideAutoPauseAndResumeForActiveExerciseAsync(
         enabled: Boolean
-    ): ListenableFuture<Void> {
-        val serviceOperation =
-            ServiceOperation<Void> { binder, resultFuture ->
-                getServiceInterface(binder)
-                    .overrideAutoPauseAndResumeForActiveExercise(
-                        AutoPauseAndResumeConfigRequest(context.packageName, enabled),
-                        StatusCallback(resultFuture)
-                    )
-            }
-        return ipcClient.execute(serviceOperation)
+    ): ListenableFuture<Void> = execute { service, resultFuture ->
+        service.overrideAutoPauseAndResumeForActiveExercise(
+            AutoPauseAndResumeConfigRequest(packageName, enabled),
+            StatusCallback(resultFuture)
+        )
     }
 
-    override val capabilities: ListenableFuture<ExerciseCapabilities>
-        get() {
-            val request = CapabilitiesRequest(context.packageName)
-            val serviceOperation =
-                ServiceOperation<ExerciseCapabilitiesResponse> { binder, resultFuture ->
-                    resultFuture.set(getServiceInterface(binder).getCapabilities(request))
-                }
-            return Futures.transform(
-                ipcClient.execute(serviceOperation),
-                { response -> response?.exerciseCapabilities },
-                ContextCompat.getMainExecutor(context)
-            )
-        }
+    override fun overrideBatchingModesForActiveExerciseAsync(
+        batchingModes: Set<BatchingMode>
+    ): ListenableFuture<Void> {
+        return executeWithVersionCheck(
+            { service, resultFuture ->
+                service.overrideBatchingModesForActiveExercise(
+                    BatchingModeConfigRequest(packageName, batchingModes),
+                    StatusCallback(resultFuture)
+                )
+            },
+            /* minApiVersion= */ 4
+        )
+    }
+
+    override fun getCapabilitiesAsync(): ListenableFuture<ExerciseCapabilities> =
+        Futures.transform(
+            execute { service -> service.getCapabilities(CapabilitiesRequest(packageName)) },
+            { response -> response!!.exerciseCapabilities },
+            ContextCompat.getMainExecutor(context)
+        )
+
+    override fun updateExerciseTypeConfigAsync(
+        exerciseTypeConfig: ExerciseTypeConfig
+    ): ListenableFuture<Void> {
+        return executeWithVersionCheck(
+            { service, resultFuture ->
+                service.updateExerciseTypeConfigForActiveExercise(
+                    UpdateExerciseTypeConfigRequest(packageName, exerciseTypeConfig),
+                    StatusCallback(resultFuture)
+                )
+            },
+            3
+        )
+    }
 
     internal companion object {
-        @JvmStatic
-        fun getClient(context: Context): ServiceBackedExerciseClient {
-            return ServiceBackedExerciseClient(context, HsConnectionManager.getInstance(context))
-        }
+        internal const val CLIENT = "HealthServicesExerciseClient"
+        internal val CLIENT_CONFIGURATION =
+            ClientConfiguration(CLIENT, SERVICE_PACKAGE_NAME, EXERCISE_API_BIND_ACTION)
     }
 }

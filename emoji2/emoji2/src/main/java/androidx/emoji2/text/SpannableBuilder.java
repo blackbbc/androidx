@@ -16,6 +16,7 @@
 package androidx.emoji2.text;
 
 import android.annotation.SuppressLint;
+import android.os.Build;
 import android.text.Editable;
 import android.text.SpanWatcher;
 import android.text.Spannable;
@@ -43,7 +44,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * applied only for EmojiSpans. Therefore any other span change operation works the same way as in
  * the framework.
  *
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public final class SpannableBuilder extends SpannableStringBuilder {
@@ -58,7 +58,6 @@ public final class SpannableBuilder extends SpannableStringBuilder {
     private final @NonNull List<WatcherWrapper> mWatchers = new ArrayList<>();
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     SpannableBuilder(@NonNull Class<?> watcherClass) {
@@ -67,7 +66,6 @@ public final class SpannableBuilder extends SpannableStringBuilder {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     SpannableBuilder(@NonNull Class<?> watcherClass, @NonNull CharSequence text) {
@@ -77,7 +75,6 @@ public final class SpannableBuilder extends SpannableStringBuilder {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     SpannableBuilder(@NonNull Class<?> watcherClass, @NonNull CharSequence text, int start,
@@ -88,7 +85,6 @@ public final class SpannableBuilder extends SpannableStringBuilder {
     }
 
     /**
-     * @hide
      */
     @NonNull
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -253,7 +249,6 @@ public final class SpannableBuilder extends SpannableStringBuilder {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public void beginBatchEdit() {
@@ -261,7 +256,6 @@ public final class SpannableBuilder extends SpannableStringBuilder {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public void endBatchEdit() {
@@ -427,6 +421,19 @@ public final class SpannableBuilder extends SpannableStringBuilder {
                 int nend) {
             if (mBlockCalls.get() > 0 && isEmojiSpan(what)) {
                 return;
+            }
+            // workaround for platform bug fixed in Android P
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                // b/67926915 start cannot be determined, fallback to reflow from start instead
+                // of causing an exception.
+
+                // emoji2 bug b/216891011
+                if (ostart > oend) {
+                    ostart = 0;
+                }
+                if (nstart > nend) {
+                    nstart = 0;
+                }
             }
             ((SpanWatcher) mObject).onSpanChanged(text, what, ostart, oend, nstart, nend);
         }

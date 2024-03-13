@@ -30,7 +30,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URLConnection;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -39,7 +38,6 @@ import java.util.zip.GZIPInputStream;
   * Forked from the chromuim project org.chromium.android_webview.AndroidProtocolHandler
   */
 public class AssetHelper {
-    private static final String TAG = "AssetHelper";
 
     /**
      * Default value to be used as MIME type if guessing MIME type failed.
@@ -185,7 +183,7 @@ public class AssetHelper {
     public static File getDataDir(@NonNull Context context) {
         // Context#getDataDir is only available in APIs >= 24.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            return context.getDataDir();
+            return ApiHelperForN.getDataDir(context);
         } else {
             // For APIs < 24 cache dir is created under the data dir.
             return context.getCacheDir().getParentFile();
@@ -193,7 +191,7 @@ public class AssetHelper {
     }
 
     /**
-     * Use {@link URLConnection#guessContentTypeFromName} to guess MIME type or return the
+     * Use {@link MimeUtil#getMimeFromFileName} to guess MIME type or return the
      * {@link DEFAULT_MIME_TYPE} if it can't guess.
      *
      * @param filePath path of the file to guess its MIME type.
@@ -201,7 +199,7 @@ public class AssetHelper {
      */
     @NonNull
     public static String guessMimeType(@NonNull String filePath) {
-        String mimeType = URLConnection.guessContentTypeFromName(filePath);
+        String mimeType = MimeUtil.getMimeFromFileName(filePath);
         return mimeType == null ? DEFAULT_MIME_TYPE : mimeType;
     }
 }

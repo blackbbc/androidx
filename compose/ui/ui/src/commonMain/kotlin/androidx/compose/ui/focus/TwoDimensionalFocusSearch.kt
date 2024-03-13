@@ -16,69 +16,200 @@
 
 package androidx.compose.ui.focus
 
+import androidx.compose.runtime.collection.MutableVector
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.FocusDirection.Companion.Down
+import androidx.compose.ui.focus.FocusDirection.Companion.Enter
 import androidx.compose.ui.focus.FocusDirection.Companion.Left
 import androidx.compose.ui.focus.FocusDirection.Companion.Right
 import androidx.compose.ui.focus.FocusDirection.Companion.Up
 import androidx.compose.ui.focus.FocusStateImpl.Active
 import androidx.compose.ui.focus.FocusStateImpl.ActiveParent
 import androidx.compose.ui.focus.FocusStateImpl.Captured
-import androidx.compose.ui.focus.FocusStateImpl.Disabled
 import androidx.compose.ui.focus.FocusStateImpl.Inactive
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.node.ModifiedFocusNode
-import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.node.Nodes
+import androidx.compose.ui.node.requireLayoutNode
+import androidx.compose.ui.node.visitChildren
 import kotlin.math.absoluteValue
 import kotlin.math.max
 
-private const val invalidFocusDirection = "This function should only be used for 2-D focus search"
-private const val noActiveChild = "ActiveParent must have a focusedChild"
+private const val InvalidFocusDirection = "This function should only be used for 2-D focus search"
+private const val NoActiveChild = "ActiveParent must have a focusedChild"
 
 /**
- *  Perform a search among the immediate children of this [node][ModifiedFocusNode] in the
+ *  Perform a search among the immediate children of this [node][FocusTargetNode] in the
  *  specified [direction][FocusDirection] and return the node that is to be focused next. If one
  *  of the children is currently focused, we start from that point and search in the specified
  *  [direction][FocusDirection]. If none of the children are currently focused, we pick the
  *  top-left or bottom right based on the specified [direction][FocusDirection].
+ *
+ *  @return The value of [onFound] if a [focusTarget] was found, false if no [focusTarget] was
+ *  found, and null if focus search was cancelled using [FocusRequester.Cancel] or if a custom
+ *  focus search destination didn't point to any [focusTarget].
  */
-internal fun ModifiedFocusNode.twoDimensionalFocusSearch(
-    direction: FocusDirection
-): ModifiedFocusNode? {
-    return when (focusState) {
-        Inactive -> this
-        Disabled -> null
+internal fun FocusTargetNode.twoDimensionalFocusSearch(
+    direction: FocusDirection,
+    previouslyFocusedRect: Rect?,
+    onFound: (FocusTargetNode) -> Boolean
+): Boolean? {
+    when (focusState) {
+        Inactive -> return if (fetchFocusProperties().canFocus) {
+            onFound.invoke(this)
+        } else if (previouslyFocusedRect == null) {
+            findChildCorrespondingToFocusEnter(direction, onFound)
+        } else {
+            searchChildren(previouslyFocusedRect, direction, onFound)
+        }
         ActiveParent -> {
-            // If the focusedChild is an intermediate parent, we continue searching among it's
-            // children, and return a focus node if we find one.
-            val focusedChild = focusedChild ?: error(noActiveChild)
-            if (focusedChild.focusState == ActiveParent) {
-                focusedChild.twoDimensionalFocusSearch(direction)?.let { return it }
-            }
+            val focusedChild = activeChild ?: error(NoActiveChild)
+            // For 2D focus search we only search among siblings. You have to use DPad Center or
+            // call moveFocus(In) to move focus to a child. So twoDimensionalFocus Search delegates
+            // search to a child only if it "has focus". If this node "is focused", we just skip the
+            // children and search among the siblings of the focused item by calling
+            // "searchChildren" on this node.
+            when (focusedChild.focusState) {
 
-            // Use the focus rect of the active node as the starting point and pick one of our
-            // children as the next focused item.
-            val activeRect = findActiveFocusNode()?.focusRect() ?: error(noActiveChild)
-            focusableChildren().findBestCandidate(activeRect, direction)
+                ActiveParent -> {
+                    // If the focusedChild is an intermediate parent, we search among its children.
+                    val found = focusedChild
+                        .twoDimensionalFocusSearch(direction, previouslyFocusedRect, onFound)
+                    if (found != false) return found
+
+                    // We search among the siblings of the parent.
+                    return generateAndSearchChildren(
+                        previouslyFocusedRect ?: focusedChild.activeNode().focusRect(),
+                        direction,
+                        onFound
+                    )
+                }
+                // Search for the next eligible sibling.
+                Active, Captured -> return generateAndSearchChildren(
+                    previouslyFocusedRect ?: focusedChild.focusRect(),
+                    direction,
+                    onFound
+                )
+                Inactive -> error(NoActiveChild)
+            }
         }
         Active, Captured -> {
-            // The 2-D focus search starts form the root. If we reached here, it means that there
+            // The 2-D focus search starts from the root. If we reached here, it means that there
             // was no intermediate node that was ActiveParent. This is an initial focus scenario.
             // We need to search among this node's children to find the best focus candidate.
-            val focusableChildren = focusableChildren()
+            return findChildCorrespondingToFocusEnter(direction, onFound)
+        }
+    }
+}
 
-            // If there are aren't multiple children to choose from, return the first child.
-            if (focusableChildren.size <= 1) {
-                return focusableChildren.firstOrNull()
-            }
+/**
+ * Search through the children and find a child that corresponds to a moveFocus(Enter).
+ * An enter can be triggered explicitly by using the DPadCenter or can be triggered
+ * implicitly when we encounter a focus group during focus search.
+ * @param direction The [direction][FocusDirection] that triggered Focus Enter.
+ * @param onFound the callback that is run when the child is found.
+ * @return true if we find a suitable child, false otherwise.
+ */
+internal fun FocusTargetNode.findChildCorrespondingToFocusEnter(
+    direction: FocusDirection,
+    onFound: (FocusTargetNode) -> Boolean
+): Boolean {
 
-            // To start the search, we pick one of the four corners of this node as the initially
-            // focused rectangle.
-            val initialFocusRect = when (direction) {
-                Right, Down -> focusRect().topLeft()
-                Left, Up -> focusRect().bottomRight()
-                else -> error(invalidFocusDirection)
-            }
-            focusableChildren.findBestCandidate(initialFocusRect, direction)
+    val focusableChildren = MutableVector<FocusTargetNode>()
+    collectAccessibleChildren(focusableChildren)
+
+    // If there are aren't multiple children to choose from, return the first child.
+    if (focusableChildren.size <= 1) {
+        return focusableChildren.firstOrNull()?.let { onFound.invoke(it) } ?: false
+    }
+
+    // For the purpose of choosing an appropriate child, we convert moveFocus(Enter)
+    // to Left or Right based on LayoutDirection. If this was an implicit enter, we use the
+    // direction that triggered the implicit enter.
+    val requestedDirection = when (direction) {
+        // TODO(b/244528858) choose different items for moveFocus(Enter) based on LayoutDirection.
+        @OptIn(ExperimentalComposeUiApi::class)
+        Enter -> Right
+        else -> direction
+    }
+
+    // To start the search, we pick one of the four corners of this node as the initially
+    // focused rectangle.
+    val initialFocusRect = when (requestedDirection) {
+        Right, Down -> focusRect().topLeft()
+        Left, Up -> focusRect().bottomRight()
+        else -> error(InvalidFocusDirection)
+    }
+    val nextCandidate = focusableChildren.findBestCandidate(initialFocusRect, requestedDirection)
+    return nextCandidate?.let { onFound.invoke(it) } ?: false
+}
+
+// Search among your children for the next child.
+// If the next child is not found, generate more children by requesting a beyondBoundsLayout.
+private fun FocusTargetNode.generateAndSearchChildren(
+    focusedItem: Rect,
+    direction: FocusDirection,
+    onFound: (FocusTargetNode) -> Boolean
+): Boolean {
+    // Search among the currently available children.
+    if (searchChildren(focusedItem, direction, onFound)) {
+        return true
+    }
+
+    // Generate more items until searchChildren() finds a result.
+    return searchBeyondBounds(direction) {
+        // Search among the added children. (The search continues as long as we return null).
+        searchChildren(focusedItem, direction, onFound).takeIf { found ->
+            // Stop searching when we find a result or if we don't have any more content.
+            found || !hasMoreContent
+        }
+    } ?: false
+}
+
+private fun FocusTargetNode.searchChildren(
+    focusedItem: Rect,
+    direction: FocusDirection,
+    onFound: (FocusTargetNode) -> Boolean
+): Boolean {
+    val children = MutableVector<FocusTargetNode>().apply {
+        visitChildren(Nodes.FocusTarget) {
+            // TODO(b/278765590): Find the root issue why visitChildren returns unattached nodes.
+            if (it.isAttached) this.add(it)
+        }
+    }
+    while (children.isNotEmpty()) {
+        val nextItem = children.findBestCandidate(focusedItem, direction)
+            ?: return false
+
+        // If the result is not deactivated, this is a valid next item.
+        if (nextItem.fetchFocusProperties().canFocus) return onFound.invoke(nextItem)
+
+        // If the result is deactivated, we search among its children.
+        if (nextItem.generateAndSearchChildren(focusedItem, direction, onFound)) return true
+
+        // If there are no results among the children of the deactivated node,
+        // repeat the search by excluding this deactivated node.
+        children.remove(nextItem)
+    }
+    return false
+}
+
+/**
+ * Returns all [FocusTargetNode] children that are not Deactivated. Any
+ * child that is deactivated will add activated children instead, unless the deactivated
+ * node has a custom Enter specified.
+ */
+private fun DelegatableNode.collectAccessibleChildren(
+    accessibleChildren: MutableVector<FocusTargetNode>
+) {
+    visitChildren(Nodes.FocusTarget) {
+        // TODO(b/278765590): Find the root issue why visitChildren returns unattached nodes.
+        if (!it.isAttached || it.requireLayoutNode().isDeactivated) return@visitChildren
+
+        if (it.fetchFocusProperties().canFocus) {
+            accessibleChildren.add(it)
+        } else {
+            it.collectAccessibleChildren(accessibleChildren)
         }
     }
 }
@@ -87,25 +218,28 @@ internal fun ModifiedFocusNode.twoDimensionalFocusSearch(
 // TODO(b/182319711): For Left/Right focus moves, Consider finding the first candidate in the beam
 //  and then only comparing candidates in the beam. If nothing is in the beam, then consider all
 //  valid candidates.
-private fun List<ModifiedFocusNode>.findBestCandidate(
+@Suppress("ModifierFactoryExtensionFunction", "ModifierFactoryReturnType")
+private fun MutableVector<FocusTargetNode>.findBestCandidate(
     focusRect: Rect,
     direction: FocusDirection
-): ModifiedFocusNode? {
+): FocusTargetNode? {
     // Pick an impossible rectangle as the initial best candidate Rect.
     var bestCandidate = when (direction) {
         Left -> focusRect.translate(focusRect.width + 1, 0f)
         Right -> focusRect.translate(-(focusRect.width + 1), 0f)
         Up -> focusRect.translate(0f, focusRect.height + 1)
         Down -> focusRect.translate(0f, -(focusRect.height + 1))
-        else -> error(invalidFocusDirection)
+        else -> error(InvalidFocusDirection)
     }
 
-    var searchResult: ModifiedFocusNode? = null
-    fastForEach { candidateNode ->
-        val candidateRect = candidateNode.focusRect()
-        if (isBetterCandidate(candidateRect, bestCandidate, focusRect, direction)) {
-            bestCandidate = candidateRect
-            searchResult = candidateNode
+    var searchResult: FocusTargetNode? = null
+    forEach { candidateNode ->
+        if (candidateNode.isEligibleForFocusSearch) {
+            val candidateRect = candidateNode.focusRect()
+            if (isBetterCandidate(candidateRect, bestCandidate, focusRect, direction)) {
+                bestCandidate = candidateRect
+                searchResult = candidateNode
+            }
         }
     }
     return searchResult
@@ -130,7 +264,7 @@ private fun isBetterCandidate(
         Right -> (focusedRect.left < left || focusedRect.right <= left) && focusedRect.right < right
         Up -> (focusedRect.bottom > bottom || focusedRect.top >= bottom) && focusedRect.top > top
         Down -> (focusedRect.top < top || focusedRect.bottom <= top) && focusedRect.bottom < bottom
-        else -> error(invalidFocusDirection)
+        else -> error(InvalidFocusDirection)
     }
 
     // The distance from the edge furthest in the given direction of source to the edge nearest
@@ -141,7 +275,7 @@ private fun isBetterCandidate(
             Right -> left - focusedRect.right
             Up -> focusedRect.top - bottom
             Down -> top - focusedRect.bottom
-            else -> error(invalidFocusDirection)
+            else -> error(InvalidFocusDirection)
         }
         return max(0.0f, majorAxisDistance)
     }
@@ -153,7 +287,7 @@ private fun isBetterCandidate(
         Left, Right -> (focusedRect.top + focusedRect.height / 2) - (top + height / 2)
         // the distance between the center horizontals
         Up, Down -> (focusedRect.left + focusedRect.width / 2) - (left + width / 2)
-        else -> error(invalidFocusDirection)
+        else -> error(InvalidFocusDirection)
     }
 
     // Fudge-factor opportunity: how to calculate distance given major and minor axis distances.
@@ -197,7 +331,7 @@ private fun beamBeats(
     fun Rect.inSourceBeam() = when (direction) {
         Left, Right -> this.bottom > source.top && this.top < source.bottom
         Up, Down -> this.right > source.left && this.left < source.right
-        else -> error(invalidFocusDirection)
+        else -> error(InvalidFocusDirection)
     }
 
     // Whether the rect is in the direction of search.
@@ -206,7 +340,7 @@ private fun beamBeats(
         Right -> source.right <= left
         Up -> source.top >= bottom
         Down -> source.bottom <= top
-        else -> error(invalidFocusDirection)
+        else -> error(InvalidFocusDirection)
     }
 
     // The distance from the edge furthest in the given direction of source to the edge nearest
@@ -217,7 +351,7 @@ private fun beamBeats(
             Right -> left - source.right
             Up -> source.top - bottom
             Down -> top - source.bottom
-            else -> error(invalidFocusDirection)
+            else -> error(InvalidFocusDirection)
         }
         return max(0.0f, majorAxisDistance)
     }
@@ -231,7 +365,7 @@ private fun beamBeats(
             Right -> right - source.right
             Up -> source.top - top
             Down -> bottom - source.bottom
-            else -> error(invalidFocusDirection)
+            else -> error(InvalidFocusDirection)
         }
         return max(1.0f, majorAxisDistance)
     }
@@ -257,3 +391,10 @@ private fun beamBeats(
 
 private fun Rect.topLeft() = Rect(left, top, left, top)
 private fun Rect.bottomRight() = Rect(right, bottom, right, bottom)
+
+// Find the active descendant.
+@Suppress("ModifierFactoryExtensionFunction", "ModifierFactoryReturnType")
+private fun FocusTargetNode.activeNode(): FocusTargetNode {
+    check(focusState == ActiveParent) { "Searching for active node in inactive hierarchy" }
+    return findActiveFocusNode() ?: error(NoActiveChild)
+}

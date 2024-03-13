@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -28,28 +33,22 @@ android {
     buildTypes.all {
         consumerProguardFiles("proguard-rules.pro")
     }
+    namespace "androidx.lifecycle.viewmodel.savedstate"
 }
 
 dependencies {
     api("androidx.annotation:annotation:1.0.0")
-    api("androidx.savedstate:savedstate:1.0.0")
+    api("androidx.core:core-ktx:1.2.0")
+    api("androidx.savedstate:savedstate:1.2.1")
     api(projectOrArtifact(":lifecycle:lifecycle-livedata-core"))
     api(projectOrArtifact(":lifecycle:lifecycle-viewmodel"))
+    api(libs.kotlinStdlib)
+    api(libs.kotlinCoroutinesAndroid)
 
     androidTestImplementation projectOrArtifact(":lifecycle:lifecycle-runtime")
     androidTestImplementation projectOrArtifact(":lifecycle:lifecycle-livedata-core")
-    androidTestImplementation ("androidx.fragment:fragment:1.3.0") {
-        exclude group: "androidx.lifecycle", module: "lifecycle-runtime"
-        exclude group: "androidx.lifecycle", module: "lifecycle-livedata-core"
-        exclude group: "androidx.lifecycle", module: "lifecycle-viewmodel-savedstate"
-        exclude group: "androidx.lifecycle", module: "lifecycle-viewmodel"
-    }
-    androidTestImplementation project(":internal-testutils-runtime"), {
-        exclude group: "androidx.lifecycle", module: "lifecycle-runtime"
-        exclude group: "androidx.lifecycle", module: "lifecycle-livedata-core"
-        exclude group: "androidx.lifecycle", module: "lifecycle-viewmodel-savedstate"
-        exclude group: "androidx.lifecycle", module: "lifecycle-viewmodel"
-    }
+    androidTestImplementation ("androidx.fragment:fragment:1.3.0")
+    androidTestImplementation project(":internal-testutils-runtime")
     androidTestImplementation(libs.truth)
     androidTestImplementation(libs.kotlinStdlib)
     androidTestImplementation(libs.testExtJunit)
@@ -58,24 +57,10 @@ dependencies {
     androidTestImplementation(libs.testRules)
 }
 
-//used by testImplementation safe-args-generator
-android.libraryVariants.all { variant ->
-    def name = variant.name
-    def suffix = name.capitalize()
-    project.tasks.register("jar${suffix}", Copy).configure {
-        dependsOn ("assemble$suffix")
-        from(zipTree("${project.buildDir}/outputs/aar/lifecycle-viewmodel-savedstate-${name}.aar")) {
-            include "classes.jar"
-        }
-        destinationDir new File(project.buildDir, "libJar")
-    }
-}
-
 androidx {
-    name = "Android Lifecycle ViewModel with SavedState"
+    name = "Lifecycle ViewModel with SavedState"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.LIFECYCLE
-    mavenGroup = LibraryGroups.LIFECYCLE
     inceptionYear = "2018"
     description = "Android Lifecycle ViewModel"
+    metalavaK2UastEnabled = true
 }

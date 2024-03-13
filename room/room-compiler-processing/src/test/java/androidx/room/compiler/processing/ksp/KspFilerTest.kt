@@ -16,23 +16,27 @@
 
 package androidx.room.compiler.processing.ksp
 
+import androidx.kruth.assertThat
+import androidx.room.compiler.processing.XAnnotation
+import androidx.room.compiler.processing.XAnnotationValue
 import androidx.room.compiler.processing.XElement
 import androidx.room.compiler.processing.XMessager
 import androidx.room.compiler.processing.addOriginatingElement
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.runKspTest
-import com.google.common.truth.Truth.assertThat
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Dependencies
+import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFile
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeSpec
-import org.junit.Test
 import java.io.File
 import java.io.OutputStream
 import javax.tools.Diagnostic
+import kotlin.io.path.Path
+import org.junit.Test
 
 class KspFilerTest {
 
@@ -90,6 +94,79 @@ class KspFilerTest {
         }
     }
 
+    @Test
+    fun originatingClassAddedForClassPathAndFileType() {
+        runKspTest(sources = listOf(simpleKotlinClass)) { invocation ->
+            val sourceElement = invocation.processingEnv.requireTypeElement("foo.bar.Baz")
+            val classPathElement = invocation.processingEnv
+                .requireTypeElement("com.google.devtools.ksp.processing.SymbolProcessor")
+
+            val fileWithType = FileSpec.builder("foo", "Bar.kt").apply {
+                addType(
+                    TypeSpec.classBuilder("Bar").apply {
+                        addOriginatingElement(sourceElement)
+                        addOriginatingElement(classPathElement)
+                    }.build()
+                )
+            }.build()
+
+            val codeGenerator = DependencyTrackingCodeGenerator()
+            KspFiler(codeGenerator, TestMessager()).write(fileWithType)
+            codeGenerator.fileDependencies[fileWithType.name]
+                .containsExactlySimpleKotlinClass()
+            val (file, classDeclarations) = codeGenerator.classDependencies.entries.single()
+            assertThat(file).isEqualTo("Bar.kt")
+            assertThat(classDeclarations.single())
+                .isEqualTo((classPathElement as KspTypeElement).declaration)
+        }
+    }
+
+    @Test
+    fun originatingClassAddedForClassPathType() {
+        runKspTest(sources = listOf()) { invocation ->
+            val classPathElement = invocation.processingEnv
+                .requireTypeElement("com.google.devtools.ksp.processing.SymbolProcessor")
+
+            val fileWithType = FileSpec.builder("foo", "Bar.kt").apply {
+                addType(
+                    TypeSpec.classBuilder("Bar").apply {
+                        addOriginatingElement(classPathElement)
+                    }.build()
+                )
+            }.build()
+
+            val codeGenerator = DependencyTrackingCodeGenerator()
+            KspFiler(codeGenerator, TestMessager()).write(fileWithType)
+            val (file, classDeclarations) = codeGenerator.classDependencies.entries.single()
+            assertThat(file).isEqualTo("Bar.kt")
+            assertThat(classDeclarations.single())
+                .isEqualTo((classPathElement as KspTypeElement).declaration)
+        }
+    }
+
+    @Test
+    fun writeResource() {
+        runKspTest(
+            sources = emptyList()
+        ) { invocation ->
+            invocation.processingEnv.filer.writeResource(
+                filePath = Path("test.log"),
+                originatingElements = emptyList()
+            ).bufferedWriter(Charsets.UTF_8).use {
+                it.write("Hello!")
+            }
+            invocation.processingEnv.filer.writeResource(
+                filePath = Path("META-INF/services/com.test.Foo"),
+                originatingElements = emptyList()
+            ).bufferedWriter(Charsets.UTF_8).use {
+                it.write("Not a real service...")
+            }
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
     private fun Dependencies?.containsExactlySimpleKotlinClass() {
         assertThat(this).isNotNull()
         val originatingFiles = this!!.originatingFiles.map { it.fileName }
@@ -97,11 +174,21 @@ class KspFilerTest {
     }
 
     class TestMessager : XMessager() {
-        override fun onPrintMessage(kind: Diagnostic.Kind, msg: String, element: XElement?) {
+        override fun onPrintMessage(
+            kind: Diagnostic.Kind,
+            msg: String,
+            element: XElement?,
+            annotation: XAnnotation?,
+            annotationValue: XAnnotationValue?
+        ) {
+            var errorMsg = "${kind.name} element: $element " +
+                "annotation: $annotation " +
+                "annotationValue: $annotationValue " +
+                "msg: $msg"
             if (kind == Diagnostic.Kind.ERROR) {
-                error("Error element: $element msg: $msg")
+                error(errorMsg)
             } else {
-                println("${kind.name} element: $element msg: $msg")
+                println(errorMsg)
             }
         }
     }
@@ -109,6 +196,7 @@ class KspFilerTest {
     class DependencyTrackingCodeGenerator : CodeGenerator {
 
         val fileDependencies = mutableMapOf<String, Dependencies>()
+        val classDependencies = mutableMapOf<String, MutableSet<KSClassDeclaration>>()
 
         override val generatedFile: Collection<File>
             get() = emptyList()
@@ -122,12 +210,39 @@ class KspFilerTest {
             // no-op for the sake of dependency tracking.
         }
 
+        override fun associateWithClasses(
+            classes: List<KSClassDeclaration>,
+            packageName: String,
+            fileName: String,
+            extensionName: String
+        ) {
+            classDependencies.getOrPut(fileName) { mutableSetOf() }.addAll(classes)
+        }
+
         override fun createNewFile(
             dependencies: Dependencies,
             packageName: String,
             fileName: String,
             extensionName: String
         ): OutputStream {
+            fileDependencies[fileName] = dependencies
+            return OutputStream.nullOutputStream()
+        }
+
+        override fun associateByPath(
+            sources: List<KSFile>,
+            path: String,
+            extensionName: String
+        ) {
+            // no-op for the sake of dependency tracking.
+        }
+
+        override fun createNewFileByPath(
+            dependencies: Dependencies,
+            path: String,
+            extensionName: String
+        ): OutputStream {
+            val fileName = path.split(File.separator).last()
             fileDependencies[fileName] = dependencies
             return OutputStream.nullOutputStream()
         }

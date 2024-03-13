@@ -28,6 +28,7 @@ import static org.mockito.Mockito.verify;
 import android.os.RemoteException;
 
 import androidx.car.app.OnDoneCallback;
+import androidx.car.app.TestUtils;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -47,6 +48,7 @@ public class GridItemTest {
         assertThat(gridItem.getImageType()).isEqualTo(GridItem.IMAGE_TYPE_LARGE);
         assertThat(gridItem.getTitle()).isNotNull();
         assertThat(gridItem.getText()).isNull();
+        assertThat(gridItem.getBadge()).isNull();
     }
 
     @Test
@@ -73,16 +75,47 @@ public class GridItemTest {
     }
 
     @Test
-    public void title_throwsIfNotSet() {
-        // Not set
-        assertThrows(IllegalStateException.class,
-                () -> new GridItem.Builder().setImage(BACK).build());
-
-        // Not set
+    public void title_unsupportedSpans_throws() {
+        CharSequence title = TestUtils.getCharSequenceWithColorSpan("Title");
         assertThrows(
-                IllegalArgumentException.class, () -> new GridItem.Builder().setTitle("").setImage(
-                        BACK).build());
+                IllegalArgumentException.class,
+                () -> new GridItem.Builder().setTitle(title));
+        CarText title2 = TestUtils.getCarTextVariantsWithColorSpan("Title");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new GridItem.Builder().setTitle(title2));
+
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title3 = TestUtils.getCharSequenceWithDistanceAndDurationSpans("Title");
+        new GridItem.Builder().setTitle(title3).setImage(BACK).build();
+        CarText title4 = TestUtils.getCarTextVariantsWithDistanceAndDurationSpans("Title");
+        new GridItem.Builder().setTitle(title4).setImage(BACK).build();
     }
+
+    @Test
+    public void createImage_doesNotThrowIfTitleIsNotSet() {
+        // Test that no exceptions are thrown.
+        GridItem unused = new GridItem.Builder().setImage(BACK).build();
+    }
+
+    @Test
+    public void title_doesNotThrowIfEmptyString() {
+        // Test that no exceptions are thrown.
+        new GridItem.Builder().setTitle("").setImage(BACK).build();
+    }
+
+    @Test
+    public void title_doesNotThrowIfNullCharSequence() {
+        // Test that no exceptions are thrown.
+        new GridItem.Builder().setTitle((CharSequence) null).setImage(BACK).build();
+    }
+
+    @Test
+    public void title_doesNotThrowIfNullCarText() {
+        // Test that no exceptions are thrown.
+        new GridItem.Builder().setTitle((CarText) null).setImage(BACK).build();
+    }
+
 
     @Test
     public void text_charSequence() {
@@ -104,10 +137,36 @@ public class GridItemTest {
     }
 
     @Test
-    public void textWithoutTitle_throws() {
+    public void textWithoutTitle_returnsNullTitle() {
+        GridItem item = new GridItem.Builder().setText("text").setImage(BACK).build();
+
+        assertThat(item.getTitle()).isNull();
+    }
+
+    @Test
+    public void textSetTitleToNull_returnsNullTitle() {
+        GridItem item = new GridItem.Builder().setTitle("title").setTitle((CharSequence) null)
+                .setImage(BACK).build();
+
+        assertThat(item.getTitle()).isNull();
+    }
+
+    @Test
+    public void text_unsupportedSpans_throws() {
+        CharSequence text = TestUtils.getCharSequenceWithClickableSpan("Text");
         assertThrows(
-                IllegalStateException.class,
-                () -> new GridItem.Builder().setText("text").setImage(BACK).build());
+                IllegalArgumentException.class,
+                () -> new GridItem.Builder().setTitle("Title").setText(text));
+        CarText text2 = TestUtils.getCarTextVariantsWithClickableSpan("Text");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new GridItem.Builder().setTitle("Title").setText(text2));
+
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence text3 = TestUtils.getCharSequenceWithColorSpan("Text");
+        new GridItem.Builder().setTitle("Title").setText(text3).setImage(BACK).build();
+        CarText text4 = TestUtils.getCarTextVariantsWithColorSpan("Text");
+        new GridItem.Builder().setTitle("Title").setText(text4).setImage(BACK).build();
     }
 
     @Test
@@ -125,14 +184,38 @@ public class GridItemTest {
     }
 
     @Test
+    public void create_setImagewithBadge() {
+        Badge b = new Badge.Builder().setHasDot(true).build();
+        GridItem gridItem =
+                new GridItem.Builder().setTitle("Title").setImage(BACK, b).build();
+
+        assertThat(gridItem.getBadge()).isEqualTo(b);
+    }
+
+    @Test
+    public void create_setImagewithTypeAndBadge() {
+        Badge b = new Badge.Builder().setHasDot(true).build();
+        GridItem gridItem = new GridItem.Builder().setTitle("Title")
+                .setImage(BACK, GridItem.IMAGE_TYPE_ICON, b).build();
+
+        assertThat(gridItem.getBadge()).isEqualTo(b);
+    }
+
+    @Test
     public void equals() {
         String title = "title";
         String text = "text";
-        GridItem gridItem = new GridItem.Builder().setTitle(title).setText(text).setImage(
-                BACK).build();
+        Badge badge = new Badge.Builder().setHasDot(true).build();
+        GridItem g1 = new GridItem.Builder()
+                .setTitle(title)
+                .setText(text)
+                .setImage(BACK, badge).build();
+        GridItem g2 = new GridItem.Builder()
+                .setTitle(title)
+                .setText(text)
+                .setImage(BACK, badge).build();
 
-        assertThat(new GridItem.Builder().setTitle(title).setText(text).setImage(BACK).build())
-                .isEqualTo(gridItem);
+        assertThat(g1).isEqualTo(g2);
     }
 
     @Test
@@ -161,6 +244,16 @@ public class GridItemTest {
 
         assertThat(new GridItem.Builder().setImage(ALERT).setTitle("Title").build()).isNotEqualTo(
                 gridItem);
+    }
+
+    @Test
+    public void notEquals_differentBadge() {
+        Badge badge = new Badge.Builder().setHasDot(true).build();
+        GridItem withBadge = new GridItem.Builder()
+                .setTitle("Title").setImage(BACK, badge).build();
+        GridItem noBadge = new GridItem.Builder().setTitle("Title").setImage(BACK).build();
+
+        assertThat(withBadge).isNotEqualTo(noBadge);
     }
 
     @Test

@@ -17,14 +17,15 @@
 @file:OptIn(InternalComposeApi::class)
 package androidx.compose.runtime.internal
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ComposeCompilerApi
 import androidx.compose.runtime.Composer
 import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.RecomposeScope
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.updateChangedFlags
 import kotlin.jvm.functions.FunctionN
-
-private const val SLOTS_PER_INT = 10
 
 @Stable
 internal class ComposableLambdaNImpl(
@@ -122,8 +123,10 @@ internal class ComposableLambdaNImpl(
         c.endRestartGroup()?.updateScope { nc, _ ->
             val params = args.slice(0 until realParams).toTypedArray()
             @Suppress("UNUSED_VARIABLE")
-            val changed = args[realParams + 1] as Int
-            val changedN = args.slice(realParams + 2 until args.size).toTypedArray()
+            val changed = updateChangedFlags(args[realParams + 1] as Int)
+            val changedN = Array<Any?>(args.size - realParams - 2) { index ->
+                updateChangedFlags(args[realParams + 2 + index] as Int)
+            }
             this(
                 *params,
                 nc,
@@ -161,6 +164,18 @@ fun composableLambdaN(
     result.update(block)
     composer.endReplaceableGroup()
     return result
+}
+
+@Suppress
+@ComposeCompilerApi
+@Composable
+fun rememberComposableLambdaN(
+    key: Int,
+    tracked: Boolean,
+    arity: Int,
+    block: Any
+): ComposableLambdaN = remember { ComposableLambdaNImpl(key, tracked, arity) }.also {
+    it.update(block)
 }
 
 @Suppress("unused")

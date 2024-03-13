@@ -23,20 +23,19 @@ import androidx.room.migration.bundle.FieldBundle
 import androidx.room.migration.bundle.ForeignKeyBundle
 import androidx.room.migration.bundle.FtsEntityBundle
 import androidx.room.migration.bundle.IndexBundle
-import androidx.room.processor.ProcessorErrors.deletedOrRenamedTableFound
-import androidx.room.processor.ProcessorErrors.tableRenameError
 import androidx.room.processor.ProcessorErrors.conflictingRenameColumnAnnotationsFound
 import androidx.room.processor.ProcessorErrors.conflictingRenameTableAnnotationsFound
-import androidx.room.processor.ProcessorErrors.newNotNullColumnMustHaveDefaultValue
 import androidx.room.processor.ProcessorErrors.deletedOrRenamedColumnFound
+import androidx.room.processor.ProcessorErrors.deletedOrRenamedTableFound
+import androidx.room.processor.ProcessorErrors.newNotNullColumnMustHaveDefaultValue
+import androidx.room.processor.ProcessorErrors.tableRenameError
 import androidx.room.processor.ProcessorErrors.tableWithConflictingPrefixFound
 import androidx.room.vo.AutoMigration
 
 /**
- * This exception should be thrown to abandon processing an @AutoMigration.
+ * This RuntimeException should be thrown to abandon processing an @AutoMigration.
  *
  * @param errorMessage Error message to be thrown with the exception
- * @return RuntimeException with the provided error message
  */
 class DiffException(val errorMessage: String) : RuntimeException(errorMessage)
 
@@ -44,7 +43,7 @@ class DiffException(val errorMessage: String) : RuntimeException(errorMessage)
  * Contains the changes detected between the two schema versions provided.
  */
 data class SchemaDiffResult(
-    val addedColumns: Map<String, AutoMigration.AddedColumn>,
+    val addedColumns: List<AutoMigration.AddedColumn>,
     val deletedColumns: List<AutoMigration.DeletedColumn>,
     val addedTables: Set<AutoMigration.AddedTable>,
     val renamedTables: Map<String, String>,
@@ -93,9 +92,9 @@ class SchemaDiffer(
         mutableMapOf<String, AutoMigration.ComplexChangedTable>()
     private val deletedTables = deleteTableEntries.map { it.deletedTableName }.toSet()
 
-    // Map of columns that have been added in the database, keyed by the column name, note that
-    // the table these columns have been added to will not contain any complex schema changes.
-    private val addedColumns = mutableMapOf<String, AutoMigration.AddedColumn>()
+    // Map of columns that have been added in the database, note that the table these columns
+    // have been added to will not contain any complex schema changes.
+    private val addedColumns = mutableListOf<AutoMigration.AddedColumn>()
     private val deletedColumns = deleteColumnEntries
 
     /**
@@ -292,15 +291,20 @@ class SchemaDiffer(
         // table as a complex change and include the renamed column.
         val renamedToColumn = isColumnRenamed(fromColumn.columnName, fromTable.tableName)
         if (renamedToColumn != null) {
-            val renamedColumnsMap = mutableMapOf(
-                renamedToColumn.newColumnName to fromColumn.columnName
-            )
             // Make sure there are no conflicts in the new version of the table with the
             // temporary new table name
             if (toSchemaBundle.entitiesByTableName.containsKey(toTable.newTableName)) {
                 diffError(tableWithConflictingPrefixFound(toTable.newTableName))
             }
             renamedTables.remove(fromTable.tableName)
+
+            // If the table is already marked as a complex change, then we want to add a new entry
+            // to it's renamedColumnMap
+            val renamedColumnsMap = complexChangedTables[fromTable.tableName]?.renamedColumnsMap
+                ?: mutableMapOf()
+
+            renamedColumnsMap[renamedToColumn.newColumnName] = fromColumn.columnName
+
             complexChangedTables[fromTable.tableName] =
                 AutoMigration.ComplexChangedTable(
                     tableName = fromTable.tableName,
@@ -375,8 +379,8 @@ class SchemaDiffer(
             return true
         }
         // Check if the to table or the from table is an FTS table while the other is not.
-        if (fromTable is FtsEntityBundle && !(toTable is FtsEntityBundle) ||
-            toTable is FtsEntityBundle && !(fromTable is FtsEntityBundle)
+        if (fromTable is FtsEntityBundle && toTable !is FtsEntityBundle ||
+            toTable is FtsEntityBundle && fromTable !is FtsEntityBundle
         ) {
             return true
         }
@@ -557,11 +561,12 @@ class SchemaDiffer(
                 // need to account for it as the table will be recreated already with the new
                 // table.
                 if (!complexChangedTables.containsKey(fromTable.tableName)) {
-                    addedColumns[toColumn.columnName] =
+                    addedColumns.add(
                         AutoMigration.AddedColumn(
                             toTable.tableName,
                             toColumn
                         )
+                    )
                 }
             }
         }

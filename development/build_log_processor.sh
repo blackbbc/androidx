@@ -21,9 +21,6 @@ usage() {
   echo
   echo "Executes <command> <arguments> and then runs build_log_simplifier.py against its output"
   echo
-  echo "-Pandroidx.summarizeStderr"
-  echo "  Run build_log_simplifier.py on failure to produce a summary of the build output"
-  echo
   echo "-Pandroidx.validateNoUnrecognizedMessages"
   echo "  Run build_log_simplifier.py --validate on success to confirm that the build generated no unrecognized messages"
   exit 1
@@ -33,10 +30,6 @@ if [[ "$1" == "" ]]; then
   usage
 fi
 
-summarizeOnFailure=false
-if [[ " ${@} " =~ " -Pandroidx.summarizeStderr " ]]; then
-  summarizeOnFailure=true
-fi
 validateNoUnrecognizedMessagesOnSuccess=false
 validateArgument="-Pandroidx.validateNoUnrecognizedMessages"
 if [[ " ${@} " =~ " $validateArgument " ]]; then
@@ -45,8 +38,13 @@ fi
 if [[ " ${@} " =~ " ${validateArgument}=false " ]]; then
   validateNoUnrecognizedMessagesOnSuccess=false
 fi
+printTimestamps=false
+timestampsArgument="-Pandroidx.printTimestamps"
+if [[ " ${@} " =~ " ${timestampsArgument} " ]]; then
+  printTimestamps=true
+fi
 
-# run Gradle and save stdout and stderr into $logFile
+# identify some filepaths
 SCRIPT_PATH="$(cd $(dirname $0) && pwd)"
 CHECKOUT="$(cd "$SCRIPT_PATH/../../.." && pwd)"
 if [ -n "$DIST_DIR" ]; then
@@ -68,8 +66,8 @@ function rotateLogs() {
   done
   mv $logFile "$LOG_DIR/gradle.1.log" 2>/dev/null || true
 }
+rotateLogs
 
-rm -f "$logFile"
 # Save OUT_DIR and some other variables into the log file so build_log_simplifier.py can
 # identify them later
 echo "OUT_DIR=$OUT_DIR" | tee -a $logFile
@@ -84,7 +82,16 @@ fi
 echo "GRADLE_USER_HOME=$GRADLE_USER_HOME" | tee -a $logFile
 programName="$1"
 shift
-if "$programName" "$@" > >(tee -a "$logFile") 2>&1; then
+
+if [ "$printTimestamps" == "true" ]; then
+  # this program adds a timestamp to each line of input, and echos the result
+  timestampPrinter="$SCRIPT_PATH/ts.py"
+else
+  # this program just echos its input
+  timestampPrinter=cat
+fi
+
+if "$programName" "$@" > >(tee -a "$logFile" | "$timestampPrinter") 2>&1; then
   if [ "$validateNoUnrecognizedMessagesOnSuccess" == "true" ]; then
     if $SCRIPT_PATH/build_log_simplifier.py --validate $logFile >&2; then
       echo No unrecognized messages found in build log
@@ -93,27 +100,17 @@ if "$programName" "$@" > >(tee -a "$logFile") 2>&1; then
     fi
   fi
 else
-  if [ "$summarizeOnFailure" == "true" ]; then
-    echo >&2
-    echo "############################################################################" >&2
-    echo "Attempting to locate the relevant error messages via build_log_simplifier.py" >&2
-    echo "############################################################################" >&2
-    echo >&2
-    # Try to identify the most relevant lines of output, and put them at the bottom of the
-    # output where they will also be placed into the build failure email.
-    # TODO: We may be able to stop cleaning up Gradle's output after Gradle can do this on its own:
-    # https://github.com/gradle/gradle/issues/1005
-    # and https://github.com/gradle/gradle/issues/13090
-    summaryLog="$LOG_DIR/error_summary.log"
-    $SCRIPT_PATH/build_log_simplifier.py $logFile | tee "$summaryLog" >&2
-  fi
+  echo >&2
+  echo "############################################################################" >&2
+  echo "Attempting to locate the relevant error messages via build_log_simplifier.py" >&2
+  echo "############################################################################" >&2
+  echo >&2
+  # Try to identify the most relevant lines of output, and put them at the bottom of the
+  # output where they will also be placed into the build failure email.
+  # TODO: We may be able to stop cleaning up Gradle's output after Gradle can do this on its own:
+  # https://github.com/gradle/gradle/issues/1005
+  # and https://github.com/gradle/gradle/issues/13090
+  summaryLog="$LOG_DIR/error_summary.log"
+  $SCRIPT_PATH/build_log_simplifier.py $logFile | tee "$summaryLog" >&2
   exit 1
-fi
-
-if [ "$validateNoUnrecognizedMessagesOnSuccess" == "true" ]; then
-  # If we've been asked to validate that no unrecognized messages exist, then this output may be
-  # interesting to the caller and we'll try to avoid overwriting it
-  # This mostly matters on the build server so we can download all of the logs and do garbage
-  # collection of the build output message exemptions
-  rotateLogs
 fi

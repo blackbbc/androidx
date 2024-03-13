@@ -20,6 +20,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.MultiParagraph
+import androidx.compose.ui.text.TextLayoutInput
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.Constraints
 
 /**
  * Provides [Selection] information for a composable to SelectionContainer. Composables who can
@@ -37,27 +41,10 @@ internal interface Selectable {
     val selectableId: Long
 
     /**
-     * Returns [Selection] information for a selectable composable. If no selection can be provided
-     * null should be returned.
-     *
-     * @param startPosition graphical position of the start of the selection
-     * @param endPosition graphical position of the end of the selection
-     * @param containerLayoutCoordinates [LayoutCoordinates] of the widget
-     * @param adjustment [Selection] range is adjusted according to this param
-     * @param previousSelection previous selection result
-     * @param isStartHandle true if the start handle is being dragged
-     *
-     * @return null if no selection will be applied for this composable, or [Selection] instance
-     *  if selection is applied to this composable.
+     * A function which adds [SelectableInfo] representing this [Selectable]
+     * to the [SelectionLayoutBuilder].
      */
-    fun getSelection(
-        startPosition: Offset,
-        endPosition: Offset,
-        containerLayoutCoordinates: LayoutCoordinates,
-        adjustment: SelectionAdjustment,
-        previousSelection: Selection? = null,
-        isStartHandle: Boolean = true
-    ): Selection?
+    fun appendSelectableInfoToBuilder(builder: SelectionLayoutBuilder)
 
     /**
      * Returns selectAll [Selection] information for a selectable composable. If no selection can be
@@ -101,7 +88,53 @@ internal interface Selectable {
      * bounding box of the image.
      *
      * @param offset a character offset
-     * @return the bounding box for the character in [Rect].
+     * @return the bounding box for the character in [Rect], or [Rect.Zero] if the selectable is
+     * empty.
      */
     fun getBoundingBox(offset: Int): Rect
+
+    /**
+     * Returns the left x coordinate of the line for the given offset.
+     *
+     * @param offset a character offset
+     * @return the line left x coordinate for the given offset
+     */
+    fun getLineLeft(offset: Int): Float
+
+    /**
+     * Returns the right x coordinate of the line for the given offset.
+     *
+     * @param offset a character offset
+     * @return the line right x coordinate for the given offset
+     */
+    fun getLineRight(offset: Int): Float
+
+    /**
+     * Returns the center y coordinate of the line on which the specified text offset appears.
+     *
+     * If you ask for a position before 0, you get the center of the first line;
+     * if you ask for a position beyond the end of the text, you get the center of the last line.
+     *
+     * @param offset a character offset
+     * @return the line center y coordinate of the line containing [offset]
+     */
+    fun getCenterYForOffset(offset: Int): Float
+
+    /**
+     * Return the offsets of the start and end of the line containing [offset], or [TextRange.Zero]
+     * if the selectable is empty. These offsets are in the same "coordinate space" as
+     * [getBoundingBox], and despite being returned in a [TextRange], may not refer to offsets in
+     * actual text if the selectable contains other types of content. This function returns
+     * the last visible line's boundaries if offset is larger than text length or the character at
+     * given offset would fall on a line which is hidden by maxLines or Constraints.
+     */
+    fun getRangeOfLineContaining(offset: Int): TextRange
+
+    /**
+     * Returns the last visible character's offset. Some lines can be hidden due to either
+     * [TextLayoutInput.maxLines] or [Constraints.maxHeight] being smaller than
+     * [MultiParagraph.height]. If overflow is set to clip and a line is partially visible, it
+     * counts as the last visible line.
+     */
+    fun getLastVisibleOffset(): Int
 }

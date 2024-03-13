@@ -52,11 +52,12 @@ import java.lang.annotation.RetentionPolicy;
  * A fragment that provides a standard prompt UI for fingerprint authentication on versions prior
  * to Android 9.0 (API 28).
  *
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
 public class FingerprintDialogFragment extends DialogFragment {
     private static final String TAG = "FingerprintFragment";
+
+    private static final String ARG_HOST_ACTIVITY = "host_activity";
 
     /**
      * The dialog has not been initialized.
@@ -148,10 +149,17 @@ public class FingerprintDialogFragment extends DialogFragment {
      *
      * @return A {@link FingerprintDialogFragment}.
      */
-    @RequiresApi(Build.VERSION_CODES.KITKAT)
     @NonNull
-    static FingerprintDialogFragment newInstance() {
-        return new FingerprintDialogFragment();
+    static FingerprintDialogFragment newInstance(boolean hostedInActivity) {
+        final FingerprintDialogFragment fragment = new FingerprintDialogFragment();
+        final Bundle args = new Bundle();
+        args.putBoolean(ARG_HOST_ACTIVITY, hostedInActivity);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    private boolean isHostedInActivity() {
+        return getArguments().getBoolean(ARG_HOST_ACTIVITY, true);
     }
 
     @Override
@@ -249,12 +257,7 @@ public class FingerprintDialogFragment extends DialogFragment {
      * fragment.
      */
     private void connectViewModel() {
-        final Context host = BiometricPrompt.getHostActivityOrContext(this);
-        if (host == null) {
-            return;
-        }
-
-        mViewModel = BiometricPrompt.getViewModel(host);
+        mViewModel = BiometricPrompt.getViewModel(this, isHostedInActivity());
 
         mViewModel.getFingerprintDialogState().observe(this, new Observer<Integer>() {
             @Override
@@ -358,8 +361,7 @@ public class FingerprintDialogFragment extends DialogFragment {
      */
     private int getThemedColorFor(int attr) {
         final Context context = getContext();
-        final Context host = BiometricPrompt.getHostActivityOrContext(this);
-        if (context == null || host == null) {
+        if (context == null) {
             Log.w(TAG, "Unable to get themed color. Context or activity is null.");
             return 0;
         }
@@ -367,7 +369,7 @@ public class FingerprintDialogFragment extends DialogFragment {
         TypedValue tv = new TypedValue();
         Resources.Theme theme = context.getTheme();
         theme.resolveAttribute(attr, tv, true /* resolveRefs */);
-        TypedArray arr = host.obtainStyledAttributes(tv.data, new int[] {attr});
+        TypedArray arr = context.obtainStyledAttributes(tv.data, new int[] {attr});
 
         final int color = arr.getColor(0 /* index */, 0 /* defValue */);
         arr.recycle();

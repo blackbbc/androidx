@@ -31,6 +31,7 @@ import androidx.annotation.NonNull;
 /**
  * Utilities for unit testing Custom Tabs.
  */
+// minSdk For Bundle#getBinder
 public class TestUtil {
 
     @NonNull
@@ -47,10 +48,11 @@ public class TestUtil {
     }
 
     @NonNull
-    private static PendingIntent makeMockPendingIntent() {
+    public static PendingIntent makeMockPendingIntent() {
         return PendingIntent.getBroadcast(mock(Context.class), 0, new Intent(), 0);
     }
 
+    @SuppressWarnings("deprecation")
     public static void assertIntentHasSession(@NonNull Intent intent,
             @NonNull CustomTabsSession session) {
         assertEquals(session.getBinder(), intent.getExtras().getBinder(

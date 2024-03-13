@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -23,18 +30,9 @@ plugins {
 }
 
 dependencies {
-    implementation(projectOrArtifact(":annotation:annotation"))
+    implementation(project(":annotation:annotation"))
+    implementation("androidx.annotation:annotation-experimental:1.4.0")
     implementation(libs.kotlinStdlib)
-}
-
-// Allow usage of Kotlin's @Experimental and @RequiresOptIn annotations.
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        freeCompilerArgs += [
-                "-Xuse-experimental=kotlin.Experimental",
-                "-Xopt-in=kotlin.RequiresOptIn",
-        ]
-    }
 }
 
 androidx {
@@ -50,6 +48,7 @@ android {
         // We don't want errors to cause lint to fail
         abortOnError false
     }
+    namespace "androidx.lint.integration.tests"
 }
 
 
@@ -80,7 +79,10 @@ class CompareFilesTask extends DefaultTask {
 
 // workaround for b/189877657
 afterEvaluate {
-    tasks.named("copyDebugAndroidLintReports").configure {
+    tasks.findByName("copyDebugAndroidLintReports")?.configure {
+        enabled = false
+    }
+    tasks.findByName("copyDebugLintReports")?.configure {
         enabled = false
     }
 }

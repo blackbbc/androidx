@@ -28,6 +28,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -43,14 +44,15 @@ import androidx.core.provider.FontRequest;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.MediumTest;
-import androidx.test.filters.SdkSuppress;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
@@ -68,19 +70,21 @@ public class DefaultEmojiCompatConfigTest {
         }
     }
 
+    @SuppressWarnings("deprecation")
     private boolean providerOnSystem() {
-        if (Build.VERSION.SDK_INT < 19) {
-            return false;
-        }
         List<ResolveInfo> result = ApplicationProvider.getApplicationContext()
                 .getPackageManager().queryIntentContentProviders(generateIntent(), 0);
-        return result.stream().anyMatch((item) ->
-                (item.providerInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM)
-                        == ApplicationInfo.FLAG_SYSTEM);
+        for (ResolveInfo resolveInfo : result) {
+            int flags = resolveInfo.providerInfo.applicationInfo.flags
+                    & ApplicationInfo.FLAG_SYSTEM;
+            if (flags == ApplicationInfo.FLAG_SYSTEM) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void whenNoLookup_returnsNull() throws PackageManager.NameNotFoundException {
         Context mockContext = mock(Context.class);
         when(mockContext.getPackageManager()).thenReturn(mock(PackageManager.class));
@@ -93,7 +97,6 @@ public class DefaultEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void whenProviderFound_returnsConfig() throws PackageManager.NameNotFoundException {
         ResolveInfo info = generateResolveInfo(
                 "some package", "some authority", ApplicationInfo.FLAG_SYSTEM
@@ -114,7 +117,6 @@ public class DefaultEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void whenProviderFound_butNotSystemInstalled_returnsNull()
             throws PackageManager.NameNotFoundException {
         ResolveInfo info = generateResolveInfo(
@@ -134,7 +136,6 @@ public class DefaultEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void whenQueryingIntent_usesRightIntent() throws PackageManager.NameNotFoundException {
         ResolveInfo info = generateResolveInfo(
                 "some package", "some authority", 0
@@ -158,7 +159,6 @@ public class DefaultEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void whenProviderFound_configMapsCorrectly()
             throws PackageManager.NameNotFoundException {
         String packageName = "queried package name";
@@ -184,7 +184,6 @@ public class DefaultEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void whenProviderFound_returnsDifferentConfig_everyCallToGet()
             throws PackageManager.NameNotFoundException {
         ResolveInfo info = generateResolveInfo(
@@ -204,6 +203,29 @@ public class DefaultEmojiCompatConfigTest {
         assertNotSame(actual, actual2);
     }
 
+    @Test
+    public void whenUsingRealHelper_generatesCorrectHelperForAPI()
+            throws IllegalAccessException, NoSuchFieldException {
+        DefaultEmojiCompatConfig.DefaultEmojiCompatConfigFactory factory =
+                new DefaultEmojiCompatConfig.DefaultEmojiCompatConfigFactory(null);
+        // reflect in to mHelper avoid making a public test getter for a private API.
+        // This test was added due to b/197906329
+        Field reflectHelper = factory.getClass().getDeclaredField("mHelper");
+        reflectHelper.setAccessible(true);
+        Object result = reflectHelper.get(factory);
+        int apiVersion = Build.VERSION.SDK_INT;
+        Class<?> helperClass = Objects.requireNonNull(result).getClass();
+        if (apiVersion < 28) {
+            assertEquals(DefaultEmojiCompatConfig.DefaultEmojiCompatConfigHelper.class,
+                    helperClass);
+        } else {
+            assertEquals(DefaultEmojiCompatConfig.DefaultEmojiCompatConfigHelper_API28.class,
+                    helperClass);
+        }
+
+    }
+
+    @SuppressLint("NewApi")
     @NonNull
     private DefaultEmojiCompatConfig.DefaultEmojiCompatConfigHelper makeMockHelper(
             @Nullable ResolveInfo info, @NonNull Signature[] signatures)
@@ -241,6 +263,7 @@ public class DefaultEmojiCompatConfigTest {
         return signatures;
     }
 
+    @SuppressLint("NewApi")
     private ResolveInfo generateResolveInfo(String packageName, String authority, int flags) {
         ResolveInfo info = new ResolveInfo();
         info.providerInfo = new ProviderInfo();

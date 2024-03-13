@@ -19,6 +19,7 @@ package androidx.compose.ui.text.samples
 import androidx.annotation.Sampled
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -41,6 +42,24 @@ fun TextStyleSample() {
             fontStyle = FontStyle.Italic,
             letterSpacing = 0.5.em,
             background = Color.LightGray,
+            textDecoration = TextDecoration.Underline
+        )
+    )
+}
+
+@Sampled
+@Composable
+fun TextStyleBrushSample() {
+    Text(
+        text = "Demo Text",
+        style = TextStyle(
+            brush = Brush.linearGradient(listOf(Color.Red, Color.Blue, Color.Green)),
+            alpha = 0.8f,
+            fontSize = 16.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.W800,
+            fontStyle = FontStyle.Italic,
+            letterSpacing = 0.5.em,
             textDecoration = TextDecoration.Underline
         )
     )

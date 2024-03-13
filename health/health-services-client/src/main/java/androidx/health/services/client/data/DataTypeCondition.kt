@@ -16,66 +16,74 @@
 
 package androidx.health.services.client.data
 
-import android.os.Parcel
-import android.os.Parcelable
+import androidx.health.services.client.proto.DataProto
 
 /** A condition which is considered met when a data type value passes a defined threshold. */
-public data class DataTypeCondition(
-    val dataType: DataType,
-    val threshold: Value,
-    val comparisonType: ComparisonType,
-) : Parcelable {
-    init {
-        require(dataType.format == threshold.format) {
-            "provided data type must have sample time type."
+@Suppress("ParcelCreator")
+public class DataTypeCondition<T : Number, D : DataType<T, out DataPoint<T>>>(
+    /** [DataType] which this condition applies to. */
+    public val dataType: D,
+
+    /** The threshold at which point this condition should be met. */
+    public val threshold: T,
+
+    /** The comparison type to use when comparing the threshold against the current value. */
+    public val comparisonType: ComparisonType,
+) {
+
+    internal val proto: DataProto.DataTypeCondition =
+        DataProto.DataTypeCondition.newBuilder()
+            .setDataType(dataType.proto)
+            .setThreshold(dataType.toProtoFromValue(threshold))
+            .setComparisonType(comparisonType.toProto())
+            .build()
+
+    override fun toString(): String =
+        "DataTypeCondition(" +
+            "dataType=$dataType, threshold=$threshold, comparisonType=$comparisonType)"
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is DataTypeCondition<*, *>) return false
+        if (dataType != other.dataType) return false
+        if (threshold != other.threshold) return false
+        if (comparisonType != other.comparisonType) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = dataType.hashCode()
+        result = 31 * result + threshold.hashCode()
+        result = 31 * result + comparisonType.hashCode()
+        return result
+    }
+
+    internal companion object {
+        @Suppress("UNCHECKED_CAST")
+        internal fun deltaFromProto(
+            proto: DataProto.DataTypeCondition
+        ): DataTypeCondition<out Number, out DeltaDataType<out Number, *>> {
+            val dataType =
+                DataType.deltaFromProto(proto.dataType) as DeltaDataType<Number, *>
+            return DataTypeCondition(
+                dataType,
+                dataType.toValueFromProto(proto.threshold),
+                ComparisonType.fromProto(proto.comparisonType)
+            )
         }
-    }
 
-    /** Checks whether or not the condition is satisfied by a given [DataPoint]. */
-    public fun isSatisfied(dataPoint: DataPoint): Boolean {
-        require(dataType == dataPoint.dataType) {
-            "attempted to evaluate data type condition with incorrect data type. Expected " +
-                "${dataType.name} but was ${dataPoint.dataType.name}"
+        @Suppress("UNCHECKED_CAST")
+        internal fun aggregateFromProto(
+            proto: DataProto.DataTypeCondition
+        ): DataTypeCondition<out Number, out AggregateDataType<out Number, *>> {
+            val dataType =
+                DataType.aggregateFromProto(proto.dataType) as AggregateDataType<Number, *>
+            return DataTypeCondition(
+                dataType,
+                dataType.toValueFromProto(proto.threshold),
+                ComparisonType.fromProto(proto.comparisonType)
+            )
         }
-        return isThresholdSatisfied(dataPoint.value)
-    }
-
-    /** Checks whether or not the value of the condition is satisfied by a given [Value]. */
-    public fun isThresholdSatisfied(value: Value): Boolean {
-        val comparison = Value.compare(value, threshold)
-        return when (comparisonType) {
-            ComparisonType.LESS_THAN -> comparison < 0
-            ComparisonType.GREATER_THAN -> comparison > 0
-            ComparisonType.LESS_THAN_OR_EQUAL -> comparison <= 0
-            ComparisonType.GREATER_THAN_OR_EQUAL -> comparison >= 0
-        }
-    }
-
-    override fun describeContents(): Int = 0
-
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeParcelable(dataType, flags)
-        dest.writeParcelable(threshold, flags)
-        dest.writeInt(comparisonType.id)
-    }
-
-    public companion object {
-        @JvmField
-        public val CREATOR: Parcelable.Creator<DataTypeCondition> =
-            object : Parcelable.Creator<DataTypeCondition> {
-                override fun createFromParcel(source: Parcel): DataTypeCondition? {
-                    val dataType =
-                        source.readParcelable<DataType>(DataType::class.java.classLoader)
-                            ?: return null
-                    val threshold =
-                        source.readParcelable<Value>(Value::class.java.classLoader) ?: return null
-                    val comparisonType = ComparisonType.fromId(source.readInt()) ?: return null
-                    return DataTypeCondition(dataType, threshold, comparisonType)
-                }
-
-                override fun newArray(size: Int): Array<DataTypeCondition?> {
-                    return arrayOfNulls(size)
-                }
-            }
     }
 }

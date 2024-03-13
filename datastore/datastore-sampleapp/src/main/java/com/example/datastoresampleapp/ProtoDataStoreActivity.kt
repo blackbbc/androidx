@@ -21,7 +21,6 @@ import android.os.StrictMode
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
-import androidx.annotation.Sampled
 import androidx.appcompat.app.AppCompatActivity
 import androidx.datastore.core.CorruptionException
 import androidx.datastore.core.DataStore
@@ -29,15 +28,15 @@ import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.core.Serializer
 import androidx.lifecycle.lifecycleScope
 import com.google.protobuf.InvalidProtocolBufferException
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ProtoDataStoreActivity : AppCompatActivity() {
@@ -51,7 +50,6 @@ class ProtoDataStoreActivity : AppCompatActivity() {
         ) { File(applicationContext.filesDir, PROTO_STORE_FILE_NAME) }
     }
 
-    @Sampled
     override fun onCreate(savedInstanceState: Bundle?) {
         // Strict mode allows us to check that no writes or reads are blocking the UI thread.
         StrictMode.setThreadPolicy(
@@ -68,7 +66,6 @@ class ProtoDataStoreActivity : AppCompatActivity() {
         setUpProtoDataStoreUi()
     }
 
-    @Sampled
     private fun setUpProtoDataStoreUi() {
         findViewById<Button>(R.id.counter_dec).setOnClickListener {
             lifecycleScope.launch {

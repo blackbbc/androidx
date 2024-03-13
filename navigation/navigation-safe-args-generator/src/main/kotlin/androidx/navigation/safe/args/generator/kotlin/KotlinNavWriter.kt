@@ -58,7 +58,7 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                         defaultValue(it.write())
                     }
                 }.build()
-            }
+            }.sortedBy { it.defaultValue != null }
             FunSpec.builder(action.id.javaIdentifier.toCamelCaseAsVar()).apply {
                 returns(NAV_DIRECTION_CLASSNAME)
                 addParameters(parameters)
@@ -128,11 +128,16 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
         val className = ClassName("", action.id.javaIdentifier.toCamelCase())
 
         val actionIdPropSpec =
-            PropertySpec.builder("actionId", Int::class, KModifier.OVERRIDE)
+            PropertySpec.builder("actionId", Int::class, KModifier.PUBLIC, KModifier.OVERRIDE)
                 .initializer("%L", action.id.accessor()).build()
 
         val argumentsPropSpec =
-            PropertySpec.builder("arguments", BUNDLE_CLASSNAME, KModifier.OVERRIDE)
+            PropertySpec.builder(
+                "arguments",
+                BUNDLE_CLASSNAME,
+                KModifier.PUBLIC,
+                KModifier.OVERRIDE
+            )
                 .getter(
                     FunSpec.getterBuilder().apply {
                         if (action.args.any { it.type is ObjectType }) {
@@ -163,7 +168,7 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                             defaultValue(it.write())
                         }
                     }.build()
-                }
+                }.sortedBy { it.defaultValue != null }
             )
             .build()
 
@@ -200,7 +205,7 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                         name = arg.sanitizedName,
                         type = arg.type.typeName().copy(nullable = arg.isNullable)
                     ).apply { arg.defaultValue?.let { defaultValue(it.write()) } }.build()
-                }
+                }.sortedBy { it.defaultValue != null }
             )
             .build()
 
@@ -222,7 +227,13 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
             if (destination.args.any { it.type is ObjectArrayType }) {
                 addAnnotation(
                     AnnotationSpec.builder(Suppress::class)
-                        .addMember("%S", "UNCHECKED_CAST")
+                        .addMember("%S,%S", "UNCHECKED_CAST", "DEPRECATION")
+                        .build()
+                )
+            } else if (destination.args.any { it.type is ObjectType }) {
+                addAnnotation(
+                    AnnotationSpec.builder(Suppress::class)
+                        .addMember("%S", "DEPRECATION")
                         .build()
                 )
             }
@@ -267,9 +278,27 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                     )
                 }
                 endControlFlow()
-                return@map tempVal
+                arg
+            }.sortedBy { it.defaultValue != null }
+            addStatement(
+                "return·%T(${tempVariables.joinToString(", ") { "__${it.sanitizedName}" }})",
+                className
+            )
+        }.build()
+
+        val toSavedStateHandleFunSpec = FunSpec.builder("toSavedStateHandle").apply {
+            if (destination.args.any { it.type is ObjectType }) {
+                addAnnotation(CAST_NEVER_SUCCEEDS)
             }
-            addStatement("return·%T(${tempVariables.joinToString(", ") { it }})", className)
+            returns(SAVED_STATE_HANDLE_CLASSNAME)
+            val resultVal = "result"
+            addStatement("val %L = %T()", resultVal, SAVED_STATE_HANDLE_CLASSNAME)
+            destination.args.forEach { arg ->
+                arg.type.addSavedStateSetStatement(
+                    this, arg, resultVal, "this.${arg.sanitizedName}"
+                )
+            }
+            addStatement("return %L", resultVal)
         }.build()
 
         val fromSavedStateHandleFunSpec = FunSpec.builder("fromSavedStateHandle").apply {
@@ -285,7 +314,7 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                     arg.type.typeName().copy(nullable = true)
                 )
                 beginControlFlow("if (%L.contains(%S))", savedStateParamName, arg.name)
-                addStatement("%L = %L[%S]", tempVal, savedStateParamName, arg.name)
+                arg.type.addSavedStateGetStatement(this, arg, tempVal, savedStateParamName)
                 if (!arg.isNullable) {
                     beginControlFlow("if (%L == null)", tempVal)
                     val errorMessage = if (arg.type.allowsNullable()) {
@@ -313,9 +342,12 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                     )
                 }
                 endControlFlow()
-                return@map tempVal
-            }
-            addStatement("return·%T(${tempVariables.joinToString(", ") { it }})", className)
+                arg
+            }.sortedBy { it.defaultValue != null }
+            addStatement(
+                "return·%T(${tempVariables.joinToString(", ") { "__${it.sanitizedName}" }})",
+                className
+            )
         }.build()
 
         val typeSpec = TypeSpec.classBuilder(className)
@@ -331,6 +363,7 @@ class KotlinNavWriter(private val useAndroidX: Boolean = true) : NavWriter<Kotli
                 }
             )
             .addFunction(toBundleFunSpec)
+            .addFunction(toSavedStateHandleFunSpec)
             .addType(
                 TypeSpec.companionObjectBuilder()
                     .addFunction(fromBundleFunSpec)

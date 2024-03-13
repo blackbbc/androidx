@@ -16,6 +16,7 @@
 
 package androidx.compose.material
 
+import androidx.annotation.FloatRange
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,23 +31,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.material.BottomDrawerValue.Closed
+import androidx.compose.material.BottomDrawerValue.Expanded
+import androidx.compose.material.BottomDrawerValue.Open
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
@@ -54,14 +59,19 @@ import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastCoerceIn
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlin.math.max
-import kotlin.math.roundToInt
 
 /**
  * Possible values of [DrawerState].
@@ -81,7 +91,6 @@ enum class DrawerValue {
 /**
  * Possible values of [BottomDrawerState].
  */
-@ExperimentalMaterialApi
 enum class BottomDrawerValue {
     /**
      * The state of the bottom drawer when it is closed.
@@ -113,10 +122,12 @@ class DrawerState(
     confirmStateChange: (DrawerValue) -> Boolean = { true }
 ) {
 
-    internal val swipeableState = SwipeableState(
+    internal val anchoredDraggableState = AnchoredDraggableState(
         initialValue = initialValue,
         animationSpec = AnimationSpec,
-        confirmStateChange = confirmStateChange
+        confirmValueChange = confirmStateChange,
+        positionalThreshold = { with(requireDensity()) { DrawerPositionalThreshold.toPx() } },
+        velocityThreshold = { with(requireDensity()) { DrawerVelocityThreshold.toPx() } },
     )
 
     /**
@@ -140,7 +151,7 @@ class DrawerState(
      */
     val currentValue: DrawerValue
         get() {
-            return swipeableState.currentValue
+            return anchoredDraggableState.currentValue
         }
 
     /**
@@ -148,7 +159,7 @@ class DrawerState(
      */
     val isAnimationRunning: Boolean
         get() {
-            return swipeableState.isAnimationRunning
+            return anchoredDraggableState.isAnimationRunning
         }
 
     /**
@@ -158,7 +169,7 @@ class DrawerState(
      *
      * @return the reason the open animation ended
      */
-    suspend fun open() = animateTo(DrawerValue.Open, AnimationSpec)
+    suspend fun open() = anchoredDraggableState.animateTo(DrawerValue.Open)
 
     /**
      * Close the drawer with animation and suspend until it if fully closed or animation has been
@@ -167,17 +178,25 @@ class DrawerState(
      *
      * @return the reason the close animation ended
      */
-    suspend fun close() = animateTo(DrawerValue.Closed, AnimationSpec)
+    suspend fun close() = anchoredDraggableState.animateTo(DrawerValue.Closed)
 
     /**
      * Set the state of the drawer with specific animation
      *
      * @param targetValue The new value to animate to.
-     * @param anim The animation that will be used to animate to the new value.
+     * @param anim Set the state of the drawer with specific animation
      */
     @ExperimentalMaterialApi
-    suspend fun animateTo(targetValue: DrawerValue, anim: AnimationSpec<Float>) {
-        swipeableState.animateTo(targetValue, anim)
+    @Deprecated(
+        message = "This method has been replaced by the open and close methods. The animation " +
+            "spec is now an implementation detail of ModalDrawer.",
+        level = DeprecationLevel.ERROR
+    )
+    suspend fun animateTo(
+        targetValue: DrawerValue,
+        @Suppress("UNUSED_PARAMETER") anim: AnimationSpec<Float>
+    ) {
+        anchoredDraggableState.animateTo(targetValue)
     }
 
     /**
@@ -185,9 +204,8 @@ class DrawerState(
      *
      * @param targetValue The new target value
      */
-    @ExperimentalMaterialApi
     suspend fun snapTo(targetValue: DrawerValue) {
-        swipeableState.snapTo(targetValue)
+        anchoredDraggableState.snapTo(targetValue)
     }
 
     /**
@@ -197,18 +215,30 @@ class DrawerState(
      * swipe finishes. If an animation is running, this is the target value of that animation.
      * Finally, if no swipe or animation is in progress, this is the same as the [currentValue].
      */
+    @Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
     @ExperimentalMaterialApi
     @get:ExperimentalMaterialApi
     val targetValue: DrawerValue
-        get() = swipeableState.targetValue
+        get() = anchoredDraggableState.targetValue
 
     /**
-     * The current position (in pixels) of the drawer sheet.
+     * The current position (in pixels) of the drawer sheet, or [Float.NaN] before the offset is
+     * initialized.
+     * @see [AnchoredDraggableState.offset] for more information.
      */
+    @Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
     @ExperimentalMaterialApi
     @get:ExperimentalMaterialApi
-    val offset: State<Float>
-        get() = swipeableState.offset
+    val offset: Float
+        get() = anchoredDraggableState.offset
+
+    internal fun requireOffset(): Float = anchoredDraggableState.requireOffset()
+
+    internal var density: Density? = null
+    private fun requireDensity() = requireNotNull(density) {
+        "The density on DrawerState ($this) was not set. Did you use DrawerState with the Drawer " +
+            "composable?"
+    }
 
     companion object {
         /**
@@ -226,35 +256,98 @@ class DrawerState(
  * State of the [BottomDrawer] composable.
  *
  * @param initialValue The initial value of the state.
+ * @param density The density that this state can use to convert values to and from dp.
+ * @param animationSpec The animation spec to be used for animations.
  * @param confirmStateChange Optional callback invoked to confirm or veto a pending state change.
  */
+@OptIn(ExperimentalMaterialApi::class)
 @Suppress("NotCloseable")
-@ExperimentalMaterialApi
 class BottomDrawerState(
     initialValue: BottomDrawerValue,
-    confirmStateChange: (BottomDrawerValue) -> Boolean = { true }
-) : SwipeableState<BottomDrawerValue>(
-    initialValue = initialValue,
-    animationSpec = AnimationSpec,
-    confirmStateChange = confirmStateChange
+    density: Density,
+    confirmStateChange: (BottomDrawerValue) -> Boolean = { true },
+    animationSpec: AnimationSpec<Float> = AnimationSpec
 ) {
+    internal val anchoredDraggableState = AnchoredDraggableState(
+        initialValue = initialValue,
+        animationSpec = animationSpec,
+        confirmValueChange = confirmStateChange,
+        positionalThreshold = { with(density) { DrawerPositionalThreshold.toPx() } },
+        velocityThreshold = { with(density) { DrawerVelocityThreshold.toPx() } },
+    )
+
+    /**
+     * The target value the state will settle at once the current interaction ends, or the
+     * [currentValue] if there is no interaction in progress.
+     */
+    val targetValue: BottomDrawerValue
+        get() = anchoredDraggableState.targetValue
+
+    /**
+     * The current offset, or [Float.NaN] if it has not been initialized yet.
+     */
+    val offset: Float
+        get() = anchoredDraggableState.offset
+
+    internal fun requireOffset(): Float = anchoredDraggableState.requireOffset()
+
+    /**
+     * The current value of the [BottomDrawerState].
+     */
+    val currentValue: BottomDrawerValue get() = anchoredDraggableState.currentValue
+
     /**
      * Whether the drawer is open, either in opened or expanded state.
      */
     val isOpen: Boolean
-        get() = currentValue != BottomDrawerValue.Closed
+        get() = anchoredDraggableState.currentValue != Closed
 
     /**
      * Whether the drawer is closed.
      */
     val isClosed: Boolean
-        get() = currentValue == BottomDrawerValue.Closed
+        get() = anchoredDraggableState.currentValue == Closed
 
     /**
      * Whether the drawer is expanded.
      */
     val isExpanded: Boolean
-        get() = currentValue == BottomDrawerValue.Expanded
+        get() = anchoredDraggableState.currentValue == Expanded
+
+    /**
+     * The fraction of the progress, within [0f..1f] bounds, or 1f if the [AnchoredDraggableState]
+     * is in a settled state.
+     */
+    @Deprecated(
+        message = "Please use the progress function to query progress explicitly between targets.",
+        replaceWith = ReplaceWith("progress(from = , to = )")
+    ) // TODO: Remove in the future b/323882175
+    @get:FloatRange(from = 0.0, to = 1.0)
+    @ExperimentalMaterialApi
+    val progress: Float
+        get() = anchoredDraggableState.progress
+
+    /**
+     * The fraction of the offset between [from] and [to], as a fraction between [0f..1f], or 1f if
+     * [from] is equal to [to].
+     *
+     * @param from The starting value used to calculate the distance
+     * @param to The end value used to calculate the distance
+     */
+    @FloatRange(from = 0.0, to = 1.0)
+    fun progress(
+        from: BottomDrawerValue,
+        to: BottomDrawerValue
+    ): Float {
+        val fromOffset = anchoredDraggableState.anchors.positionOf(from)
+        val toOffset = anchoredDraggableState.anchors.positionOf(to)
+        val currentOffset = anchoredDraggableState.offset.coerceIn(
+            min(fromOffset, toOffset), // fromOffset might be > toOffset
+            max(fromOffset, toOffset)
+        )
+        val fraction = (currentOffset - fromOffset) / (toOffset - fromOffset)
+        return if (fraction.isNaN()) 1f else abs(fraction)
+    }
 
     /**
      * Open the drawer with animation and suspend until it if fully opened or animation has been
@@ -266,8 +359,8 @@ class BottomDrawerState(
      */
     suspend fun open() {
         val targetValue =
-            if (isOpenEnabled) BottomDrawerValue.Open else BottomDrawerValue.Expanded
-        animateTo(targetValue)
+            if (isOpenEnabled) Open else Expanded
+        anchoredDraggableState.animateTo(targetValue)
     }
 
     /**
@@ -277,7 +370,7 @@ class BottomDrawerState(
      * @throws [CancellationException] if the animation is interrupted
      *
      */
-    suspend fun close() = animateTo(BottomDrawerValue.Closed)
+    suspend fun close() = anchoredDraggableState.animateTo(Closed)
 
     /**
      * Expand the drawer with animation and suspend until it if fully expanded or animation has
@@ -286,21 +379,38 @@ class BottomDrawerState(
      * @throws [CancellationException] if the animation is interrupted
      *
      */
-    suspend fun expand() = animateTo(BottomDrawerValue.Expanded)
+    suspend fun expand() = anchoredDraggableState.animateTo(Expanded)
+
+    internal suspend fun animateTo(
+        target: BottomDrawerValue,
+        velocity: Float = anchoredDraggableState.lastVelocity
+    ) = anchoredDraggableState.animateTo(target, velocity)
+
+    internal suspend fun snapTo(target: BottomDrawerValue) = anchoredDraggableState.snapTo(target)
+
+    internal fun confirmStateChange(value: BottomDrawerValue): Boolean =
+        anchoredDraggableState.confirmValueChange(value)
 
     private val isOpenEnabled: Boolean
-        get() = anchors.values.contains(BottomDrawerValue.Open)
+        get() = anchoredDraggableState.anchors.hasAnchorFor(Open)
 
-    internal val nestedScrollConnection = this.PreUpPostDownNestedScrollConnection
+    internal val nestedScrollConnection = ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection(
+        anchoredDraggableState
+    )
+
+    internal var density: Density? = null
 
     companion object {
         /**
          * The default [Saver] implementation for [BottomDrawerState].
          */
-        fun Saver(confirmStateChange: (BottomDrawerValue) -> Boolean) =
-            Saver<BottomDrawerState, BottomDrawerValue>(
-                save = { it.currentValue },
-                restore = { BottomDrawerState(it, confirmStateChange) }
+        fun Saver(
+            density: Density,
+            confirmStateChange: (BottomDrawerValue) -> Boolean,
+            animationSpec: AnimationSpec<Float>
+        ) = Saver<BottomDrawerState, BottomDrawerValue>(
+                save = { it.anchoredDraggableState.currentValue },
+                restore = { BottomDrawerState(it, density, confirmStateChange, animationSpec) }
             )
     }
 }
@@ -325,16 +435,21 @@ fun rememberDrawerState(
  * Create and [remember] a [BottomDrawerState].
  *
  * @param initialValue The initial value of the state.
+ * @param animationSpec The animation spec to be used for animations.
  * @param confirmStateChange Optional callback invoked to confirm or veto a pending state change.
  */
 @Composable
-@ExperimentalMaterialApi
 fun rememberBottomDrawerState(
     initialValue: BottomDrawerValue,
-    confirmStateChange: (BottomDrawerValue) -> Boolean = { true }
+    confirmStateChange: (BottomDrawerValue) -> Boolean = { true },
+    animationSpec: AnimationSpec<Float> = AnimationSpec,
 ): BottomDrawerState {
-    return rememberSaveable(saver = BottomDrawerState.Saver(confirmStateChange)) {
-        BottomDrawerState(initialValue, confirmStateChange)
+    val density = LocalDensity.current
+    return rememberSaveable(
+        density,
+        saver = BottomDrawerState.Saver(density, confirmStateChange, animationSpec)
+    ) {
+        BottomDrawerState(initialValue, density, confirmStateChange, animationSpec)
     }
 }
 
@@ -388,23 +503,28 @@ fun ModalDrawer(
         if (!modalDrawerConstraints.hasBoundedWidth) {
             throw IllegalStateException("Drawer shouldn't have infinite width")
         }
-
         val minValue = -modalDrawerConstraints.maxWidth.toFloat()
         val maxValue = 0f
 
-        val anchors = mapOf(minValue to DrawerValue.Closed, maxValue to DrawerValue.Open)
+        val density = LocalDensity.current
+        SideEffect {
+            drawerState.density = density
+            val anchors = DraggableAnchors {
+                DrawerValue.Closed at minValue
+                DrawerValue.Open at maxValue
+            }
+            drawerState.anchoredDraggableState.updateAnchors(anchors)
+        }
+
         val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         Box(
-            Modifier.swipeable(
-                state = drawerState.swipeableState,
-                anchors = anchors,
-                thresholds = { _, _ -> FractionalThreshold(0.5f) },
-                orientation = Orientation.Horizontal,
-                enabled = gesturesEnabled,
-                reverseDirection = isRtl,
-                velocityThreshold = DrawerVelocityThreshold,
-                resistance = null
-            )
+            Modifier
+                .anchoredDraggable(
+                    state = drawerState.anchoredDraggableState,
+                    orientation = Orientation.Horizontal,
+                    enabled = gesturesEnabled,
+                    reverseDirection = isRtl
+                )
         ) {
             Box {
                 content()
@@ -414,13 +534,13 @@ fun ModalDrawer(
                 onClose = {
                     if (
                         gesturesEnabled &&
-                        drawerState.swipeableState.confirmStateChange(DrawerValue.Closed)
+                        drawerState.anchoredDraggableState.confirmValueChange(DrawerValue.Closed)
                     ) {
                         scope.launch { drawerState.close() }
                     }
                 },
                 fraction = {
-                    calculateFraction(minValue, maxValue, drawerState.offset.value)
+                    calculateFraction(minValue, maxValue, drawerState.requireOffset())
                 },
                 color = scrimColor
             )
@@ -435,15 +555,21 @@ fun ModalDrawer(
                             maxHeight = modalDrawerConstraints.maxHeight.toDp()
                         )
                 }
-                    .offset { IntOffset(drawerState.offset.value.roundToInt(), 0) }
+                    .offset {
+                        IntOffset(
+                            drawerState
+                                .requireOffset()
+                                .roundToInt(), 0
+                        )
+                    }
                     .padding(end = EndDrawerPadding)
                     .semantics {
                         paneTitle = navigationMenu
                         if (drawerState.isOpen) {
                             dismiss {
                                 if (
-                                    drawerState.swipeableState
-                                        .confirmStateChange(DrawerValue.Closed)
+                                    drawerState.anchoredDraggableState
+                                        .confirmValueChange(DrawerValue.Closed)
                                 ) {
                                     scope.launch { drawerState.close() }
                                 }; true
@@ -490,12 +616,12 @@ fun ModalDrawer(
  * @param content content of the rest of the UI
  *
  */
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
-@ExperimentalMaterialApi
 fun BottomDrawer(
     drawerContent: @Composable ColumnScope.() -> Unit,
     modifier: Modifier = Modifier,
-    drawerState: BottomDrawerState = rememberBottomDrawerState(BottomDrawerValue.Closed),
+    drawerState: BottomDrawerState = rememberBottomDrawerState(Closed),
     gesturesEnabled: Boolean = true,
     drawerShape: Shape = MaterialTheme.shapes.large,
     drawerElevation: Dp = DrawerDefaults.Elevation,
@@ -505,28 +631,9 @@ fun BottomDrawer(
     content: @Composable () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-
     BoxWithConstraints(modifier.fillMaxSize()) {
         val fullHeight = constraints.maxHeight.toFloat()
-        var drawerHeight by remember(fullHeight) { mutableStateOf(fullHeight) }
-        // TODO(b/178630869) Proper landscape support
         val isLandscape = constraints.maxWidth > constraints.maxHeight
-
-        val minHeight = 0f
-        val peekHeight = fullHeight * BottomDrawerOpenFraction
-        val expandedHeight = max(minHeight, fullHeight - drawerHeight)
-        val anchors = if (drawerHeight < peekHeight || isLandscape) {
-            mapOf(
-                fullHeight to BottomDrawerValue.Closed,
-                expandedHeight to BottomDrawerValue.Expanded
-            )
-        } else {
-            mapOf(
-                fullHeight to BottomDrawerValue.Closed,
-                peekHeight to BottomDrawerValue.Open,
-                expandedHeight to BottomDrawerValue.Expanded
-            )
-        }
         val drawerConstraints = with(LocalDensity.current) {
             Modifier
                 .sizeIn(
@@ -539,14 +646,15 @@ fun BottomDrawer(
         } else {
             Modifier
         }
+        val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+
         val swipeable = Modifier
             .then(nestedScroll)
-            .swipeable(
-                state = drawerState,
-                anchors = anchors,
+            .anchoredDraggable(
+                state = drawerState.anchoredDraggableState,
                 orientation = Orientation.Vertical,
                 enabled = gesturesEnabled,
-                resistance = null
+                reverseDirection = isRtl
             )
 
         Box(swipeable) {
@@ -555,26 +663,65 @@ fun BottomDrawer(
                 color = scrimColor,
                 onDismiss = {
                     if (
-                        gesturesEnabled && drawerState.confirmStateChange(BottomDrawerValue.Closed)
+                        gesturesEnabled && drawerState.confirmStateChange(Closed)
                     ) {
                         scope.launch { drawerState.close() }
                     }
                 },
-                visible = drawerState.targetValue != BottomDrawerValue.Closed
+                visible = drawerState.targetValue != Closed
             )
             val navigationMenu = getString(Strings.NavigationMenu)
             Surface(
                 drawerConstraints
-                    .offset { IntOffset(x = 0, y = drawerState.offset.value.roundToInt()) }
-                    .onGloballyPositioned { position ->
-                        drawerHeight = position.size.height.toFloat()
+                    .onSizeChanged { drawerSize ->
+                        val drawerHeight = drawerSize.height.toFloat()
+                        val newAnchors = DraggableAnchors {
+                            Closed at fullHeight
+                            val peekHeight = fullHeight * BottomDrawerOpenFraction
+                            if (drawerHeight > peekHeight || isLandscape) {
+                                Open at peekHeight
+                            }
+                            if (drawerHeight > 0f) {
+                                Expanded at max(0f, fullHeight - drawerHeight)
+                            }
+                        }
+                        // If we are setting the anchors for the first time and have an anchor for
+                        // the current (initial) value, prefer that
+                        val hasAnchors = drawerState.anchoredDraggableState.anchors.size > 0
+                        val newTarget = if (!hasAnchors &&
+                            newAnchors.hasAnchorFor(drawerState.currentValue)
+                        ) {
+                            drawerState.currentValue
+                        } else {
+                            when (drawerState.targetValue) {
+                                Closed -> Closed
+                                Open, Expanded -> {
+                                    val hasHalfExpandedState = newAnchors.hasAnchorFor(Open)
+                                    val newTarget = if (hasHalfExpandedState) {
+                                        Open
+                                    } else {
+                                        if (newAnchors.hasAnchorFor(Expanded)) Expanded else Closed
+                                    }
+                                    newTarget
+                                }
+                            }
+                        }
+                        drawerState.anchoredDraggableState.updateAnchors(newAnchors, newTarget)
+                    }
+                    .offset {
+                        IntOffset(
+                            x = 0,
+                            y = drawerState
+                                .requireOffset()
+                                .roundToInt()
+                        )
                     }
                     .semantics {
                         paneTitle = navigationMenu
                         if (drawerState.isOpen) {
                             // TODO(b/180101663) The action currently doesn't return the correct results
                             dismiss {
-                                if (drawerState.confirmStateChange(BottomDrawerValue.Closed)) {
+                                if (drawerState.confirmStateChange(Closed)) {
                                     scope.launch { drawerState.close() }
                                 }; true
                             }
@@ -612,7 +759,7 @@ object DrawerDefaults {
 }
 
 private fun calculateFraction(a: Float, b: Float, pos: Float) =
-    ((pos - a) / (b - a)).coerceIn(0f, 1f)
+    ((pos - a) / (b - a)).fastCoerceIn(0f, 1f)
 
 @Composable
 private fun BottomDrawerScrim(
@@ -678,6 +825,7 @@ private fun Scrim(
 }
 
 private val EndDrawerPadding = 56.dp
+private val DrawerPositionalThreshold = 56.dp
 private val DrawerVelocityThreshold = 400.dp
 
 // TODO: b/177571613 this should be a proper decay settling
@@ -685,3 +833,59 @@ private val DrawerVelocityThreshold = 400.dp
 private val AnimationSpec = TweenSpec<Float>(durationMillis = 256)
 
 private const val BottomDrawerOpenFraction = 0.5f
+
+@OptIn(ExperimentalMaterialApi::class)
+private fun ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection(
+    state: AnchoredDraggableState<*>
+): NestedScrollConnection = object : NestedScrollConnection {
+    val orientation: Orientation = Orientation.Vertical
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        val delta = available.toFloat()
+        return if (delta < 0 && source == NestedScrollSource.Drag) {
+            state.dispatchRawDelta(delta).toOffset()
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource
+    ): Offset {
+        return if (source == NestedScrollSource.Drag) {
+            state.dispatchRawDelta(available.toFloat()).toOffset()
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        val toFling = available.toFloat()
+        val currentOffset = state.requireOffset()
+        return if (toFling < 0 && currentOffset > state.anchors.minAnchor()) {
+            state.settle(velocity = toFling)
+            // since we go to the anchor with tween settling, consume all for the best UX
+            available
+        } else {
+            Velocity.Zero
+        }
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        state.settle(velocity = available.toFloat())
+        return available
+    }
+
+    private fun Float.toOffset(): Offset = Offset(
+        x = if (orientation == Orientation.Horizontal) this else 0f,
+        y = if (orientation == Orientation.Vertical) this else 0f
+    )
+
+    @JvmName("velocityToFloat")
+    private fun Velocity.toFloat() = if (orientation == Orientation.Horizontal) x else y
+
+    @JvmName("offsetToFloat")
+    private fun Offset.toFloat(): Float = if (orientation == Orientation.Horizontal) x else y
+}

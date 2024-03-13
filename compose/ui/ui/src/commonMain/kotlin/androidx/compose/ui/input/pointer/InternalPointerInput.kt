@@ -16,6 +16,8 @@
 
 package androidx.compose.ui.input.pointer
 
+import androidx.collection.LongSparseArray
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.node.InternalCoreApi
 
@@ -34,15 +36,22 @@ internal expect class PointerInputEvent {
 /**
  * Data that describes a particular pointer
  *
- * [positionOnScreen] is relative to the device screen. [position] is relative to the owner.
+ * @param positionOnScreen The position of the event relative to the device screen.
+ * @param position The position of the event relative to the owner.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 internal data class PointerInputEventData(
     val id: PointerId,
     val uptime: Long,
     val positionOnScreen: Offset,
     val position: Offset,
     val down: Boolean,
-    val type: PointerType
+    val pressure: Float,
+    val type: PointerType,
+    val issuesEnterExit: Boolean = false,
+    val historical: List<HistoricalChange> = mutableListOf(),
+    val scrollDelta: Offset = Offset.Zero,
+    val originalEventPosition: Offset = Offset.Zero,
 )
 
 /**
@@ -54,8 +63,15 @@ internal data class PointerInputEventData(
  */
 @OptIn(InternalCoreApi::class)
 internal expect class InternalPointerEvent(
-    changes: Map<PointerId, PointerInputChange>,
+    changes: LongSparseArray<PointerInputChange>,
     pointerInputEvent: PointerInputEvent
 ) {
-    val changes: Map<PointerId, PointerInputChange>
+    val changes: LongSparseArray<PointerInputChange>
+
+    /**
+     * Embedded Android Views may consume an event and [ProcessResult] should not
+     * return that the position change was consumed because of this.
+     */
+    var suppressMovementConsumption: Boolean
+    fun issuesEnterExitEvent(pointerId: PointerId): Boolean
 }

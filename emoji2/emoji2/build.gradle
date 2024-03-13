@@ -1,12 +1,16 @@
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.BundleInsideHelper
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
 import androidx.build.Publish
 
 plugins {
     id("AndroidXPlugin")
     id("com.android.library")
-    id("com.github.johnrengelman.shadow")
 }
 
 BundleInsideHelper.forInsideAar(
@@ -16,7 +20,8 @@ BundleInsideHelper.forInsideAar(
                     "androidx.emoji2.text.flatbuffer"),
             new BundleInsideHelper.Relocation("androidx.text.emoji.flatbuffer",
                     "androidx.emoji2.text.flatbuffer")
-    ]
+    ],
+    /* dropResourcesWithSuffix = */ null
 )
 
 dependencies {
@@ -26,7 +31,7 @@ dependencies {
     api("androidx.startup:startup-runtime:1.0.0")
     implementation("androidx.collection:collection:1.1.0")
     implementation("androidx.annotation:annotation:1.2.0")
-    implementation 'androidx.lifecycle:lifecycle-process:2.4.0-alpha02'
+    implementation("androidx.lifecycle:lifecycle-process:2.4.1")
 
     androidTestImplementation(libs.testExtJunit)
     androidTestImplementation(libs.testCore)
@@ -39,10 +44,13 @@ dependencies {
 }
 
 androidx {
-    name = "Android Emoji2 Compat"
+    name = "Emoji2"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.EMOJI2
-    mavenGroup = LibraryGroups.EMOJI2
     inceptionYear = "2017"
     description = "Core library to enable emoji compatibility in Kitkat and newer devices to avoid the empty emoji characters."
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.emoji2"
 }

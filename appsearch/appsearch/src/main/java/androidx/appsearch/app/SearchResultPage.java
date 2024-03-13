@@ -29,7 +29,7 @@ import java.util.List;
 
 /**
  * This class represents a page of {@link SearchResult}s
- * @hide
+ * @exportToFramework:hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public class SearchResultPage {
@@ -61,6 +61,7 @@ public class SearchResultPage {
 
     /** Returns all {@link androidx.appsearch.app.SearchResult}s of this page */
     @NonNull
+    @SuppressWarnings("deprecation")
     public List<SearchResult> getResults() {
         if (mResults == null) {
             ArrayList<Bundle> resultBundles = mBundle.getParcelableArrayList(RESULTS_FIELD);

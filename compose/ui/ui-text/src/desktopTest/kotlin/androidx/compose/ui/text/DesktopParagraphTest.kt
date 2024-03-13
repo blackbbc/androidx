@@ -16,18 +16,23 @@
 
 package androidx.compose.ui.text
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.text.platform.Font
-import androidx.compose.ui.text.platform.FontLoader
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import com.google.common.truth.Truth
 import org.junit.Assume.assumeTrue
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,7 +43,7 @@ class DesktopParagraphTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val fontLoader = FontLoader()
+    private val fontFamilyResolver = createFontFamilyResolver()
     private val defaultDensity = Density(density = 1f)
     private val fontFamilyMeasureFont =
         FontFamily(
@@ -50,6 +55,7 @@ class DesktopParagraphTest {
         )
 
     @Test
+    @Ignore("b/271123970 Fails in AOSP. Will be fixed after upstreaming Compose for Desktop")
     fun getBoundingBox_basic() {
         with(defaultDensity) {
             val text = "abc"
@@ -71,6 +77,7 @@ class DesktopParagraphTest {
     }
 
     @Test
+    @Ignore("b/271123970 Fails in AOSP. Will be fixed after upstreaming Compose for Desktop")
     fun getBoundingBox_multicodepoints() {
         assumeTrue(isLinux)
         with(defaultDensity) {
@@ -91,6 +98,20 @@ class DesktopParagraphTest {
             Truth.assertThat(paragraph.getBoundingBox(5))
                 .isEqualTo(Rect(fontSizeInPx, 0f, fontSizeInPx * 2.5f, 60f))
         }
+    }
+
+    @Test
+    fun getLineForOffset() {
+        val text = "ab\na"
+        val paragraph = simpleParagraph(
+            text = text,
+            style = TextStyle(fontSize = 50.sp)
+        )
+
+        Truth.assertThat(paragraph.getLineForOffset(2))
+            .isEqualTo(0)
+        Truth.assertThat(paragraph.getLineForOffset(3))
+            .isEqualTo(1)
     }
 
     @Test
@@ -131,6 +152,15 @@ class DesktopParagraphTest {
             Truth.assertThat(paragraph.getLineEnd(1, true))
                 .isEqualTo(3)
         }
+    }
+
+    @Test
+    fun getLineBaseline() {
+        val text = "abc\nabc\nabc"
+        val paragraph = simpleParagraph(text = text)
+
+        Truth.assertThat(paragraph.getLineBaseline(0)).isEqualTo(paragraph.firstBaseline)
+        Truth.assertThat(paragraph.getLineBaseline(2)).isEqualTo(paragraph.lastBaseline)
     }
 
     @Test
@@ -218,6 +248,48 @@ class DesktopParagraphTest {
         Truth.assertThat(doubleSpaceResult.end).isEqualTo(text.indexOf('d') + 2)
     }
 
+    @Test
+    fun two_paragraphs_use_common_intrinsics() {
+        fun Paragraph.testOffset() = getOffsetForPosition(Offset(0f, 100000f))
+        fun Paragraph.paint() = paint(Canvas(ImageBitmap(100, 100)))
+
+        val intrinsics = simpleIntrinsics((1..1000).joinToString(" "))
+
+        val paragraph1 = simpleParagraph(intrinsics, width = 100f)
+        val offset1 = paragraph1.testOffset()
+
+        val paragraph2 = simpleParagraph(intrinsics, width = 100000f)
+        val offset2 = paragraph2.testOffset()
+
+        Truth.assertThat(paragraph1.testOffset()).isEqualTo(offset1)
+        Truth.assertThat(paragraph2.testOffset()).isEqualTo(offset2)
+
+        paragraph2.paint()
+        Truth.assertThat(paragraph1.testOffset()).isEqualTo(offset1)
+        Truth.assertThat(paragraph2.testOffset()).isEqualTo(offset2)
+
+        paragraph1.paint()
+        Truth.assertThat(paragraph1.testOffset()).isEqualTo(offset1)
+        Truth.assertThat(paragraph2.testOffset()).isEqualTo(offset2)
+
+        paragraph2.paint()
+        Truth.assertThat(paragraph1.testOffset()).isEqualTo(offset1)
+        Truth.assertThat(paragraph2.testOffset()).isEqualTo(offset2)
+    }
+
+    @Test
+    fun `line heights`() {
+        val paragraph = simpleParagraph(
+            text = "aaa\n\naaa\n\n\naaa\n   \naaa",
+            style = TextStyle(fontSize = 50.sp)
+        )
+        val firstLineHeight = paragraph.getLineHeight(0)
+
+        for (i in 1 until paragraph.lineCount) {
+            Truth.assertThat(paragraph.getLineHeight(i)).isEqualTo(firstLineHeight)
+        }
+    }
+
     private fun simpleParagraph(
         text: String = "",
         style: TextStyle? = null,
@@ -235,9 +307,40 @@ class DesktopParagraphTest {
             ).merge(style),
             maxLines = maxLines,
             ellipsis = ellipsis,
-            width = width,
+            constraints = Constraints(maxWidth = width.ceilToInt()),
             density = density ?: defaultDensity,
-            resourceLoader = fontLoader
+            fontFamilyResolver = fontFamilyResolver
+        )
+    }
+
+    private fun simpleIntrinsics(
+        text: String = "",
+        style: TextStyle? = null,
+        spanStyles: List<AnnotatedString.Range<SpanStyle>> = listOf(),
+        density: Density? = null
+    ): ParagraphIntrinsics {
+        return ParagraphIntrinsics(
+            text = text,
+            spanStyles = spanStyles,
+            style = TextStyle(
+                fontFamily = fontFamilyMeasureFont
+            ).merge(style),
+            density = density ?: defaultDensity,
+            fontFamilyResolver = fontFamilyResolver
+        )
+    }
+
+    private fun simpleParagraph(
+        intrinsics: ParagraphIntrinsics,
+        maxLines: Int = Int.MAX_VALUE,
+        ellipsis: Boolean = false,
+        width: Float = 2000f
+    ): Paragraph {
+        return Paragraph(
+            paragraphIntrinsics = intrinsics,
+            maxLines = maxLines,
+            ellipsis = ellipsis,
+            constraints = Constraints(maxWidth = width.ceilToInt()),
         )
     }
 }

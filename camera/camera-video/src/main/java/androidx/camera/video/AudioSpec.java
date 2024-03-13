@@ -22,6 +22,7 @@ import android.util.Range;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
 
@@ -32,8 +33,8 @@ import java.lang.annotation.RetentionPolicy;
 
 /**
  * Audio specification that is options to config audio source and encoding.
- * @hide
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @RestrictTo(Scope.LIBRARY)
 @AutoValue
 public abstract class AudioSpec {
@@ -41,11 +42,11 @@ public abstract class AudioSpec {
     /**
      * The audio source format representing no preference for audio source format.
      */
-    static final int SOURCE_FORMAT_AUTO = -1;
+    public static final int SOURCE_FORMAT_AUTO = -1;
     /**
      * The PCM 16 bit per sample audio source format. Guaranteed to be supported by all devices.
      */
-    static final int SOURCE_FORMAT_PCM_16BIT = AudioFormat.ENCODING_PCM_16BIT;
+    public static final int SOURCE_FORMAT_PCM_16BIT = AudioFormat.ENCODING_PCM_16BIT;
 
     @IntDef({SOURCE_FORMAT_AUTO, SOURCE_FORMAT_PCM_16BIT})
     @Retention(RetentionPolicy.SOURCE)
@@ -69,7 +70,6 @@ public abstract class AudioSpec {
      */
     public static final int CHANNEL_COUNT_STEREO = 2;
 
-    /** @hide */
     @IntDef(open = true,
             value = {CHANNEL_COUNT_AUTO, CHANNEL_COUNT_NONE, CHANNEL_COUNT_MONO,
                     CHANNEL_COUNT_STEREO})
@@ -88,7 +88,6 @@ public abstract class AudioSpec {
      */
     public static final int SOURCE_CAMCORDER = MediaRecorder.AudioSource.CAMCORDER;
 
-    /** @hide */
     @IntDef({SOURCE_AUTO, SOURCE_CAMCORDER})
     @Retention(RetentionPolicy.SOURCE)
     @RestrictTo(RestrictTo.Scope.LIBRARY)
@@ -139,7 +138,7 @@ public abstract class AudioSpec {
 
     /** Gets the audio format. */
     @SourceFormat
-    abstract int getSourceFormat();
+    public abstract int getSourceFormat();
 
     /** Gets the audio source. */
     @Source
@@ -163,7 +162,6 @@ public abstract class AudioSpec {
 
     /**
      * The builder of the {@link AudioSpec}.
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     @SuppressWarnings("StaticFinalBuilder")
@@ -193,7 +191,7 @@ public abstract class AudioSpec {
          * <p>If not set, defaults to {@link #SOURCE_FORMAT_AUTO}.
          */
         @NonNull
-        abstract Builder setSourceFormat(@SourceFormat int audioFormat);
+        public abstract Builder setSourceFormat(@SourceFormat int audioFormat);
 
         /**
          * Sets the audio source.

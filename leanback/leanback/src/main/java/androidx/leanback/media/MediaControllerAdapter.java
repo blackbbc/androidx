@@ -34,6 +34,7 @@ import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
 import androidx.leanback.widget.PlaybackControlsRow;
 
 /**
@@ -263,7 +264,7 @@ public class MediaControllerAdapter extends PlayerAdapter {
     }
 
     @Override
-    public void onAttachedToHost(PlaybackGlueHost host) {
+    public void onAttachedToHost(@NonNull PlaybackGlueHost host) {
         mController.registerCallback(mMediaControllerCallback);
     }
 
@@ -273,9 +274,9 @@ public class MediaControllerAdapter extends PlayerAdapter {
     }
 
     @Override
-    public void setProgressUpdatingEnabled(boolean enabled) {
+    public void setProgressUpdatingEnabled(boolean enable) {
         mHandler.removeCallbacks(mPositionUpdaterRunnable);
-        if (!enabled) {
+        if (!enable) {
             return;
         }
         mHandler.postDelayed(mPositionUpdaterRunnable, getUpdatePeriod());

@@ -16,50 +16,55 @@
 
 package androidx.health.services.client.data
 
-import android.os.Parcel
-import android.os.Parcelable
+import androidx.health.services.client.proto.DataProto
+import androidx.health.services.client.proto.DataProto.PassiveMonitoringCapabilities as PassiveMonitoringCapabilitiesProto
 
 /**
- * A place holder class that represents the capabilities of the
- * [androidx.health.services.client.PassiveMonitoringClient] on the device.
+ * Contains the capabilities supported by [androidx.health.services.client.PassiveMonitoringClient]
+ * on this device.
  */
-public data class PassiveMonitoringCapabilities(
+@Suppress("ParcelCreator")
+public class PassiveMonitoringCapabilities(
 
     /**
-     * Set of supported [DataType] s for background capture on this device.
+     * Set of supported [DataType]s for background capture on this device.
      *
      * Some data types are only available during exercise (e.g. location) or for measurements.
      */
-    val supportedDataTypesPassiveMonitoring: Set<DataType>,
+    public val supportedDataTypesPassiveMonitoring: Set<DataType<*, *>>,
 
-    /** Set of supported [DataType] s for event callbacks on this device. */
-    val supportedDataTypesEvents: Set<DataType>,
-) : Parcelable {
-    override fun describeContents(): Int = 0
+    /** Set of supported [DataType]s for goal callbacks on this device. */
+    public val supportedDataTypesPassiveGoals: Set<DataType<*, *>>,
 
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeTypedList(supportedDataTypesPassiveMonitoring.toList())
-        dest.writeTypedList(supportedDataTypesEvents.toList())
-    }
+    /** Set of supported [HealthEvent.Type]s on this device. */
+    public val supportedHealthEventTypes: Set<HealthEvent.Type>,
 
-    public companion object {
-        @JvmField
-        public val CREATOR: Parcelable.Creator<PassiveMonitoringCapabilities> =
-            object : Parcelable.Creator<PassiveMonitoringCapabilities> {
-                override fun createFromParcel(source: Parcel): PassiveMonitoringCapabilities? {
-                    val passiveMonitoringDataTypes = ArrayList<DataType>()
-                    source.readTypedList(passiveMonitoringDataTypes, DataType.CREATOR)
-                    val eventDataTypes = ArrayList<DataType>()
-                    source.readTypedList(eventDataTypes, DataType.CREATOR)
-                    return PassiveMonitoringCapabilities(
-                        passiveMonitoringDataTypes.toSet(),
-                        eventDataTypes.toSet()
-                    )
-                }
+    /** Set of supported [UserActivityState]s on this device. */
+    public val supportedUserActivityStates: Set<UserActivityState>,
+) {
+    internal constructor(
+        proto: DataProto.PassiveMonitoringCapabilities
+    ) : this(
+        proto.supportedDataTypesPassiveMonitoringList.map { DataType.deltaFromProto(it) }.toSet(),
+        proto.supportedDataTypesPassiveGoalsList.map { DataType.deltaFromProto(it) }.toSet(),
+        proto.supportedHealthEventTypesList.mapNotNull { HealthEvent.Type.fromProto(it) }.toSet(),
+        proto.supportedUserActivityStatesList.mapNotNull { UserActivityState.fromProto(it) }.toSet()
+    )
 
-                override fun newArray(size: Int): Array<PassiveMonitoringCapabilities?> {
-                    return arrayOfNulls(size)
-                }
-            }
-    }
+    internal val proto: PassiveMonitoringCapabilitiesProto =
+        PassiveMonitoringCapabilitiesProto.newBuilder()
+            .addAllSupportedDataTypesPassiveMonitoring(
+                supportedDataTypesPassiveMonitoring.map { it.proto }
+            )
+            .addAllSupportedDataTypesPassiveGoals(supportedDataTypesPassiveGoals.map { it.proto })
+            .addAllSupportedHealthEventTypes(supportedHealthEventTypes.map { it.toProto() })
+            .addAllSupportedUserActivityStates(supportedUserActivityStates.map { it.toProto() })
+            .build()
+
+    override fun toString(): String =
+        "PassiveMonitoringCapabilities(" +
+            "supportedDataTypesPassiveMonitoring=$supportedDataTypesPassiveMonitoring, " +
+            "supportedDataTypesPassiveGoals=$supportedDataTypesPassiveGoals, " +
+            "supportedHealthEventTypes=$supportedHealthEventTypes, " +
+            "supportedUserActivityStates=$supportedUserActivityStates)"
 }

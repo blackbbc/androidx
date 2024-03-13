@@ -21,17 +21,14 @@ import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.emoji2.text.EmojiCompat;
 
 /**
  * TransformationMethod wrapper in order to update transformed text with emojis.
  *
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
-@RequiresApi(19)
 class EmojiTransformationMethod implements TransformationMethod {
     @Nullable
     private final TransformationMethod mTransformationMethod;

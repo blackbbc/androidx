@@ -16,6 +16,7 @@
 
 package androidx.profileinstaller.benchmark
 
+import android.annotation.SuppressLint
 import android.content.res.AssetManager
 import androidx.benchmark.junit4.BenchmarkRule
 import androidx.benchmark.junit4.measureRepeated
@@ -24,13 +25,13 @@ import androidx.profileinstaller.ProfileInstaller
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import org.junit.After
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 @LargeTest
@@ -41,6 +42,7 @@ class ProfileInstallerTranscodeBenchmark {
     @get:Rule
     val benchmarkRule = BenchmarkRule()
     private val assets: AssetManager = InstrumentationRegistry.getInstrumentation().context.assets
+    private val APK_NAME = "base.apk"
 
     @Before
     fun setupTempDir() {
@@ -52,6 +54,7 @@ class ProfileInstallerTranscodeBenchmark {
         mTempCurFile?.delete()
     }
 
+    @SuppressLint("NewApi")
     private inline fun BenchmarkRule.Scope.newTranscoderUntimed(
         block: (DeviceProfileWriter) -> Unit
     ): DeviceProfileWriter {
@@ -61,22 +64,25 @@ class ProfileInstallerTranscodeBenchmark {
                 assets,
                 Runnable::run,
                 Diagnostics(),
+                APK_NAME,
                 PROFILE_LOCATION,
-                mTempCurFile!!,
-                File("")
+                PROFILE_META_LOCATION,
+                mTempCurFile!!
             ).also(block)
         }
         return transcoder!!
     }
 
+    @SuppressLint("NewApi")
     private fun assumeDeviceSupportsAot() {
         val transcoder = DeviceProfileWriter(
             assets,
             Runnable::run,
             Diagnostics(),
+            APK_NAME,
             PROFILE_LOCATION,
-            mTempCurFile!!,
-            File("")
+            PROFILE_META_LOCATION,
+            mTempCurFile!!
         )
         assumeTrue(
             "Device must support AOT to run this benchmark",
@@ -85,14 +91,16 @@ class ProfileInstallerTranscodeBenchmark {
     }
 
     @Test
+    @SuppressLint("NewApi")
     fun deviceAllowsProfileInstallerAotWrites() {
         val transcoder = DeviceProfileWriter(
             assets,
             Runnable::run,
             Diagnostics(),
+            APK_NAME,
             PROFILE_LOCATION,
-            mTempCurFile!!,
-            File("")
+            PROFILE_META_LOCATION,
+            mTempCurFile!!
         )
         benchmarkRule.measureRepeated {
             transcoder.deviceAllowsProfileInstallerAotWrites()
@@ -100,41 +108,47 @@ class ProfileInstallerTranscodeBenchmark {
     }
 
     @Test
+    @SuppressLint("NewApi")
     fun copyProfileOrRead() {
         assumeDeviceSupportsAot()
         benchmarkRule.measureRepeated {
-            newTranscoderUntimed {
+            val transcoder = newTranscoderUntimed {
                 it.deviceAllowsProfileInstallerAotWrites()
-            }.copyProfileOrRead(NeverSkip)
+            }
+            // this measures a trace which costs about 15us
+            transcoder.read()
         }
     }
 
     @Test
+    @SuppressLint("NewApi")
     fun transcodeIfNeeded() {
         assumeDeviceSupportsAot()
         benchmarkRule.measureRepeated {
             val transcoder = newTranscoderUntimed {
                 it.deviceAllowsProfileInstallerAotWrites()
-                it.copyProfileOrRead(NeverSkip)
+                it.read()
             }
             transcoder.transcodeIfNeeded()
         }
     }
 
     @Test
+    @SuppressLint("NewApi")
     fun writeIfNeeded() {
         assumeDeviceSupportsAot()
         benchmarkRule.measureRepeated {
             val transcoder = newTranscoderUntimed {
                 it.deviceAllowsProfileInstallerAotWrites()
-                it.copyProfileOrRead(NeverSkip)
+                it.read()
                 it.transcodeIfNeeded()
             }
-            transcoder.writeIfNeeded(NeverSkip)
+            transcoder.write()
         }
     }
 
     @Test
+    @SuppressLint("NewApi")
     fun fullProfileReadTranscodeWrite() {
         assumeDeviceSupportsAot()
         benchmarkRule.measureRepeated {
@@ -142,20 +156,23 @@ class ProfileInstallerTranscodeBenchmark {
                 assets,
                 Runnable::run,
                 Diagnostics(),
+                APK_NAME,
                 PROFILE_LOCATION,
-                mTempCurFile!!,
-                File("")
+                PROFILE_META_LOCATION,
+                mTempCurFile!!
             )
             transcoder.deviceAllowsProfileInstallerAotWrites()
 
-            transcoder.copyProfileOrRead(NeverSkip)
+            // this measures a trace which costs about 15us
+            transcoder.read()
                 .transcodeIfNeeded()
-                .writeIfNeeded(NeverSkip)
+                .write()
         }
     }
 
     companion object {
         const val PROFILE_LOCATION = "golden/profileinstaller.prof"
+        const val PROFILE_META_LOCATION = "golden/profileinstaller.profm"
     }
 
     class Diagnostics : ProfileInstaller.DiagnosticsCallback {
@@ -166,12 +183,5 @@ class ProfileInstallerTranscodeBenchmark {
         override fun onResultReceived(code: Int, data: Any?) {
             /* no-op */
         }
-    }
-
-    object NeverSkip : DeviceProfileWriter.SkipStrategy {
-        override fun shouldSkip(
-            newProfileLength: Long,
-            existingProfileState: DeviceProfileWriter.ExistingProfileState
-        ) = false
     }
 }

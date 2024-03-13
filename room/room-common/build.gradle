@@ -14,26 +14,67 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.LibraryType
+import androidx.build.PlatformIdentifier
 import androidx.build.Publish
 
 plugins {
     id("AndroidXPlugin")
-    id("kotlin")
 }
 
-dependencies {
-    api("androidx.annotation:annotation:1.1.0")
-    testImplementation(libs.kotlinStdlib)
-    testImplementation(libs.junit)
-    testImplementation(libs.mockitoCore)
-    testImplementation(libs.guava)
+androidXMultiplatform {
+    jvm() {
+        withJava()
+    }
+    mac()
+    linux()
+    ios()
+
+    defaultPlatform(PlatformIdentifier.JVM)
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                api(libs.kotlinStdlib)
+                api(projectOrArtifact(":annotation:annotation"))
+
+            }
+        }
+
+        commonTest {
+            dependencies {
+                implementation(project(":kruth:kruth"))
+                implementation(libs.kotlinTest)
+            }
+        }
+
+        jvmMain {
+            dependsOn(commonMain)
+        }
+
+        jvmTest {
+            dependsOn(commonTest)
+            dependencies {
+                implementation(libs.guava)
+                implementation(libs.kotlinTestJunit)
+            }
+        }
+    }
 }
 
 androidx {
-    name = "Android Room-Common"
+    name = "Room-Common"
+    type = LibraryType.PUBLISHED_LIBRARY
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.ROOM
     inceptionYear = "2017"
     description = "Android Room-Common"
+    legacyDisableKotlinStrictApiMode = true
+    metalavaK2UastEnabled = true
 }

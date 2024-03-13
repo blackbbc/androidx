@@ -16,6 +16,7 @@
 
 package androidx.car.app.model;
 
+import static androidx.car.app.model.Action.FLAG_PRIMARY;
 import static androidx.car.app.model.CarIcon.BACK;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -26,6 +27,8 @@ import android.content.ContentResolver;
 import android.net.Uri;
 import android.util.Log;
 
+import androidx.car.app.TestUtils;
+import androidx.car.app.annotations.RequiresCarApi;
 import androidx.core.graphics.drawable.IconCompat;
 
 import org.junit.Test;
@@ -39,6 +42,7 @@ import java.util.List;
 /** Tests for {@link MessageTemplate}. */
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
+@SuppressWarnings("deprecation")
 public class MessageTemplateTest {
 
     private final String mTitle = "header";
@@ -48,6 +52,10 @@ public class MessageTemplateTest {
     private final Action mAction = Action.BACK;
     private final CarIcon mIcon = CarIcon.ALERT;
     private final ActionStrip mActionStrip = new ActionStrip.Builder().addAction(mAction).build();
+    @RequiresCarApi(5)
+    private final Header mHeader =
+            new Header.Builder().setStartHeaderAction(Action.BACK).setTitle("header")
+                    .addEndHeaderAction(Action.BACK).build();
 
     @Test
     public void emptyMessage_throws() {
@@ -76,13 +84,15 @@ public class MessageTemplateTest {
     }
 
     @Test
-    public void noHeaderTitleOrAction_throws() {
-        assertThrows(IllegalStateException.class,
-                () -> new MessageTemplate.Builder(mMessage).build());
+    public void header_unsupportedSpans_throws() {
+        CharSequence title = TestUtils.getCharSequenceWithColorSpan("Title");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new MessageTemplate.Builder(mMessage).setTitle(title));
 
-        // Positive cases.
-        new MessageTemplate.Builder(mMessage).setTitle(mTitle).build();
-        new MessageTemplate.Builder(mMessage).setHeaderAction(mAction).build();
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title2 = TestUtils.getCharSequenceWithDistanceAndDurationSpans("Title");
+        new MessageTemplate.Builder(mMessage).setTitle(title2).build();
     }
 
     @Test
@@ -95,6 +105,38 @@ public class MessageTemplateTest {
     }
 
     @Test
+    public void twoPrimaryActions_throws() {
+        Action primaryAction = new Action.Builder().setTitle("primaryAction")
+                .setOnClickListener(() -> {})
+                .setFlags(FLAG_PRIMARY).build();
+        assertThrows(IllegalArgumentException.class,
+                () -> new MessageTemplate.Builder(mMessage)
+                        .addAction(primaryAction)
+                        .addAction(primaryAction)
+                .build());
+    }
+
+    @Test
+    public void action_unsupportedSpans_throws() {
+        CharSequence title1 = TestUtils.getCharSequenceWithClickableSpan("Title");
+        Action action1 = new Action.Builder().setTitle(title1).build();
+        assertThrows(IllegalArgumentException.class,
+                () -> new MessageTemplate.Builder(mMessage).setTitle("Title").addAction(action1));
+        CarText title2 = TestUtils.getCarTextVariantsWithDistanceAndDurationSpans("Title");
+        Action action2 = new Action.Builder().setTitle(title2).build();
+        assertThrows(IllegalArgumentException.class,
+                () -> new MessageTemplate.Builder(mMessage).setTitle("Title").addAction(action2));
+
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title3 = TestUtils.getCharSequenceWithColorSpan("Title");
+        Action action3 = new Action.Builder().setTitle(title3).build();
+        new MessageTemplate.Builder(mMessage).setTitle("Title").addAction(action3).build();
+        CarText title4 = TestUtils.getCarTextVariantsWithColorSpan("Title");
+        Action action4 = new Action.Builder().setTitle(title4).build();
+        new MessageTemplate.Builder(mMessage).setTitle("Title").addAction(action4).build();
+    }
+
+    @Test
     public void createDefault_valuesAreNull() {
         MessageTemplate template = new MessageTemplate.Builder(mMessage).setTitle(mTitle).build();
         assertThat(template.getMessage().toString()).isEqualTo(mMessage);
@@ -104,6 +146,28 @@ public class MessageTemplateTest {
         assertThat(template.getActions()).isEmpty();
         assertThat(template.getActionStrip()).isNull();
         assertThat(template.getDebugMessage()).isNull();
+    }
+
+    @Test
+    public void createInstance_WithHeader_valuesAreBackFilled() {
+        MessageTemplate template = new MessageTemplate.Builder(mMessage).setHeader(mHeader).build();
+
+        // Verify newly set Header
+        assertThat(template.getHeader()).isEqualTo(mHeader);
+
+        // Verify back filled values
+        assertThat(template.getTitle().toString()).isEqualTo("header");
+        assertThat(template.getHeaderAction()).isEqualTo(mAction);
+        assertThat(template.getActionStrip()).isEqualTo(mActionStrip);
+    }
+
+    @Test
+    public void createInstance_emptyHeader() {
+        MessageTemplate template = new MessageTemplate.Builder(mMessage).build();
+
+        assertThat(template.getHeaderAction()).isNull();
+        assertThat(template.getTitle()).isNull();
+        assertThat(template.getActionStrip()).isNull();
     }
 
     @Test

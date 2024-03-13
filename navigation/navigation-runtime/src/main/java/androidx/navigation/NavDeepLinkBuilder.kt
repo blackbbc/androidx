@@ -16,10 +16,10 @@
 package androidx.navigation
 
 import android.app.Activity
-import android.content.Intent
-import android.content.ComponentName
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.annotation.IdRes
 import androidx.annotation.NavigationRes
@@ -173,6 +173,23 @@ public class NavDeepLinkBuilder(private val context: Context) {
      * start destinations between the previous deep link destination and the newly added
      * deep link destination.
      *
+     * This means that if R.navigation.nav_graph has startDestination= R.id.start_destination,
+     *
+     * ```
+     * navDeepLinkBuilder
+     *    .setGraph(R.navigation.nav_graph)
+     *    .addDestination(R.id.second_destination, null)
+     * ```
+     * is equivalent to
+     * ```
+     * navDeepLinkBuilder
+     *    .setGraph(R.navigation.nav_graph)
+     *    .addDestination(R.id.start_destination, null)
+     *    .addDestination(R.id.second_destination, null)
+     * ```
+     *
+     * Use the second form to assign specific arguments to the start destination.
+     *
      * @param destId destination ID to deep link to.
      * @param args Arguments to pass to this destination and any synthetic back stack created
      * due to this destination being added.
@@ -317,6 +334,7 @@ public class NavDeepLinkBuilder(private val context: Context) {
      * @return a PendingIntent constructed with [TaskStackBuilder.getPendingIntent] to deep link
      * to the given destination
      */
+    @Suppress("DEPRECATION")
     public fun createPendingIntent(): PendingIntent {
         var requestCode = 0
         globalArgs?.let { globalArgs ->

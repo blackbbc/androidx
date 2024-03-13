@@ -14,248 +14,242 @@
  * limitations under the License.
  */
 
+@file:RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
+
 package androidx.camera.camera2.pipe.integration.impl
 
+import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.params.MeteringRectangle
+import androidx.annotation.RequiresApi
 import androidx.camera.camera2.pipe.CameraGraph
-import androidx.camera.camera2.pipe.CameraPipe
-import androidx.camera.camera2.pipe.CameraStream
-import androidx.camera.camera2.pipe.Lock3ABehavior
-import androidx.camera.camera2.pipe.Result3A
-import androidx.camera.camera2.pipe.StreamFormat
-import androidx.camera.camera2.pipe.StreamId
-import androidx.camera.camera2.pipe.TorchState
+import androidx.camera.camera2.pipe.GraphState.GraphStateError
+import androidx.camera.camera2.pipe.GraphState.GraphStateStarted
+import androidx.camera.camera2.pipe.GraphState.GraphStateStopped
+import androidx.camera.camera2.pipe.RequestTemplate
 import androidx.camera.camera2.pipe.core.Log.debug
-import androidx.camera.camera2.pipe.integration.adapter.CaptureConfigAdapter
+import androidx.camera.camera2.pipe.integration.adapter.RequestProcessorAdapter
 import androidx.camera.camera2.pipe.integration.adapter.SessionConfigAdapter
-import androidx.camera.camera2.pipe.integration.adapter.getImplementationOptionParameters
-import androidx.camera.camera2.pipe.integration.config.CameraConfig
 import androidx.camera.camera2.pipe.integration.config.UseCaseCameraScope
+import androidx.camera.camera2.pipe.integration.config.UseCaseGraphConfig
 import androidx.camera.core.UseCase
-import androidx.camera.core.impl.CaptureConfig
-import androidx.camera.core.impl.DeferrableSurface
+import androidx.camera.core.impl.Config
+import androidx.camera.core.impl.SessionConfig
+import androidx.camera.core.impl.SessionProcessorSurface
+import dagger.Binds
 import dagger.Module
-import dagger.Provides
+import javax.inject.Inject
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 internal val useCaseCameraIds = atomic(0)
+internal val defaultOptionPriority = Config.OptionPriority.OPTIONAL
+internal const val defaultTemplate = CameraDevice.TEMPLATE_PREVIEW
 
 interface UseCaseCamera {
     // UseCases
-    var activeUseCases: Set<UseCase>
+    var runningUseCases: Set<UseCase>
+
+    interface RunningUseCasesChangeListener {
+        /**
+         * Invoked when value of [UseCaseCamera.runningUseCases] has been changed.
+         */
+        fun onRunningUseCasesChanged()
+    }
+
+    // RequestControl of the UseCaseCamera
+    val requestControl: UseCaseCameraRequestControl
 
     // Parameters
-    fun <T> setParameter(key: CaptureRequest.Key<T>, value: T)
-    fun <T> setParameterAsync(key: CaptureRequest.Key<T>, value: T): Deferred<Unit>
-    fun <T> setParameters(values: Map<CaptureRequest.Key<*>, Any>)
-    fun <T> setParametersAsync(values: Map<CaptureRequest.Key<*>, Any>): Deferred<Unit>
+    fun <T> setParameterAsync(
+        key: CaptureRequest.Key<T>,
+        value: T,
+        priority: Config.OptionPriority = defaultOptionPriority,
+    ): Deferred<Unit>
 
-    // 3A
-    suspend fun setTorchAsync(enabled: Boolean): Deferred<Result3A>
-    suspend fun startFocusAndMeteringAsync(
-        aeRegions: List<MeteringRectangle>,
-        afRegions: List<MeteringRectangle>,
-        awbRegions: List<MeteringRectangle>
-    ): Deferred<Result3A>
+    fun setParametersAsync(
+        values: Map<CaptureRequest.Key<*>, Any>,
+        priority: Config.OptionPriority = defaultOptionPriority,
+    ): Deferred<Unit>
 
-    // Capture
-    fun capture(captureSequence: List<CaptureConfig>)
+    fun setActiveResumeMode(enabled: Boolean) {}
 
     // Lifecycle
-    fun close()
+    fun close(): Job
 }
 
 /**
  * API for interacting with a [CameraGraph] that has been configured with a set of [UseCase]'s
  */
-class UseCaseCameraImpl(
-    private val cameraGraph: CameraGraph,
-    private val useCases: List<UseCase>,
-    private val surfaceToStreamMap: Map<DeferrableSurface, StreamId>,
-    private val state: UseCaseCameraState,
-    private val configAdapter: CaptureConfigAdapter,
+@RequiresApi(21)
+@UseCaseCameraScope
+@Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN") // Java version required for Dagger
+class UseCaseCameraImpl @Inject constructor(
+    private val controls: java.util.Set<UseCaseCameraControl>,
+    private val useCaseGraphConfig: UseCaseGraphConfig,
+    private val useCases: java.util.ArrayList<UseCase>,
+    private val useCaseSurfaceManager: UseCaseSurfaceManager,
     private val threads: UseCaseThreads,
+    private val sessionProcessorManager: SessionProcessorManager?,
+    private val sessionConfigAdapter: SessionConfigAdapter,
+    override val requestControl: UseCaseCameraRequestControl,
 ) : UseCaseCamera {
     private val debugId = useCaseCameraIds.incrementAndGet()
-    private val currentParameters = mutableMapOf<CaptureRequest.Key<*>, Any>()
-    private var activeSessionConfigAdapter: SessionConfigAdapter? = null
+    private val closed = atomic(false)
+    private lateinit var stateCollectJob: Job
 
-    private var _activeUseCases = setOf<UseCase>()
-    override var activeUseCases: Set<UseCase>
-        get() = _activeUseCases
+    override var runningUseCases = setOf<UseCase>()
         set(value) {
+            field = value
+
             // Note: This may be called with the same set of values that was previously set. This
             // is used as a signal to indicate the properties of the UseCase may have changed.
-            _activeUseCases = value
-            activeSessionConfigAdapter = SessionConfigAdapter(_activeUseCases.toList(), threads)
-            updateUseCases()
+            SessionConfigAdapter(value).getValidSessionConfigOrNull()?.let {
+                requestControl.setSessionConfigAsync(it)
+            } ?: run {
+                debug { "Unable to reset the session due to invalid config" }
+                requestControl.setSessionConfigAsync(
+                    SessionConfig.Builder().apply {
+                        setTemplateType(defaultTemplate)
+                    }.build()
+                )
+            }
+
+            controls.forEach { control ->
+                if (control is UseCaseCamera.RunningUseCasesChangeListener) {
+                    control.onRunningUseCasesChanged()
+                }
+            }
         }
 
     init {
         debug { "Configured $this for $useCases" }
-    }
-
-    override fun close() {
-        debug { "Closing $this" }
-        cameraGraph.close()
-    }
-
-    override suspend fun setTorchAsync(enabled: Boolean): Deferred<Result3A> {
-        return cameraGraph.acquireSession().use {
-            it.setTorch(
-                when (enabled) {
-                    true -> TorchState.ON
-                    false -> TorchState.OFF
-                }
-            )
+        useCaseGraphConfig.apply {
+            cameraStateAdapter.onGraphUpdated(graph)
         }
-    }
+        stateCollectJob = threads.scope.launch {
+            useCaseGraphConfig.apply {
+                graph.graphState.collect {
+                    cameraStateAdapter.onGraphStateUpdated(graph, it)
 
-    override suspend fun startFocusAndMeteringAsync(
-        aeRegions: List<MeteringRectangle>,
-        afRegions: List<MeteringRectangle>,
-        awbRegions: List<MeteringRectangle>
-    ): Deferred<Result3A> {
-        return cameraGraph.acquireSession().use {
-            it.lock3A(
-                aeRegions = aeRegions,
-                afRegions = afRegions,
-                awbRegions = awbRegions,
-                afLockBehavior = Lock3ABehavior.AFTER_NEW_SCAN
-            )
-        }
-    }
+                    // Even if the UseCaseCamera is closed, we should still update the GraphState
+                    // before cancelling the job, because it could be the last UseCaseCamera created
+                    // (i.e., no new UseCaseCamera to update CameraStateAdapter that this one as
+                    // stopped/closed).
+                    if (closed.value &&
+                        it is GraphStateStopped ||
+                        it is GraphStateError
+                    ) {
+                        stateCollectJob.cancel()
+                    }
 
-    override fun <T> setParameter(key: CaptureRequest.Key<T>, value: T) {
-        currentParameters[key] = value as Any
-        state.update(parameters = currentParameters)
-    }
-
-    override fun <T> setParameterAsync(key: CaptureRequest.Key<T>, value: T): Deferred<Unit> {
-        currentParameters[key] = value as Any
-        return state.updateAsync(parameters = currentParameters)
-    }
-
-    override fun <T> setParameters(values: Map<CaptureRequest.Key<*>, Any>) {
-        currentParameters.putAll(values)
-        state.update(parameters = currentParameters)
-    }
-
-    override fun <T> setParametersAsync(values: Map<CaptureRequest.Key<*>, Any>): Deferred<Unit> {
-        currentParameters.putAll(values)
-        return state.updateAsync(parameters = currentParameters)
-    }
-
-    override fun capture(captureSequence: List<CaptureConfig>) {
-        val requests = captureSequence.map { configAdapter.mapToRequest(it) }
-        state.capture(requests)
-    }
-
-    private fun updateUseCases() {
-        val repeatingStreamIds = mutableSetOf<StreamId>()
-        val repeatingListeners = CameraCallbackMap()
-
-        for (useCase in activeUseCases) {
-            val repeatingCapture = useCase.sessionConfig?.repeatingCaptureConfig
-            if (repeatingCapture != null) {
-                for (deferrableSurface in repeatingCapture.surfaces) {
-                    val streamId = surfaceToStreamMap[deferrableSurface]
-                    if (streamId != null) {
-                        repeatingStreamIds.add(streamId)
+                    // TODO: b/323614735: Technically our RequestProcessor implementation could be
+                    //   given to the SessionProcessor through onCaptureSessionStart after the
+                    //   new set of configurations (CameraGraph) is created. However, this seems to
+                    //   be causing occasional SIGBUS on the Android platform level. Delaying this
+                    //   seems to be mitigating the issue, but does result in overhead in startup
+                    //   latencies. Move this back to UseCaseManager once we understand more about
+                    //   the situation.
+                    if (sessionProcessorManager != null && it is GraphStateStarted) {
+                        val sessionProcessorSurfaces =
+                            sessionConfigAdapter.deferrableSurfaces.map {
+                                it as SessionProcessorSurface
+                            }
+                        val requestProcessorAdapter = RequestProcessorAdapter(
+                            useCaseGraphConfig,
+                            sessionProcessorSurfaces,
+                            threads.scope,
+                        )
+                        sessionProcessorManager.onCaptureSessionStart(
+                            requestProcessorAdapter
+                        )
                     }
                 }
             }
         }
+    }
 
-        activeSessionConfigAdapter?.getValidSessionConfigOrNull()?.let { sessionConfig ->
-            sessionConfig.repeatingCameraCaptureCallbacks.forEach { callback ->
-                repeatingListeners.addCaptureCallback(
-                    callback,
+    override fun close(): Job {
+        return if (closed.compareAndSet(expect = false, update = true)) {
+            threads.scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                debug { "Closing $this" }
+                requestControl.close()
+                sessionProcessorManager?.prepareClose()
+                useCaseGraphConfig.graph.close()
+                if (sessionProcessorManager != null) {
+                    useCaseGraphConfig.graph.graphState.first {
+                        it is GraphStateStopped || it is GraphStateError
+                    }
+                    sessionProcessorManager.close()
+                }
+                useCaseSurfaceManager.stopAsync().await()
+            }
+        } else {
+            CompletableDeferred(Unit)
+        }
+    }
+
+    override fun <T> setParameterAsync(
+        key: CaptureRequest.Key<T>,
+        value: T,
+        priority: Config.OptionPriority,
+    ): Deferred<Unit> = runIfNotClosed {
+        setParametersAsync(mapOf(key to (value as Any)), priority)
+    } ?: canceledResult
+
+    override fun setParametersAsync(
+        values: Map<CaptureRequest.Key<*>, Any>,
+        priority: Config.OptionPriority,
+    ): Deferred<Unit> = runIfNotClosed {
+        requestControl.addParametersAsync(
+            values = values,
+            optionPriority = priority
+        )
+    } ?: canceledResult
+
+    override fun setActiveResumeMode(enabled: Boolean) {
+        useCaseGraphConfig.graph.isForeground = enabled
+    }
+
+    private fun UseCaseCameraRequestControl.setSessionConfigAsync(
+        sessionConfig: SessionConfig
+    ): Deferred<Unit> = runIfNotClosed {
+        setConfigAsync(
+            type = UseCaseCameraRequestControl.Type.SESSION_CONFIG,
+            config = sessionConfig.implementationOptions,
+            tags = sessionConfig.repeatingCaptureConfig.tagBundle.toMap(),
+            listeners = setOf(
+                CameraCallbackMap.createFor(
+                    sessionConfig.repeatingCameraCaptureCallbacks,
                     threads.backgroundExecutor
                 )
-            }
+            ),
+            template = RequestTemplate(sessionConfig.repeatingCaptureConfig.templateType),
+            streams = useCaseGraphConfig.getStreamIdsFromSurfaces(
+                sessionConfig.repeatingCaptureConfig.surfaces
+            ),
+            sessionConfig = sessionConfig,
+        )
+    } ?: canceledResult
 
-            // Only update the state when the SessionConfig is valid
-            state.update(
-                parameters = sessionConfig.getImplementationOptionParameters(),
-                streams = repeatingStreamIds,
-                listeners = setOf(repeatingListeners)
-            )
-        } ?: run {
-            debug { "Unable to reset the session due to invalid config" }
-            // TODO: Consider to reset the session if there is no valid config.
-        }
+    private inline fun <R> runIfNotClosed(crossinline block: () -> R): R? {
+        return if (!closed.value) block() else null
     }
 
     override fun toString(): String = "UseCaseCamera-$debugId"
 
     @Module
-    class Bindings {
-        companion object {
-            @UseCaseCameraScope
-            @Provides
-            fun provideCameraGraphController(
-                cameraPipe: CameraPipe,
-                useCases: java.util.ArrayList<UseCase>,
-                cameraConfig: CameraConfig,
-                callbackMap: CameraCallbackMap,
-                threads: UseCaseThreads,
-            ): UseCaseCamera {
-                val streamConfigMap = mutableMapOf<CameraStream.Config, DeferrableSurface>()
+    abstract class Bindings {
+        @UseCaseCameraScope
+        @Binds
+        abstract fun provideUseCaseCamera(useCaseCamera: UseCaseCameraImpl): UseCaseCamera
+    }
 
-                // TODO: This may need to combine outputs that are (or will) share the same output
-                //  imageReader or surface.
-                val adapter = SessionConfigAdapter(useCases, threads)
-                adapter.getValidSessionConfigOrNull()?.surfaces?.forEach {
-                    val outputConfig = CameraStream.Config.create(
-                        size = it.prescribedSize,
-                        format = StreamFormat(it.prescribedStreamFormat),
-                        camera = cameraConfig.cameraId
-                    )
-                    streamConfigMap[outputConfig] = it
-                    debug {
-                        "Prepare config for: $it " +
-                            "(${it.prescribedSize}, ${it.prescribedStreamFormat})"
-                    }
-                }
-
-                // Build up a config (using TEMPLATE_PREVIEW by default)
-                val config = CameraGraph.Config(
-                    camera = cameraConfig.cameraId,
-                    streams = streamConfigMap.keys.toList(),
-                    defaultListeners = listOf(callbackMap),
-                )
-                val graph = cameraPipe.create(config)
-
-                val surfaceToStreamMap = mutableMapOf<DeferrableSurface, StreamId>()
-                streamConfigMap.forEach { (streamConfig, deferrableSurface) ->
-                    graph.streams[streamConfig]?.let {
-                        surfaceToStreamMap[deferrableSurface] = it.id
-                    }
-                }
-
-                if (adapter.isSessionConfigValid()) {
-                    adapter.setupSurfaceAsync(graph, surfaceToStreamMap)
-                } else {
-                    debug { "Unable to create capture session due to conflicting configurations" }
-                }
-
-                val state = UseCaseCameraState(graph, threads)
-                val configAdapter =
-                    CaptureConfigAdapter(surfaceToStreamMap, threads.backgroundExecutor)
-
-                graph.start()
-                return UseCaseCameraImpl(
-                    graph,
-                    useCases,
-                    surfaceToStreamMap,
-                    state,
-                    configAdapter,
-                    threads
-                )
-            }
-        }
+    companion object {
+        private val canceledResult = CompletableDeferred<Unit>().apply { cancel() }
     }
 }

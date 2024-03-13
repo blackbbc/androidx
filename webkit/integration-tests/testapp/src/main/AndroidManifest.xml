@@ -16,7 +16,6 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.androidx.webkit"
     tools:ignore="GoogleAppIndexingWarning">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -31,7 +30,9 @@
         android:usesCleartextTraffic="true"
         tools:ignore="UnusedAttribute">
         <!-- Top-level Activity -->
-        <activity android:name=".MainActivity">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -107,6 +108,9 @@
             android:name=".JsJavaInteractionActivity"
             android:exported="true" />
         <activity
+            android:name=".WebMessageCompatActivity"
+            android:exported="true" />
+        <activity
             android:name=".WebMessageListenerActivity"
             android:exported="true" />
         <activity
@@ -118,5 +122,43 @@
         <activity
             android:name=".ForceDarkStrategyActivity"
             android:exported="true" />
+        <activity
+            android:name=".GetVariationsHeaderActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ProcessGlobalConfigActivity"
+            android:exported="true" />
+        <activity
+            android:name=".DataDirectorySuffixActivity"
+            android:process=":dataDirectorySuffixActivity"
+            android:exported="true" />
+        <activity
+            android:name=".DirectoryBasePathsActivity"
+            android:process=":directoryBasePathActivity"
+            android:exported="true" />
+        <activity
+            android:name=".RequestedWithHeaderActivity"
+            android:exported="true" />
+        <activity android:name=".CookieManagerActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ImageDragActivity"
+            android:exported="false" />
+        <activity
+            android:name=".UserAgentMetadataActivity"
+            android:exported="true" />
+        <activity
+            android:name=".MultiProfileTestActivity"
+            android:exported="false" />
+        <activity
+            android:name=".MuteAudioActivity"
+            android:exported="true" />
+
+        <provider
+            android:authorities="com.example.androidx.webkit.DropDataProvider"
+            android:name="androidx.webkit.DropDataContentProvider"
+            android:exported="false"
+            android:grantUriPermissions="true"/>
+
     </application>
 </manifest>

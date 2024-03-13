@@ -18,28 +18,35 @@ package androidx.compose.ui.graphics.benchmark.test
 
 import android.os.Build
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.benchmark.ProgrammaticVectorTestCase
 import androidx.compose.ui.graphics.benchmark.XmlVectorTestCase
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.filters.SdkSuppress
+import kotlin.math.roundToInt
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.math.roundToInt
 
 /**
  * Test to ensure that [XmlVectorTestCase] and [ProgrammaticVectorTestCase] have an identical pixel
@@ -57,14 +64,23 @@ class ImageVectorTest {
         val xmlTestCase = XmlVectorTestCase()
         val programmaticTestCase = ProgrammaticVectorTestCase()
 
+        var firstRun by mutableStateOf(true)
         rule.setContent {
-            Column {
-                xmlTestCase.Content()
-                programmaticTestCase.Content()
+            Box {
+                if (firstRun) {
+                    xmlTestCase.Content()
+                } else {
+                    programmaticTestCase.Content()
+                }
             }
         }
 
         val xmlBitmap = rule.onNodeWithTag(xmlTestCase.testTag).captureToImage().asAndroidBitmap()
+
+        firstRun = false
+
+        rule.waitForIdle()
+
         val programmaticBitmap = rule.onNodeWithTag(programmaticTestCase.testTag).captureToImage()
             .asAndroidBitmap()
 
@@ -84,6 +100,35 @@ class ImageVectorTest {
         }
 
         Assert.assertArrayEquals(xmlPixelArray, programmaticBitmapArray)
+    }
+
+    @Test
+    fun testAutoMirror() {
+        val testTag = "AutoMirrorImage"
+        rule.setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                Box {
+                    Image(
+                        modifier = Modifier.testTag(testTag),
+                        painter = painterResource(
+                            androidx.compose.ui.graphics.benchmark.R.drawable.ic_auto_mirror
+                        ),
+                        contentDescription = null
+                    )
+                }
+            }
+        }
+        rule.onNodeWithTag(testTag).captureToImage().toPixelMap().apply {
+            assertEquals(Color.Blue, this[2, 2])
+            assertEquals(Color.Blue, this[2, height - 3])
+            assertEquals(Color.Blue, this[width / 2 - 3, 2])
+            assertEquals(Color.Blue, this[width / 2 - 3, height - 3])
+
+            assertEquals(Color.Red, this[width - 3, 2])
+            assertEquals(Color.Red, this[width - 3, height - 3])
+            assertEquals(Color.Red, this[width / 2 + 3, 2])
+            assertEquals(Color.Red, this[width / 2 + 3, height - 3])
+        }
     }
 
     @Test

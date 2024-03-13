@@ -36,7 +36,6 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 
-import androidx.core.view.ViewCompat;
 import androidx.test.annotation.UiThreadTest;
 import androidx.test.filters.MediumTest;
 
@@ -60,7 +59,7 @@ public class GhostViewTest extends BaseTest {
         mContext = rule.getActivity();
         mRoot = new FrameLayout(mContext);
         rule.getActivity().getRoot().addView(mRoot, new ViewGroup.LayoutParams(SIZE, SIZE));
-        ViewCompat.setBackground(rule.getActivity().getRoot(), new ColorDrawable(Color.WHITE));
+        rule.getActivity().getRoot().setBackground(new ColorDrawable(Color.WHITE));
     }
 
     @Test
@@ -215,7 +214,7 @@ public class GhostViewTest extends BaseTest {
             @Override
             public void run() {
                 GhostViewUtils.addGhost(greenView, parent2, new Matrix());
-                ViewGroupUtils.getOverlay(parent2).add(blueView);
+                parent2.getOverlay().add(blueView);
                 GhostViewUtils.addGhost(redView, parent2, new Matrix());
                 GhostViewUtils.removeGhost(redView);
             }
@@ -311,7 +310,7 @@ public class GhostViewTest extends BaseTest {
 
     private View makeColorView(int color) {
         View view = new View(mContext);
-        ViewCompat.setBackground(view, new ColorDrawable(color));
+        view.setBackground(new ColorDrawable(color));
         return view;
     }
 
@@ -324,6 +323,7 @@ public class GhostViewTest extends BaseTest {
         int height = view.getHeight();
         final Bitmap dest = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         final CountDownLatch latch = new CountDownLatch(1);
+        int[] pixelCopyResult = new int[1];
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             int[] offset = new int[2];
             view.getLocationInWindow(offset);
@@ -333,7 +333,7 @@ public class GhostViewTest extends BaseTest {
                     new PixelCopy.OnPixelCopyFinishedListener() {
                         @Override
                         public void onPixelCopyFinished(int copyResult) {
-                            assertEquals(PixelCopy.SUCCESS, copyResult);
+                            pixelCopyResult[0] = copyResult;
                             latch.countDown();
                         }
 
@@ -345,11 +345,13 @@ public class GhostViewTest extends BaseTest {
                 @Override
                 public void run() {
                     view.draw(new Canvas(dest));
+                    pixelCopyResult[0] = PixelCopy.SUCCESS;
                     latch.countDown();
                 }
             });
         }
         assertTrue(latch.await(1, TimeUnit.SECONDS));
+        assertEquals(PixelCopy.SUCCESS, pixelCopyResult[0]);
         return dest;
     }
 

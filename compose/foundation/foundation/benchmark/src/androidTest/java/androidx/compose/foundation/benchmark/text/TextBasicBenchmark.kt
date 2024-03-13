@@ -17,7 +17,6 @@
 package androidx.compose.foundation.benchmark.text
 
 import androidx.compose.testutils.benchmark.ComposeBenchmarkRule
-import androidx.compose.testutils.benchmark.benchmarkDrawPerf
 import androidx.compose.testutils.benchmark.benchmarkFirstCompose
 import androidx.compose.testutils.benchmark.benchmarkFirstDraw
 import androidx.compose.testutils.benchmark.benchmarkFirstLayout
@@ -27,7 +26,6 @@ import androidx.compose.testutils.benchmark.toggleStateBenchmarkDraw
 import androidx.compose.testutils.benchmark.toggleStateBenchmarkLayout
 import androidx.compose.testutils.benchmark.toggleStateBenchmarkMeasure
 import androidx.compose.testutils.benchmark.toggleStateBenchmarkRecompose
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.benchmark.TextBenchmarkTestRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,7 +46,7 @@ class TextBasicBenchmark(
     companion object {
         @JvmStatic
         @Parameterized.Parameters(name = "length={0}")
-        fun initParameters(): Array<Any> = arrayOf(32, 512)
+        fun initParameters(): Array<Any> = arrayOf(32, 512).filterForCi()
     }
 
     @get:Rule
@@ -69,7 +67,7 @@ class TextBasicBenchmark(
              * is created.
              */
             val texts = List(textBenchmarkRule.repeatTimes) {
-                AnnotatedString(textGenerator.nextParagraph(textLength))
+                textGenerator.nextParagraph(textLength)
             }
             TextInColumnTestCase(
                 texts = texts,
@@ -121,14 +119,6 @@ class TextBasicBenchmark(
     @Test
     fun layout() {
         benchmarkRule.benchmarkLayoutPerf(caseFactory)
-    }
-
-    /**
-     * Measure the time taken by redrawing the [Text] composable.
-     */
-    @Test
-    fun draw() {
-        benchmarkRule.benchmarkDrawPerf(caseFactory)
     }
 
     /**

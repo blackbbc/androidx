@@ -14,28 +14,99 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
-import androidx.build.LibraryVersions
+import androidx.build.PlatformIdentifier
 
 plugins {
     id("AndroidXPlugin")
     id("AndroidXComposePlugin")
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
 }
 
-dependencies {
-    kotlinPlugin project(":compose:compiler:compiler")
-    api(libs.kotlinStdlib)
-    // Add dependencies here
+androidXMultiplatform {
+    android()
+    desktop()
+
+    defaultPlatform(PlatformIdentifier.ANDROID)
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                implementation(libs.kotlinStdlibCommon)
+            }
+        }
+        androidMain.dependencies {
+        }
+
+        commonTest {
+            dependencies {
+            }
+        }
+
+        jvmMain {
+            dependsOn(commonMain)
+            dependencies {
+                implementation(libs.testRules)
+                implementation(libs.testRunner)
+                implementation(libs.junit)
+                implementation(libs.truth)
+            }
+        }
+
+
+        androidMain {
+            dependsOn(jvmMain)
+            dependencies {
+                api("androidx.annotation:annotation:1.1.0")
+            }
+        }
+
+        desktopMain {
+            dependsOn(jvmMain)
+            dependencies {
+                implementation(libs.kotlinStdlib)
+            }
+        }
+
+        jvmTest {
+            dependsOn(commonTest)
+            dependencies {
+            }
+        }
+
+        androidInstrumentedTest {
+            dependsOn(jvmTest)
+            dependencies {
+                implementation(libs.testRules)
+                implementation(libs.testRunner)
+                implementation(libs.junit)
+                implementation(libs.truth)
+            }
+        }
+
+        desktopTest {
+            dependsOn(jvmTest)
+            dependencies {
+            }
+        }
+    }
+}
+
+android {
+    namespace "<PACKAGE>"
 }
 
 androidx {
     name = "<NAME>"
     type = LibraryType.<LIBRARY_TYPE>
     mavenVersion = LibraryVersions.<GROUPID>
-    mavenGroup = LibraryGroups.Compose.<GROUPID>
     inceptionYear = "<YEAR>"
-    description = "<NAME>"
+    description = "<DESCRIPTION>"
 }

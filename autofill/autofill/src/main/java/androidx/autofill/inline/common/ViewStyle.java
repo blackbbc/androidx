@@ -33,6 +33,7 @@ import androidx.core.util.Preconditions;
  * Specifies the style for a {@link View} or a {@link android.view.ViewGroup}.
  */
 @RequiresApi(api = Build.VERSION_CODES.R)
+@SuppressWarnings("HiddenSuperclass")
 public class ViewStyle extends BundledStyle {
 
     private static final String KEY_VIEW_STYLE = "view_style";
@@ -47,7 +48,6 @@ public class ViewStyle extends BundledStyle {
      * a style. It does not validate the provided bundle. {@link #isValid()} or
      * {@link #assertIsValid()} can be used for validation.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public ViewStyle(@NonNull Bundle bundle) {
@@ -57,9 +57,9 @@ public class ViewStyle extends BundledStyle {
     /**
      * Applies the specified style on the {@code view}.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
+    @SuppressWarnings("deprecation")
     public void applyStyleOnViewIfValid(@NonNull View view) {
         if (!isValid()) {
             return;
@@ -113,7 +113,6 @@ public class ViewStyle extends BundledStyle {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @NonNull
@@ -127,7 +126,6 @@ public class ViewStyle extends BundledStyle {
      *
      * @param <T> represents the type this builder can build.
      * @param <B> represents the subclass of {@link ViewStyle.BaseBuilder}.
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public abstract static class BaseBuilder<T extends ViewStyle,
@@ -213,6 +211,7 @@ public class ViewStyle extends BundledStyle {
     /**
      * Builder for the {@link ViewStyle}.
      */
+    @SuppressWarnings("HiddenSuperclass")
     public static final class Builder extends BaseBuilder<ViewStyle, Builder> {
 
         public Builder() {
@@ -220,7 +219,6 @@ public class ViewStyle extends BundledStyle {
         }
 
         /**
-         * @hide
          */
         @RestrictTo(RestrictTo.Scope.LIBRARY)
         @NonNull

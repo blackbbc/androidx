@@ -16,9 +16,9 @@
 
 package androidx.emoji2.bundled;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
 
 import android.app.Instrumentation;
 import android.text.Spannable;
@@ -35,7 +35,6 @@ import androidx.emoji2.text.EmojiCompat;
 import androidx.emoji2.text.EmojiSpan;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
-import androidx.test.filters.SdkSuppress;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Before;
@@ -46,7 +45,6 @@ import org.junit.runner.RunWith;
 
 @LargeTest
 @RunWith(AndroidJUnit4.class)
-@SdkSuppress(minSdkVersion = 19)
 public class EmojiSpanInstrumentationTest {
 
     @SuppressWarnings("deprecation")

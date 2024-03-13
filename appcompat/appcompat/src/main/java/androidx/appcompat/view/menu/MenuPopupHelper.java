@@ -22,12 +22,12 @@ import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 import android.content.Context;
 import android.graphics.Point;
 import android.graphics.Rect;
-import android.os.Build;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
+import android.widget.PopupWindow;
 import android.widget.PopupWindow.OnDismissListener;
 
 import androidx.annotation.AttrRes;
@@ -37,12 +37,10 @@ import androidx.annotation.RestrictTo;
 import androidx.annotation.StyleRes;
 import androidx.appcompat.R;
 import androidx.core.view.GravityCompat;
-import androidx.core.view.ViewCompat;
 
 /**
  * Presents a menu as a small, simple popup anchored to another view.
  *
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class MenuPopupHelper implements MenuHelper {
@@ -153,7 +151,6 @@ public class MenuPopupHelper implements MenuHelper {
     }
 
     /**
-     * @hide
      */
     @RestrictTo(LIBRARY)
     @NonNull
@@ -188,7 +185,7 @@ public class MenuPopupHelper implements MenuHelper {
      * specified (x,y) coordinate relative to the anchor view.
      * <p>
      * Additionally, the popup's transition epicenter (see
-     * {@link android.widget.PopupWindow#setEpicenterBounds(Rect)} will be
+     * {@link PopupWindow#setEpicenterBounds(Rect)} will be
      * centered on the specified coordinate, rather than using the bounds of
      * the anchor view.
      * <p>
@@ -232,11 +229,7 @@ public class MenuPopupHelper implements MenuHelper {
         final Display display = windowManager.getDefaultDisplay();
         final Point displaySize = new Point();
 
-        if (Build.VERSION.SDK_INT >= 17) {
-            display.getRealSize(displaySize);
-        } else {
-            display.getSize(displaySize);
-        }
+        display.getRealSize(displaySize);
 
         final int smallestWidth = Math.min(displaySize.x, displaySize.y);
         final int minSmallestWidthCascading = mContext.getResources().getDimensionPixelSize(
@@ -274,7 +267,7 @@ public class MenuPopupHelper implements MenuHelper {
             // edge will be aligned with the anchor view. Adjust by the anchor
             // width such that the top-right corner is at the X offset.
             final int hgrav = GravityCompat.getAbsoluteGravity(mDropDownGravity,
-                    ViewCompat.getLayoutDirection(mAnchorView)) & Gravity.HORIZONTAL_GRAVITY_MASK;
+                    mAnchorView.getLayoutDirection()) & Gravity.HORIZONTAL_GRAVITY_MASK;
             if (hgrav == Gravity.RIGHT) {
                 xOffset -= mAnchorView.getWidth();
             }

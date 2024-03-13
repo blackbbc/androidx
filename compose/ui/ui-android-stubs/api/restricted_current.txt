@@ -6,12 +6,19 @@ package android.view {
     method public void drawRenderNode(android.view.RenderNode);
   }
 
+  public abstract class HardwareCanvas extends android.graphics.Canvas {
+    ctor public HardwareCanvas();
+    method public abstract int drawRenderNode(android.view.RenderNode, android.graphics.Rect, int);
+  }
+
   public class RenderNode {
     method public static android.view.RenderNode create(String?, android.view.View?);
     method public void destroy();
+    method public void destroyDisplayListData();
     method public void discardDisplayList();
     method public void end(android.view.DisplayListCanvas);
     method public float getAlpha();
+    method public int getAmbientShadowColor();
     method public float getCameraDistance();
     method public boolean getClipToOutline();
     method public float getElevation();
@@ -24,6 +31,7 @@ package android.view {
     method public float getRotationY();
     method public float getScaleX();
     method public float getScaleY();
+    method public int getSpotShadowColor();
     method public float getTranslationX();
     method public float getTranslationY();
     method public float getTranslationZ();
@@ -37,6 +45,7 @@ package android.view {
     method public boolean offsetTopAndBottom(int);
     method public void output();
     method public boolean setAlpha(float);
+    method public boolean setAmbientShadowColor(int);
     method public boolean setAnimationMatrix(android.graphics.Matrix);
     method public boolean setBottom(int);
     method public boolean setCameraDistance(float);
@@ -61,6 +70,7 @@ package android.view {
     method public boolean setRotationY(float);
     method public boolean setScaleX(float);
     method public boolean setScaleY(float);
+    method public boolean setSpotShadowColor(int);
     method public boolean setStaticMatrix(android.graphics.Matrix);
     method public boolean setTop(int);
     method public boolean setTranslationX(float);

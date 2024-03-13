@@ -17,6 +17,8 @@
 package androidx.compose.ui.layout
 
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.node.LookaheadCapablePlaceable
+import androidx.compose.ui.node.Owner
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -68,11 +70,11 @@ abstract class Placeable : Measured {
         set(value) {
             if (field != value) {
                 field = value
-                recalculateWidthAndHeight()
+                onMeasuredSizeChanged()
             }
         }
 
-    private fun recalculateWidthAndHeight() {
+    private fun onMeasuredSizeChanged() {
         width = measuredSize.width.coerceIn(
             measurementConstraints.minWidth,
             measurementConstraints.maxWidth
@@ -81,6 +83,8 @@ abstract class Placeable : Measured {
             measurementConstraints.minHeight,
             measurementConstraints.maxHeight
         )
+        apparentToRealOffset =
+            IntOffset((width - measuredSize.width) / 2, (height - measuredSize.height) / 2)
     }
 
     /**
@@ -107,7 +111,7 @@ abstract class Placeable : Measured {
         set(value) {
             if (field != value) {
                 field = value
-                recalculateWidthAndHeight()
+                onMeasuredSizeChanged()
             }
         }
 
@@ -116,8 +120,8 @@ abstract class Placeable : Measured {
      * The real layout will be centered on the space assigned by the parent, which computed the
      * child's position only seeing its apparent size.
      */
-    protected val apparentToRealOffset: IntOffset
-        get() = IntOffset((width - measuredSize.width) / 2, (height - measuredSize.height) / 2)
+    protected var apparentToRealOffset: IntOffset = IntOffset.Zero
+        private set
 
     /**
      * Receiver scope that permits explicit placement of a [Placeable].
@@ -132,6 +136,7 @@ abstract class Placeable : Measured {
      * mirroring is not desired, [place] should be used instead.
      */
     // TODO(b/150276678): using the PlacementScope to place outside the layout pass is not working.
+    @PlacementScopeMarker
     abstract class PlacementScope {
         /**
          * Keeps the parent layout node's width to make the automatic mirroring of the position
@@ -148,6 +153,31 @@ abstract class Placeable : Measured {
         protected abstract val parentLayoutDirection: LayoutDirection
 
         /**
+         * The [LayoutCoordinates] of this layout, if known or `null` if the layout hasn't been
+         * placed yet. [coordinates] will be `null` when determining alignment lines, preventing
+         * alignment lines from depending on absolute coordinates.
+         *
+         * When [coordinates] is `null`, there will always be a follow-up placement call in which
+         * [coordinates] is not-`null`.
+         *
+         * If you read a position from the coordinates during the placement block the block
+         * will be automatically re-executed when the parent layout changes a position. If you
+         * don't read it the placement block execution can be skipped as an optimization.
+         *
+         * @sample androidx.compose.ui.samples.PlacementScopeCoordinatesSample
+         */
+        open val coordinates: LayoutCoordinates?
+            get() = null
+
+        /**
+         * Returns the value for this [Ruler] or [defaultValue] if it wasn't
+         * [provided][RulerScope.provides]. [Ruler] values are unavailable while calculating
+         * [AlignmentLine]s.
+         * @sample androidx.compose.ui.samples.RulerConsumerUsage
+         */
+        open fun Ruler.current(defaultValue: Float): Float = defaultValue
+
+        /**
          * Place a [Placeable] at [position] in its parent's coordinate system.
          * If the layout direction is right-to-left, the given [position] will be horizontally
          * mirrored so that the position of the [Placeable] implicitly reacts to RTL layout
@@ -156,6 +186,7 @@ abstract class Placeable : Measured {
          * automatic position mirroring will not happen and the [Placeable] will be placed at the
          * given [position], similar to the [place] method.
          *
+         * @param position position it parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -172,6 +203,8 @@ abstract class Placeable : Measured {
          * automatic position mirroring will not happen and the [Placeable] will be placed at the
          * given position, similar to the [place] method.
          *
+         * @param x x coordinate in the parent's coordinate system.
+         * @param y y coordinate in the parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -184,6 +217,8 @@ abstract class Placeable : Measured {
          * Unlike [placeRelative], the given position will not implicitly react in RTL layout direction
          * contexts.
          *
+         * @param x x coordinate in the parent's coordinate system.
+         * @param y y coordinate in the parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -196,6 +231,7 @@ abstract class Placeable : Measured {
          * Unlike [placeRelative], the given [position] will not implicitly react in RTL layout direction
          * contexts.
          *
+         * @param position position it parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -213,6 +249,7 @@ abstract class Placeable : Measured {
          * automatic position mirroring will not happen and the [Placeable] will be placed at the
          * given [position], similar to the [place] method.
          *
+         * @param position position it parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -236,6 +273,8 @@ abstract class Placeable : Measured {
          * automatic position mirroring will not happen and the [Placeable] will be placed at the
          * given position, similar to the [place] method.
          *
+         * @param x x coordinate in the parent's coordinate system.
+         * @param y y coordinate in the parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -256,6 +295,8 @@ abstract class Placeable : Measured {
          * Unlike [placeRelative], the given position will not implicitly react in RTL layout direction
          * contexts.
          *
+         * @param x x coordinate in the parent's coordinate system.
+         * @param y y coordinate in the parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -276,6 +317,7 @@ abstract class Placeable : Measured {
          * Unlike [placeRelative], the given [position] will not implicitly react in RTL layout direction
          * contexts.
          *
+         * @param position position it parent's coordinate system.
          * @param zIndex controls the drawing order for the [Placeable]. A [Placeable] with larger
          * [zIndex] will be drawn on top of all the children with smaller [zIndex]. When children
          * have the same [zIndex] the order in which the items were placed is used.
@@ -299,7 +341,7 @@ abstract class Placeable : Measured {
                 placeApparentToRealOffset(position, zIndex, layerBlock)
             } else {
                 placeApparentToRealOffset(
-                    IntOffset(parentWidth - measuredSize.width - position.x, position.y),
+                    IntOffset((parentWidth - width - position.x), position.y),
                     zIndex,
                     layerBlock
                 )
@@ -314,27 +356,6 @@ abstract class Placeable : Measured {
         ) {
             placeAt(position + apparentToRealOffset, zIndex, layerBlock)
         }
-
-        internal companion object : PlacementScope() {
-            override var parentLayoutDirection = LayoutDirection.Ltr
-                private set
-            override var parentWidth = 0
-                private set
-
-            inline fun executeWithRtlMirroringValues(
-                parentWidth: Int,
-                parentLayoutDirection: LayoutDirection,
-                crossinline block: PlacementScope.() -> Unit
-            ) {
-                val previousParentWidth = Companion.parentWidth
-                val previousParentLayoutDirection = Companion.parentLayoutDirection
-                Companion.parentWidth = parentWidth
-                Companion.parentLayoutDirection = parentLayoutDirection
-                this.block()
-                Companion.parentWidth = previousParentWidth
-                Companion.parentLayoutDirection = previousParentLayoutDirection
-            }
-        }
     }
 }
 
@@ -344,3 +365,51 @@ abstract class Placeable : Measured {
 private val DefaultLayerBlock: GraphicsLayerScope.() -> Unit = {}
 
 private val DefaultConstraints = Constraints()
+
+internal fun PlacementScope(
+    lookaheadCapablePlaceable: LookaheadCapablePlaceable
+): Placeable.PlacementScope =
+    LookaheadCapablePlacementScope(lookaheadCapablePlaceable)
+
+internal fun PlacementScope(owner: Owner): Placeable.PlacementScope = OuterPlacementScope(owner)
+
+/**
+ * PlacementScope used by almost all parts of Compose.
+ */
+private class LookaheadCapablePlacementScope(
+    private val within: LookaheadCapablePlaceable
+) : Placeable.PlacementScope() {
+    override val parentWidth: Int
+        get() = within.measuredWidth
+
+    override val parentLayoutDirection: LayoutDirection
+        get() = within.layoutDirection
+
+    override val coordinates: LayoutCoordinates?
+        get() {
+            val coords = if (within.isPlacingForAlignment) null else within.coordinates
+            // if coordinates are not null we will only set this flag when the inner
+            // coordinate values are read. see NodeCoordinator.onCoordinatesUsed()
+            if (coords == null) {
+                within.layoutNode.layoutDelegate.onCoordinatesUsed()
+            }
+            return coords
+        }
+
+    override fun Ruler.current(defaultValue: Float): Float =
+        within.findRulerValue(this, defaultValue)
+}
+
+/**
+ * The PlacementScope that is used at the root of the compose layout hierarchy.
+ */
+private class OuterPlacementScope(val owner: Owner) : Placeable.PlacementScope() {
+    override val parentWidth: Int
+        get() = owner.root.width
+
+    override val parentLayoutDirection: LayoutDirection
+        get() = owner.layoutDirection
+
+    override val coordinates: LayoutCoordinates
+        get() = owner.root.outerCoordinator
+}

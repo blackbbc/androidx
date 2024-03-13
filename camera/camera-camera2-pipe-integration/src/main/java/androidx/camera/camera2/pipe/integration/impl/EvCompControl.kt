@@ -14,50 +14,92 @@
  * limitations under the License.
  */
 
+@file:RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
+
 package androidx.camera.camera2.pipe.integration.impl
 
-import android.util.Range
-import android.util.Rational
+import androidx.annotation.RequiresApi
+import androidx.camera.camera2.pipe.integration.adapter.EvCompValue
 import androidx.camera.camera2.pipe.integration.compat.EvCompCompat
 import androidx.camera.camera2.pipe.integration.config.CameraScope
+import androidx.camera.core.CameraControl
 import dagger.Binds
 import dagger.Module
 import dagger.multibindings.IntoSet
 import javax.inject.Inject
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 
+private const val DEFAULT_EXPOSURE_COMPENSATION = 0
+
+/**
+ * Implementation of Exposure compensation control, it implements the functionality of
+ * [CameraControl.setExposureCompensationIndex].
+ *
+ * The [CameraControl.setExposureCompensationIndex] can only allow to run one task at the same
+ * time, it will cancel the incomplete task if a new task is requested.
+ * The task will fail with [CameraControl.OperationCanceledException] if the camera is
+ * closed.
+ */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @CameraScope
-class EvCompControl @Inject constructor(private val compat: EvCompCompat) : UseCaseCameraControl {
-    private var _evCompIndex = 0
-    var evCompIndex: Int
-        get() = _evCompIndex
+class EvCompControl @Inject constructor(
+    private val compat: EvCompCompat,
+) : UseCaseCameraControl {
+    private var evCompIndex = DEFAULT_EXPOSURE_COMPENSATION
         set(value) {
-            _evCompIndex = value
-            update()
+            field = value
+            exposureState = exposureState.updateIndex(value)
         }
-
-    val supported: Boolean
-        get() = compat.supported
-    val range: Range<Int>
-        get() = compat.range
-    val step: Rational
-        get() = compat.step
+    var exposureState = EvCompValue(
+        compat.supported,
+        evCompIndex,
+        compat.range,
+        compat.step,
+    )
 
     private var _useCaseCamera: UseCaseCamera? = null
     override var useCaseCamera: UseCaseCamera?
         get() = _useCaseCamera
         set(value) {
             _useCaseCamera = value
-            update()
+            updateAsync(evCompIndex, cancelPreviousTask = false)
         }
 
     override fun reset() {
-        _evCompIndex = 0
+        evCompIndex = DEFAULT_EXPOSURE_COMPENSATION
+        updateAsync(DEFAULT_EXPOSURE_COMPENSATION)
     }
 
-    private fun update() {
-        _useCaseCamera?.let {
-            compat.apply(_evCompIndex, it)
+    fun updateAsync(exposureIndex: Int, cancelPreviousTask: Boolean = true): Deferred<Int> {
+        if (!compat.supported) {
+            return createFailureResult(
+                IllegalArgumentException("ExposureCompensation is not supported")
+            )
         }
+
+        if (!compat.range.contains(exposureIndex)) {
+            return createFailureResult(
+                IllegalArgumentException(
+                    "Requested ExposureCompensation $exposureIndex is not within valid range " +
+                        "[${compat.range.upper} .. ${compat.range.lower}]"
+                )
+            )
+        }
+
+        return useCaseCamera?.let { camera ->
+            evCompIndex = exposureIndex
+            compat.applyAsync(exposureIndex, camera, cancelPreviousTask)
+        } ?: run {
+            CameraControl.OperationCanceledException("Camera is not active.").let { cancelResult ->
+                compat.stopRunningTask(cancelResult)
+                createFailureResult(cancelResult)
+            }
+        }
+    }
+
+    private fun createFailureResult(exception: Exception) = CompletableDeferred<Int>().apply {
+        completeExceptionally(exception)
     }
 
     @Module

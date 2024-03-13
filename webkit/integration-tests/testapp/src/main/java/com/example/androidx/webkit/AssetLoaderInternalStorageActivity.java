@@ -21,6 +21,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import android.app.Activity;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
@@ -36,6 +38,8 @@ import androidx.webkit.WebViewAssetLoader.InternalStoragePathHandler;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Objects;
+import java.util.concurrent.Executors;
 
 /**
  * An {@link Activity} to show case a use case of using {@link InternalStoragePathHandler}.
@@ -46,11 +50,16 @@ public class AssetLoaderInternalStorageActivity extends AppCompatActivity {
 
     @NonNull private File mPublicDir;
     @NonNull private File mDemoFile;
-
-    @NonNull private WebViewAssetLoader mAssetLoader;
     @NonNull private WebView mWebView;
 
-    private class MyWebViewClient extends WebViewClient {
+    private static class MyWebViewClient extends WebViewClient {
+        private final WebViewAssetLoader mAssetLoader;
+
+        MyWebViewClient(@NonNull WebViewAssetLoader assetLoader) {
+            mAssetLoader = assetLoader;
+        }
+
+        /** @noinspection RedundantSuppression*/
         @Override
         @SuppressWarnings("deprecation") // use the old one for compatibility with all API levels.
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -61,18 +70,18 @@ public class AssetLoaderInternalStorageActivity extends AppCompatActivity {
         @RequiresApi(21)
         public WebResourceResponse shouldInterceptRequest(WebView view,
                                             WebResourceRequest request) {
-            return mAssetLoader.shouldInterceptRequest(request.getUrl());
+            return mAssetLoader.shouldInterceptRequest(Api21Impl.getUrl(request));
         }
 
+        /** @noinspection RedundantSuppression*/
         @Override
         @SuppressWarnings("deprecation") // use the old one for compatibility with all API levels.
-        public WebResourceResponse shouldInterceptRequest(WebView view, String request) {
-            return mAssetLoader.shouldInterceptRequest(Uri.parse(request));
+        public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+            return mAssetLoader.shouldInterceptRequest(Uri.parse(url));
         }
     }
 
     @Override
-    @SuppressWarnings("deprecation") /* AsyncTask */
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
@@ -81,33 +90,46 @@ public class AssetLoaderInternalStorageActivity extends AppCompatActivity {
         WebkitHelpers.appendWebViewVersionToTitle(this);
 
         mWebView = findViewById(R.id.webview_asset_loader_webview);
-        mWebView.setWebViewClient(new MyWebViewClient());
 
         mPublicDir = new File(getFilesDir(), "public");
         mDemoFile = new File(mPublicDir, "some_text.html");
 
         // Host "files/public/" in app's data directory under:
         // http://appassets.androidplatform.net/public_data/...
-        mAssetLoader = new WebViewAssetLoader.Builder()
-                .addPathHandler("/public_data/", new InternalStoragePathHandler(this, mPublicDir))
-                .build();
+        WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder().addPathHandler(
+                "/public_data/", new InternalStoragePathHandler(this, mPublicDir)).build();
+
+        mWebView.setWebViewClient(new MyWebViewClient(assetLoader));
 
         // Write the demo file asynchronously and then load the file after it's written.
-        new WriteFileTask(mDemoFile, DEMO_HTML_CONTENT) {
-            @Override
-            protected void onPostExecute(Void result) {
-                Uri path = new Uri.Builder()
-                        .scheme("https")
-                        .authority(WebViewAssetLoader.DEFAULT_DOMAIN)
-                        .appendPath("public_data")
-                        .appendPath("some_text.html")
-                        .build();
-
-                mWebView.loadUrl(path.toString());
-            }
-        }.execute();
+        Executors.newSingleThreadExecutor().execute(() -> {
+                    writeFileOnBackgroundThread();
+                    new Handler(Looper.getMainLooper()).post(this::loadFileAssetInWebView);
+                }
+        );
     }
 
+    private void writeFileOnBackgroundThread() {
+        //noinspection ResultOfMethodCallIgnored
+        Objects.requireNonNull(mDemoFile.getParentFile()).mkdirs();
+        try (FileOutputStream fos = new FileOutputStream(mDemoFile)) {
+            fos.write(DEMO_HTML_CONTENT.getBytes(UTF_8));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void loadFileAssetInWebView() {
+        Uri path = new Uri.Builder()
+                .scheme("https")
+                .authority(WebViewAssetLoader.DEFAULT_DOMAIN)
+                .appendPath("public_data")
+                .appendPath("some_text.html")
+                .build();
+        mWebView.loadUrl(path.toString());
+    }
+
+    /** @noinspection ResultOfMethodCallIgnored*/
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -116,26 +138,4 @@ public class AssetLoaderInternalStorageActivity extends AppCompatActivity {
         mPublicDir.delete();
     }
 
-    // Writes to file asynchronously in the background thread.
-    private static class WriteFileTask extends android.os.AsyncTask<Void, Void, Void> {
-        @NonNull private final File mFile;
-        @NonNull private final String mContent;
-
-        WriteFileTask(@NonNull File file, @NonNull String content) {
-            mFile = file;
-            mContent = content;
-        }
-
-        @Override
-        protected Void doInBackground(Void... params) {
-            mFile.getParentFile().mkdirs();
-            try (FileOutputStream fos = new FileOutputStream(mFile)) {
-                fos.write(mContent.getBytes(UTF_8));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return null;
-        }
-
-    }
 }

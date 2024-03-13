@@ -14,24 +14,32 @@
  * limitations under the License.
  */
 
+@file:RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
+
 package androidx.camera.camera2.pipe.integration.adapter
 
+import androidx.annotation.RequiresApi
+import androidx.camera.camera2.pipe.CameraGraph
 import androidx.camera.camera2.pipe.CameraPipe
 import androidx.camera.camera2.pipe.core.Log.debug
-import androidx.camera.camera2.pipe.core.Log.warn
 import androidx.camera.camera2.pipe.integration.config.CameraConfig
 import androidx.camera.camera2.pipe.integration.config.CameraScope
 import androidx.camera.camera2.pipe.integration.impl.UseCaseManager
+import androidx.camera.camera2.pipe.integration.impl.UseCaseThreads
 import androidx.camera.core.UseCase
+import androidx.camera.core.impl.CameraConfigs
 import androidx.camera.core.impl.CameraControlInternal
 import androidx.camera.core.impl.CameraInfoInternal
 import androidx.camera.core.impl.CameraInternal
-import androidx.camera.core.impl.LiveDataObservable
 import androidx.camera.core.impl.Observable
-import androidx.camera.core.impl.utils.futures.Futures
+import androidx.camera.core.impl.SessionProcessor
 import com.google.common.util.concurrent.ListenableFuture
-import kotlinx.atomicfu.atomic
 import javax.inject.Inject
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 internal val cameraAdapterIds = atomic(0)
 
@@ -43,17 +51,30 @@ class CameraInternalAdapter @Inject constructor(
     config: CameraConfig,
     private val useCaseManager: UseCaseManager,
     private val cameraInfo: CameraInfoInternal,
-    private val cameraController: CameraControlInternal
+    private val cameraController: CameraControlInternal,
+    private val threads: UseCaseThreads,
+    private val cameraStateAdapter: CameraStateAdapter
 ) : CameraInternal {
     private val cameraId = config.cameraId
+    private var coreCameraConfig: androidx.camera.core.impl.CameraConfig =
+        CameraConfigs.defaultConfig()
     private val debugId = cameraAdapterIds.incrementAndGet()
-    private val cameraState = LiveDataObservable<CameraInternal.State>()
+    private var sessionProcessor: SessionProcessor? = null
 
     init {
-        cameraState.postValue(CameraInternal.State.CLOSED)
-
         debug { "Created $this for $cameraId" }
         // TODO: Consider preloading the list of camera ids and metadata.
+    }
+
+    internal fun setCameraGraphCreationMode(createImmediately: Boolean) {
+        useCaseManager.setCameraGraphCreationMode(createImmediately)
+    }
+
+    internal fun getDeferredCameraGraphConfig(): CameraGraph.Config? =
+        useCaseManager.getDeferredCameraGraphConfig()
+
+    internal fun resumeDeferredCameraGraphCreation(cameraGraph: CameraGraph) {
+        useCaseManager.resumeDeferredComponentCreation(cameraGraph)
     }
 
     // Load / unload methods
@@ -65,14 +86,20 @@ class CameraInternalAdapter @Inject constructor(
         debug { "$this#close" }
     }
 
+    override fun setActiveResumingMode(enabled: Boolean) {
+        useCaseManager.setActiveResumeMode(enabled)
+    }
+
     override fun release(): ListenableFuture<Void> {
-        warn { "$this#release is not yet implemented." }
-        // TODO: Determine what the correct way to invoke release is.
-        return Futures.immediateFuture(null)
+        return threads.scope.launch { useCaseManager.close() }.asListenableFuture().apply {
+            addListener({ threads.scope.cancel() }, Dispatchers.Default.asExecutor())
+        }
     }
 
     override fun getCameraInfoInternal(): CameraInfoInternal = cameraInfo
-    override fun getCameraState(): Observable<CameraInternal.State> = cameraState
+    override fun getCameraState(): Observable<CameraInternal.State> =
+        cameraStateAdapter.cameraInternalState
+
     override fun getCameraControlInternal(): CameraControlInternal = cameraController
 
     // UseCase attach / detach behaviors.
@@ -86,7 +113,7 @@ class CameraInternalAdapter @Inject constructor(
 
     // UseCase state callbacks
     override fun onUseCaseActive(useCase: UseCase) {
-        useCaseManager.enable(useCase)
+        useCaseManager.activate(useCase)
     }
 
     override fun onUseCaseUpdated(useCase: UseCase) {
@@ -98,7 +125,17 @@ class CameraInternalAdapter @Inject constructor(
     }
 
     override fun onUseCaseInactive(useCase: UseCase) {
-        useCaseManager.disable(useCase)
+        useCaseManager.deactivate(useCase)
+    }
+
+    override fun getExtendedConfig(): androidx.camera.core.impl.CameraConfig {
+        return coreCameraConfig
+    }
+
+    override fun setExtendedConfig(cameraConfig: androidx.camera.core.impl.CameraConfig?) {
+        coreCameraConfig = cameraConfig ?: CameraConfigs.defaultConfig()
+        sessionProcessor = cameraConfig?.getSessionProcessor(null)
+        useCaseManager.sessionProcessor = sessionProcessor
     }
 
     override fun toString(): String = "CameraInternalAdapter<$cameraId>"

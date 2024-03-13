@@ -16,6 +16,7 @@
 
 package androidx.fragment.app
 
+import android.os.Bundle
 import android.os.Parcel
 import androidx.fragment.app.test.EmptyFragmentTestActivity
 import androidx.lifecycle.Lifecycle
@@ -24,21 +25,54 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.testutils.withActivity
 import com.google.common.truth.Truth.assertThat
+import leakcanary.DetectLeaksAfterTestSuccess
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 @LargeTest
 class BackStackStateTest {
 
-    @get:Rule
+    @Suppress("DEPRECATION")
     val activityRule = ActivityScenarioRule(EmptyFragmentTestActivity::class.java)
     private val fragmentManager get() = activityRule.withActivity {
         supportFragmentManager
     }
 
+    // Detect leaks BEFORE and AFTER activity is destroyed
+    @get:Rule
+    val ruleChain: RuleChain = RuleChain.outerRule(DetectLeaksAfterTestSuccess())
+        .around(activityRule)
+
     @Test
+    fun testRestoreFromPending() {
+        val fragment = StrictFragment()
+        val backStackRecord = BackStackRecord(fragmentManager).apply {
+            add(fragment, "tag")
+            addToBackStack("back_stack")
+            setReorderingAllowed(true)
+            setMaxLifecycle(fragment, Lifecycle.State.STARTED)
+        }
+
+        val backStackState = BackStackState(
+            listOf(fragment.mWho),
+            listOf(BackStackRecordState(backStackRecord))
+        )
+
+        val restoredBackStackRecords = backStackState.instantiate(
+            fragmentManager,
+            mapOf(fragment.mWho to fragment)
+        )
+        assertThat(restoredBackStackRecords)
+            .hasSize(1)
+        assertThat(restoredBackStackRecords[0].mOps[0].mFragment)
+            .isSameInstanceAs(fragment)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
     fun testParcel() {
         val fragment = StrictFragment()
         val backStackRecord = BackStackRecord(fragmentManager).apply {
@@ -48,7 +82,9 @@ class BackStackStateTest {
             setMaxLifecycle(fragment, Lifecycle.State.STARTED)
         }
 
-        fragmentManager.fragmentStore.setSavedState(fragment.mWho, FragmentState(fragment))
+        val stateBundle = Bundle()
+        stateBundle.putParcelable(FragmentStateManager.FRAGMENT_STATE_KEY, FragmentState(fragment))
+        fragmentManager.fragmentStore.setSavedState(fragment.mWho, stateBundle)
         val backStackState = BackStackState(
             listOf(fragment.mWho),
             listOf(BackStackRecordState(backStackRecord))
@@ -64,7 +100,10 @@ class BackStackStateTest {
         assertThat(restoredBackStackState.mTransactions)
             .hasSize(1)
 
-        val restoredBackStackRecords = restoredBackStackState.instantiate(fragmentManager)
+        val restoredBackStackRecords = restoredBackStackState.instantiate(
+            fragmentManager,
+            emptyMap()
+        )
         assertThat(restoredBackStackRecords)
             .hasSize(1)
         assertThat(restoredBackStackRecords[0].mOps[0].mFragment)

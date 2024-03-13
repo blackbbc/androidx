@@ -119,7 +119,6 @@ public final class TrustedWebActivityServiceConnection {
      * @throws SecurityException If verification with the TrustedWebActivityService fails.
      * @throws IllegalStateException If called on Android pre-M.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @RequiresApi(Build.VERSION_CODES.M)
@@ -148,6 +147,7 @@ public final class TrustedWebActivityServiceConnection {
      * @throws SecurityException If verification with the TrustedWebActivityService fails.
      */
     @Nullable
+    @SuppressWarnings("deprecation")
     public Bitmap getSmallIconBitmap() throws RemoteException {
         return mService.getSmallIconBitmap()
                 .getParcelable(TrustedWebActivityService.KEY_SMALL_ICON_BITMAP);
@@ -198,6 +198,7 @@ public final class TrustedWebActivityServiceConnection {
             this.channelName = channelName;
         }
 
+        @SuppressWarnings("deprecation")
         public static NotifyNotificationArgs fromBundle(Bundle bundle) {
             ensureBundleContains(bundle, KEY_PLATFORM_TAG);
             ensureBundleContains(bundle, KEY_PLATFORM_ID);
@@ -271,6 +272,7 @@ public final class TrustedWebActivityServiceConnection {
             this.notifications = notifications;
         }
 
+        @SuppressWarnings("deprecation")
         public static ActiveNotificationsArgs fromBundle(Bundle bundle) {
             ensureBundleContains(bundle, KEY_ACTIVE_NOTIFICATIONS);
             return new ActiveNotificationsArgs(bundle.getParcelableArray(KEY_ACTIVE_NOTIFICATIONS));

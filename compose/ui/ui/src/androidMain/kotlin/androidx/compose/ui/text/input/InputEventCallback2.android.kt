@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.ui.text.input
 
 import android.view.KeyEvent
@@ -21,6 +23,10 @@ import android.view.KeyEvent
 /**
  * An interface of listening IME events.
  */
+@Deprecated(
+    "Only exists to support the legacy TextInputService APIs. It is not used by any Compose " +
+        "code. A copy of this class in foundation is used by the legacy BasicTextField."
+)
 internal interface InputEventCallback2 {
     /**
      * Called when IME sends some input events.
@@ -40,4 +46,25 @@ internal interface InputEventCallback2 {
      * Called when IME triggered a KeyEvent
      */
     fun onKeyEvent(event: KeyEvent)
+
+    /**
+     * Called when IME requests cursor information updates.
+     *
+     * @see CursorAnchorInfoController.requestUpdate
+     */
+    fun onRequestCursorAnchorInfo(
+        immediate: Boolean,
+        monitor: Boolean,
+        includeInsertionMarker: Boolean,
+        includeCharacterBounds: Boolean,
+        includeEditorBounds: Boolean,
+        includeLineBounds: Boolean
+    )
+
+    /**
+     * Called when IME closed the input connection.
+     *
+     * @param inputConnection a closed input connection
+     */
+    fun onConnectionClosed(inputConnection: RecordingInputConnection)
 }

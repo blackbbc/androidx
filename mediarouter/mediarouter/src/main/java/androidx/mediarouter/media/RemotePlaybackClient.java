@@ -21,11 +21,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.core.util.ObjectsCompat;
 
 /**
@@ -77,22 +80,28 @@ public class RemotePlaybackClient {
         actionFilter.addAction(ActionReceiver.ACTION_SESSION_STATUS_CHANGED);
         actionFilter.addAction(ActionReceiver.ACTION_MESSAGE_RECEIVED);
         mActionReceiver = new ActionReceiver();
-        context.registerReceiver(mActionReceiver, actionFilter);
+
+        if (Build.VERSION.SDK_INT < 33) {
+            context.registerReceiver(mActionReceiver, actionFilter);
+        } else {
+            Api33.registerReceiver(context, mActionReceiver, actionFilter,
+                    Context.RECEIVER_NOT_EXPORTED);
+        }
 
         Intent itemStatusIntent = new Intent(ActionReceiver.ACTION_ITEM_STATUS_CHANGED);
         itemStatusIntent.setPackage(context.getPackageName());
         mItemStatusPendingIntent = PendingIntent.getBroadcast(
-                context, 0, itemStatusIntent, 0);
+                context, 0, itemStatusIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Intent sessionStatusIntent = new Intent(ActionReceiver.ACTION_SESSION_STATUS_CHANGED);
         sessionStatusIntent.setPackage(context.getPackageName());
         mSessionStatusPendingIntent = PendingIntent.getBroadcast(
-                context, 0, sessionStatusIntent, 0);
+                context, 0, sessionStatusIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Intent messageIntent = new Intent(ActionReceiver.ACTION_MESSAGE_RECEIVED);
         messageIntent.setPackage(context.getPackageName());
         mMessagePendingIntent = PendingIntent.getBroadcast(
-                context, 0, messageIntent, 0);
+                context, 0, messageIntent, PendingIntent.FLAG_IMMUTABLE);
         detectFeatures();
     }
 
@@ -692,8 +701,10 @@ public class RemotePlaybackClient {
                                     + ", itemId=" + itemIdResult
                                     + ", itemStatus=" + itemStatus);
                         }
-                        callback.onResult(data, sessionIdResult, sessionStatus,
-                                itemIdResult, itemStatus);
+                        if (callback != null) {
+                            callback.onResult(data, sessionIdResult, sessionStatus,
+                                    itemIdResult, itemStatus);
+                        }
                         return;
                     }
                 }
@@ -764,7 +775,9 @@ public class RemotePlaybackClient {
             Bundle data) {
         Log.w(TAG, "Received invalid result data from " + intent.getAction()
                 + ": data=" + bundleToString(data));
-        callback.onError(null, MediaControlIntent.ERROR_UNKNOWN, data);
+        if (callback != null) {
+            callback.onError(null, MediaControlIntent.ERROR_UNKNOWN, data);
+        }
     }
 
     void handleError(Intent intent, ActionCallback callback,
@@ -782,7 +795,9 @@ public class RemotePlaybackClient {
                     + ", code=" + code
                     + ", data=" + bundleToString(data));
         }
-        callback.onError(error, code, data);
+        if (callback != null) {
+            callback.onError(error, code, data);
+        }
     }
 
     private void detectFeatures() {
@@ -1050,5 +1065,14 @@ public class RemotePlaybackClient {
          * @param message A bundle message denoting {@link MediaControlIntent#EXTRA_MESSAGE}.
          */
         void onMessageReceived(@NonNull String sessionId, @Nullable Bundle message);
+    }
+
+    @RequiresApi(33)
+    private static class Api33 {
+        @DoNotInline
+        static void registerReceiver(@NonNull Context context, @NonNull BroadcastReceiver receiver,
+                @NonNull IntentFilter filter, int flags) {
+            context.registerReceiver(receiver, filter, flags);
+        }
     }
 }

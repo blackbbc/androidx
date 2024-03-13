@@ -19,6 +19,8 @@ package androidx.compose.material
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.HoverInteraction
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,11 +31,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -47,9 +49,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.collect
 
 /**
  * <a href="https://material.io/components/buttons#contained-button" class="external" target="_blank">Material Design contained button</a>.
@@ -72,10 +75,10 @@ import kotlinx.coroutines.flow.collect
  * @param modifier Modifier to be applied to the button
  * @param enabled Controls the enabled state of the button. When `false`, this button will not
  * be clickable
- * @param interactionSource the [MutableInteractionSource] representing the stream of
- * [Interaction]s for this Button. You can create and pass in your own remembered
- * [MutableInteractionSource] if you want to observe [Interaction]s and customize the
- * appearance / behavior of this Button in different [Interaction]s.
+ * @param interactionSource an optional hoisted [MutableInteractionSource] for observing and
+ * emitting [Interaction]s for this button. You can use this to change the button's appearance
+ * or preview the button in different states. Note that if `null` is provided, interactions will
+ * still happen internally.
  * @param elevation [ButtonElevation] used to resolve the elevation for this button in different
  * states. This controls the size of the shadow below the button. Pass `null` here to disable
  * elevation for this button. See [ButtonDefaults.elevation].
@@ -91,7 +94,7 @@ fun Button(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    interactionSource: MutableInteractionSource? = null,
     elevation: ButtonElevation? = ButtonDefaults.elevation(),
     shape: Shape = MaterialTheme.shapes.small,
     border: BorderStroke? = null,
@@ -99,19 +102,19 @@ fun Button(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit
 ) {
+    @Suppress("NAME_SHADOWING")
+    val interactionSource = interactionSource ?: remember { MutableInteractionSource() }
     val contentColor by colors.contentColor(enabled)
     Surface(
-        modifier = modifier,
+        onClick = onClick,
+        modifier = modifier.semantics { role = Role.Button },
+        enabled = enabled,
         shape = shape,
         color = colors.backgroundColor(enabled).value,
         contentColor = contentColor.copy(alpha = 1f),
         border = border,
         elevation = elevation?.elevation(enabled, interactionSource)?.value ?: 0.dp,
-        onClick = onClick,
-        enabled = enabled,
-        role = Role.Button,
-        interactionSource = interactionSource,
-        indication = rememberRipple()
+        interactionSource = interactionSource
     ) {
         CompositionLocalProvider(LocalContentAlpha provides contentColor.alpha) {
             ProvideTextStyle(
@@ -149,10 +152,10 @@ fun Button(
  * @param modifier Modifier to be applied to the button
  * @param enabled Controls the enabled state of the button. When `false`, this button will not
  * be clickable
- * @param interactionSource the [MutableInteractionSource] representing the stream of
- * [Interaction]s for this Button. You can create and pass in your own remembered
- * [MutableInteractionSource] if you want to observe [Interaction]s and customize the
- * appearance / behavior of this Button in different [Interaction]s.
+ * @param interactionSource an optional hoisted [MutableInteractionSource] for observing and
+ * emitting [Interaction]s for this button. You can use this to change the button's appearance
+ * or preview the button in different states. Note that if `null` is provided, interactions will
+ * still happen internally.
  * @param elevation [ButtonElevation] used to resolve the elevation for this button in different
  * states. An OutlinedButton typically has no elevation, see [Button] for a button with elevation.
  * @param shape Defines the button's shape as well as its shadow
@@ -162,11 +165,12 @@ fun Button(
  * @param contentPadding The spacing values to apply internally between the container and the content
  */
 @Composable
+@NonRestartableComposable
 fun OutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    interactionSource: MutableInteractionSource? = null,
     elevation: ButtonElevation? = null,
     shape: Shape = MaterialTheme.shapes.small,
     border: BorderStroke? = ButtonDefaults.outlinedBorder,
@@ -202,10 +206,10 @@ fun OutlinedButton(
  * @param modifier Modifier to be applied to the button
  * @param enabled Controls the enabled state of the button. When `false`, this button will not
  * be clickable
- * @param interactionSource the [MutableInteractionSource] representing the stream of
- * [Interaction]s for this Button. You can create and pass in your own remembered
- * [MutableInteractionSource] if you want to observe [Interaction]s and customize the
- * appearance / behavior of this Button in different [Interaction]s.
+ * @param interactionSource an optional hoisted [MutableInteractionSource] for observing and
+ * emitting [Interaction]s for this button. You can use this to change the button's appearance
+ * or preview the button in different states. Note that if `null` is provided, interactions will
+ * still happen internally.
  * @param elevation [ButtonElevation] used to resolve the elevation for this button in different
  * states. A TextButton typically has no elevation, see [Button] for a button with elevation.
  * @param shape Defines the button's shape as well as its shadow
@@ -215,11 +219,12 @@ fun OutlinedButton(
  * @param contentPadding The spacing values to apply internally between the container and the content
  */
 @Composable
+@NonRestartableComposable
 fun TextButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
+    interactionSource: MutableInteractionSource? = null,
     elevation: ButtonElevation? = null,
     shape: Shape = MaterialTheme.shapes.small,
     border: BorderStroke? = null,
@@ -308,7 +313,7 @@ object ButtonDefaults {
     val MinWidth = 64.dp
 
     /**
-     * The default min width applied for the [Button].
+     * The default min height applied for the [Button].
      * Note that you can override it by applying Modifier.heightIn directly on [Button].
      */
     val MinHeight = 36.dp
@@ -327,7 +332,6 @@ object ButtonDefaults {
      */
     val IconSpacing = 8.dp
 
-    // TODO: b/152525426 add support for focused and hovered states
     /**
      * Creates a [ButtonElevation] that will animate between the provided values according to the
      * Material specification for a [Button].
@@ -338,19 +342,54 @@ object ButtonDefaults {
      * is pressed.
      * @param disabledElevation the elevation to use when the [Button] is not enabled.
      */
+    @Deprecated("Use another overload of elevation", level = DeprecationLevel.HIDDEN)
     @Composable
     fun elevation(
         defaultElevation: Dp = 2.dp,
         pressedElevation: Dp = 8.dp,
-        // focused: Dp = 4.dp,
-        // hovered: Dp = 4.dp,
         disabledElevation: Dp = 0.dp
+    ): ButtonElevation = elevation(
+        defaultElevation,
+        pressedElevation,
+        disabledElevation,
+        hoveredElevation = 4.dp,
+        focusedElevation = 4.dp,
+    )
+
+    /**
+     * Creates a [ButtonElevation] that will animate between the provided values according to the
+     * Material specification for a [Button].
+     *
+     * @param defaultElevation the elevation to use when the [Button] is enabled, and has no
+     * other [Interaction]s.
+     * @param pressedElevation the elevation to use when the [Button] is enabled and
+     * is pressed.
+     * @param disabledElevation the elevation to use when the [Button] is not enabled.
+     * @param hoveredElevation the elevation to use when the [Button] is enabled and is hovered.
+     * @param focusedElevation the elevation to use when the [Button] is enabled and is focused.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    @Composable
+    fun elevation(
+        defaultElevation: Dp = 2.dp,
+        pressedElevation: Dp = 8.dp,
+        disabledElevation: Dp = 0.dp,
+        hoveredElevation: Dp = 4.dp,
+        focusedElevation: Dp = 4.dp,
     ): ButtonElevation {
-        return remember(defaultElevation, pressedElevation, disabledElevation) {
+        return remember(
+            defaultElevation,
+            pressedElevation,
+            disabledElevation,
+            hoveredElevation,
+            focusedElevation
+        ) {
             DefaultButtonElevation(
                 defaultElevation = defaultElevation,
                 pressedElevation = pressedElevation,
-                disabledElevation = disabledElevation
+                disabledElevation = disabledElevation,
+                hoveredElevation = hoveredElevation,
+                focusedElevation = focusedElevation
             )
         }
     }
@@ -461,6 +500,8 @@ private class DefaultButtonElevation(
     private val defaultElevation: Dp,
     private val pressedElevation: Dp,
     private val disabledElevation: Dp,
+    private val hoveredElevation: Dp,
+    private val focusedElevation: Dp,
 ) : ButtonElevation {
     @Composable
     override fun elevation(enabled: Boolean, interactionSource: InteractionSource): State<Dp> {
@@ -468,6 +509,18 @@ private class DefaultButtonElevation(
         LaunchedEffect(interactionSource) {
             interactionSource.interactions.collect { interaction ->
                 when (interaction) {
+                    is HoverInteraction.Enter -> {
+                        interactions.add(interaction)
+                    }
+                    is HoverInteraction.Exit -> {
+                        interactions.remove(interaction.enter)
+                    }
+                    is FocusInteraction.Focus -> {
+                        interactions.add(interaction)
+                    }
+                    is FocusInteraction.Unfocus -> {
+                        interactions.remove(interaction.focus)
+                    }
                     is PressInteraction.Press -> {
                         interactions.add(interaction)
                     }
@@ -488,28 +541,32 @@ private class DefaultButtonElevation(
         } else {
             when (interaction) {
                 is PressInteraction.Press -> pressedElevation
+                is HoverInteraction.Enter -> hoveredElevation
+                is FocusInteraction.Focus -> focusedElevation
                 else -> defaultElevation
             }
         }
 
         val animatable = remember { Animatable(target, Dp.VectorConverter) }
 
-        if (!enabled) {
-            // No transition when moving to a disabled state
-            LaunchedEffect(target) {
-                animatable.snapTo(target)
-            }
-        } else {
-            LaunchedEffect(target) {
-                val lastInteraction = when (animatable.targetValue) {
-                    pressedElevation -> PressInteraction.Press(Offset.Zero)
-                    else -> null
+        LaunchedEffect(target) {
+            if (animatable.targetValue != target) {
+                if (!enabled) {
+                    // No transition when moving to a disabled state
+                    animatable.snapTo(target)
+                } else {
+                    val lastInteraction = when (animatable.targetValue) {
+                        pressedElevation -> PressInteraction.Press(Offset.Zero)
+                        hoveredElevation -> HoverInteraction.Enter()
+                        focusedElevation -> FocusInteraction.Focus()
+                        else -> null
+                    }
+                    animatable.animateElevation(
+                        from = lastInteraction,
+                        to = interaction,
+                        target = target
+                    )
                 }
-                animatable.animateElevation(
-                    from = lastInteraction,
-                    to = interaction,
-                    target = target
-                )
             }
         }
 

@@ -36,7 +36,6 @@ import androidx.car.app.automotive.R;
 /**
  * A view to be displayed while the app is trying to connect to the host
  *
- * @hide
  */
 @RestrictTo(LIBRARY)
 public class LoadingView extends FrameLayout {
@@ -66,12 +65,16 @@ public class LoadingView extends FrameLayout {
         mAppIcon.setImageDrawable(getActivityIcon());
     }
 
+    @SuppressWarnings("deprecation")
+    @Nullable
     private Drawable getActivityIcon() {
         PackageManager packageManager = getContext().getPackageManager();
 
         Intent intent = new Intent(getContext(), CarAppActivity.class);
         ResolveInfo resolveInfo = packageManager.resolveActivity(intent, 0);
-
+        if (resolveInfo == null) {
+            return null;
+        }
         return resolveInfo.loadIcon(packageManager);
     }
 }

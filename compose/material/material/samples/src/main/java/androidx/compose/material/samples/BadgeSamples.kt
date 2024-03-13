@@ -21,21 +21,32 @@ import androidx.compose.material.Badge
 import androidx.compose.material.BadgedBox
 import androidx.compose.material.BottomNavigation
 import androidx.compose.material.BottomNavigationItem
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
-@OptIn(ExperimentalMaterialApi::class)
 @Sampled
 @Composable
 fun BottomNavigationItemWithBadge() {
     BottomNavigation {
         BottomNavigationItem(
             icon = {
-                BadgedBox(badge = { Badge { Text("8") } }) {
+                BadgedBox(badge = {
+                    Badge {
+                        val badgeNumber = "8"
+                        Text(
+                            badgeNumber,
+                            modifier = Modifier.semantics {
+                                contentDescription = "$badgeNumber new notifications"
+                            }
+                        )
+                    }
+                }) {
                     Icon(
                         Icons.Filled.Favorite,
                         contentDescription = "Favorite"

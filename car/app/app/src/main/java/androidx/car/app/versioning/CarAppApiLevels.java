@@ -19,7 +19,6 @@ package androidx.car.app.versioning;
 import static java.util.Objects.requireNonNull;
 
 import androidx.annotation.RestrictTo;
-import androidx.car.app.CarContext;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -32,9 +31,45 @@ import java.io.InputStreamReader;
  * <p>Each level denotes a set of elements (classes, fields and methods) known to both clients and
  * hosts.
  *
- * @see CarContext#getCarAppApiLevel()
+ * @see androidx.car.app.CarContext#getCarAppApiLevel()
+ * @see
+ * <a href="https://developer.android.com/jetpack/androidx/releases/car-app">Car App Library Release Notes</a>
  */
 public final class CarAppApiLevels {
+    /**
+     * API level 7.
+     *
+     * <p>Includes a Badge feature for GridItem image.</p>
+     */
+    @CarAppApiLevel
+    public static final int LEVEL_7 = 7;
+
+    /**
+     * API level 6.
+     */
+    @CarAppApiLevel
+    public static final int LEVEL_6 = 6;
+
+    /**
+     * API level 5.
+     *
+     * <p>Includes features such as voice access, alerters, map-pane template details view,
+     * responsive-turn-cards, tap on map, list within the navigation template for non-places
+     * content, map interactivity (zoom and pan) on POIs and route preview, content refresh on
+     * POIs (with speedbump).
+     */
+    @CarAppApiLevel
+    public static final int LEVEL_5 = 5;
+
+    /**
+     * API level 4.
+     *
+     * <p>Includes AAOS support and other features such as QR code sign-in, show current location
+     * in place-list-map template, contrast check capability.
+     */
+    @CarAppApiLevel
+    public static final int LEVEL_4 = 4;
+
     /**
      * API level 3.
      *
@@ -65,8 +100,6 @@ public final class CarAppApiLevels {
      * Unknown API level.
      *
      * <p>Used when the API level hasn't been established yet
-     *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     @CarAppApiLevel
@@ -76,8 +109,6 @@ public final class CarAppApiLevels {
 
     /**
      * Returns whether the given integer is a valid {@link CarAppApiLevel}
-     *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY)
     public static boolean isValid(int carApiLevel) {
@@ -105,18 +136,12 @@ public final class CarAppApiLevels {
             BufferedReader reader = new BufferedReader(streamReader);
             String line = reader.readLine();
 
-            switch (Integer.parseInt(line)) {
-                case 0:
-                    return UNKNOWN;
-                case 1:
-                    return LEVEL_1;
-                case 2:
-                    return LEVEL_2;
-                case 3:
-                    return LEVEL_3;
-                default:
-                    throw new IllegalStateException("Undefined Car API level: " + line);
+
+            int apiLevel = Integer.parseInt(line);
+            if (apiLevel < LEVEL_1 || apiLevel > LEVEL_7) {
+                throw new IllegalStateException("Unrecognized Car API level: " + line);
             }
+            return apiLevel;
         } catch (IOException e) {
             throw new IllegalStateException("Unable to read Car API level file");
         }

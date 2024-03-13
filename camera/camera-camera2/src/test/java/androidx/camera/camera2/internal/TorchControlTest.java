@@ -27,6 +27,8 @@ import static org.mockito.Mockito.when;
 import static org.mockito.internal.verification.VerificationModeFactory.times;
 import static org.robolectric.Shadows.shadowOf;
 
+import static kotlinx.coroutines.test.TestCoroutineDispatchersKt.UnconfinedTestDispatcher;
+
 import android.content.Context;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
@@ -64,8 +66,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 
-import kotlinx.coroutines.test.TestCoroutineDispatcher;
-
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
 @Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
@@ -90,7 +90,8 @@ public class TorchControlTest {
                 cameraManager.getCameraCharacteristics(CAMERA0_ID);
 
         CameraCharacteristicsCompat characteristicsCompat0 =
-                CameraCharacteristicsCompat.toCameraCharacteristicsCompat(cameraCharacteristics0);
+                CameraCharacteristicsCompat.toCameraCharacteristicsCompat(cameraCharacteristics0,
+                        CAMERA0_ID);
         Camera2CameraControlImpl camera2CameraControl0 =
                 spy(new Camera2CameraControlImpl(characteristicsCompat0,
                         CameraXExecutors.mainThreadExecutor(),
@@ -104,7 +105,8 @@ public class TorchControlTest {
         CameraCharacteristics cameraCharacteristics1 =
                 cameraManager.getCameraCharacteristics(CAMERA1_ID);
         CameraCharacteristicsCompat characteristicsCompat1 =
-                CameraCharacteristicsCompat.toCameraCharacteristicsCompat(cameraCharacteristics1);
+                CameraCharacteristicsCompat.toCameraCharacteristicsCompat(cameraCharacteristics1,
+                        CAMERA1_ID);
 
         Camera2CameraControlImpl camera2CameraControlImpl1 =
                 spy(new Camera2CameraControlImpl(characteristicsCompat1,
@@ -122,7 +124,7 @@ public class TorchControlTest {
 
         /* Prepare Lifecycle for test LiveData */
         mLifecycleOwner = new TestLifecycleOwner(Lifecycle.State.STARTED,
-                new TestCoroutineDispatcher());
+                UnconfinedTestDispatcher(null, null));
     }
 
     @Test

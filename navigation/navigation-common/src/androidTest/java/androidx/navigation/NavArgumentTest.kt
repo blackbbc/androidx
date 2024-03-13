@@ -24,6 +24,7 @@ import org.junit.Test
 @SmallTest
 class NavArgumentTest {
     @Test
+    @Suppress("DEPRECATION")
     fun putDefaultValue() {
         val bundle = Bundle()
         val argument = NavArgument.Builder()
@@ -62,5 +63,16 @@ class NavArgumentTest {
         assertThat(intArgument.verify("intArg", bundle)).isTrue()
         assertThat(intArrArgument.verify("intArrayArg", bundle)).isTrue()
         assertThat(intArrNonNullArgument.verify("intArrayArg", bundle)).isFalse()
+    }
+
+    @Test
+    fun setDefaultValuePresent() {
+        val argument = NavArgument.Builder()
+            .setType(NavType.IntType)
+            .setIsNullable(false)
+            .setUnknownDefaultValuePresent(true)
+            .build()
+
+        assertThat(argument.isDefaultValuePresent).isTrue()
     }
 }

@@ -27,6 +27,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 /**
@@ -65,11 +66,17 @@ public class FullscreenActivity extends AppCompatActivity {
             // At this point, the WebView is no longer drawing the content. We should cover it up
             // with the new View.
             mFullScreenView = view;
-            mWindow.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            addDeprecatedFullScreenFlag();
             mWindow.addContentView(mFullScreenView,
                     new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT));
             mCustomViewCallback = callback;
+        }
+
+        /** @noinspection RedundantSuppression*/
+        @SuppressWarnings("deprecation") /* b/180503860 */
+        private void addDeprecatedFullScreenFlag() {
+            mWindow.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
         @Override
@@ -77,10 +84,16 @@ public class FullscreenActivity extends AppCompatActivity {
             // At this point, mFullScreenView is no longer drawing content. Remove this from the
             // layout to show the underlying WebView, and remove the reference to the View so it can
             // be GC'ed.
-            mWindow.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            clearDeprecatedFullScreenFlag();
             ((ViewGroup) mFullScreenView.getParent()).removeView(mFullScreenView);
             mFullScreenView = null;
             mCustomViewCallback = null;
+        }
+
+        /** @noinspection RedundantSuppression*/
+        @SuppressWarnings("deprecation") /* b/180503860 */
+        private void clearDeprecatedFullScreenFlag() {
+            mWindow.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
         /* package */ void exitFullScreen() {
@@ -95,7 +108,7 @@ public class FullscreenActivity extends AppCompatActivity {
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_fullscreen);
         setTitle(R.string.fullscreen_activity_title);
@@ -110,6 +123,7 @@ public class FullscreenActivity extends AppCompatActivity {
         mWebView.loadUrl(EXAMPLE_SITE_WITH_VIDEO_PLAYER);
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public void onBackPressed() {
         if (mWebChromeClient.inFullScreenMode()) {

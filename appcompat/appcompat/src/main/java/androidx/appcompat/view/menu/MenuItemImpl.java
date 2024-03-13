@@ -25,7 +25,6 @@ import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.util.Log;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.KeyEvent;
@@ -37,6 +36,7 @@ import android.view.ViewConfiguration;
 import android.view.ViewDebug;
 import android.widget.LinearLayout;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.appcompat.R;
@@ -46,7 +46,6 @@ import androidx.core.internal.view.SupportMenuItem;
 import androidx.core.view.ActionProvider;
 
 /**
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public final class MenuItemImpl implements SupportMenuItem {
@@ -256,6 +255,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public MenuItem setAlphabeticShortcut(char alphaChar, int alphaModifiers) {
         if (mShortcutAlphabeticChar == alphaChar
@@ -298,6 +298,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public MenuItem setNumericShortcut(char numericChar, int numericModifiers) {
         if (mShortcutNumericChar == numericChar && mShortcutNumericModifiers == numericModifiers) {
@@ -322,6 +323,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public MenuItem setShortcut(char numericChar, char alphaChar, int numericModifiers,
             int alphaModifiers) {
@@ -468,17 +470,7 @@ public final class MenuItemImpl implements SupportMenuItem {
 
     @Override
     public CharSequence getTitleCondensed() {
-        final CharSequence ctitle = mTitleCondensed != null ? mTitleCondensed : mTitle;
-
-        if (Build.VERSION.SDK_INT < 18 && ctitle != null && !(ctitle instanceof String)) {
-            // For devices pre-JB-MR2, where we have a non-String CharSequence, we need to
-            // convert this to a String so that EventLog.writeEvent() does not throw an exception
-            // in Activity.onMenuItemSelected()
-            return ctitle.toString();
-        } else {
-            // Else, we just return the condensed title
-            return ctitle;
-        }
+        return mTitleCondensed != null ? mTitleCondensed : mTitle;
     }
 
     @Override
@@ -534,6 +526,7 @@ public final class MenuItemImpl implements SupportMenuItem {
     }
 
 
+    @NonNull
     @Override
     public MenuItem setIconTintList(@Nullable ColorStateList iconTintList) {
         mIconTintList = iconTintList;
@@ -550,6 +543,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return mIconTintList;
     }
 
+    @NonNull
     @Override
     public MenuItem setIconTintMode(PorterDuff.Mode iconTintMode) {
         mIconTintMode = iconTintMode;
@@ -746,6 +740,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         mMenu.onItemActionRequestChanged(this);
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setActionView(View view) {
         mActionView = view;
@@ -757,6 +752,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setActionView(int resId) {
         final Context context = mMenu.getContext();
@@ -794,6 +790,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return mActionProvider;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setSupportActionProvider(ActionProvider actionProvider) {
         if (mActionProvider != null) {
@@ -813,6 +810,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setShowAsActionFlags(int actionEnum) {
         setShowAsAction(actionEnum);
@@ -877,6 +875,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setContentDescription(CharSequence contentDescription) {
         mContentDescription = contentDescription;
@@ -891,6 +890,7 @@ public final class MenuItemImpl implements SupportMenuItem {
         return mContentDescription;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setTooltipText(CharSequence tooltipText) {
         mTooltipText = tooltipText;

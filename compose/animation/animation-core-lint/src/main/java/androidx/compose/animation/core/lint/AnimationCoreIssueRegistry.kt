@@ -25,11 +25,12 @@ import com.android.tools.lint.detector.api.CURRENT_API
  */
 class AnimationCoreIssueRegistry : IssueRegistry() {
     // Tests are run with this version. We ensure that with ApiLintVersionsTest
-    override val api = 10
+    override val api = 14
     override val minApi = CURRENT_API
     override val issues get() = listOf(
         TransitionDetector.UnusedTransitionTargetStateParameter,
-        UnrememberedAnimatableDetector.UnrememberedAnimatable
+        UnrememberedAnimatableDetector.UnrememberedAnimatable,
+        ArcAnimationSpecTypeDetector.ArcAnimationSpecTypeIssue
     )
     override val vendor = Vendor(
         vendorName = "Jetpack Compose",

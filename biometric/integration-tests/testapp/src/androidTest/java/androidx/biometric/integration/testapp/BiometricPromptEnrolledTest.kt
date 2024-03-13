@@ -28,6 +28,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import leakcanary.DetectLeaksAfterTestSuccess
 import org.hamcrest.Matchers.containsString
 import org.junit.After
 import org.junit.Assume.assumeFalse
@@ -43,6 +44,9 @@ class BiometricPromptEnrolledTest {
     @Suppress("DEPRECATION")
     @get:Rule
     val activityRule = androidx.test.rule.ActivityTestRule(BiometricPromptTestActivity::class.java)
+
+    @get:Rule
+    val rule = DetectLeaksAfterTestSuccess()
 
     private lateinit var context: Context
     private lateinit var device: UiDevice
@@ -126,6 +130,9 @@ class BiometricPromptEnrolledTest {
 
     @Test
     fun testBiometricOrCredentialAuth_SendsError_WhenCanceledOnConfigurationChange() {
+        // Prompt isn't canceled on configuration change for some devices on API 29 (b/202975762).
+        assumeFalse(Build.VERSION.SDK_INT == Build.VERSION_CODES.Q)
+
         onView(withId(R.id.allow_device_credential_checkbox)).perform(click())
         testBiometricOnlyAuth_SendsError_WhenCanceledOnConfigurationChange()
     }
@@ -142,7 +149,7 @@ class BiometricPromptEnrolledTest {
 
     @Test
     fun testBiometricOrCredentialAuth_SendsError_WhenActivityBackgrounded() {
-        // TODO(b/162022588): Fix this for Pixel devices on API 29.
+        // Prompt is not dismissed when backgrounded for Pixel devices on API 29 (b/162022588).
         assumeFalse(Build.VERSION.SDK_INT == Build.VERSION_CODES.Q)
 
         onView(withId(R.id.allow_device_credential_checkbox)).perform(click())

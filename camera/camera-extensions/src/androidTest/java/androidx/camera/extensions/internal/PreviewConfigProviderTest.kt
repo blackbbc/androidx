@@ -18,31 +18,26 @@ package androidx.camera.extensions.internal
 
 import android.content.Context
 import android.graphics.ImageFormat
-import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.TotalCaptureResult
-import android.media.Image
 import android.util.Pair
 import android.util.Size
-import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
+import androidx.camera.core.impl.CameraInfoInternal
 import androidx.camera.core.impl.ImageOutputConfig
 import androidx.camera.extensions.ExtensionMode
-import androidx.camera.extensions.impl.CaptureStageImpl
 import androidx.camera.extensions.impl.PreviewExtenderImpl
-import androidx.camera.extensions.impl.PreviewImageProcessorImpl
-import androidx.camera.extensions.impl.RequestUpdateProcessorImpl
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.testing.CameraUtil
-import androidx.camera.testing.SurfaceTextureProvider
-import androidx.camera.testing.SurfaceTextureProvider.SurfaceTextureCallback
-import androidx.camera.testing.fakes.FakeLifecycleOwner
+import androidx.camera.testing.impl.CameraUtil
+import androidx.camera.testing.impl.CameraUtil.PreTestCameraIdList
+import androidx.camera.testing.impl.fakes.FakeLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
+import androidx.test.filters.SdkSuppress
 import com.google.common.truth.Truth.assertThat
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -52,37 +47,20 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.timeout
-import org.mockito.Mockito.verify
-import org.mockito.Mockito.verifyNoMoreInteractions
-import java.util.concurrent.TimeUnit
 
 @MediumTest
 @RunWith(AndroidJUnit4::class)
+@SdkSuppress(minSdkVersion = 23) // BasicVendorExtender requires API level 23
 class PreviewConfigProviderTest {
     @get:Rule
-    val useCamera = CameraUtil.grantCameraPermissionAndPreTest()
+    val useCamera = CameraUtil.grantCameraPermissionAndPreTest(
+        PreTestCameraIdList(Camera2Config.defaultConfig())
+    )
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
-
-    private val surfaceTextureCallback: SurfaceTextureCallback =
-        object : SurfaceTextureCallback {
-            override fun onSurfaceTextureReady(
-                surfaceTexture: SurfaceTexture,
-                resolution: Size
-            ) {
-                // No-op.
-            }
-
-            override fun onSafeToRelease(surfaceTexture: SurfaceTexture) {
-                // No-op.
-            }
-        }
 
     // Tests in this class majorly use mock objects to run the test. No matter which extension
     // mode is use, it should not affect the test results.
@@ -102,155 +80,10 @@ class PreviewConfigProviderTest {
     }
 
     @After
-    fun cleanUp() {
+    fun cleanUp(): Unit = runBlocking {
         if (::cameraProvider.isInitialized) {
-            cameraProvider.shutdown()[10000, TimeUnit.MILLISECONDS]
+            cameraProvider.shutdownAsync()[10000, TimeUnit.MILLISECONDS]
         }
-    }
-
-    @Test
-    fun extenderLifeCycleTest_noMoreInvokeBeforeAndAfterInitDeInit(): Unit = runBlocking {
-        val mockPreviewExtenderImpl = mock(PreviewExtenderImpl::class.java)
-
-        Mockito.`when`(mockPreviewExtenderImpl.processorType).thenReturn(
-            PreviewExtenderImpl.ProcessorType.PROCESSOR_TYPE_IMAGE_PROCESSOR
-        )
-        Mockito.`when`(mockPreviewExtenderImpl.processor)
-            .thenReturn(mock(PreviewImageProcessorImpl::class.java))
-        Mockito.`when`(
-            mockPreviewExtenderImpl.isExtensionAvailable(
-                any(String::class.java),
-                any(CameraCharacteristics::class.java)
-            )
-        ).thenReturn(true)
-
-        val preview = createPreviewWithExtenderImpl(mockPreviewExtenderImpl)
-
-        withContext(Dispatchers.Main) {
-            // To set the update listener and Preview will change to active state.
-            preview.setSurfaceProvider(
-                SurfaceTextureProvider.createSurfaceTextureProvider(surfaceTextureCallback)
-            )
-
-            cameraProvider.bindToLifecycle(fakeLifecycleOwner, cameraSelector, preview)
-        }
-
-        // To verify the call in order after bind to life cycle, and to verification of the
-        // getCaptureStages() is also used to wait for the capture session created. The test for
-        // the unbind would come after the capture session was created. Ignore any of the calls
-        // unrelated to the ExtenderStateListener.
-        verify(mockPreviewExtenderImpl, timeout(3000)).processorType
-        verify(mockPreviewExtenderImpl, timeout(3000)).processor
-
-        // getSupportedResolutions supported since version 1.1
-        val version = ExtensionVersion.getRuntimeVersion()
-        if (version != null && version >= Version.VERSION_1_1) {
-            verify(mockPreviewExtenderImpl, timeout(3000)).supportedResolutions
-        }
-
-        val inOrder = Mockito.inOrder(*Mockito.ignoreStubs(mockPreviewExtenderImpl))
-        inOrder.verify(mockPreviewExtenderImpl, timeout(3000)).onInit(
-            any(String::class.java),
-            any(CameraCharacteristics::class.java),
-            any(Context::class.java)
-        )
-
-        inOrder.verify(mockPreviewExtenderImpl, timeout(3000)).onPresetSession()
-        inOrder.verify(mockPreviewExtenderImpl, timeout(3000)).onEnableSession()
-        inOrder.verify(mockPreviewExtenderImpl, timeout(3000)).captureStage
-
-        withContext(Dispatchers.Main) {
-            // Unbind the use case to test the onDisableSession and onDeInit.
-            cameraProvider.unbind(preview)
-        }
-
-        // To verify the onDisableSession and onDeInit.
-        inOrder.verify(mockPreviewExtenderImpl, timeout(3000)).onDisableSession()
-        inOrder.verify(mockPreviewExtenderImpl, timeout(3000)).onDeInit()
-
-        // To verify there is no any other calls on the mock.
-        verifyNoMoreInteractions(mockPreviewExtenderImpl)
-    }
-
-    @Test
-    fun getCaptureStagesTest_shouldSetToRepeatingRequest(): Unit = runBlocking {
-        // Set up a result for getCaptureStages() testing.
-        val fakeCaptureStageImpl: CaptureStageImpl = FakeCaptureStageImpl()
-        val mockPreviewExtenderImpl = mock(PreviewExtenderImpl::class.java)
-        val mockRequestUpdateProcessorImpl = mock(RequestUpdateProcessorImpl::class.java)
-
-        // The mock an RequestUpdateProcessorImpl to capture the returned TotalCaptureResult
-        Mockito.`when`(mockPreviewExtenderImpl.processorType).thenReturn(
-            PreviewExtenderImpl.ProcessorType.PROCESSOR_TYPE_REQUEST_UPDATE_ONLY
-        )
-        Mockito.`when`(mockPreviewExtenderImpl.processor).thenReturn(mockRequestUpdateProcessorImpl)
-        Mockito.`when`(
-            mockPreviewExtenderImpl.isExtensionAvailable(
-                any(String::class.java),
-                any(CameraCharacteristics::class.java)
-            )
-        ).thenReturn(true)
-        Mockito.`when`(mockPreviewExtenderImpl.captureStage).thenReturn(fakeCaptureStageImpl)
-
-        val preview = createPreviewWithExtenderImpl(mockPreviewExtenderImpl)
-
-        withContext(Dispatchers.Main) {
-            // To set the update listener and Preview will change to active state.
-            preview.setSurfaceProvider(
-                SurfaceTextureProvider.createSurfaceTextureProvider(surfaceTextureCallback)
-            )
-
-            cameraProvider.bindToLifecycle(fakeLifecycleOwner, cameraSelector, preview)
-        }
-
-        val captureResultArgumentCaptor = ArgumentCaptor.forClass(
-            TotalCaptureResult::class.java
-        )
-        verify(mockRequestUpdateProcessorImpl, timeout(3000).atLeastOnce()).process(
-            captureResultArgumentCaptor.capture()
-        )
-
-        // TotalCaptureResult might be captured multiple times. Only care to get one instance of
-        // it, since they should all have the same value for the tested key
-        val totalCaptureResult = captureResultArgumentCaptor.value
-
-        // To verify the capture result should include the parameter of the getCaptureStages().
-        val parameters = fakeCaptureStageImpl.parameters
-        for (parameter: Pair<CaptureRequest.Key<*>?, Any> in parameters) {
-            assertThat(totalCaptureResult.request[parameter.first] == parameter.second)
-        }
-    }
-
-    @Test
-    fun processShouldBeInvoked_typeImageProcessor(): Unit = runBlocking {
-        // The type image processor will invoke PreviewImageProcessor.process()
-        val mockPreviewImageProcessorImpl = mock(PreviewImageProcessorImpl::class.java)
-        val mockPreviewExtenderImpl = mock(PreviewExtenderImpl::class.java)
-
-        Mockito.`when`(mockPreviewExtenderImpl.processor).thenReturn(mockPreviewImageProcessorImpl)
-        Mockito.`when`(mockPreviewExtenderImpl.processorType)
-            .thenReturn(PreviewExtenderImpl.ProcessorType.PROCESSOR_TYPE_IMAGE_PROCESSOR)
-        Mockito.`when`(
-            mockPreviewExtenderImpl.isExtensionAvailable(
-                any(String::class.java),
-                any(CameraCharacteristics::class.java)
-            )
-        ).thenReturn(true)
-
-        val preview = createPreviewWithExtenderImpl(mockPreviewExtenderImpl)
-
-        withContext(Dispatchers.Main) {
-            // To set the update listener and Preview will change to active state.
-            preview.setSurfaceProvider(
-                SurfaceTextureProvider.createSurfaceTextureProvider(surfaceTextureCallback)
-            )
-
-            cameraProvider.bindToLifecycle(fakeLifecycleOwner, cameraSelector, preview)
-        }
-
-        // To verify the process() method was invoked with non-null TotalCaptureResult input.
-        verify(mockPreviewImageProcessorImpl, Mockito.timeout(3000).atLeastOnce())
-            .process(any(Image::class.java), ArgumentMatchers.any(TotalCaptureResult::class.java))
     }
 
     @Test
@@ -274,7 +107,9 @@ class PreviewConfigProviderTest {
             targetFormatResolutionsPairList
         )
 
-        val preview = createPreviewWithExtenderImpl(mockPreviewExtenderImpl)
+        val mockVendorExtender = BasicVendorExtender(null, mockPreviewExtenderImpl)
+
+        val preview = createPreviewWithExtenderImpl(mockVendorExtender)
 
         withContext(Dispatchers.Main) {
             cameraProvider.bindToLifecycle(fakeLifecycleOwner, cameraSelector, preview)
@@ -295,18 +130,24 @@ class PreviewConfigProviderTest {
         }
     }
 
-    private fun createPreviewWithExtenderImpl(impl: PreviewExtenderImpl) =
-        Preview.Builder().also {
-            val cameraInfo = cameraSelector.filter(cameraProvider.availableCameraInfos)[0]
-            PreviewConfigProvider(extensionMode, cameraInfo, context).apply {
-                updateBuilderConfig(it, extensionMode, impl, context)
+    private suspend fun createPreviewWithExtenderImpl(
+        basicVendorExtender: BasicVendorExtender
+    ): Preview {
+        withContext(Dispatchers.Main) {
+            val camera = cameraProvider.bindToLifecycle(fakeLifecycleOwner, cameraSelector)
+            basicVendorExtender.init(camera.cameraInfo)
+        }
+        return Preview.Builder().also {
+            PreviewConfigProvider(basicVendorExtender).apply {
+                updateBuilderConfig(it, basicVendorExtender)
             }
         }.build()
+    }
 
     private fun generatePreviewSupportedResolutions(): List<Pair<Int, Array<Size>>> {
         val formatResolutionsPairList = mutableListOf<Pair<Int, Array<Size>>>()
-        val cameraInfo = cameraProvider.availableCameraInfos[0]
-        val characteristics = Camera2CameraInfo.extractCameraCharacteristics(cameraInfo)
+        val cameraInfo = cameraProvider.availableCameraInfos[0] as CameraInfoInternal
+        val characteristics = cameraInfo.cameraCharacteristics as CameraCharacteristics
         val map = characteristics[CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP]
 
         // Retrieves originally supported resolutions from CameraCharacteristics for PRIVATE
@@ -316,15 +157,5 @@ class PreviewConfigProviderTest {
         }
 
         return formatResolutionsPairList
-    }
-
-    private class FakeCaptureStageImpl : CaptureStageImpl {
-        override fun getId() = 0
-        override fun getParameters(): List<Pair<CaptureRequest.Key<*>, Any>> = mutableListOf(
-            Pair.create(
-                CaptureRequest.CONTROL_EFFECT_MODE,
-                CaptureRequest.CONTROL_EFFECT_MODE_SEPIA
-            )
-        )
     }
 }

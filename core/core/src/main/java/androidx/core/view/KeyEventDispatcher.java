@@ -16,6 +16,7 @@
 
 package androidx.core.view;
 
+import android.annotation.SuppressLint;
 import android.app.ActionBar;
 import android.app.Activity;
 import android.app.Dialog;
@@ -38,7 +39,6 @@ import java.lang.reflect.Method;
  * To use this, implement {@link Component} and call the dispatch methods at appropriate times.
  *
  * This must be used for some core compatibility features to function fully.
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
 public class KeyEventDispatcher {
@@ -75,6 +75,7 @@ public class KeyEventDispatcher {
      * @return {@code true} if the event was consumed, {@code false} otherwise
      *
      */
+    @SuppressLint("LambdaLast")
     public static boolean dispatchKeyEvent(@NonNull Component component,
             @Nullable View root, @Nullable Window.Callback callback, @NonNull KeyEvent event) {
         if (component == null) {
@@ -97,15 +98,19 @@ public class KeyEventDispatcher {
             try {
                 sActionBarOnMenuKeyMethod =
                         actionBar.getClass().getMethod("onMenuKeyEvent", KeyEvent.class);
-            } catch (NoSuchMethodException e) {
+            } catch (NoSuchMethodException ignored) {
             }
             sActionBarFieldsFetched = true;
         }
         if (sActionBarOnMenuKeyMethod != null) {
             try {
-                return (Boolean) sActionBarOnMenuKeyMethod.invoke(actionBar, event);
-            } catch (IllegalAccessException e) {
-            } catch (InvocationTargetException e) {
+                Object value = sActionBarOnMenuKeyMethod.invoke(actionBar, event);
+                if (value == null) {
+                    return false;
+                }
+                return (Boolean) value;
+            } catch (IllegalAccessException ignored) {
+            } catch (InvocationTargetException ignored) {
             }
         }
         return false;
@@ -138,12 +143,13 @@ public class KeyEventDispatcher {
                 ? decor.getKeyDispatcherState() : null, activity);
     }
 
+    @SuppressWarnings("JavaReflectionMemberAccess")
     private static DialogInterface.OnKeyListener getDialogKeyListenerPre28(Dialog dialog) {
         if (!sDialogFieldsFetched) {
             try {
                 sDialogKeyListenerField = Dialog.class.getDeclaredField("mOnKeyListener");
                 sDialogKeyListenerField.setAccessible(true);
-            } catch (NoSuchFieldException e) {
+            } catch (NoSuchFieldException ignored) {
             }
             sDialogFieldsFetched = true;
         }
@@ -151,7 +157,7 @@ public class KeyEventDispatcher {
         if (sDialogKeyListenerField != null) {
             try {
                 return (DialogInterface.OnKeyListener) sDialogKeyListenerField.get(dialog);
-            } catch (IllegalAccessException e) {
+            } catch (IllegalAccessException ignored) {
             }
         }
         return null;
@@ -188,6 +194,6 @@ public class KeyEventDispatcher {
          * @param event The event being dispatched
          * @return {@code true} if consuming the event, {@code false} otherwise
          */
-        boolean superDispatchKeyEvent(KeyEvent event);
+        boolean superDispatchKeyEvent(@NonNull KeyEvent event);
     }
 }

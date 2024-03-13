@@ -73,7 +73,6 @@ import androidx.core.view.accessibility.AccessibilityEventCompat;
 import androidx.mediarouter.R;
 import androidx.mediarouter.media.MediaRouteSelector;
 import androidx.mediarouter.media.MediaRouter;
-import androidx.mediarouter.media.MediaRouterParams;
 import androidx.palette.graphics.Palette;
 
 import java.io.BufferedInputStream;
@@ -142,7 +141,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
 
     private boolean mVolumeControlEnabled = true;
     @SuppressWarnings("WeakerAccess") /* synthetic access */
-    final boolean mDisableGroupVolumeUX;
+    final boolean mEnableGroupVolumeUX;
     // Layout for media controllers including play/pause button and the main volume slider.
     private LinearLayout mMediaMainControlLayout;
     private RelativeLayout mPlaybackControlLayout;
@@ -212,10 +211,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
 
         mControllerCallback = new MediaControllerCallback();
         mRouter = MediaRouter.getInstance(mContext);
-        MediaRouterParams params = mRouter.getRouterParams();
-        Bundle extras = (params != null) ? params.getExtras() : null;
-        mDisableGroupVolumeUX = (extras != null
-                && extras.getBoolean(MediaRouterParams.EXTRAS_KEY_DISABLE_GROUP_VOLUME_UX));
+        mEnableGroupVolumeUX = MediaRouter.isGroupVolumeUxEnabled();
         mCallback = new MediaRouterCallback();
         mRoute = mRouter.getSelectedRoute();
         setMediaSession(mRouter.getMediaSessionToken());
@@ -238,6 +234,10 @@ public class MediaRouteControllerDialog extends AlertDialog {
     @NonNull
     public MediaRouter.RouteInfo getRoute() {
         return mRoute;
+    }
+
+    private boolean isGroup() {
+        return mRoute.isGroup() && mRoute.getMemberRoutes().size() > 1;
     }
 
     /**
@@ -411,7 +411,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
         mGroupMemberRoutesAnimatingWithBitmap = new HashSet<>();
 
         MediaRouterThemeHelper.setMediaControlsBackgroundColor(mContext,
-                mMediaMainControlLayout, mVolumeGroupList, mRoute.isGroup());
+                mMediaMainControlLayout, mVolumeGroupList, isGroup());
         MediaRouterThemeHelper.setVolumeSliderColor(mContext,
                 (MediaRouteVolumeSlider) mVolumeSlider, mMediaMainControlLayout);
         mVolumeSliderMap = new HashMap<>();
@@ -494,7 +494,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
     public boolean onKeyDown(int keyCode, @NonNull KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
                 || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            if (!mDisableGroupVolumeUX || !mIsGroupExpanded) {
+            if (mEnableGroupVolumeUX || !mIsGroupExpanded) {
                 mRoute.requestUpdateVolume(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ? -1 : 1);
             }
             return true;
@@ -629,7 +629,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
         int mainControllerHeight = getMainControllerHeight(canShowPlaybackControlLayout());
         int volumeGroupListCount = mGroupMemberRoutes.size();
         // Scale down volume group list items in landscape mode.
-        int expandedGroupListHeight = mRoute.isGroup()
+        int expandedGroupListHeight = isGroup()
                 ? mVolumeGroupListItemHeight * mRoute.getMemberRoutes().size() : 0;
         if (volumeGroupListCount > 0) {
             expandedGroupListHeight += mVolumeGroupListPaddingTop;
@@ -699,7 +699,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
     }
 
     void updateVolumeGroupItemHeight(View item) {
-        LinearLayout container = (LinearLayout) item.findViewById(R.id.volume_item_container);
+        LinearLayout container = item.findViewById(R.id.volume_item_container);
         setLayoutHeight(container, mVolumeGroupListItemHeight);
         View icon = item.findViewById(R.id.mr_volume_item_icon);
         ViewGroup.LayoutParams lp = icon.getLayoutParams();
@@ -735,7 +735,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
     }
 
     private void updateVolumeControlLayout() {
-        if (mDisableGroupVolumeUX && mRoute.isGroup()) {
+        if (!mEnableGroupVolumeUX && isGroup()) {
             mVolumeControlLayout.setVisibility(View.GONE);
             mIsGroupExpanded = true;
             mVolumeGroupList.setVisibility(View.VISIBLE);
@@ -743,15 +743,14 @@ public class MediaRouteControllerDialog extends AlertDialog {
             updateLayoutHeight(false);
             return;
         }
-        if ((mIsGroupExpanded && mDisableGroupVolumeUX) || !isVolumeControlAvailable(mRoute)) {
+        if ((mIsGroupExpanded && !mEnableGroupVolumeUX) || !isVolumeControlAvailable(mRoute)) {
             mVolumeControlLayout.setVisibility(View.GONE);
         } else {
             if (mVolumeControlLayout.getVisibility() == View.GONE) {
                 mVolumeControlLayout.setVisibility(View.VISIBLE);
                 mVolumeSlider.setMax(mRoute.getVolumeMax());
                 mVolumeSlider.setProgress(mRoute.getVolume());
-                mGroupExpandCollapseButton.setVisibility(mRoute.isGroup()
-                        ? View.VISIBLE : View.GONE);
+                mGroupExpandCollapseButton.setVisibility(isGroup() ? View.VISIBLE : View.GONE);
             }
         }
     }
@@ -867,7 +866,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
             final MediaRouter.RouteInfo route = item.getKey();
             final BitmapDrawable bitmap = item.getValue();
             final Rect bounds = previousRouteBoundMap.get(route);
-            OverlayListView.OverlayObject object = null;
+            OverlayListView.OverlayObject object;
             if (mGroupMemberRoutesRemoved.contains(route)) {
                 object = new OverlayListView.OverlayObject(bitmap, bounds).setAlphaAnimation(1.0f, 0.0f)
                         .setDuration(mGroupListFadeOutDurationMs)
@@ -966,7 +965,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
                     && mGroupMemberRoutesAdded.contains(route)) {
                 continue;
             }
-            LinearLayout container = (LinearLayout) view.findViewById(R.id.volume_item_container);
+            LinearLayout container = view.findViewById(R.id.volume_item_container);
             container.setVisibility(View.VISIBLE);
             AnimationSet animSet = new AnimationSet(true);
             Animation alphaAnim = new AlphaAnimation(1.0f, 1.0f);
@@ -1105,7 +1104,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
 
     void updateArtIconIfNeeded() {
         if (mCustomControlView != null || !isIconChanged()
-                || (mRoute.isGroup() && mDisableGroupVolumeUX)) {
+                || (isGroup() && !mEnableGroupVolumeUX)) {
             return;
         }
         if (mFetchArtTask != null) {
@@ -1148,17 +1147,20 @@ public class MediaRouteControllerDialog extends AlertDialog {
         }
 
         @Override
-        public void onRouteUnselected(MediaRouter router, MediaRouter.RouteInfo route) {
+        public void onRouteUnselected(@NonNull MediaRouter router,
+                @NonNull MediaRouter.RouteInfo route) {
             update(false);
         }
 
         @Override
-        public void onRouteChanged(MediaRouter router, MediaRouter.RouteInfo route) {
+        public void onRouteChanged(@NonNull MediaRouter router,
+                @NonNull MediaRouter.RouteInfo route) {
             update(true);
         }
 
         @Override
-        public void onRouteVolumeChanged(MediaRouter router, MediaRouter.RouteInfo route) {
+        public void onRouteVolumeChanged(@NonNull MediaRouter router,
+                @NonNull MediaRouter.RouteInfo route) {
             SeekBar volumeSlider = mVolumeSliderMap.get(route);
             int volume = route.getVolume();
             if (DEBUG) {
@@ -1313,12 +1315,12 @@ public class MediaRouteControllerDialog extends AlertDialog {
             if (route != null) {
                 boolean isEnabled = route.isEnabled();
 
-                TextView routeName = (TextView) v.findViewById(R.id.mr_name);
+                TextView routeName = v.findViewById(R.id.mr_name);
                 routeName.setEnabled(isEnabled);
                 routeName.setText(route.getName());
 
                 MediaRouteVolumeSlider volumeSlider =
-                        (MediaRouteVolumeSlider) v.findViewById(R.id.mr_volume_slider);
+                        v.findViewById(R.id.mr_volume_slider);
                 MediaRouterThemeHelper.setVolumeSliderColor(
                         parent.getContext(), volumeSlider, mVolumeGroupList);
                 volumeSlider.setTag(route);
@@ -1338,12 +1340,12 @@ public class MediaRouteControllerDialog extends AlertDialog {
                 }
 
                 ImageView volumeItemIcon =
-                        (ImageView) v.findViewById(R.id.mr_volume_item_icon);
+                        v.findViewById(R.id.mr_volume_item_icon);
                 volumeItemIcon.setAlpha(isEnabled ? 0xFF : (int) (0xFF * mDisabledAlpha));
 
                 // If overlay bitmap exists, real view should remain hidden until
                 // the animation ends.
-                LinearLayout container = (LinearLayout) v.findViewById(R.id.volume_item_container);
+                LinearLayout container = v.findViewById(R.id.volume_item_container);
                 container.setVisibility(mGroupMemberRoutesAnimatingWithBitmap.contains(route)
                         ? View.INVISIBLE : View.VISIBLE);
 
@@ -1476,7 +1478,7 @@ public class MediaRouteControllerDialog extends AlertDialog {
 
         private InputStream openInputStreamByScheme(Uri uri) throws IOException {
             String scheme = uri.getScheme().toLowerCase();
-            InputStream stream = null;
+            InputStream stream;
             if (ContentResolver.SCHEME_ANDROID_RESOURCE.equals(scheme)
                     || ContentResolver.SCHEME_CONTENT.equals(scheme)
                     || ContentResolver.SCHEME_FILE.equals(scheme)) {

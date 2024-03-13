@@ -16,11 +16,11 @@
 
 package androidx.room.solver.shortcut.binder
 
+import androidx.room.compiler.codegen.XPropertySpec
+import androidx.room.compiler.codegen.XTypeSpec
 import androidx.room.solver.CodeGenScope
 import androidx.room.solver.shortcut.result.DeleteOrUpdateMethodAdapter
 import androidx.room.vo.ShortcutQueryParameter
-import com.squareup.javapoet.FieldSpec
-import com.squareup.javapoet.TypeSpec
 
 /**
  * Connects the delete or update method, the database and the [DeleteOrUpdateMethodAdapter].
@@ -35,28 +35,21 @@ abstract class DeleteOrUpdateMethodBinder(val adapter: DeleteOrUpdateMethodAdapt
     /**
      * Received the delete/update method parameters, the adapters and generates the code that
      * runs the delete/update and returns the result.
-     *
-     * For example, for the DAO method
-     * ```
-     * @Delete
-     * fun deletePublishers(vararg publishers: Publisher)
-     * ```
-     * The following code will be generated:
-     *
-     * ```
-     * __db.beginTransaction();
-     * try {
-     *   __deletionAdapterOfPublisher.handleMultiple(publishers);
-     *   __db.setTransactionSuccessful();
-     * } finally {
-     *   __db.endTransaction();
-     * }
-     * ```
      */
     abstract fun convertAndReturn(
         parameters: List<ShortcutQueryParameter>,
-        adapters: Map<String, Pair<FieldSpec, TypeSpec>>,
-        dbField: FieldSpec,
+        adapters: Map<String, Pair<XPropertySpec, XTypeSpec>>,
+        dbProperty: XPropertySpec,
         scope: CodeGenScope
     )
+
+    abstract fun convertAndReturnCompat(
+        parameters: List<ShortcutQueryParameter>,
+        adapters: Map<String, Pair<XPropertySpec, XTypeSpec>>,
+        dbProperty: XPropertySpec,
+        scope: CodeGenScope
+    )
+
+    // TODO(b/319660042): Remove once migration to driver API is done.
+    open fun isMigratedToDriver(): Boolean = false
 }

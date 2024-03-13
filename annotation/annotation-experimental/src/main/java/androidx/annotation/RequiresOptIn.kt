@@ -27,38 +27,47 @@ import kotlin.annotation.Target
  * by using [OptIn] or by being annotated with that marker themselves, effectively causing
  * further propagation of that opt-in aspect.
  *
- * Example:
- * <pre>`
- * // Library code
- * &#64;Retention(CLASS)
- * &#64;Target({TYPE, METHOD, CONSTRUCTOR, FIELD, PACKAGE})
- * &#64;RequiresOptIn(level = Level.ERROR)
+ * ```
+ * // Marker definition
+ *
+ * @Retention(CLASS)
+ * @Target({TYPE, METHOD, CONSTRUCTOR, FIELD, PACKAGE})
+ * @RequiresOptIn(level = Level.ERROR)
  * public @interface ExperimentalDateTime {}
  *
- * &#64;ExperimentalDateTime
+ * @ExperimentalDateTime
  * public class DateProvider {
- * // ...
+ *   // ...
  * }
-`</pre> *
  *
- * <pre>`
  * // Client code
+ *
  * int getYear() {
- * DateProvider provider; // Error: DateProvider is experimental
- * // ...
+ *   DateProvider provider; // Error: DateProvider is experimental
+ *   // ...
  * }
  *
- * &#64;ExperimentalDateTime
+ * @ExperimentalDateTime
  * Date getDate() {
- * DateProvider provider; // OK: the function is marked as experimental
- * // ...
+ *   DateProvider provider; // OK: the function is marked as experimental
+ *   // ...
  * }
  *
  * void displayDate() {
- * System.out.println(getDate()); // Error: getDate() is experimental, acceptance is required
+ *   System.out.println(getDate()); // Error: getDate() is experimental, acceptance is required
  * }
-`</pre> *
+ * ```
  *
+ * To configure project-wide opt-in, specify the `opt-in` option value in `lint.xml` as a
+ * comma-delimited list of opted-in annotations:
+ *
+ * ```
+ * <lint>
+ *   <issue id="$issueId">
+ *     <option name="opt-in" value="com.foo.ExperimentalBarAnnotation" />
+ *   </issue>
+ * </lint>
+ * ```
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.ANNOTATION_CLASS)

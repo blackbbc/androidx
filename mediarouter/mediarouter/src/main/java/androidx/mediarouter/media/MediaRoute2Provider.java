@@ -44,6 +44,7 @@ import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
@@ -72,7 +73,7 @@ class MediaRoute2Provider extends MediaRouteProvider {
     final Callback mCallback;
     final Map<MediaRouter2.RoutingController, GroupRouteController> mControllerMap =
             new ArrayMap<>();
-    private final MediaRouter2.RouteCallback mRouteCallback = new RouteCallback();
+    private final MediaRouter2.RouteCallback mRouteCallback;
     private final MediaRouter2.TransferCallback mTransferCallback = new TransferCallback();
     private final MediaRouter2.ControllerCallback mControllerCallback = new ControllerCallback();
     private final Handler mHandler;
@@ -80,7 +81,7 @@ class MediaRoute2Provider extends MediaRouteProvider {
 
     private List<MediaRoute2Info> mRoutes = new ArrayList<>();
     private Map<String, String> mRouteIdToOriginalRouteIdMap = new ArrayMap<>();
-
+    @SuppressWarnings({"SyntheticAccessor"})
     MediaRoute2Provider(@NonNull Context context, @NonNull Callback callback) {
         super(context);
         mMediaRouter2 = MediaRouter2.getInstance(context);
@@ -88,6 +89,12 @@ class MediaRoute2Provider extends MediaRouteProvider {
 
         mHandler = new Handler(Looper.getMainLooper());
         mHandlerExecutor = mHandler::post;
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            mRouteCallback = new RouteCallbackUpsideDownCake();
+        } else {
+            mRouteCallback = new RouteCallback();
+        }
     }
 
     @Override
@@ -120,7 +127,7 @@ class MediaRoute2Provider extends MediaRouteProvider {
         String originalRouteId = mRouteIdToOriginalRouteIdMap.get(routeId);
 
         for (GroupRouteController groupRouteController : mControllerMap.values()) {
-            if (TextUtils.equals(routeGroupId, groupRouteController.mRoutingController.getId())) {
+            if (TextUtils.equals(routeGroupId, groupRouteController.getGroupRouteId())) {
                 return new MemberRouteController(originalRouteId, groupRouteController);
             }
         }
@@ -271,19 +278,25 @@ class MediaRoute2Provider extends MediaRouteProvider {
             Log.w(TAG, "Exception while unparceling control hints.", ex);
         }
 
-        // Create group route descriptor
+        // Create or update the group route descriptor.
+        MediaRouteDescriptor.Builder groupDescriptorBuilder;
         if (groupDescriptor == null) {
-            groupDescriptor = new MediaRouteDescriptor.Builder(
+            groupDescriptorBuilder = new MediaRouteDescriptor.Builder(
                     routingController.getId(), groupRouteName)
                     .setConnectionState(MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTED)
-                    .setPlaybackType(MediaRouter.RouteInfo.PLAYBACK_TYPE_REMOTE)
-                    .setVolume(routingController.getVolume())
-                    .setVolumeMax(routingController.getVolumeMax())
-                    .setVolumeHandling(routingController.getVolumeHandling())
-                    .addControlFilters(initialRouteDescriptor.getControlFilters())
-                    .addGroupMemberIds(selectedRouteIds)
-                    .build();
+                    .setPlaybackType(MediaRouter.RouteInfo.PLAYBACK_TYPE_REMOTE);
+        } else {
+            groupDescriptorBuilder = new MediaRouteDescriptor.Builder(groupDescriptor);
         }
+        groupDescriptor = groupDescriptorBuilder
+                .setVolume(routingController.getVolume())
+                .setVolumeMax(routingController.getVolumeMax())
+                .setVolumeHandling(routingController.getVolumeHandling())
+                .clearControlFilters()
+                .addControlFilters(initialRouteDescriptor.getControlFilters())
+                .clearGroupMemberIds()
+                .addGroupMemberIds(selectedRouteIds)
+                .build();
 
         // Create dynamic route descriptors
         List<String> selectableRouteIds =
@@ -314,6 +327,7 @@ class MediaRoute2Provider extends MediaRouteProvider {
             }
         }
 
+        controller.setGroupRouteDescriptor(groupDescriptor);
         controller.notifyDynamicRoutesChanged(groupDescriptor, dynamicRouteDescriptors);
     }
 
@@ -346,6 +360,16 @@ class MediaRoute2Provider extends MediaRouteProvider {
         return new MediaRouteDiscoveryRequest(selector, request.isActiveScan());
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    /* package */ void setRouteListingPreference(
+            @Nullable RouteListingPreference routeListingPreference) {
+        Api34Impl.setPlatformRouteListingPreference(
+                mMediaRouter2,
+                routeListingPreference != null
+                        ? routeListingPreference.toPlatformRouteListingPreference()
+                        : null);
+    }
+
     abstract static class Callback {
         public abstract void onSelectRoute(@NonNull String routeDescriptorId,
                 @MediaRouter.UnselectReason int reason);
@@ -373,6 +397,14 @@ class MediaRoute2Provider extends MediaRouteProvider {
         }
     }
 
+    private class RouteCallbackUpsideDownCake extends MediaRouter2.RouteCallback {
+
+        @Override
+        public void onRoutesUpdated(@NonNull List<MediaRoute2Info> routes) {
+            refreshRoutes();
+        }
+    }
+
     private class TransferCallback extends MediaRouter2.TransferCallback {
         TransferCallback() {}
 
@@ -388,7 +420,7 @@ class MediaRoute2Provider extends MediaRouteProvider {
                     Log.w(TAG, "Selected routes are empty. This shouldn't happen.");
                     return;
                 }
-                // TODO: Select a group route when dynamic grouping.
+                // TODO: Handle the case that the initial member is a group
                 String routeId = selectedRoutes.get(0).getId();
                 GroupRouteController controller = new GroupRouteController(newController, routeId);
                 mControllerMap.put(newController, controller);
@@ -469,6 +501,8 @@ class MediaRoute2Provider extends MediaRouteProvider {
         private final Runnable mClearOptimisticVolumeRunnable = () -> mOptimisticVolume = -1;
         // The possible current volume set by the user recently or -1 if not.
         int mOptimisticVolume = -1;
+        @Nullable
+        MediaRouteDescriptor mGroupRouteDescriptor;
 
         GroupRouteController(@NonNull MediaRouter2.RoutingController routingController,
                 @NonNull String initialMemberRouteId) {
@@ -478,6 +512,11 @@ class MediaRoute2Provider extends MediaRouteProvider {
             mReceiveMessenger = mServiceMessenger == null ? null :
                     new Messenger(new ReceiveHandler());
             mControllerHandler = new Handler(Looper.getMainLooper());
+        }
+
+        public String getGroupRouteId() {
+            return (mGroupRouteDescriptor != null) ? mGroupRouteDescriptor.getId()
+                    : mRoutingController.getId();
         }
 
         @Override
@@ -504,7 +543,8 @@ class MediaRoute2Provider extends MediaRouteProvider {
         }
 
         @Override
-        public boolean onControlRequest(Intent intent, @Nullable ControlRequestCallback callback) {
+        public boolean onControlRequest(@NonNull Intent intent,
+                @Nullable ControlRequestCallback callback) {
             if (mRoutingController == null || mRoutingController.isReleased()
                     || mServiceMessenger == null) {
                 return false;
@@ -571,7 +611,7 @@ class MediaRoute2Provider extends MediaRouteProvider {
         }
 
         @Override
-        public void onRemoveMemberRoute(String routeId) {
+        public void onRemoveMemberRoute(@NonNull String routeId) {
             if (routeId == null || routeId.isEmpty()) {
                 Log.w(TAG, "onRemoveMemberRoute: Ignoring null or empty routeId.");
                 return;
@@ -593,6 +633,11 @@ class MediaRoute2Provider extends MediaRouteProvider {
         }
 
         void setMemberRouteVolume(@NonNull String memberRouteOriginalId, int volume) {
+            if (mRoutingController == null || mRoutingController.isReleased()
+                    || mServiceMessenger == null) {
+                return;
+            }
+
             int requestId = mNextRequestId.getAndIncrement();
             Message msg = Message.obtain();
             msg.what = CLIENT_MSG_SET_ROUTE_VOLUME;
@@ -614,6 +659,11 @@ class MediaRoute2Provider extends MediaRouteProvider {
         }
 
         void updateMemberRouteVolume(@NonNull String memberRouteOriginalId, int delta) {
+            if (mRoutingController == null || mRoutingController.isReleased()
+                    || mServiceMessenger == null) {
+                return;
+            }
+
             int requestId = mNextRequestId.getAndIncrement();
             Message msg = Message.obtain();
             msg.what = CLIENT_MSG_UPDATE_ROUTE_VOLUME;
@@ -632,6 +682,10 @@ class MediaRoute2Provider extends MediaRouteProvider {
             } catch (RemoteException ex) {
                 Log.e(TAG, "Could not send control request to service.", ex);
             }
+        }
+
+        void setGroupRouteDescriptor(@NonNull MediaRouteDescriptor descriptor) {
+            mGroupRouteDescriptor = descriptor;
         }
 
         class ReceiveHandler extends Handler {
@@ -664,6 +718,20 @@ class MediaRoute2Provider extends MediaRouteProvider {
                         break;
                 }
             }
+        }
+    }
+
+    @RequiresApi(34)
+    private static class Api34Impl {
+        private Api34Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void setPlatformRouteListingPreference(
+                @NonNull MediaRouter2 mediaRouter2,
+                @Nullable android.media.RouteListingPreference routeListingPreference) {
+            mediaRouter2.setRouteListingPreference(routeListingPreference);
         }
     }
 }

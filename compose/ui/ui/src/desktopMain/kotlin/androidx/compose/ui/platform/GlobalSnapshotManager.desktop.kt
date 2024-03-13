@@ -18,13 +18,13 @@ package androidx.compose.ui.platform
 
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.GlobalSnapshotManager.ensureStarted
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.swing.Swing
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Platform-specific mechanism for starting a monitor of global snapshot state writes
@@ -37,19 +37,23 @@ import java.util.concurrent.atomic.AtomicBoolean
  * For desktop, these notifications are always sent on [Dispatchers.Swing]. Other platforms
  * may establish different policies for these notifications.
  */
-internal object GlobalSnapshotManager {
+internal actual object GlobalSnapshotManager {
     private val started = AtomicBoolean(false)
+    private val sent = AtomicBoolean(false)
 
-    fun ensureStarted() {
+    actual fun ensureStarted() {
         if (started.compareAndSet(false, true)) {
-            val channel = Channel<Unit>(Channel.CONFLATED)
+            val channel = Channel<Unit>(1)
             CoroutineScope(Dispatchers.Swing).launch {
                 channel.consumeEach {
+                    sent.set(false)
                     Snapshot.sendApplyNotifications()
                 }
             }
             Snapshot.registerGlobalWriteObserver {
-                channel.trySend(Unit)
+                if (sent.compareAndSet(false, true)) {
+                    channel.trySend(Unit)
+                }
             }
         }
     }

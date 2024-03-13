@@ -16,48 +16,43 @@
 package androidx.car.app.hardware.info;
 
 import static androidx.car.app.hardware.common.CarUnit.CarDistanceUnit;
+import static androidx.car.app.hardware.common.CarUnit.CarVolumeUnit;
 
 import static java.util.Objects.requireNonNull;
 
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.car.app.annotations.CarProtocol;
+import androidx.car.app.annotations.ExperimentalCarApi;
 import androidx.car.app.annotations.RequiresCarApi;
 import androidx.car.app.hardware.common.CarUnit;
 import androidx.car.app.hardware.common.CarValue;
+import androidx.car.app.annotations.KeepFields;
 
 import java.util.Objects;
 
 /** Information of the energy (fuel and battery) levels from the car hardware. */
 @CarProtocol
 @RequiresCarApi(3)
+@KeepFields
 public final class EnergyLevel {
-
-    @Keep
     @NonNull
     private final CarValue<Float> mBatteryPercent;
 
-    @Keep
     @NonNull
     private final CarValue<Float> mFuelPercent;
 
-    @Keep
     @NonNull
     private final CarValue<Boolean> mEnergyIsLow;
 
-    // TODO(b/192106888): Remove when new values fully supported by Android Auto Host.
-    @Keep
-    @Nullable
-    private final CarValue<Float> mRangeRemaining;
-
-    @Keep
     @Nullable
     private final CarValue<Float> mRangeRemainingMeters;
 
-    @Keep
     @NonNull
     private final CarValue<@CarDistanceUnit Integer> mDistanceDisplayUnit;
+
+    @NonNull
+    private final CarValue<@CarVolumeUnit Integer> mFuelVolumeDisplayUnit;
 
     /** Returns the battery percentage remaining from the car hardware. */
     @NonNull
@@ -80,23 +75,7 @@ public final class EnergyLevel {
     /** Returns the range remaining from the car hardware in meters. */
     @NonNull
     public CarValue<Float> getRangeRemainingMeters() {
-        if (mRangeRemainingMeters != null) {
-            return requireNonNull(mRangeRemainingMeters);
-        }
-        return requireNonNull(mRangeRemaining);
-    }
-
-    // TODO(b/192106888): Remove when new values fully supported by Android Auto Host.
-
-    /**
-     * Returns the range remaining from the car hardware in meters.
-     *
-     * @deprecated use {@link #getRangeRemainingMeters()}
-     */
-    @NonNull
-    @Deprecated
-    public CarValue<Float> getRangeRemaining() {
-        return getRangeRemainingMeters();
+        return requireNonNull(mRangeRemainingMeters);
     }
 
     /**
@@ -107,6 +86,18 @@ public final class EnergyLevel {
     @NonNull
     public CarValue<@CarDistanceUnit Integer> getDistanceDisplayUnit() {
         return requireNonNull(mDistanceDisplayUnit);
+    }
+
+    /**
+     * Returns the fuel volume display unit from the car hardware.
+     *
+     * <p>See {@link CarUnit} for possible volume values.
+     */
+    // TODO(b/202303614): Remove this annotation once FuelVolumeDisplayUnit is ready.
+    @ExperimentalCarApi
+    @NonNull
+    public CarValue<@CarVolumeUnit Integer> getFuelVolumeDisplayUnit() {
+        return requireNonNull(mFuelVolumeDisplayUnit);
     }
 
     @Override
@@ -122,13 +113,15 @@ public final class EnergyLevel {
                 + getRangeRemainingMeters()
                 + ", distance display unit: "
                 + mDistanceDisplayUnit
+                + ", fuel volume display unit: "
+                + mFuelVolumeDisplayUnit
                 + "]";
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(mBatteryPercent, mFuelPercent, mEnergyIsLow, getRangeRemainingMeters(),
-                mDistanceDisplayUnit);
+                mDistanceDisplayUnit, mFuelVolumeDisplayUnit);
     }
 
     @Override
@@ -146,36 +139,39 @@ public final class EnergyLevel {
                 && Objects.equals(mEnergyIsLow, otherEnergyLevel.mEnergyIsLow)
                 && Objects.equals(getRangeRemainingMeters(),
                 otherEnergyLevel.getRangeRemainingMeters())
-                && Objects.equals(mDistanceDisplayUnit, otherEnergyLevel.mDistanceDisplayUnit);
+                && Objects.equals(mDistanceDisplayUnit, otherEnergyLevel.mDistanceDisplayUnit)
+                && Objects.equals(mFuelVolumeDisplayUnit, otherEnergyLevel.mFuelVolumeDisplayUnit);
     }
 
     EnergyLevel(Builder builder) {
         mBatteryPercent = requireNonNull(builder.mBatteryPercent);
         mFuelPercent = requireNonNull(builder.mFuelPercent);
         mEnergyIsLow = requireNonNull(builder.mEnergyIsLow);
-        mRangeRemaining = null;
         mRangeRemainingMeters = requireNonNull(builder.mRangeRemainingMeters);
         mDistanceDisplayUnit = requireNonNull(builder.mDistanceDisplayUnit);
+        mFuelVolumeDisplayUnit = requireNonNull(builder.mFuelVolumeDisplayUnit);
     }
 
     /** Constructs an empty instance, used by serialization code. */
     private EnergyLevel() {
-        mBatteryPercent = CarValue.UNIMPLEMENTED_FLOAT;
-        mFuelPercent = CarValue.UNIMPLEMENTED_FLOAT;
-        mEnergyIsLow = CarValue.UNIMPLEMENTED_BOOLEAN;
-        mRangeRemaining = null;
-        mRangeRemainingMeters = CarValue.UNIMPLEMENTED_FLOAT;
-        mDistanceDisplayUnit = CarValue.UNIMPLEMENTED_INTEGER;
+        mBatteryPercent = CarValue.UNKNOWN_FLOAT;
+        mFuelPercent = CarValue.UNKNOWN_FLOAT;
+        mEnergyIsLow = CarValue.UNKNOWN_BOOLEAN;
+        mRangeRemainingMeters = CarValue.UNKNOWN_FLOAT;
+        mDistanceDisplayUnit = CarValue.UNKNOWN_INTEGER;
+        mFuelVolumeDisplayUnit = CarValue.UNKNOWN_INTEGER;
     }
 
     /** A builder of {@link EnergyLevel}. */
     public static final class Builder {
-        CarValue<Float> mBatteryPercent = CarValue.UNIMPLEMENTED_FLOAT;
-        CarValue<Float> mFuelPercent = CarValue.UNIMPLEMENTED_FLOAT;
-        CarValue<Boolean> mEnergyIsLow = CarValue.UNIMPLEMENTED_BOOLEAN;
-        CarValue<Float> mRangeRemainingMeters = CarValue.UNIMPLEMENTED_FLOAT;
+        CarValue<Float> mBatteryPercent = CarValue.UNKNOWN_FLOAT;
+        CarValue<Float> mFuelPercent = CarValue.UNKNOWN_FLOAT;
+        CarValue<Boolean> mEnergyIsLow = CarValue.UNKNOWN_BOOLEAN;
+        CarValue<Float> mRangeRemainingMeters = CarValue.UNKNOWN_FLOAT;
         CarValue<@CarDistanceUnit Integer> mDistanceDisplayUnit =
-                CarValue.UNIMPLEMENTED_INTEGER;
+                CarValue.UNKNOWN_INTEGER;
+        CarValue<@CarVolumeUnit Integer> mFuelVolumeDisplayUnit =
+                CarValue.UNKNOWN_INTEGER;
 
         /** Sets the remaining batter percentage. */
         @NonNull
@@ -206,21 +202,6 @@ public final class EnergyLevel {
             return this;
         }
 
-        // TODO(b/192106888): Remove when new values fully supported by Android Auto Host.
-
-        /**
-         * Sets the range of the remaining fuel in meters.
-         *
-         * @throws NullPointerException if {@code rangeRemaining} is {@code null}
-         * @deprecated use {@link #setRangeRemainingMeters}
-         */
-        @NonNull
-        @Deprecated
-        public Builder setRangeRemaining(@NonNull CarValue<Float> rangeRemainingMeters) {
-            mRangeRemainingMeters = requireNonNull(rangeRemainingMeters);
-            return this;
-        }
-
         /**
          * Sets the range of the remaining fuel in meters.
          *
@@ -243,6 +224,20 @@ public final class EnergyLevel {
         public Builder setDistanceDisplayUnit(
                 @NonNull CarValue<@CarDistanceUnit Integer> distanceDisplayUnit) {
             mDistanceDisplayUnit = requireNonNull(distanceDisplayUnit);
+            return this;
+        }
+
+        /**
+         * Sets the fuel volume display unit.
+         *
+         * @throws NullPointerException if {@code fuelVolumeDisplayUnit} is {@code null}
+         */
+        // TODO(b/202303614): Remove this annotation once FuelVolumeDisplayUnit is ready.
+        @ExperimentalCarApi
+        @NonNull
+        public Builder setFuelVolumeDisplayUnit(@NonNull CarValue<@CarVolumeUnit Integer>
+                fuelVolumeDisplayUnit) {
+            mFuelVolumeDisplayUnit = requireNonNull(fuelVolumeDisplayUnit);
             return this;
         }
 

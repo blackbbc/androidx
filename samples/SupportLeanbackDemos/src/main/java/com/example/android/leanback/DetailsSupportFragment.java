@@ -24,6 +24,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityOptionsCompat;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.leanback.widget.Action;
@@ -176,7 +177,7 @@ public class DetailsSupportFragment extends androidx.leanback.app.DetailsSupport
         outState.putParcelable(ITEM, mPhotoItem);
     }
 
-    public void setItem(PhotoItem photoItem) {
+    public void setItem(@NonNull PhotoItem photoItem) {
         mPhotoItem = photoItem;
         updateAdapter();
     }

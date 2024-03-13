@@ -20,6 +20,8 @@ import androidx.navigation.safe.args.generator.ErrorMessage
 import androidx.navigation.safe.args.generator.SafeArgsGenerator
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.io.File
+import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -36,8 +38,6 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.work.ChangeType
 import org.gradle.work.Incremental
 import org.gradle.work.InputChanges
-import java.io.File
-import javax.inject.Inject
 
 private const val MAPPING_FILE = "file_mappings.json"
 
@@ -60,7 +60,7 @@ abstract class ArgumentsGenerationTask @Inject constructor(
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
-    @get:PathSensitive(PathSensitivity.ABSOLUTE)
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     @get:Incremental
     @get:InputFiles
     abstract val navigationFiles: ConfigurableFileCollection

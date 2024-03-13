@@ -24,6 +24,7 @@ import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 import static android.view.Window.FEATURE_OPTIONS_PANEL;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY;
+import static androidx.appcompat.app.LocaleOverlayHelper.combineLocalesIfOverlayExists;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -73,8 +74,11 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import androidx.annotation.CallSuper;
+import androidx.annotation.DoNotInline;
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -109,6 +113,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NavUtils;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
+import androidx.core.os.LocaleListCompat;
 import androidx.core.util.ObjectsCompat;
 import androidx.core.view.KeyEventDispatcher;
 import androidx.core.view.LayoutInflaterCompat;
@@ -125,9 +130,9 @@ import androidx.lifecycle.LifecycleOwner;
 import org.xmlpull.v1.XmlPullParser;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
- * @hide
  */
 @RestrictTo(LIBRARY)
 class AppCompatDelegateImpl extends AppCompatDelegate
@@ -144,11 +149,6 @@ class AppCompatDelegateImpl extends AppCompatDelegate
      */
     private static final boolean sCanReturnDifferentContext =
             !"robolectric".equals(Build.FINGERPRINT);
-
-    /**
-     * Flag indicating whether ContextThemeWrapper.applyOverrideConfiguration() is available.
-     */
-    private static final boolean sCanApplyOverrideConfiguration = Build.VERSION.SDK_INT >= 17;
 
     private static boolean sInstalledExceptionHandler;
 
@@ -250,7 +250,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
     /**
      * The configuration from the most recent call to either onConfigurationChanged or onCreate.
-     * May be null neither method has been called yet.
+     * May be null if neither method has been called yet.
      */
     private Configuration mEffectiveConfiguration;
 
@@ -258,9 +258,8 @@ class AppCompatDelegateImpl extends AppCompatDelegate
     private int mLocalNightMode = MODE_NIGHT_UNSPECIFIED;
 
     private int mThemeResId;
-    private boolean mActivityHandlesUiMode;
-    private boolean mActivityHandlesUiModeChecked;
-
+    private int mActivityHandlesConfigFlags;
+    private boolean mActivityHandlesConfigFlagsChecked;
     private AutoNightModeManager mAutoTimeNightModeManager;
     private AutoNightModeManager mAutoBatteryNightModeManager;
 
@@ -287,6 +286,8 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
     private AppCompatViewInflater mAppCompatViewInflater;
     private LayoutIncludeDetector mLayoutIncludeDetector;
+    private OnBackInvokedDispatcher mDispatcher;
+    private OnBackInvokedCallback mBackCallback;
 
     AppCompatDelegateImpl(Activity activity, AppCompatCallback callback) {
         this(activity, null, callback, activity);
@@ -342,6 +343,40 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         AppCompatDrawableManager.preload();
     }
 
+    @Override
+    @RequiresApi(33)
+    public void setOnBackInvokedDispatcher(@Nullable OnBackInvokedDispatcher dispatcher) {
+        super.setOnBackInvokedDispatcher(dispatcher);
+
+        // Clean up the callback on the previous dispatcher, if necessary.
+        if (mDispatcher != null && mBackCallback != null) {
+            Api33Impl.unregisterOnBackInvokedCallback(mDispatcher, mBackCallback);
+            mBackCallback = null;
+        }
+
+        if (dispatcher == null && mHost instanceof Activity
+                && ((Activity) mHost).getWindow() != null) {
+            mDispatcher = Api33Impl.getOnBackInvokedDispatcher((Activity) mHost);
+        } else {
+            mDispatcher = dispatcher;
+        }
+
+        // Register a callback on the new dispatcher, if necessary.
+        updateBackInvokedCallbackState();
+    }
+
+    void updateBackInvokedCallbackState() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            boolean shouldRegister = shouldRegisterBackInvokedCallback();
+            if (shouldRegister && mBackCallback == null) {
+                mBackCallback = Api33Impl.registerOnBackPressedCallback(mDispatcher, this);
+            } else if (!shouldRegister && mBackCallback != null) {
+                Api33Impl.unregisterOnBackInvokedCallback(mDispatcher, mBackCallback);
+                mBackCallback = null;
+            }
+        }
+    }
+
     @NonNull
     @Override
     @CallSuper
@@ -360,21 +395,28 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         final int modeToApply = mapNightMode(baseContext, calculateNightMode());
 
+        if (isAutoStorageOptedIn(baseContext)) {
+            // If the developer has opted in to auto store the locales, then we use
+            // syncRequestedAndStoredLocales() to load the saved locales from storage. This is
+            // performed only during cold app start-ups because in other cases the locales can be
+            // found in the static storage.
+            syncRequestedAndStoredLocales(baseContext);
+        }
+        final LocaleListCompat localesToApply = calculateApplicationLocales(baseContext);
+
         // If the base context is a ContextThemeWrapper (thus not an Application context)
         // and nobody's touched its Resources yet, we can shortcut and directly apply our
         // override configuration.
-        if (sCanApplyOverrideConfiguration
-                && baseContext instanceof android.view.ContextThemeWrapper) {
-            final Configuration config = createOverrideConfigurationForDayNight(
-                    baseContext, modeToApply, null);
+        if (baseContext instanceof android.view.ContextThemeWrapper) {
+            final Configuration config = createOverrideAppConfiguration(
+                    baseContext, modeToApply, localesToApply, null, false);
             if (DEBUG) {
                 Log.d(TAG, String.format("Attempting to apply config to base context: %s",
                         config.toString()));
             }
 
             try {
-                ContextThemeWrapperCompatApi17Impl.applyOverrideConfiguration(
-                        (android.view.ContextThemeWrapper) baseContext, config);
+                ((android.view.ContextThemeWrapper) baseContext).applyOverrideConfiguration(config);
                 return baseContext;
             } catch (IllegalStateException e) {
                 if (DEBUG) {
@@ -385,8 +427,8 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         // Again, but using the AppCompat version of ContextThemeWrapper.
         if (baseContext instanceof ContextThemeWrapper) {
-            final Configuration config = createOverrideConfigurationForDayNight(
-                    baseContext, modeToApply, null);
+            final Configuration config = createOverrideAppConfiguration(
+                    baseContext, modeToApply, localesToApply, null, false);
             if (DEBUG) {
                 Log.d(TAG, String.format("Attempting to apply config to base context: %s",
                         config.toString()));
@@ -413,37 +455,35 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         Configuration configOverlay = null;
 
-        if (Build.VERSION.SDK_INT >= 17) {
-            // There is a bug in createConfigurationContext where it applies overrides to the
-            // canonical configuration, e.g. ActivityThread.mCurrentConfig, rather than the base
-            // configuration, e.g. Activity.getResources().getConfiguration(). We can lean on this
-            // bug to obtain a reference configuration and reconstruct any custom configuration
-            // that may have been applied by the app, thereby avoiding the bug later on.
-            Configuration overrideConfig = new Configuration();
-            // We have to modify a value to receive a new Configuration, so use one that developers
-            // can't override.
-            overrideConfig.uiMode = -1;
-            // Workaround for incorrect default fontScale on earlier SDKs.
-            overrideConfig.fontScale = 0f;
-            Configuration referenceConfig =
-                    Api17Impl.createConfigurationContext(baseContext, overrideConfig)
-                            .getResources().getConfiguration();
-            // Revert the uiMode change so that the diff doesn't include uiMode.
-            Configuration baseConfig = baseContext.getResources().getConfiguration();
-            referenceConfig.uiMode = baseConfig.uiMode;
+        // There is a bug in createConfigurationContext where it applies overrides to the
+        // canonical configuration, e.g. ActivityThread.mCurrentConfig, rather than the base
+        // configuration, e.g. Activity.getResources().getConfiguration(). We can lean on this
+        // bug to obtain a reference configuration and reconstruct any custom configuration
+        // that may have been applied by the app, thereby avoiding the bug later on.
+        Configuration overrideConfig = new Configuration();
+        // We have to modify a value to receive a new Configuration, so use one that developers
+        // can't override.
+        overrideConfig.uiMode = -1;
+        // Workaround for incorrect default fontScale on earlier SDKs.
+        overrideConfig.fontScale = 0f;
+        Configuration referenceConfig =
+                baseContext.createConfigurationContext(overrideConfig)
+                        .getResources().getConfiguration();
+        // Revert the uiMode change so that the diff doesn't include uiMode.
+        Configuration baseConfig = baseContext.getResources().getConfiguration();
+        referenceConfig.uiMode = baseConfig.uiMode;
 
-            // Extract any customizations as an overlay.
-            if (!referenceConfig.equals(baseConfig)) {
-                configOverlay = generateConfigDelta(referenceConfig, baseConfig);
-                if (DEBUG) {
-                    Log.d(TAG, "Application config (" + referenceConfig + ") does not match base "
-                            + "config (" + baseConfig + "), using base overlay: " + configOverlay);
-                }
+        // Extract any customizations as an overlay.
+        if (!referenceConfig.equals(baseConfig)) {
+            configOverlay = generateConfigDelta(referenceConfig, baseConfig);
+            if (DEBUG) {
+                Log.d(TAG, "Application config (" + referenceConfig + ") does not match base "
+                        + "config (" + baseConfig + "), using base overlay: " + configOverlay);
             }
         }
 
-        final Configuration config = createOverrideConfigurationForDayNight(
-                baseContext, modeToApply, configOverlay);
+        final Configuration config = createOverrideAppConfiguration(
+                baseContext, modeToApply, localesToApply, configOverlay, true);
         if (DEBUG) {
             Log.d(TAG, String.format("Applying night mode using ContextThemeWrapper and "
                     + "applyOverrideConfiguration(). Config: %s", config.toString()));
@@ -476,30 +516,15 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         return super.attachBaseContext2(wrappedContext);
     }
 
-    /**
-     * Helper for accessing new APIs on {@link android.view.ContextThemeWrapper}.
-     */
-    @RequiresApi(17)
-    private static class ContextThemeWrapperCompatApi17Impl {
-        private ContextThemeWrapperCompatApi17Impl() {
-            // This class is non-instantiable.
-        }
-
-        static void applyOverrideConfiguration(android.view.ContextThemeWrapper context,
-                Configuration overrideConfiguration) {
-            context.applyOverrideConfiguration(overrideConfiguration);
-        }
-    }
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // attachBaseContext will only be called from an Activity, so make sure we switch this for
         // Dialogs, etc
         mBaseContextAttached = true;
 
-        // Our implicit call to applyDayNight() should not recreate until after the Activity is
-        // created
-        applyDayNight(false);
+        // Our implicit call to applyApplicationSpecificConfig() should not recreate
+        // until after the Activity is created
+        applyApplicationSpecificConfig(false);
 
         // We lazily fetch the Window for Activities, to allow DayNight to apply in
         // attachBaseContext
@@ -599,6 +624,8 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             mActionBar = tbab;
             // Set the nested action bar window callback so that it receive menu events
             mAppCompatWindowCallback.setActionBarCallback(tbab.mMenuCallback);
+            // Toolbars managed by AppCompat should handle their own back invocations.
+            toolbar.setBackInvokedCallbackEnabled(true);
         } else {
             // Clear the nested action bar window callback
             mAppCompatWindowCallback.setActionBarCallback(null);
@@ -661,16 +688,34 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         // inspects the last-seen configuration. Otherwise, we'll recurse back to this method.
         mEffectiveConfiguration = new Configuration(mContext.getResources().getConfiguration());
 
-        // Re-apply Day/Night with the new configuration but disable recreations. Since this
-        // configuration change has only just happened we can safely just update the resources now
-        applyDayNight(false);
+        // Re-apply Day/Night with the new configuration but disable recreations.
+        // Since this configuration change has only just happened we can safely just update the
+        // resources now.
+        // For locales, no re-application is required since locales must have already been applied
+        // to the configuration when AppCompatDelegate.setApplicationLocales() is called.
+        // Also, in the case where an invalid locale is passed at the top position in the input
+        // locales, framework re-adjusts the list to bring forward the most suitable locale in
+        // the configuration. Therefore if we apply the new locales here again, the code will get
+        // stuck in a loop of attempted re-application since the configuration locales are never
+        // the same as we applied. The same thing is valid during the case when configChanges are
+        // handled by the application.
+        applyApplicationSpecificConfig(false,
+                /* isLocalesApplicationRequired */ false);
     }
 
     @Override
     public void onStart() {
         // This will apply day/night if the time has changed, it will also call through to
-        // setupAutoNightModeIfNeeded()
-        applyDayNight();
+        // setupAutoNightModeIfNeeded().
+        // For locales, no re-application is required since the requested locales must have
+        // already been updated before this point in activity lifecycle.
+        // Also, in the case where an invalid locale is passed at the top position in the input
+        // locales, framework re-adjusts the list to bring forward the most suitable locale in
+        // the configuration. Therefore if we apply the new locales here again, the code will get
+        // stuck in a loop of attempted re-application since the configuration locales are never
+        // the same as we applied.
+        applyApplicationSpecificConfig(true,
+                /* isLocalesApplicationRequired */false);
     }
 
     @Override
@@ -695,7 +740,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         ViewGroup contentParent = mSubDecor.findViewById(android.R.id.content);
         contentParent.removeAllViews();
         contentParent.addView(v);
-        mAppCompatWindowCallback.getWrapped().onContentChanged();
+        mAppCompatWindowCallback.bypassOnContentChanged(mWindow.getCallback());
     }
 
     @Override
@@ -704,7 +749,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         ViewGroup contentParent = mSubDecor.findViewById(android.R.id.content);
         contentParent.removeAllViews();
         LayoutInflater.from(mContext).inflate(resId, contentParent);
-        mAppCompatWindowCallback.getWrapped().onContentChanged();
+        mAppCompatWindowCallback.bypassOnContentChanged(mWindow.getCallback());
     }
 
     @Override
@@ -713,7 +758,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         ViewGroup contentParent = mSubDecor.findViewById(android.R.id.content);
         contentParent.removeAllViews();
         contentParent.addView(v, lp);
-        mAppCompatWindowCallback.getWrapped().onContentChanged();
+        mAppCompatWindowCallback.bypassOnContentChanged(mWindow.getCallback());
     }
 
     @Override
@@ -721,7 +766,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         ensureSubDecor();
         ViewGroup contentParent = mSubDecor.findViewById(android.R.id.content);
         contentParent.addView(v, lp);
-        mAppCompatWindowCallback.getWrapped().onContentChanged();
+        mAppCompatWindowCallback.bypassOnContentChanged(mWindow.getCallback());
     }
 
     @Override
@@ -808,6 +853,11 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         a.recycle();
 
         mWindow = window;
+
+        // Obtain a default dispatcher, if we still need one.
+        if (Build.VERSION.SDK_INT >= 33 && mDispatcher == null) {
+            setOnBackInvokedDispatcher(null);
+        }
     }
 
     private void ensureSubDecor() {
@@ -885,7 +935,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 // Floating windows can never have an action bar, reset the flags
                 mHasActionBar = mOverlayActionBar = false;
             } else if (mHasActionBar) {
-                /**
+                /*
                  * This needs some explanation. As we can not use the android:theme attribute
                  * pre-L, we emulate it by manually creating a LayoutInflater using a
                  * ContextThemeWrapper pointing to actionBarTheme.
@@ -908,7 +958,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                         .findViewById(R.id.decor_content_parent);
                 mDecorContentParent.setWindowCallback(getWindowCallback());
 
-                /**
+                /*
                  * Propagate features to DecorContentParent
                  */
                 if (mOverlayActionBar) {
@@ -1218,13 +1268,15 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             mActionMode = startSupportActionModeFromWindow(wrappedCallback);
         }
 
+        // mActionMode changed.
+        updateBackInvokedCallbackState();
+
         return mActionMode;
     }
 
     @Override
     public void invalidateOptionsMenu() {
-        final ActionBar ab = getSupportActionBar();
-        if (ab != null && ab.invalidateOptionsMenu()) return;
+        if (peekSupportActionBar() == null || getSupportActionBar().invalidateOptionsMenu()) return;
 
         invalidatePanelMenu(FEATURE_OPTIONS_PANEL);
     }
@@ -1373,13 +1425,17 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         if (mActionMode != null && mAppCompatCallback != null) {
             mAppCompatCallback.onSupportActionModeStarted(mActionMode);
         }
+
+        // mActionMode changed.
+        updateBackInvokedCallbackState();
+
         return mActionMode;
     }
 
     final boolean shouldAnimateActionModeView() {
         // We only to animate the action mode in if the sub decor has already been laid out.
         // If it hasn't been laid out, it hasn't been drawn to screen yet.
-        return mSubDecorInstalled && mSubDecor != null && ViewCompat.isLaidOut(mSubDecor);
+        return mSubDecorInstalled && mSubDecor != null && mSubDecor.isLaidOut();
     }
 
     @Override
@@ -1398,7 +1454,50 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         }
     }
 
+    /**
+     * Computes whether the delegate should intercept back invocations.
+     * <p>
+     * This method must be kept in sync with {@link #onBackPressed()}. If any of the properties
+     * observed by this method change, we must call {@link #updateBackInvokedCallbackState()}.
+     */
+    boolean shouldRegisterBackInvokedCallback() {
+        if (mDispatcher == null) {
+            return false;
+        }
+
+        PanelFeatureState st = getPanelState(Window.FEATURE_OPTIONS_PANEL, false);
+        if (st != null && st.isOpen) {
+            return true;
+        }
+
+        if (mActionMode != null) {
+            return true;
+        }
+
+        // Don't check canCollapseActionView() since the support
+        // action bar manages its own back invocation callback.
+        return false;
+    }
+
+    /**
+     * Handles back press, returning {@code true} if the press was handled.
+     * <p>
+     * This method must be kept in sync with {@link #shouldRegisterBackInvokedCallback()}.
+     */
     boolean onBackPressed() {
+        final boolean wasLongPressBackDown = mLongPressBackDown;
+        mLongPressBackDown = false;
+
+        // Certain devices allow opening the options menu via a long press of the back button. We
+        // should only close the open options menu if it wasn't opened via a long press gesture.
+        PanelFeatureState st = getPanelState(Window.FEATURE_OPTIONS_PANEL, false);
+        if (st != null && st.isOpen) {
+            if (!wasLongPressBackDown) {
+                closePanel(st, true);
+            }
+            return true;
+        }
+
         // Back cancels action modes first.
         if (mActionMode != null) {
             mActionMode.finish();
@@ -1453,7 +1552,6 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
     boolean dispatchKeyEvent(KeyEvent event) {
         // Check AppCompatDialog directly since it isn't able to implement KeyEventDispatcher
-        // while it is @hide.
         if (mHost instanceof KeyEventDispatcher.Component || mHost instanceof AppCompatDialog) {
             View root = mWindow.getDecorView();
             if (root != null && KeyEventDispatcher.dispatchBeforeHierarchy(root, event)) {
@@ -1463,7 +1561,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         if (event.getKeyCode() == KeyEvent.KEYCODE_MENU) {
             // If this is a MENU event, let the Activity have a go.
-            if (mAppCompatWindowCallback.getWrapped().dispatchKeyEvent(event)) {
+            if (mAppCompatWindowCallback.bypassDispatchKeyEvent(mWindow.getCallback(), event)) {
                 return true;
             }
         }
@@ -1481,19 +1579,6 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 onKeyUpPanel(Window.FEATURE_OPTIONS_PANEL, event);
                 return true;
             case KeyEvent.KEYCODE_BACK:
-                final boolean wasLongPressBackDown = mLongPressBackDown;
-                mLongPressBackDown = false;
-
-                PanelFeatureState st = getPanelState(Window.FEATURE_OPTIONS_PANEL, false);
-                if (st != null && st.isOpen) {
-                    if (!wasLongPressBackDown) {
-                        // Certain devices allow opening the options menu via a long press of the
-                        // back button. We should only close the open options menu if it wasn't
-                        // opened via a long press gesture.
-                        closePanel(st, true);
-                    }
-                    return true;
-                }
                 if (onBackPressed()) {
                     return true;
                 }
@@ -1512,7 +1597,9 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 return true;
             case KeyEvent.KEYCODE_BACK:
                 // Certain devices allow opening the options menu via a long press of the back
-                // button. We keep a record of whether the last event is from a long press.
+                // button. We keep a record of whether the last event is from a long press. On SDK
+                // 33 and above, back invocation handling may prevent us from receiving this event;
+                // however, devices running SDK 33 are unlikely to support this feature anyway.
                 mLongPressBackDown = (event.getFlags() & KeyEvent.FLAG_LONG_PRESS) != 0;
                 break;
         }
@@ -1526,13 +1613,15 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             TypedArray a = mContext.obtainStyledAttributes(R.styleable.AppCompatTheme);
             String viewInflaterClassName =
                     a.getString(R.styleable.AppCompatTheme_viewInflaterClass);
+            a.recycle();
             if (viewInflaterClassName == null) {
                 // Set to null (the default in all AppCompat themes). Create the base inflater
                 // (no reflection)
                 mAppCompatViewInflater = new AppCompatViewInflater();
             } else {
                 try {
-                    Class<?> viewInflaterClass = Class.forName(viewInflaterClassName);
+                    Class<?> viewInflaterClass =
+                            mContext.getClassLoader().loadClass(viewInflaterClassName);
                     mAppCompatViewInflater =
                             (AppCompatViewInflater) viewInflaterClass.getDeclaredConstructor()
                                     .newInstance();
@@ -1583,7 +1672,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 // added to the hierarchy at the end of the inflate() call.
                 return true;
             } else if (parent == windowDecor || !(parent instanceof View)
-                    || ViewCompat.isAttachedToWindow((View) parent)) {
+                    || ((View) parent).isAttachedToWindow()) {
                 // We have either hit the window's decor view, a parent which isn't a View
                 // (i.e. ViewRootImpl), or an attached view, so we know that the original parent
                 // is currently added to the view hierarchy. This means that it has not be
@@ -1738,6 +1827,11 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         wm.addView(st.decorView, lp);
         st.isOpen = true;
+
+        // st.isOpen for feature FEATURE_OPTIONS_PANEL changed.
+        if (st.featureId == Window.FEATURE_OPTIONS_PANEL) {
+            updateBackInvokedCallbackState();
+        }
     }
 
     private boolean initializePanelDecor(PanelFeatureState st) {
@@ -2007,6 +2101,11 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         if (mPreparedPanel == st) {
             mPreparedPanel = null;
         }
+
+        // st.isOpen for feature FEATURE_OPTIONS_PANEL changed.
+        if (st.featureId == Window.FEATURE_OPTIONS_PANEL) {
+            updateBackInvokedCallbackState();
+        }
     }
 
     private boolean onKeyDownPanel(int featureId, KeyEvent event) {
@@ -2098,7 +2197,7 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             // We need to be careful which callback we dispatch the call to. We can not dispatch
             // this to the Window's callback since that will call back into this method and cause a
             // crash. Instead we need to dispatch down to the original Activity/Dialog/etc.
-            mAppCompatWindowCallback.getWrapped().onPanelClosed(featureId, menu);
+            mAppCompatWindowCallback.bypassOnPanelClosed(mWindow.getCallback(), featureId, menu);
         }
     }
 
@@ -2369,15 +2468,50 @@ class AppCompatDelegateImpl extends AppCompatDelegate
     }
 
     @Override
-    public boolean applyDayNight() {
-        return applyDayNight(true);
+    public Context getContextForDelegate() {
+        return mContext;
     }
 
+    @Override
+    public boolean applyDayNight() {
+        return applyApplicationSpecificConfig(true);
+    }
+
+    @Override
+    boolean applyAppLocales() {
+        // This method is only reached when there is an explicit call to setApplicationLocales().
+        if (isAutoStorageOptedIn(mContext)
+                && getRequestedAppLocales() != null
+                && !getRequestedAppLocales().equals(getStoredAppLocales())) {
+            // If the developer has opted in to autoStore the locales, we need to store the locales
+            // for the application here. This is done using the syncRequestedAndStoredLocales,
+            // called asynchronously on a worker thread.
+            asyncExecuteSyncRequestedAndStoredLocales(mContext);
+        }
+        return applyApplicationSpecificConfig(true);
+    }
+
+    /**
+     * Applies application configuration to the activity.
+     */
+    private boolean applyApplicationSpecificConfig(final boolean allowRecreation) {
+        return applyApplicationSpecificConfig(allowRecreation,
+                /* isLocalesApplicationRequired */ true);
+    }
+
+    /**
+     * Applies application configuration to the activity.
+     *
+     * <p>By passing appropriate values to the input parameter {@param isLocalesApplicationRequired}
+     * application of locales config on the current activity can be triggered or suppressed.</p>
+     */
     @SuppressWarnings("deprecation")
-    private boolean applyDayNight(final boolean allowRecreation) {
+    private boolean applyApplicationSpecificConfig(final boolean allowRecreation,
+            final boolean isLocalesApplicationRequired) {
         if (mDestroyed) {
             if (DEBUG) {
-                Log.d(TAG, "applyDayNight. Skipping because host is destroyed");
+                Log.d(TAG, "applyApplicationSpecificConfig. Skipping because host is "
+                        + "destroyed");
             }
             // If we're destroyed, ignore the call
             return false;
@@ -2385,7 +2519,23 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         @NightMode final int nightMode = calculateNightMode();
         @ApplyableNightMode final int modeToApply = mapNightMode(mContext, nightMode);
-        final boolean applied = updateForNightMode(modeToApply, allowRecreation);
+
+        LocaleListCompat localesToBeApplied = null;
+        if (Build.VERSION.SDK_INT < 33) {
+            localesToBeApplied = calculateApplicationLocales(mContext);
+        }
+
+        if (!isLocalesApplicationRequired && localesToBeApplied != null) {
+            // Reaching here would mean that the requested locales has already been applied and
+            // no modification is required. Hence, localesToBeApplied is kept same as the current
+            // configuration locales.
+            localesToBeApplied =
+                    getConfigurationLocales(mContext.getResources()
+                            .getConfiguration());
+        }
+
+        final boolean applied = updateAppConfiguration(modeToApply, localesToBeApplied,
+                allowRecreation);
 
         if (nightMode == MODE_NIGHT_AUTO_TIME) {
             getAutoTimeNightModeManager(mContext).setup();
@@ -2403,8 +2553,57 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         return applied;
     }
 
+    /**
+     * Returns the required {@link LocaleListCompat}  for the current application. This method
+     * checks for requested app-specific locales and returns them after an overlay
+     * with the system locales. If requested app-specific do not exist, it returns a null.
+     */
+    @Nullable
+    LocaleListCompat calculateApplicationLocales(@NonNull Context context) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            return null;
+        }
+        LocaleListCompat requestedLocales = getRequestedAppLocales();
+        if (requestedLocales == null) {
+            return null;
+        }
+        LocaleListCompat systemLocales = getConfigurationLocales(
+                context.getApplicationContext()
+                        .getResources().getConfiguration());
+
+        LocaleListCompat localesToBeApplied;
+        if (Build.VERSION.SDK_INT >= 24) {
+            // For API>=24 the application locales are applied as a localeList. The localeList
+            // to be applied is an overlay of app-specific locales and the system locales.
+            localesToBeApplied = combineLocalesIfOverlayExists(requestedLocales,
+                    systemLocales);
+        } else {
+            // For API<24 the application does not have a localeList instead it has a single
+            // locale, which we have set as the locale with the highest preference i.e. the first
+            // one from the requested locales.
+            if (requestedLocales.isEmpty()) {
+                localesToBeApplied = LocaleListCompat.getEmptyLocaleList();
+            } else if (Build.VERSION.SDK_INT >= 21) {
+                localesToBeApplied =
+                        LocaleListCompat.forLanguageTags(Api21Impl.toLanguageTag(
+                                requestedLocales.get(0)));
+            } else {
+                // The method Locale.forLanguageTag() was introduced in API level 21,
+                // using Locale.toString() method for APIs below that.
+                localesToBeApplied =
+                        LocaleListCompat.forLanguageTags(requestedLocales.get(0).toString());
+            }
+        }
+
+        if (localesToBeApplied.isEmpty()) {
+            // If the localesToBeApplied is empty, it implies that there are no app-specific locales
+            // set for this application and systemLocales should be followed.
+            localesToBeApplied = systemLocales;
+        }
+        return localesToBeApplied;
+    }
+
     @Override
-    @RequiresApi(17)
     public void setLocalNightMode(@NightMode int mode) {
         if (DEBUG) {
             Log.d(TAG, String.format("setLocalNightMode. New: %d, Current: %d",
@@ -2461,10 +2660,37 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         return mLocalNightMode != MODE_NIGHT_UNSPECIFIED ? mLocalNightMode : getDefaultNightMode();
     }
 
+    void setConfigurationLocales(Configuration conf, @NonNull LocaleListCompat locales) {
+        if (Build.VERSION.SDK_INT >= 24) {
+            Api24Impl.setLocales(conf, locales);
+        } else {
+            conf.setLocale(locales.get(0));
+            conf.setLayoutDirection(locales.get(0));
+        }
+    }
+
+    LocaleListCompat getConfigurationLocales(Configuration conf) {
+        if (Build.VERSION.SDK_INT >= 24) {
+            return Api24Impl.getLocales(conf);
+        } else if (Build.VERSION.SDK_INT >= 21) {
+            return LocaleListCompat.forLanguageTags(Api21Impl.toLanguageTag(conf.locale));
+        } else {
+            return LocaleListCompat.create(conf.locale);
+        }
+    }
+
+    void setDefaultLocalesForLocaleList(LocaleListCompat locales) {
+        if (Build.VERSION.SDK_INT >= 24) {
+            Api24Impl.setDefaultLocales(locales);
+        } else {
+            Locale.setDefault(locales.get(0));
+        }
+    }
+
     @NonNull
-    private Configuration createOverrideConfigurationForDayNight(
-            @NonNull Context context, @ApplyableNightMode final int mode,
-            @Nullable Configuration configOverlay) {
+    private Configuration createOverrideAppConfiguration(@NonNull Context context,
+            @ApplyableNightMode int mode, @Nullable LocaleListCompat locales,
+            @Nullable Configuration configOverlay, boolean ignoreFollowSystem) {
         int newNightMode;
         switch (mode) {
             case MODE_NIGHT_YES:
@@ -2475,11 +2701,17 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 break;
             default:
             case MODE_NIGHT_FOLLOW_SYSTEM:
-                // If we're following the system, we just use the system default from the
-                // application context
-                final Configuration appConfig =
-                        context.getApplicationContext().getResources().getConfiguration();
-                newNightMode = appConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                if (ignoreFollowSystem) {
+                    // We're generating an overlay to be used on top of the system configuration,
+                    // so use whatever's already there.
+                    newNightMode = Configuration.UI_MODE_NIGHT_UNDEFINED;
+                } else {
+                    // If we're following the system, we just use the system default from the
+                    // application context
+                    final Configuration appConfig =
+                            context.getApplicationContext().getResources().getConfiguration();
+                    newNightMode = appConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                }
                 break;
         }
 
@@ -2492,43 +2724,74 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         overrideConf.uiMode = newNightMode
                 | (overrideConf.uiMode & ~Configuration.UI_MODE_NIGHT_MASK);
 
+        if (locales != null) {
+            setConfigurationLocales(overrideConf, locales);
+        }
         return overrideConf;
     }
 
     /**
-     * Updates the {@link Resources} configuration {@code uiMode} with the
-     * chosen {@code UI_MODE_NIGHT} value.
+     * Updates the {@link Resources} configuration {@code uiMode}  and {@Link LocaleList} with the
+     * chosen configuration values.
      *
-     * @param mode The new night mode to apply
+     * @param nightMode The new night mode to apply
+     * @param locales The new Locales to be applied
      * @param allowRecreation whether to attempt activity recreate
      * @return true if an action has been taken (recreation, resources updating, etc)
      */
-    private boolean updateForNightMode(@ApplyableNightMode final int mode,
-            final boolean allowRecreation) {
+    private boolean updateAppConfiguration(int nightMode, @Nullable LocaleListCompat
+            locales, final boolean allowRecreation) {
         boolean handled = false;
 
         final Configuration overrideConfig =
-                createOverrideConfigurationForDayNight(mContext, mode, null);
+                createOverrideAppConfiguration(mContext, nightMode, locales, null, false);
 
-        final boolean activityHandlingUiMode = isActivityManifestHandlingUiMode();
+        final int activityHandlingConfigChange = getActivityHandlesConfigChangesFlags(mContext);
         final Configuration currentConfiguration = mEffectiveConfiguration == null
                 ? mContext.getResources().getConfiguration() : mEffectiveConfiguration;
         final int currentNightMode = currentConfiguration.uiMode
                 & Configuration.UI_MODE_NIGHT_MASK;
         final int newNightMode = overrideConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
 
-        if (DEBUG) {
-            Log.d(TAG, String.format(
-                    "updateForNightMode [allowRecreation:%s, currentNightMode:%d, "
-                            + "newNightMode:%d, activityHandlingUiMode:%s, baseContextAttached:%s, "
-                            + "created:%s, canReturnDifferentContext:%s, host:%s]",
-                    allowRecreation, currentNightMode, newNightMode, activityHandlingUiMode,
-                    mBaseContextAttached, mCreated, sCanReturnDifferentContext, mHost));
+        final LocaleListCompat currentLocales = getConfigurationLocales(currentConfiguration);
+        final LocaleListCompat newLocales;
+        if (locales == null) {
+            newLocales = null;
+        } else {
+            newLocales = getConfigurationLocales(overrideConfig);
         }
 
-        if (currentNightMode != newNightMode
+        // Bitmask representing if there is a change in nightMode or Locales, mapped by bits
+        // ActivityInfo.CONFIG_UI_MODE and ActivityInfo.CONFIG_LOCALE respectively.
+        int configChanges = 0;
+        if (currentNightMode != newNightMode) {
+            configChanges |= ActivityInfo.CONFIG_UI_MODE;
+        }
+        if (newLocales != null && !currentLocales.equals(newLocales)) {
+            configChanges |= ActivityInfo.CONFIG_LOCALE;
+            configChanges |= ActivityInfo.CONFIG_LAYOUT_DIRECTION;
+        }
+
+        if (DEBUG) {
+            Log.d(TAG, String.format(
+                    "updateAppConfiguration [allowRecreation:%s, "
+                            + "currentNightMode:%s, newNightMode:%s, currentLocales:%s, "
+                            + "newLocales:%s, activityHandlingNightModeChanges:%s, "
+                            + "activityHandlingLocalesChanges:%s, "
+                            + "activityHandlingLayoutDirectionChanges:%s, "
+                            + "baseContextAttached:%s, "
+                            + "created:%s, canReturnDifferentContext:%s, host:%s]",
+                    allowRecreation, currentNightMode, newNightMode,
+                    currentLocales,
+                    newLocales,
+                    ((activityHandlingConfigChange & ActivityInfo.CONFIG_UI_MODE) != 0),
+                    ((activityHandlingConfigChange & ActivityInfo.CONFIG_LOCALE) != 0),
+                    ((activityHandlingConfigChange & ActivityInfo.CONFIG_LAYOUT_DIRECTION) != 0),
+                    mBaseContextAttached, mCreated,
+                    sCanReturnDifferentContext, mHost));
+        }
+        if ((~activityHandlingConfigChange & configChanges) != 0
                 && allowRecreation
-                && !activityHandlingUiMode
                 && mBaseContextAttached
                 && (sCanReturnDifferentContext || mCreated)
                 && mHost instanceof Activity
@@ -2537,41 +2800,69 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             // attachBaseContext() + createConfigurationContext() code path.
             // Else, we need to use updateConfiguration() before we're 'created' (below)
             if (DEBUG) {
-                Log.d(TAG, "updateForNightMode attempting to recreate Activity: " + mHost);
+                Log.d(TAG, "updateAppConfiguration attempting to recreate Activity: "
+                        + mHost);
+            }
+
+            // To workaround the android framework issue(b/242026447) which doesn't update the
+            // layout direction after recreating in Android S.
+            if (Build.VERSION.SDK_INT >= 31
+                    && (configChanges & ActivityInfo.CONFIG_LAYOUT_DIRECTION) != 0) {
+                View view = ((Activity) mHost).getWindow().getDecorView();
+                view.setLayoutDirection(overrideConfig.getLayoutDirection());
             }
             ActivityCompat.recreate((Activity) mHost);
             handled = true;
         } else if (DEBUG) {
-            Log.d(TAG, "updateForNightMode not recreating Activity: " + mHost);
+            Log.d(TAG, "updateAppConfiguration not recreating Activity: " + mHost);
         }
 
-        if (!handled && currentNightMode != newNightMode) {
+        if (!handled && (configChanges != 0)) {
             // Else we need to use the updateConfiguration path
             if (DEBUG) {
-                Log.d(TAG, "updateForNightMode. Updating resources config on host: " + mHost);
+                Log.d(TAG, "updateAppConfiguration. Updating resources config on host: "
+                        + mHost);
             }
-            updateResourcesConfigurationForNightMode(newNightMode, activityHandlingUiMode, null);
+            // If all the configurations that need to be altered are handled by the activity,
+            // only then callOnConfigChange is set to true.
+            updateResourcesConfiguration(newNightMode, newLocales,
+                    /* callOnConfigChange = */(configChanges & activityHandlingConfigChange)
+                            == configChanges, null);
+
             handled = true;
         }
 
         if (DEBUG && !handled) {
-            Log.d(TAG, "updateForNightMode. Skipping. Night mode: " + mode + " for host:" + mHost);
+            Log.d(TAG,
+                    "updateAppConfiguration. Skipping. nightMode: " + nightMode + " and "
+                            + "locales: " +  locales + " for host:" + mHost);
         }
 
-        // Notify the activity of the night mode. We only notify if we handled the change,
-        // or the Activity is set to handle uiMode changes
         if (handled && mHost instanceof AppCompatActivity) {
-            ((AppCompatActivity) mHost).onNightModeChanged(mode);
+            if ((configChanges & ActivityInfo.CONFIG_UI_MODE) != 0) {
+                ((AppCompatActivity) mHost).onNightModeChanged(nightMode);
+            }
+            if ((configChanges & ActivityInfo.CONFIG_LOCALE) != 0) {
+                ((AppCompatActivity) mHost).onLocalesChanged(locales);
+            }
         }
 
+        if (newLocales != null) {
+            // LocaleListCompat's default locales are updated here using the configuration
+            // locales to keep default locales in sync with application locales and also to cover
+            // the case where framework re-adjusts input locales by bringing forward the most
+            // suitable locale.
+            setDefaultLocalesForLocaleList(getConfigurationLocales(
+                    mContext.getResources().getConfiguration()));
+        }
         return handled;
     }
 
-    private void updateResourcesConfigurationForNightMode(
-            final int uiModeNightModeValue, final boolean callOnConfigChange,
+    private void updateResourcesConfiguration(int uiModeNightModeValue,
+            @Nullable final LocaleListCompat locales, final boolean callOnConfigChange,
             @Nullable Configuration configOverlay) {
-        // If the Activity is not set to handle uiMode config changes we will
-        // update the Resources with a new Configuration with an updated UI Mode
+        // If the Activity is not set to handle config changes we will
+        // update the Resources with a new Configuration with  updated nightMode and locales.
         final Resources res = mContext.getResources();
         final Configuration conf = new Configuration(res.getConfiguration());
         if (configOverlay != null) {
@@ -2579,6 +2870,9 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         }
         conf.uiMode = uiModeNightModeValue
                 | (res.getConfiguration().uiMode & ~Configuration.UI_MODE_NIGHT_MASK);
+        if (locales != null) {
+            setConfigurationLocales(conf, locales);
+        }
         res.updateConfiguration(conf, null);
 
         // We may need to flush the Resources' drawable cache due to framework bugs.
@@ -2602,25 +2896,28 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         }
 
         if (callOnConfigChange && mHost instanceof Activity) {
-            final Activity activity = (Activity) mHost;
-            if (activity instanceof LifecycleOwner) {
-                // If the Activity is a LifecyleOwner, check that it is after onCreate() and
-                // before onDestroy(), which includes STOPPED.
-                Lifecycle lifecycle = ((LifecycleOwner) activity).getLifecycle();
-                if (lifecycle.getCurrentState().isAtLeast(Lifecycle.State.CREATED)) {
-                    activity.onConfigurationChanged(conf);
-                }
-            } else {
-                // Otherwise, we'll fallback to our internal created and destroyed flags.
-                if (mCreated && !mDestroyed) {
-                    activity.onConfigurationChanged(conf);
-                }
+            updateActivityConfiguration(conf);
+        }
+    }
+
+    private void updateActivityConfiguration(Configuration conf) {
+        final Activity activity = (Activity) mHost;
+        if (activity instanceof LifecycleOwner) {
+            // If the Activity is a LifecyleOwner, check that it is after onCreate() and
+            // before onDestroy(), which includes STOPPED.
+            Lifecycle lifecycle = ((LifecycleOwner) activity).getLifecycle();
+            if (lifecycle.getCurrentState().isAtLeast(Lifecycle.State.CREATED)) {
+                activity.onConfigurationChanged(conf);
+            }
+        } else {
+            // Otherwise, we'll fallback to our internal created and destroyed flags.
+            if (mCreated && !mDestroyed) {
+                activity.onConfigurationChanged(conf);
             }
         }
     }
 
     /**
-     * @hide
      */
     @NonNull
     @RestrictTo(LIBRARY)
@@ -2644,13 +2941,14 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         return mAutoBatteryNightModeManager;
     }
 
-    private boolean isActivityManifestHandlingUiMode() {
-        if (!mActivityHandlesUiModeChecked && mHost instanceof Activity) {
-            final PackageManager pm = mContext.getPackageManager();
+    private int getActivityHandlesConfigChangesFlags(Context baseContext) {
+        if (!mActivityHandlesConfigFlagsChecked
+                && mHost instanceof Activity) {
+            final PackageManager pm = baseContext.getPackageManager();
             if (pm == null) {
-                // If we don't have a PackageManager, return false. Don't set
+                // If we don't have a PackageManager, return 0. Don't set
                 // the checked flag though so we still check again later
-                return false;
+                return 0;
             }
             try {
                 int flags = 0;
@@ -2666,20 +2964,20 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                             | PackageManager.MATCH_DIRECT_BOOT_UNAWARE;
                 }
                 final ActivityInfo info = pm.getActivityInfo(
-                        new ComponentName(mContext, mHost.getClass()), flags);
-                mActivityHandlesUiMode = info != null
-                        && (info.configChanges & ActivityInfo.CONFIG_UI_MODE) != 0;
+                        new ComponentName(baseContext, mHost.getClass()), flags);
+                if (info != null) {
+                    mActivityHandlesConfigFlags = info.configChanges;
+                }
             } catch (PackageManager.NameNotFoundException e) {
                 // This shouldn't happen but let's not crash because of it, we'll just log and
                 // return false (since most apps won't be handling it)
                 Log.d(TAG, "Exception while getting ActivityInfo", e);
-                mActivityHandlesUiMode = false;
+                mActivityHandlesConfigFlags = 0;
             }
         }
         // Flip the checked flag so we don't check again
-        mActivityHandlesUiModeChecked = true;
-
-        return mActivityHandlesUiMode;
+        mActivityHandlesConfigFlagsChecked = true;
+        return mActivityHandlesConfigFlags;
     }
 
     /**
@@ -2739,6 +3037,9 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             }
             mActionMode = null;
             ViewCompat.requestApplyInsets(mSubDecor);
+
+            // mActionMode changed.
+            updateBackInvokedCallbackState();
         }
     }
 
@@ -3074,6 +3375,9 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
     class AppCompatWindowCallback extends WindowCallbackWrapper {
         private ActionBarMenuCallback mActionBarCallback;
+        private boolean mOnContentChangedBypassEnabled;
+        private boolean mDispatchKeyEventBypassEnabled;
+        private boolean mOnPanelClosedBypassEnabled;
 
         AppCompatWindowCallback(Window.Callback callback) {
             super(callback);
@@ -3085,6 +3389,10 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
+            if (mDispatchKeyEventBypassEnabled) {
+                return getWrapped().dispatchKeyEvent(event);
+            }
+
             return AppCompatDelegateImpl.this.dispatchKeyEvent(event)
                     || super.dispatchKeyEvent(event);
         }
@@ -3118,6 +3426,11 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         @Override
         public void onContentChanged() {
+            if (mOnContentChangedBypassEnabled) {
+                getWrapped().onContentChanged();
+                return;
+            }
+
             // We purposely do not propagate this call as this is called when we install
             // our sub-decor rather than the user's content
         }
@@ -3164,6 +3477,11 @@ class AppCompatDelegateImpl extends AppCompatDelegate
 
         @Override
         public void onPanelClosed(int featureId, Menu menu) {
+            if (mOnPanelClosedBypassEnabled) {
+                getWrapped().onPanelClosed(featureId, menu);
+                return;
+            }
+
             super.onPanelClosed(featureId, menu);
             AppCompatDelegateImpl.this.onPanelClosed(featureId);
         }
@@ -3233,10 +3551,61 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 super.onProvideKeyboardShortcuts(data, menu, deviceId);
             }
         }
+
+        /**
+         * Performs a call to {@link Window.Callback#onContentChanged()}, ensuring that if the
+         * delegate's own {@link #onContentChanged()} is called then it delegates directly to the
+         * wrapped callback.
+         *
+         * @param c the callback
+         */
+        public void bypassOnContentChanged(Window.Callback c) {
+            try {
+                mOnContentChangedBypassEnabled = true;
+                c.onContentChanged();
+            } finally {
+                mOnContentChangedBypassEnabled = false;
+            }
+        }
+
+        /**
+         * Performs a call to {@link Window.Callback#dispatchKeyEvent(KeyEvent)}, ensuring that if
+         * the delegate's own {@link #dispatchKeyEvent(KeyEvent)} is called then it delegates
+         * directly to the wrapped callback.
+         *
+         * @param c the callback
+         * @param e the key event to dispatch
+         * @return whether the key event was handled
+         */
+        public boolean bypassDispatchKeyEvent(Window.Callback c, KeyEvent e) {
+            try {
+                mDispatchKeyEventBypassEnabled = true;
+                return c.dispatchKeyEvent(e);
+            } finally {
+                mDispatchKeyEventBypassEnabled = false;
+            }
+        }
+
+        /**
+         * Performs a call to {@link Window.Callback#onPanelClosed(int, Menu)}, ensuring that if the
+         * delegate's own {@link #onPanelClosed(int, Menu)} is called then it delegates directly to
+         * the wrapped callback.
+         *
+         * @param c the callback
+         * @param featureId the feature ID for the panel
+         * @param menu the menu represented by the panel
+         */
+        public void bypassOnPanelClosed(Window.Callback c, int featureId, Menu menu) {
+            try {
+                mOnPanelClosedBypassEnabled = true;
+                c.onPanelClosed(featureId, menu);
+            } finally {
+                mOnPanelClosedBypassEnabled = false;
+            }
+        }
     }
 
     /**
-     * @hide
      */
     @VisibleForTesting
     @RestrictTo(LIBRARY)
@@ -3510,8 +3879,8 @@ class AppCompatDelegateImpl extends AppCompatDelegate
             delta.smallestScreenWidthDp = change.smallestScreenWidthDp;
         }
 
-        if (Build.VERSION.SDK_INT >= 17) {
-            Api17Impl.generateConfigDelta_densityDpi(base, change, delta);
+        if (base.densityDpi != change.densityDpi) {
+            delta.densityDpi = change.densityDpi;
         }
 
         // Assets sequence and window configuration are not supported.
@@ -3519,29 +3888,18 @@ class AppCompatDelegateImpl extends AppCompatDelegate
         return delta;
     }
 
-    @RequiresApi(17)
-    static class Api17Impl {
-        private Api17Impl() { }
-
-        static void generateConfigDelta_densityDpi(@NonNull Configuration base,
-                @NonNull Configuration change, @NonNull Configuration delta) {
-            if (base.densityDpi != change.densityDpi) {
-                delta.densityDpi = change.densityDpi;
-            }
-        }
-
-        static Context createConfigurationContext(@NonNull Context context,
-                @NonNull Configuration overrideConfiguration) {
-            return context.createConfigurationContext(overrideConfiguration);
-        }
-    }
-
     @RequiresApi(21)
     static class Api21Impl {
         private Api21Impl() { }
 
+        @DoNotInline
         static boolean isPowerSaveMode(PowerManager powerManager) {
             return powerManager.isPowerSaveMode();
+        }
+
+        @DoNotInline
+        static String toLanguageTag(Locale locale) {
+            return locale.toLanguageTag();
         }
     }
 
@@ -3549,6 +3907,9 @@ class AppCompatDelegateImpl extends AppCompatDelegate
     static class Api24Impl {
         private Api24Impl() { }
 
+        // Most methods of LocaleListCompat requires a minimum API of 24 to be used and these are
+        // the helper implementations of those methods, used to indirectly invoke them in our code.
+        @DoNotInline
         static void generateConfigDelta_locale(@NonNull Configuration base,
                 @NonNull Configuration change, @NonNull Configuration delta) {
             final LocaleList baseLocales = base.getLocales();
@@ -3557,6 +3918,21 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                 delta.setLocales(changeLocales);
                 delta.locale = change.locale;
             }
+        }
+
+        @DoNotInline
+        static LocaleListCompat getLocales(Configuration configuration) {
+            return LocaleListCompat.forLanguageTags(configuration.getLocales().toLanguageTags());
+        }
+
+        @DoNotInline
+        static void setLocales(Configuration configuration, LocaleListCompat locales) {
+            configuration.setLocales(LocaleList.forLanguageTags(locales.toLanguageTags()));
+        }
+
+        @DoNotInline
+        public static void setDefaultLocales(LocaleListCompat locales) {
+            LocaleList.setDefault(LocaleList.forLanguageTags(locales.toLanguageTags()));
         }
     }
 
@@ -3576,6 +3952,35 @@ class AppCompatDelegateImpl extends AppCompatDelegate
                     != (change.colorMode & Configuration.COLOR_MODE_HDR_MASK)) {
                 delta.colorMode |= change.colorMode & Configuration.COLOR_MODE_HDR_MASK;
             }
+        }
+    }
+
+    @RequiresApi(33)
+    static class Api33Impl {
+        private Api33Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static OnBackInvokedCallback registerOnBackPressedCallback(
+                Object dispatcher, AppCompatDelegateImpl delegate) {
+            OnBackInvokedCallback onBackInvokedCallback = delegate::onBackPressed;
+            OnBackInvokedDispatcher typedDispatcher = (OnBackInvokedDispatcher) dispatcher;
+            typedDispatcher.registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_OVERLAY, onBackInvokedCallback);
+            return onBackInvokedCallback;
+        }
+
+        @DoNotInline
+        static void unregisterOnBackInvokedCallback(Object dispatcher, Object callback) {
+            OnBackInvokedCallback onBackInvokedCallback = (OnBackInvokedCallback) callback;
+            OnBackInvokedDispatcher typedDispatcher = (OnBackInvokedDispatcher) dispatcher;
+            typedDispatcher.unregisterOnBackInvokedCallback(onBackInvokedCallback);
+        }
+
+        @DoNotInline
+        static OnBackInvokedDispatcher getOnBackInvokedDispatcher(Activity activity) {
+            return activity.getOnBackInvokedDispatcher();
         }
     }
 }

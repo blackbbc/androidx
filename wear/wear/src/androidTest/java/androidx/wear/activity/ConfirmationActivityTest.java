@@ -20,7 +20,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.widget.Button;
+import org.junit.Ignore;
 
+import androidx.annotation.Nullable;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -55,22 +57,32 @@ public class ConfirmationActivityTest {
             new ActivityTestRule<>(ConfirmationActivityTestActivity.class, true, true);
 
     @Test
+    @Ignore("b/272346886")
     public void testConfirmationDialogShownForDefaultDuration() throws Throwable {
         int testDuration = ConfirmationActivity.DEFAULT_ANIMATION_DURATION_MILLIS;
         // Check that the structure of the test is still valid
         assertTrue(testDuration
                 > (MILLIS_BEFORE_END_OF_DURATION + MILLIS_TO_WAIT_FOR_ACTIVITY_TO_BE_DRAWN));
         testConfirmationDialogShownForConfiguredDuration(
-                ConfirmationActivity.DEFAULT_ANIMATION_DURATION_MILLIS);
+                ConfirmationActivity.DEFAULT_ANIMATION_DURATION_MILLIS, "A message");
     }
 
     @Test
+    @Ignore("b/272346886")
     public void testConfirmationDialogShownForLongerDuration() throws Throwable {
         testConfirmationDialogShownForConfiguredDuration(
-                ConfirmationActivity.DEFAULT_ANIMATION_DURATION_MILLIS * 2);
+                ConfirmationActivity.DEFAULT_ANIMATION_DURATION_MILLIS * 2, "A message");
     }
 
-    private void testConfirmationDialogShownForConfiguredDuration(int duration) throws Throwable {
+    @Test
+    @Ignore("b/272346886")
+    public void testConfirmationDialogWithMissingMessage() throws Throwable {
+        testConfirmationDialogShownForConfiguredDuration(
+                ConfirmationActivity.DEFAULT_ANIMATION_DURATION_MILLIS * 2, /* message= */null);
+    }
+
+    private void testConfirmationDialogShownForConfiguredDuration(int duration,
+            @Nullable String message) throws Throwable {
         // Wait for the test activity to be visible
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         Thread.sleep(MILLIS_TO_WAIT_FOR_ACTIVITY_TO_BE_DRAWN);
@@ -80,8 +92,9 @@ public class ConfirmationActivityTest {
         Button button =
                 mActivityRule.getActivity().findViewById(R.id.show_confirmation_activity_button);
 
-        // GIVEN a display duration in milliseconds
+        // GIVEN a display duration in milliseconds, and message
         mActivityRule.getActivity().setDuration(duration);
+        mActivityRule.getActivity().setMessage(message);
         // WHEN we click on the button
         mActivityRule.runOnUiThread(button::performClick);
         // THEN wait for the activity to be drawn

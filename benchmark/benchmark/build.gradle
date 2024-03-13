@@ -14,6 +14,15 @@
  * limitations under the License.
  */
 
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.LibraryType
+
 plugins {
     id("AndroidXPlugin")
     id("com.android.library")
@@ -21,20 +30,22 @@ plugins {
     id("androidx.benchmark")
 }
 
-android {
-    defaultConfig {
-        // 18 needed for UI automator dependency, via benchmark-macro-junit4
-        minSdkVersion 18
-    }
-}
-
 dependencies {
     androidTestImplementation(project(":benchmark:benchmark-junit4"))
-    androidTestImplementation(project(":benchmark:benchmark-macro-junit4"))
     androidTestImplementation(project(":tracing:tracing-ktx"))
+    androidTestImplementation(project(":tracing:tracing-perfetto"))
+    androidTestImplementation(project(":tracing:tracing-perfetto-binary"))
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.testRules)
     androidTestImplementation(libs.testExtJunit)
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.kotlinStdlib)
+}
+
+android {
+    namespace "androidx.benchmark.benchmark"
+}
+
+androidx {
+    type = LibraryType.INTERNAL_TEST_LIBRARY
 }

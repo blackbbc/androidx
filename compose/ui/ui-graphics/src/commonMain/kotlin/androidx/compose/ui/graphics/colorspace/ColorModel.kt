@@ -16,6 +16,7 @@
 
 package androidx.compose.ui.graphics.colorspace
 
+import androidx.annotation.IntRange
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.util.packInts
@@ -27,9 +28,9 @@ import androidx.compose.ui.util.unpackInt1
  * model is the [RGB][Rgb] color model which defines a color
  * as represented by a tuple of 3 numbers (red, green and blue).
  */
-@Suppress("INLINE_CLASS_DEPRECATED", "EXPERIMENTAL_FEATURE_WARNING")
 @Immutable
-inline class ColorModel internal constructor (
+@kotlin.jvm.JvmInline
+value class ColorModel internal constructor(
     /**
      * pack both the number of components and an ordinal value to distinguish between
      * different ColorModel types that have the same number of components
@@ -41,7 +42,7 @@ inline class ColorModel internal constructor (
      *
      * @return An integer between 1 and 4
      */
-    /*@IntRange(from = 1, to = 4)*/
+    @get:IntRange(from = 1, to = 4)
     @Stable
     val componentCount: Int
         get() {

@@ -16,32 +16,31 @@
 
 package androidx.inspection.gradle
 
+import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.Variant
 import com.android.build.gradle.LibraryExtension
 import com.google.protobuf.gradle.GenerateProtoTask
-import com.google.protobuf.gradle.ProtobufConvention
+import com.google.protobuf.gradle.ProtobufExtension
 import com.google.protobuf.gradle.ProtobufPlugin
-import com.google.protobuf.gradle.generateProtoTasks
-import com.google.protobuf.gradle.protoc
+import java.io.File
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.MinimalExternalModuleDependency
+import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.StopExecutionException
 import org.gradle.kotlin.dsl.apply
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.dependencies
-import org.gradle.kotlin.dsl.getPlugin
-import java.io.File
 
 /**
  * A plugin which, when present, ensures that intermediate inspector
  * resources are generated at build time
  */
-@Suppress("SyntheticAccessor")
 class InspectionPlugin : Plugin<Project> {
-    // project.register* are marked with @ExperimentalStdlibApi, because they use experimental
-    // string.capitalize call.
-    @ExperimentalStdlibApi
     override fun apply(project: Project) {
         var foundLibraryPlugin = false
         var foundReleaseVariant = false
@@ -53,18 +52,43 @@ class InspectionPlugin : Plugin<Project> {
             it.setupInspectorAttribute()
         }
 
+        val publishNonDexedInspector = project.configurations.create("publishNonDexedInspector") {
+            it.isCanBeConsumed = true
+            it.isCanBeResolved = false
+            it.setupNonDexedInspectorAttribute()
+        }
+
+        project.configurations.create(EXPORT_INSPECTOR_DEPENDENCIES) {
+            // to allow including these dependencies in an SBOM
+            it.description = "Re-publishes dependencies of the inspector"
+            it.isCanBeConsumed = true
+            it.isCanBeResolved = true
+            it.extendsFrom(project.configurations.getByName("implementation"))
+            it.setupReleaseAttribute()
+        }
+
         project.pluginManager.withPlugin("com.android.library") {
             foundLibraryPlugin = true
             val libExtension = project.extensions.getByType(LibraryExtension::class.java)
             includeMetaInfServices(libExtension)
-            libExtension.libraryVariants.all { variant ->
+            val componentsExtension =
+                project.extensions.findByType(AndroidComponentsExtension::class.java)
+                    ?: throw GradleException("android plugin must be used")
+            componentsExtension.onVariants { variant: Variant ->
                 if (variant.name == "release") {
                     foundReleaseVariant = true
                     val unzip = project.registerUnzipTask(variant)
-                    val shadowJar = project.registerShadowDependenciesTask(variant, unzip)
+                    val shadowJar = project.registerShadowDependenciesTask(
+                        variant, extension.name, unzip
+                    )
                     val bundleTask = project.registerBundleInspectorTask(
                         variant, libExtension, extension.name, shadowJar
                     )
+
+                    publishNonDexedInspector.outgoing.variants {
+                        val configVariant = it.create("inspectorNonDexedJar")
+                        configVariant.artifact(shadowJar)
+                    }
 
                     publishInspector.outgoing.variants {
                         val configVariant = it.create("inspectorJar")
@@ -72,23 +96,23 @@ class InspectionPlugin : Plugin<Project> {
                     }
                 }
             }
-            libExtension.sourceSets.findByName("main")!!.resources.srcDirs(
-                File(project.rootDir, "src/main/proto")
-            )
+            libExtension.sourceSets.named("main").configure {
+                it.resources.srcDirs(
+                    File(project.rootDir, "src/main/proto")
+                )
+            }
         }
 
         project.apply(plugin = "com.google.protobuf")
-        project.plugins.all {
+        project.plugins.configureEach {
             if (it is ProtobufPlugin) {
-                // https://github.com/google/protobuf-gradle-plugin/issues/505
-                @Suppress("DEPRECATION")
-                val protobufConvention = project.convention.getPlugin<ProtobufConvention>()
-                protobufConvention.protobuf.apply {
+                val protobufExtension = project.extensions.getByType(ProtobufExtension::class.java)
+                protobufExtension.apply {
                     protoc {
-                        this.artifact = "com.google.protobuf:protoc:3.10.0"
+                        it.artifact = project.getLibraryByName("protobufCompiler").toString()
                     }
                     generateProtoTasks {
-                        all().forEach { task: GenerateProtoTask ->
+                        it.all().forEach { task: GenerateProtoTask ->
                             task.builtins.create("java") { options ->
                                 options.option("lite")
                             }
@@ -99,7 +123,7 @@ class InspectionPlugin : Plugin<Project> {
         }
 
         project.dependencies {
-            add("implementation", "com.google.protobuf:protobuf-javalite:3.10.0")
+            add("implementation", project.getLibraryByName("protobufLite"))
         }
 
         project.afterEvaluate {
@@ -122,6 +146,18 @@ class InspectionPlugin : Plugin<Project> {
     }
 }
 
+private fun Project.getLibraryByName(name: String): MinimalExternalModuleDependency {
+    val libs = project.extensions.getByType(
+        VersionCatalogsExtension::class.java
+    ).find("libs").get()
+    val library = libs.findLibrary(name)
+    return if (library.isPresent) {
+        library.get().get()
+    } else {
+        throw GradleException("Could not find a library for `$name`")
+    }
+}
+
 private fun includeMetaInfServices(library: LibraryExtension) {
     library.sourceSets.getByName("main").resources.include("META-INF/services/*")
     library.sourceSets.getByName("main").resources.include("**/*.proto")
@@ -131,36 +167,58 @@ private fun includeMetaInfServices(library: LibraryExtension) {
  * Use this function in [libraryProject] to include inspector that will be compiled into
  * inspector.jar and packaged in the library's aar.
  *
- * @param libraryProject project that is inspected and which aar will host inspector.jar . E.g
- * work-runtime
- * @param inspectorProject project of inspector, that will be compiled into inspector.jar. E.g
- * work-inspection
+ * @param libraryProject project that is inspected and which aar will host inspector.jar .
+ * E.g. work-runtime
+ * @param inspectorProjectPath project path of the inspector, that will be compiled into the
+ * inspector.jar. E.g. :work:work-inspection
  */
 @ExperimentalStdlibApi
-fun packageInspector(libraryProject: Project, inspectorProject: Project) {
+fun packageInspector(libraryProject: Project, inspectorProjectPath: String) {
+    val inspectorProject = libraryProject.rootProject.findProject(inspectorProjectPath)
+    if (inspectorProject == null) {
+        check(libraryProject.property("androidx.studio.type") == "playground") {
+            "Cannot find $inspectorProjectPath. This is optional only for playground builds."
+        }
+        // skip setting up inspector project
+        return
+    }
     val consumeInspector = libraryProject.createConsumeInspectionConfiguration()
 
     libraryProject.dependencies {
         add(consumeInspector.name, inspectorProject)
     }
+    val consumeInspectorFiles = libraryProject.files(consumeInspector)
 
     generateProguardDetectionFile(libraryProject)
     val libExtension = libraryProject.extensions.getByType(LibraryExtension::class.java)
-    libExtension.libraryVariants.all { variant ->
+    libExtension.libraryVariants.configureEach { variant ->
         variant.packageLibraryProvider.configure { zip ->
-            zip.from(consumeInspector)
+            zip.from(consumeInspectorFiles)
             zip.rename {
-                if (it == consumeInspector.asFileTree.singleFile.name) {
+                if (it == consumeInspectorFiles.asFileTree.singleFile.name) {
                     "inspector.jar"
                 } else it
             }
         }
     }
+
+    libraryProject.configurations.create(IMPORT_INSPECTOR_DEPENDENCIES) {
+        it.setupReleaseAttribute()
+    }
+    libraryProject.dependencies.add(IMPORT_INSPECTOR_DEPENDENCIES,
+        libraryProject.dependencies.project(
+            mapOf(
+                "path" to inspectorProjectPath,
+                "configuration" to EXPORT_INSPECTOR_DEPENDENCIES
+            )
+        )
+    )
 }
 
 fun Project.createConsumeInspectionConfiguration(): Configuration =
     configurations.create("consumeInspector") {
         it.setupInspectorAttribute()
+        it.isCanBeConsumed = false
     }
 
 private fun Configuration.setupInspectorAttribute() {
@@ -169,15 +227,48 @@ private fun Configuration.setupInspectorAttribute() {
     }
 }
 
+fun Project.createConsumeNonDexedInspectionConfiguration(): Configuration =
+    configurations.create("consumeNonDexedInspector") {
+        it.setupNonDexedInspectorAttribute()
+        it.isCanBeConsumed = false
+    }
+
+private fun Configuration.setupNonDexedInspectorAttribute() {
+    attributes {
+        it.attribute(Attribute.of("inspector-undexed", String::class.java), "inspectorUndexedJar")
+    }
+}
+
+private fun Configuration.setupReleaseAttribute() {
+    attributes {
+        it.attribute(
+            Attribute.of(
+                "com.android.build.api.attributes.BuildTypeAttr",
+                String::class.java
+            ),
+            "release"
+        )
+        it.attribute(
+            Attribute.of(
+                "artifactType",
+                String::class.java
+            ),
+            ArtifactTypeDefinition.JAR_TYPE
+        )
+    }
+}
+
 @ExperimentalStdlibApi
 private fun generateProguardDetectionFile(libraryProject: Project) {
     val libExtension = libraryProject.extensions.getByType(LibraryExtension::class.java)
-    libExtension.libraryVariants.all { variant ->
+    libExtension.libraryVariants.configureEach { variant ->
         libraryProject.registerGenerateProguardDetectionFileTask(variant)
     }
 }
 
 const val EXTENSION_NAME = "inspection"
+const val EXPORT_INSPECTOR_DEPENDENCIES = "exportInspectorImplementation"
+const val IMPORT_INSPECTOR_DEPENDENCIES = "importInspectorImplementation"
 
 open class InspectionExtension(@Suppress("UNUSED_PARAMETER") project: Project) {
     /**

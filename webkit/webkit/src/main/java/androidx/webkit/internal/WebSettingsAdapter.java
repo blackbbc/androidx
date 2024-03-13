@@ -16,7 +16,16 @@
 
 package androidx.webkit.internal;
 
+import android.webkit.WebSettings;
+
+import androidx.annotation.NonNull;
+import androidx.webkit.UserAgentMetadata;
+import androidx.webkit.WebViewMediaIntegrityApiStatusConfig;
+
+
 import org.chromium.support_lib_boundary.WebSettingsBoundaryInterface;
+
+import java.util.Set;
 
 /**
  * Adapter between WebSettingsCompat and
@@ -24,9 +33,9 @@ import org.chromium.support_lib_boundary.WebSettingsBoundaryInterface;
  * corresponding interface shared with the support library glue in the WebView APK).
  */
 public class WebSettingsAdapter {
-    private WebSettingsBoundaryInterface mBoundaryInterface;
+    private final WebSettingsBoundaryInterface mBoundaryInterface;
 
-    public WebSettingsAdapter(WebSettingsBoundaryInterface boundaryInterface) {
+    public WebSettingsAdapter(@NonNull WebSettingsBoundaryInterface boundaryInterface) {
         mBoundaryInterface = boundaryInterface;
     }
 
@@ -73,20 +82,6 @@ public class WebSettingsAdapter {
     }
 
     /**
-     * Adapter method for {@link androidx.webkit.WebSettingsCompat#setWillSuppressErrorPage}.
-     */
-    public void setWillSuppressErrorPage(boolean suppressed) {
-        mBoundaryInterface.setWillSuppressErrorPage(suppressed);
-    }
-
-    /**
-     * Adapter method for {@link androidx.webkit.WebSettingsCompat#willSuppressErrorPage}.
-     */
-    public boolean willSuppressErrorPage() {
-        return mBoundaryInterface.getWillSuppressErrorPage();
-    }
-
-    /**
      * Adapter method for {@link androidx.webkit.WebSettingsCompat#setForceDark}.
      */
     public void setForceDark(int forceDarkMode) {
@@ -113,4 +108,111 @@ public class WebSettingsAdapter {
     public int getForceDarkStrategy() {
         return mBoundaryInterface.getForceDarkBehavior();
     }
+
+    /**
+     * Adapter method for {@link androidx.webkit.WebSettingsCompat#setAlgorithmicDarkeningAllowed}.
+     */
+    public void setAlgorithmicDarkeningAllowed(boolean allow) {
+        mBoundaryInterface.setAlgorithmicDarkeningAllowed(allow);
+    }
+
+    /**
+     * Adapter method for {@link androidx.webkit.WebSettingsCompat#isAlgorithmicDarkeningAllowed}.
+     */
+    public boolean isAlgorithmicDarkeningAllowed() {
+        return mBoundaryInterface.isAlgorithmicDarkeningAllowed();
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#setEnterpriseAuthenticationAppLinkPolicyEnabled}.
+     */
+    public void setEnterpriseAuthenticationAppLinkPolicyEnabled(boolean enabled) {
+        mBoundaryInterface.setEnterpriseAuthenticationAppLinkPolicyEnabled(enabled);
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#getEnterpriseAuthenticationAppLinkPolicyEnabled}.
+     */
+    public boolean getEnterpriseAuthenticationAppLinkPolicyEnabled() {
+        return mBoundaryInterface.getEnterpriseAuthenticationAppLinkPolicyEnabled();
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#getRequestedWithHeaderOriginAllowList(WebSettings)}.
+     */
+    @NonNull
+    public Set<String> getRequestedWithHeaderOriginAllowList() {
+        return mBoundaryInterface.getRequestedWithHeaderOriginAllowList();
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#setRequestedWithHeaderOriginAllowList(
+     * WebSettings, Set)}.
+     */
+    public void setRequestedWithHeaderOriginAllowList(@NonNull Set<String> allowList) {
+        mBoundaryInterface.setRequestedWithHeaderOriginAllowList(allowList);
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#getUserAgentMetadata(WebSettings)}.
+     */
+    @NonNull
+    public UserAgentMetadata getUserAgentMetadata() {
+        return UserAgentMetadataInternal.getUserAgentMetadataFromMap(
+                mBoundaryInterface.getUserAgentMetadataMap());
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#setUserAgentMetadata(
+     * WebSettings, UserAgentMetadata)}.
+     */
+    public void setUserAgentMetadata(@NonNull UserAgentMetadata uaMetadata) {
+        mBoundaryInterface.setUserAgentMetadataFromMap(
+                UserAgentMetadataInternal.convertUserAgentMetadataToMap(uaMetadata));
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#getAttributionRegistrationBehavior(WebSettings)}
+     */
+    public int getAttributionRegistrationBehavior() {
+        return mBoundaryInterface.getAttributionBehavior();
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#setAttributionRegistrationBehavior(WebSettings, int)}
+     */
+    public void setAttributionRegistrationBehavior(int behavior) {
+        mBoundaryInterface.setAttributionBehavior(behavior);
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#setWebViewMediaIntegrityApiStatus(WebSettings, WebViewMediaIntegrityApiStatusConfig)}
+     */
+    public void setWebViewMediaIntegrityApiStatus(
+            @NonNull WebViewMediaIntegrityApiStatusConfig permissionConfig) {
+        mBoundaryInterface.setWebViewMediaIntegrityApiStatus(permissionConfig.getDefaultStatus(),
+                permissionConfig.getOverrideRules());
+    }
+
+    /**
+     * Adapter method for
+     * {@link androidx.webkit.WebSettingsCompat#getWebViewMediaIntegrityApiStatus(WebSettings)}
+     */
+    @NonNull
+    public WebViewMediaIntegrityApiStatusConfig getWebViewMediaIntegrityApiStatus() {
+        return new WebViewMediaIntegrityApiStatusConfig
+                .Builder(mBoundaryInterface.getWebViewMediaIntegrityApiDefaultStatus())
+                .setOverrideRules(mBoundaryInterface.getWebViewMediaIntegrityApiOverrideRules())
+                .build();
+    }
+
 }

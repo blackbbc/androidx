@@ -16,16 +16,17 @@
 
 package androidx.room.processor
 
-import androidx.room.parser.SQLTypeAffinity
-import androidx.room.parser.SqlParser
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
 import androidx.room.ext.isNotNone
+import androidx.room.parser.SQLTypeAffinity
+import androidx.room.parser.SqlParser
 import androidx.room.processor.EntityProcessor.Companion.createIndexName
 import androidx.room.processor.EntityProcessor.Companion.extractForeignKeys
 import androidx.room.processor.EntityProcessor.Companion.extractIndices
 import androidx.room.processor.EntityProcessor.Companion.extractTableName
 import androidx.room.processor.ProcessorErrors.INDEX_COLUMNS_CANNOT_BE_EMPTY
+import androidx.room.processor.ProcessorErrors.INVALID_INDEX_ORDERS_SIZE
 import androidx.room.processor.ProcessorErrors.RELATION_IN_ENTITY
 import androidx.room.processor.cache.Cache
 import androidx.room.vo.EmbeddedField
@@ -109,7 +110,7 @@ class TableEntityProcessor internal constructor(
                         Warning.INDEX_FROM_PARENT_FIELD_IS_DROPPED,
                         ProcessorErrors.droppedSuperClassFieldIndex(
                             it.columnName, element.qualifiedName,
-                            it.element.enclosingElement.className.toString()
+                            it.element.enclosingElement.asClassName().toString(context.codeLanguage)
                         )
                     )
                     null
@@ -117,11 +118,12 @@ class TableEntityProcessor internal constructor(
                     IndexInput(
                         name = createIndexName(listOf(it.columnName), tableName),
                         unique = false,
-                        columnNames = listOf(it.columnName)
+                        columnNames = listOf(it.columnName),
+                        orders = emptyList()
                     )
                 }
             }
-        val superIndices = loadSuperIndices(element.superType, tableName, inheritSuperIndices)
+        val superIndices = loadSuperIndices(element.superClass, tableName, inheritSuperIndices)
         val indexInputs = entityIndices + fieldIndices + superIndices
         val indices = validateAndCreateIndices(indexInputs, pojo)
 
@@ -385,7 +387,7 @@ class TableEntityProcessor internal constructor(
             }
         } ?: emptyList()
         // checks supers.
-        val mySuper = typeElement.superType
+        val mySuper = typeElement.superClass
         val superPKeys = if (mySuper != null && mySuper.isNotNone()) {
             // my super cannot see my fields so remove them.
             val remainingFields = availableFields.filterNot {
@@ -442,7 +444,7 @@ class TableEntityProcessor internal constructor(
             myPKeys.first()
         } else if (myPKeys.isEmpty()) {
             // i have not declared anything, delegate to super
-            val mySuper = typeElement.superType
+            val mySuper = typeElement.superClass
             if (mySuper != null && mySuper.isNotNone()) {
                 return choosePrimaryKey(candidates, mySuper.typeElement!!)
             }
@@ -476,10 +478,21 @@ class TableEntityProcessor internal constructor(
                 )
                 field
             }
+            if (input.orders.isNotEmpty()) {
+                context.checker.check(
+                    input.columnNames.size == input.orders.size, element,
+                    INVALID_INDEX_ORDERS_SIZE
+                )
+            }
             if (fields.isEmpty()) {
                 null
             } else {
-                Index(name = input.name, unique = input.unique, fields = fields)
+                Index(
+                    name = input.name,
+                    unique = input.unique,
+                    fields = fields,
+                    orders = input.orders
+                )
             }
         }
 
@@ -501,7 +514,7 @@ class TableEntityProcessor internal constructor(
                         Warning.INDEX_FROM_EMBEDDED_ENTITY_IS_DROPPED,
                         embedded.field.element,
                         ProcessorErrors.droppedEmbeddedIndex(
-                            entityName = embedded.pojo.typeName.toString(),
+                            entityName = embedded.pojo.typeName.toString(context.codeLanguage),
                             fieldPath = embedded.field.getPath(),
                             grandParent = element.qualifiedName
                         )
@@ -538,7 +551,8 @@ class TableEntityProcessor internal constructor(
                         IndexInput(
                             name = createIndexName(it.columnNames, tableName),
                             unique = it.unique,
-                            columnNames = it.columnNames
+                            columnNames = it.columnNames,
+                            orders = it.orders
                         )
                     }
                 } else {
@@ -553,6 +567,6 @@ class TableEntityProcessor internal constructor(
                     emptyList()
                 }
             } ?: emptyList()
-        return myIndices + loadSuperIndices(parentTypeElement.superType, tableName, inherit)
+        return myIndices + loadSuperIndices(parentTypeElement.superClass, tableName, inherit)
     }
 }

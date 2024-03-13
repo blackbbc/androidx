@@ -28,7 +28,6 @@ import androidx.annotation.RestrictTo;
 /**
  * Provides the render config for the given {@link TemplateSurfaceView}.
  *
- * @hide
  */
 @RestrictTo(LIBRARY)
 public final class SurfaceWrapperProvider {
@@ -51,6 +50,7 @@ public final class SurfaceWrapperProvider {
         return new SurfaceWrapper(hostToken, width, height, displayId, densityDpi, surface);
     }
 
+    @SuppressWarnings("deprecation")
     private int densityDpi() {
         DisplayMetrics displayMetrics = new DisplayMetrics();
         mSurfaceView.getDisplay().getRealMetrics(displayMetrics);

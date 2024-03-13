@@ -13,13 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package androidx.compose.desktop.examples.swingexample
 
-import androidx.compose.desktop.AppManager
-import androidx.compose.desktop.LocalAppWindow
-import androidx.compose.desktop.ComposePanel
-import androidx.compose.desktop.SwingPanel
-import androidx.compose.desktop.Window
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,14 +37,21 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.ComposePanel
+import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.ApplicationScope
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.launchApplication
+import androidx.compose.ui.window.rememberWindowState
 import java.awt.BorderLayout
 import java.awt.Color as awtColor
 import java.awt.Component
-import java.awt.GridLayout
 import java.awt.Dimension
+import java.awt.GridLayout
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import javax.swing.JButton
@@ -56,18 +59,14 @@ import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.WindowConstants
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 
 val northClicks = mutableStateOf(0)
 val westClicks = mutableStateOf(0)
 val eastClicks = mutableStateOf(0)
 
 fun main() = SwingUtilities.invokeLater {
-    // explicitly clear the application events
-    AppManager.setEvents(
-        onAppStart = null,
-        onAppExit = null,
-        onWindowsEmpty = null
-    )
     SwingComposeWindow()
 }
 
@@ -155,10 +154,14 @@ fun ComposeContent(background: Color = Color.White) {
                 Button(
                     modifier = Modifier.height(35.dp).padding(top = 3.dp),
                     onClick = {
-                        Window(
-                            size = IntSize(400, 250)
-                        ) {
-                            SecondWindowContent()
+                        @OptIn(DelicateCoroutinesApi::class)
+                        GlobalScope.launchApplication {
+                            Window(
+                                onCloseRequest = ::exitApplication,
+                                state = rememberWindowState(size = DpSize(400.dp, 250.dp))
+                            ) {
+                                SecondWindowContent()
+                            }
                         }
                     }
                 ) {
@@ -242,8 +245,7 @@ fun Counter(text: String, counter: MutableState<Int>) {
 }
 
 @Composable
-fun SecondWindowContent() {
-    val window = LocalAppWindow.current
+fun ApplicationScope.SecondWindowContent() {
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -260,7 +262,7 @@ fun SecondWindowContent() {
                 modifier = Modifier.height(30.dp).fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                Button(onClick = { window.close() }) {
+                Button(onClick = { exitApplication() }) {
                     Text("Close", color = Color.White)
                 }
             }

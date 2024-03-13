@@ -17,13 +17,13 @@
 
 package androidx.core.view;
 
-import static android.os.Build.VERSION.SDK_INT;
-
 import android.graphics.Rect;
 import android.view.Gravity;
 
+import androidx.annotation.NonNull;
+
 /**
- * Compatibility shim for accessing newer functionality from {@link android.view.Gravity}.
+ * Compatibility shim for accessing newer functionality from {@link Gravity}.
  */
 public final class GravityCompat {
     /** Raw bit controlling whether the layout direction is relative or not (START/END instead of
@@ -59,13 +59,9 @@ public final class GravityCompat {
      * @see ViewCompat#LAYOUT_DIRECTION_LTR
      * @see ViewCompat#LAYOUT_DIRECTION_RTL
      */
-    public static void apply(int gravity, int w, int h, Rect container,
-            Rect outRect, int layoutDirection) {
-        if (SDK_INT >= 17) {
-            Gravity.apply(gravity, w, h, container, outRect, layoutDirection);
-        } else {
-            Gravity.apply(gravity, w, h, container, outRect);
-        }
+    public static void apply(int gravity, int w, int h, @NonNull Rect container,
+            @NonNull Rect outRect, int layoutDirection) {
+        Gravity.apply(gravity, w, h, container, outRect, layoutDirection);
     }
 
     /**
@@ -93,23 +89,19 @@ public final class GravityCompat {
      * @see ViewCompat#LAYOUT_DIRECTION_LTR
      * @see ViewCompat#LAYOUT_DIRECTION_RTL
      */
-    public static void apply(int gravity, int w, int h, Rect container,
-            int xAdj, int yAdj, Rect outRect, int layoutDirection) {
-        if (SDK_INT >= 17) {
-            Gravity.apply(gravity, w, h, container, xAdj, yAdj, outRect, layoutDirection);
-        } else {
-            Gravity.apply(gravity, w, h, container, xAdj, yAdj, outRect);
-        }
+    public static void apply(int gravity, int w, int h, @NonNull Rect container,
+            int xAdj, int yAdj, @NonNull Rect outRect, int layoutDirection) {
+        Gravity.apply(gravity, w, h, container, xAdj, yAdj, outRect, layoutDirection);
     }
 
     /**
      * Apply additional gravity behavior based on the overall "display" that an
      * object exists in.  This can be used after
-     * {@link android.view.Gravity#apply(int, int, int, Rect, int, int, Rect)} to place the object
+     * {@link Gravity#apply(int, int, int, Rect, int, int, Rect)} to place the object
      * within a visible display.  By default this moves or clips the object
      * to be visible in the display; the gravity flags
-     * {@link android.view.Gravity#DISPLAY_CLIP_HORIZONTAL} and
-     * {@link android.view.Gravity#DISPLAY_CLIP_VERTICAL} can be used to change this behavior.
+     * {@link Gravity#DISPLAY_CLIP_HORIZONTAL} and
+     * {@link Gravity#DISPLAY_CLIP_VERTICAL} can be used to change this behavior.
      *
      * @param gravity Gravity constants to modify the placement within the
      * display.
@@ -122,12 +114,9 @@ public final class GravityCompat {
      * @see ViewCompat#LAYOUT_DIRECTION_LTR
      * @see ViewCompat#LAYOUT_DIRECTION_RTL
      */
-    public static void applyDisplay(int gravity, Rect display, Rect inoutObj, int layoutDirection) {
-        if (SDK_INT >= 17) {
-            Gravity.applyDisplay(gravity, display, inoutObj, layoutDirection);
-        } else {
-            Gravity.applyDisplay(gravity, display, inoutObj);
-        }
+    public static void applyDisplay(int gravity, @NonNull Rect display, @NonNull Rect inoutObj,
+            int layoutDirection) {
+        Gravity.applyDisplay(gravity, display, inoutObj, layoutDirection);
     }
 
     /**
@@ -142,13 +131,9 @@ public final class GravityCompat {
      * @return gravity converted to absolute (horizontal) values.
      */
     public static int getAbsoluteGravity(int gravity, int layoutDirection) {
-        if (SDK_INT >= 17) {
-            return Gravity.getAbsoluteGravity(gravity, layoutDirection);
-        } else {
-            // Just strip off the relative bit to get LEFT/RIGHT.
-            return gravity & ~RELATIVE_LAYOUT_DIRECTION;
-        }
+        return Gravity.getAbsoluteGravity(gravity, layoutDirection);
     }
 
-    private GravityCompat() {}
+    private GravityCompat() {
+    }
 }

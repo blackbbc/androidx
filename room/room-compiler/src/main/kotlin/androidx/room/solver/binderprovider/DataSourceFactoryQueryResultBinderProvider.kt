@@ -23,6 +23,7 @@ import androidx.room.parser.ParsedQuery
 import androidx.room.processor.Context
 import androidx.room.processor.ProcessorErrors
 import androidx.room.solver.QueryResultBinderProvider
+import androidx.room.solver.TypeAdapterExtras
 import androidx.room.solver.query.result.DataSourceFactoryQueryResultBinder
 import androidx.room.solver.query.result.ListQueryResultAdapter
 import androidx.room.solver.query.result.PositionalDataSourceQueryResultBinder
@@ -30,10 +31,14 @@ import androidx.room.solver.query.result.QueryResultBinder
 
 class DataSourceFactoryQueryResultBinderProvider(val context: Context) : QueryResultBinderProvider {
     private val dataSourceFactoryType: XRawType? by lazy {
-        context.processingEnv.findType(PagingTypeNames.DATA_SOURCE_FACTORY)?.rawType
+        context.processingEnv.findType(PagingTypeNames.DATA_SOURCE_FACTORY.canonicalName)?.rawType
     }
 
-    override fun provide(declared: XType, query: ParsedQuery): QueryResultBinder {
+    override fun provide(
+        declared: XType,
+        query: ParsedQuery,
+        extras: TypeAdapterExtras
+    ): QueryResultBinder {
         if (query.tables.isEmpty()) {
             context.logger.e(ProcessorErrors.OBSERVABLE_QUERY_NOTHING_TO_OBSERVE)
         }
@@ -49,7 +54,6 @@ class DataSourceFactoryQueryResultBinderProvider(val context: Context) : QueryRe
         val countedBinder = PositionalDataSourceQueryResultBinder(
             listAdapter = adapter,
             tableNames = tableNames,
-            forPaging3 = false
         )
         return DataSourceFactoryQueryResultBinder(countedBinder)
     }

@@ -16,6 +16,7 @@
 
 package androidx.compose.foundation.layout
 
+import androidx.annotation.FloatRange
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
@@ -23,9 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.layout.Measured
 import androidx.compose.ui.layout.VerticalAlignmentLine
-import androidx.compose.ui.platform.debugInspectorInfo
 
 /**
  * A layout composable that places its children in a vertical sequence. For a layout composable
@@ -36,20 +37,25 @@ import androidx.compose.ui.platform.debugInspectorInfo
  * The [Column] layout is able to assign children heights according to their weights provided
  * using the [ColumnScope.weight] modifier. If a child is not provided a weight, it will be
  * asked for its preferred height before the sizes of the children with weights are calculated
- * proportionally to their weight based on the remaining available space.
+ * proportionally to their weight based on the remaining available space. Note that if the
+ * [Column] is vertically scrollable or part of a vertically scrollable container, any provided
+ * weights will be disregarded as the remaining available space will be infinite.
  *
  * When none of its children have weights, a [Column] will be as small as possible to fit its
  * children one on top of the other. In order to change the height of the [Column], use the
- * [Modifier.requiredHeight] modifiers; e.g. to make it fill the available height [Modifier.fillMaxHeight]
- * can be used. If at least one child of a [Column] has a [weight][ColumnScope.weight],
- * the [Column] will fill the available height, so there is no need for [Modifier.fillMaxHeight].
- * However, if [Column]'s size should be limited, the [Modifier.requiredHeight] or [Modifier.requiredSize] layout
- * modifiers should be applied.
+ * [Modifier.height] modifiers; e.g. to make it fill the available height [Modifier.fillMaxHeight]
+ * can be used. If at least one child of a [Column] has a [weight][ColumnScope.weight], the [Column]
+ * will fill the available height, so there is no need for [Modifier.fillMaxHeight]. However, if
+ * [Column]'s size should be limited, the [Modifier.height] or [Modifier.size] layout modifiers
+ * should be applied.
  *
  * When the size of the [Column] is larger than the sum of its children sizes, a
  * [verticalArrangement] can be specified to define the positioning of the children inside the
  * [Column]. See [Arrangement] for available positioning behaviors; a custom arrangement can also
- * be defined using the constructor of [Arrangement].
+ * be defined using the constructor of [Arrangement]. Below is an illustration of different
+ * vertical arrangements:
+ *
+ * ![Column arrangements](https://developer.android.com/images/reference/androidx/compose/foundation/layout/column_arrangement_visualization.gif)
  *
  * Example usage:
  *
@@ -78,11 +84,10 @@ inline fun Column(
 }
 
 @PublishedApi
-internal val DefaultColumnMeasurePolicy = rowColumnMeasurePolicy(
+internal val DefaultColumnMeasurePolicy: MeasurePolicy = RowColumnMeasurePolicy(
     orientation = LayoutOrientation.Vertical,
-    arrangement = { totalSize, size, _, density, outPosition ->
-        with(Arrangement.Top) { density.arrange(totalSize, size, outPosition) }
-    },
+    verticalArrangement = Arrangement.Top,
+    horizontalArrangement = null,
     arrangementSpacing = Arrangement.Top.spacing,
     crossAxisAlignment = CrossAxisAlignment.horizontal(Alignment.Start),
     crossAxisSize = SizeMode.Wrap
@@ -93,27 +98,28 @@ internal val DefaultColumnMeasurePolicy = rowColumnMeasurePolicy(
 internal fun columnMeasurePolicy(
     verticalArrangement: Arrangement.Vertical,
     horizontalAlignment: Alignment.Horizontal
-) = remember(verticalArrangement, horizontalAlignment) {
+): MeasurePolicy =
     if (verticalArrangement == Arrangement.Top && horizontalAlignment == Alignment.Start) {
         DefaultColumnMeasurePolicy
     } else {
-        rowColumnMeasurePolicy(
-            orientation = LayoutOrientation.Vertical,
-            arrangement = { totalSize, size, _, density, outPosition ->
-                with(verticalArrangement) { density.arrange(totalSize, size, outPosition) }
-            },
-            arrangementSpacing = verticalArrangement.spacing,
-            crossAxisAlignment = CrossAxisAlignment.horizontal(horizontalAlignment),
-            crossAxisSize = SizeMode.Wrap
-        )
+        remember(verticalArrangement, horizontalAlignment) {
+            RowColumnMeasurePolicy(
+                orientation = LayoutOrientation.Vertical,
+                verticalArrangement = verticalArrangement,
+                horizontalArrangement = null,
+                arrangementSpacing = verticalArrangement.spacing,
+                crossAxisAlignment = CrossAxisAlignment.horizontal(horizontalAlignment),
+                crossAxisSize = SizeMode.Wrap
+            )
+        }
     }
-}
 
 /**
  * Scope for the children of [Column].
  */
 @LayoutScopeMarker
 @Immutable
+@JvmDefaultWithCompatibility
 interface ColumnScope {
     /**
      * Size the element's height proportional to its [weight] relative to other weighted sibling
@@ -123,6 +129,9 @@ interface ColumnScope {
      * Otherwise, the element is allowed to be smaller - this will result in [Column] being smaller,
      * as the unused allocated height will not be redistributed to other siblings.
      *
+     * In a [FlowColumn], when a weight is applied to an item, the item is scaled based on
+     * the number of weighted items that fall on the column it was placed in.
+     *
      * @param weight The proportional height to give to this element, as related to the total of
      * all weighted siblings. Must be positive.
      * @param fill When `true`, the element will occupy the whole height allocated.
@@ -131,7 +140,7 @@ interface ColumnScope {
      */
     @Stable
     fun Modifier.weight(
-        /*@FloatRange(from = 0.0, fromInclusive = false)*/
+        @FloatRange(from = 0.0, fromInclusive = false)
         weight: Float,
         fill: Boolean = true
     ): Modifier
@@ -191,49 +200,32 @@ internal object ColumnScopeInstance : ColumnScope {
     override fun Modifier.weight(weight: Float, fill: Boolean): Modifier {
         require(weight > 0.0) { "invalid weight $weight; must be greater than zero" }
         return this.then(
-            LayoutWeightImpl(
-                weight = weight,
-                fill = fill,
-                inspectorInfo = debugInspectorInfo {
-                    name = "weight"
-                    value = weight
-                    properties["weight"] = weight
-                    properties["fill"] = fill
-                }
+            LayoutWeightElement(
+                // Coerce Float.POSITIVE_INFINITY to Float.MAX_VALUE to avoid errors
+                weight = weight.coerceAtMost(Float.MAX_VALUE),
+                fill = fill
             )
         )
     }
 
     @Stable
     override fun Modifier.align(alignment: Alignment.Horizontal) = this.then(
-        HorizontalAlignModifier(
-            horizontal = alignment,
-            inspectorInfo = debugInspectorInfo {
-                name = "align"
-                value = alignment
-            }
+        HorizontalAlignElement(
+            horizontal = alignment
         )
     )
 
     @Stable
     override fun Modifier.alignBy(alignmentLine: VerticalAlignmentLine) = this.then(
-        SiblingsAlignedModifier.WithAlignmentLine(
-            alignmentLine = alignmentLine,
-            inspectorInfo = debugInspectorInfo {
-                name = "alignBy"
-                value = alignmentLine
-            }
+        WithAlignmentLineElement(
+            alignmentLine = alignmentLine
         )
     )
 
     @Stable
     override fun Modifier.alignBy(alignmentLineBlock: (Measured) -> Int) = this.then(
-        SiblingsAlignedModifier.WithAlignmentLineBlock(
-            block = alignmentLineBlock,
-            inspectorInfo = debugInspectorInfo {
-                name = "alignBy"
-                value = alignmentLineBlock
-            }
+        WithAlignmentLineBlockElement(
+            block = alignmentLineBlock
         )
     )
 }

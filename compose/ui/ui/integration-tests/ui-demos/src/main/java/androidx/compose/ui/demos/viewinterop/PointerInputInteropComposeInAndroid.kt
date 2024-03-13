@@ -17,35 +17,57 @@
 package androidx.compose.ui.demos.viewinterop
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.annotation.MainThread
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.integration.demos.common.ActivityDemo
 import androidx.compose.integration.demos.common.DemoCategory
 import androidx.compose.material.Button
+import androidx.compose.material.Card
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Scaffold
 import androidx.compose.material.Text
+import androidx.compose.material.TopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.demos.R
 import androidx.compose.ui.graphics.Color
@@ -56,7 +78,20 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.recyclerview.widget.RecyclerView
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.viewpager2.widget.ViewPager2
 
+@OptIn(ExperimentalComposeUiApi::class)
 val ComposeInAndroidDemos = DemoCategory(
     "Compose in Android Interop",
     listOf(
@@ -69,12 +104,20 @@ val ComposeInAndroidDemos = DemoCategory(
             ComposeTapInAndroidTap::class
         ),
         ActivityDemo(
+            "Compose tap (dynamically loaded via window manager) in Android",
+            AndroidTapAddOrRemoveComposeDynamicallyWithWindowManager::class
+        ),
+        ActivityDemo(
             "Compose tap in Android scroll",
             ComposeTapInAndroidScroll::class
         ),
         ActivityDemo(
-            "Compose scroll in Android scroll (same orientation)",
+            "Compose scroll in Android scroll (same orientation, vertical)",
             ComposeScrollInAndroidScrollSameOrientation::class
+        ),
+        ActivityDemo(
+            "Compose scroll in Android scroll (horizontal pager)",
+            ComposeScrollInAndroidScrollSameOrientationHorizontal::class
         ),
         ActivityDemo(
             "Compose scroll in Android scroll (different orientations)",
@@ -98,13 +141,13 @@ open class ComposeNothingInAndroidTap : ComponentActivity() {
 
         findViewById<TextView>(R.id.text1).text =
             "Intended to Demonstrate that when no gestureFilterModifiers are added to compose, " +
-            "Compose will not interact with the pointer input stream. This currently " +
-            "isn't actually the case however. "
+                "Compose will not interact with the pointer input stream. This currently " +
+                "isn't actually the case however. "
 
         findViewById<TextView>(R.id.text2).text =
             "When you tap anywhere within the bounds of the colored, including the grey box in " +
-            "the middle, the color is supposed to change.  This currently does not occur " +
-            "when you tap on the grey box however."
+                "the middle, the color is supposed to change.  This currently does not occur " +
+                "when you tap on the grey box however."
 
         val container = findViewById<ComposeView>(R.id.clickableContainer)
         container.isClickable = true
@@ -118,7 +161,10 @@ open class ComposeNothingInAndroidTap : ComponentActivity() {
             container.setBackgroundColor(currentColor.toArgb())
         }
         container.setContent {
-            Box(Modifier.background(color = Color.LightGray).fillMaxSize())
+            Box(
+                Modifier
+                    .background(color = Color.LightGray)
+                    .fillMaxSize())
         }
     }
 }
@@ -136,8 +182,8 @@ open class ComposeTapInAndroidTap : ComponentActivity() {
             "Demonstrates correct interop with simple tapping"
         findViewById<TextView>(R.id.text2).text =
             "The inner box is Compose, the outer is Android.  When you tap on the inner box, " +
-            "only it changes colors. When you tap on the outer box, only the outer box " +
-            "changes colors."
+                "only it changes colors. When you tap on the outer box, only the outer box " +
+                "changes colors."
 
         val container = findViewById<ComposeView>(R.id.clickableContainer)
         container.isClickable = true
@@ -164,8 +210,155 @@ open class ComposeTapInAndroidTap : ComponentActivity() {
 
             Column {
                 Box(
-                    tap.then(Modifier.background(color = currentColor.value).fillMaxSize())
+                    tap.then(
+                        Modifier
+                            .background(color = currentColor.value)
+                            .fillMaxSize())
                 )
+            }
+        }
+    }
+}
+
+open class AndroidTapAddOrRemoveComposeDynamicallyWithWindowManager : ComponentActivity() {
+    private var viewLoaded: View? = null
+    private lateinit var myContext: Context
+    private lateinit var button: Button
+
+    @SuppressLint("SetTextI18n")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.compose_in_android_tap_reload)
+
+        myContext = peekAvailableContext()!!
+
+        button = findViewById<Button>(R.id.button)
+        button.setOnClickListener {
+            if (viewLoaded == null) {
+                viewLoaded = myContext.addWindow()
+            } else {
+                if (viewLoaded!!.isAttachedToWindow) {
+                    myContext.removeWindow(viewLoaded!!)
+                } else {
+                    myContext.addWindow(viewLoaded)
+                }
+            }
+        }
+    }
+}
+
+private class ComposeViewLifecycleOwner : SavedStateRegistryOwner, ViewModelStoreOwner {
+    private val lifecycleRegistry by lazy { LifecycleRegistry(this) }
+    private val saveStateRegistryOwner by lazy { SavedStateRegistryController.create(this) }
+
+    private val mViewModelStore by lazy { ViewModelStore() }
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = saveStateRegistryOwner.savedStateRegistry
+
+    fun handleLifecycleEvent(event: Lifecycle.Event) {
+        lifecycleRegistry.handleLifecycleEvent(event)
+    }
+
+    @MainThread
+    fun performRestore(savedState: Bundle?) {
+        saveStateRegistryOwner.performRestore(savedState)
+    }
+
+    @MainThread
+    fun performSave(outBundle: Bundle) {
+        saveStateRegistryOwner.performSave(outBundle)
+    }
+
+    override val viewModelStore: ViewModelStore
+        get() = mViewModelStore
+}
+
+private fun Context.buildWindowView(
+    content: @Composable (composeView: View) -> Unit
+): View {
+    val lifecycleOwner = ComposeViewLifecycleOwner()
+
+    lifecycleOwner.performRestore(null)
+    lifecycleOwner.handleLifecycleEvent(event = Lifecycle.Event.ON_CREATE)
+
+    return ComposeView(this).apply {
+        setContent {
+            content(this)
+        }
+
+        addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                lifecycleOwner.handleLifecycleEvent(event = Lifecycle.Event.ON_RESUME)
+            }
+
+            override fun onViewDetachedFromWindow(view: View) {
+                lifecycleOwner.handleLifecycleEvent(event = Lifecycle.Event.ON_PAUSE)
+            }
+        })
+
+        setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+        setViewTreeLifecycleOwner(lifecycleOwner = lifecycleOwner)
+        setViewTreeViewModelStoreOwner(viewModelStoreOwner = lifecycleOwner)
+    }
+}
+
+private fun Context.addWindow(passedView: View? = null): View {
+    val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    // Reuse existing view (otherwise, create a new one).
+    val view = passedView ?: buildWindowView { SimpleClickableButton() }
+
+    val layoutParas = WindowManager.LayoutParams()
+
+    layoutParas.width = 1000
+    layoutParas.height = 1000
+    layoutParas.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+
+    windowManager.addView(view, layoutParas)
+
+    return view
+}
+
+private fun Context.removeWindow(view: View) {
+    val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    windowManager.removeView(view)
+}
+
+@Composable
+private fun SimpleClickableButton() {
+    var topBarClickCount by rememberSaveable { mutableIntStateOf(0) }
+    var bodyClickCount by rememberSaveable { mutableIntStateOf(0) }
+
+    MaterialTheme {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(text = "Top Bar Clicks: $topBarClickCount")
+                            },
+                    navigationIcon = {
+                        IconButton(onClick = { topBarClickCount++ }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = null)
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(Color.Yellow)
+            ) {
+                Button(
+                    modifier = Modifier.padding(5.dp),
+                    onClick = { bodyClickCount++ }
+                ) {
+                    Text(text = "Button Clicks: $bodyClickCount")
+                }
             }
         }
     }
@@ -182,13 +375,13 @@ open class ComposeTapInAndroidScroll : ComponentActivity() {
 
         findViewById<TextView>(R.id.text1).text =
             "Demonstrates that press gestures and movement gestures interact correctly between " +
-            "Android and Compose when Compose is inside of Android."
+                "Android and Compose when Compose is inside of Android."
 
         findViewById<TextView>(R.id.text2).text =
             "The inner box is Compose, the rest is Android.  Tapping the inner box will change " +
-            "it's color.  Putting a finger down on the inner box and dragging vertically," +
-            " will cause the outer Android ScrollView to scroll and removing the finger " +
-            "from the screen will not cause the Compose box to change colors. "
+                "it's color.  Putting a finger down on the inner box and dragging vertically," +
+                " will cause the outer Android ScrollView to scroll and removing the finger " +
+                "from the screen will not cause the Compose box to change colors. "
 
         val container = findViewById<ViewGroup>(R.id.container)
         container.addView(
@@ -232,13 +425,13 @@ open class ComposeScrollInAndroidScrollSameOrientation : ComponentActivity() {
 
         findViewById<TextView>(R.id.text1).text =
             "Intended to demonstrate that scrolling between 2 scrollable things interops " +
-            "\"correctly\" between Compose and Android when Compose is inside Android. " +
-            "This currently does not actually work because nested scrolling interop is " +
-            "not complete."
+                "\"correctly\" between Compose and Android when Compose is inside Android. " +
+                "This currently does not actually work because nested scrolling interop is " +
+                "not complete."
 
         findViewById<TextView>(R.id.text2).text =
             "The outer scrollable container always wins because it always intercepts the scroll " +
-            "before the child scrolling container can start scrolling."
+                "before the child scrolling container can start scrolling."
 
         val container = findViewById<ViewGroup>(R.id.container)
         container.addView(
@@ -269,6 +462,60 @@ open class ComposeScrollInAndroidScrollSameOrientation : ComponentActivity() {
     }
 }
 
+open class ComposeScrollInAndroidScrollSameOrientationHorizontal : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.compose_in_android_scroll_horizontal_pager)
+
+        findViewById<ViewPager2>(R.id.pager).apply {
+            adapter = ViewPager2Adapter(context)
+        }
+    }
+}
+
+internal class ViewPager2Adapter(private val ctx: Context) :
+    RecyclerView.Adapter<ViewPager2Adapter.ViewHolder>() {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        val view: View = LayoutInflater.from(ctx).inflate(R.layout.pager_item, parent, false)
+        return ViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.text.text = "ViewPager page: $position"
+
+        holder.composeContainer.setContent {
+            LazyRow(
+                modifier = Modifier.border(4.dp, Color.DarkGray),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(24.dp)
+            ) {
+                items(5) { index ->
+                    Card(
+                        modifier = Modifier.height(240.dp)
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(12.dp),
+                            text = "LazyRow Item: $index",
+                            style = MaterialTheme.typography.h6
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override fun getItemCount(): Int {
+        return 10
+    }
+
+    class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        var text: TextView = itemView.findViewById(R.id.text)
+        var composeContainer: ComposeView = itemView.findViewById(R.id.composeContainer)
+    }
+}
+
 open class ComposeScrollInAndroidScrollDifferentOrientation : ComponentActivity() {
 
     @SuppressLint("SetTextI18n")
@@ -280,11 +527,11 @@ open class ComposeScrollInAndroidScrollDifferentOrientation : ComponentActivity(
 
         findViewById<TextView>(R.id.text1).text =
             "Demonstrates that scrolling in Compose and scrolling in Android interop correctly " +
-            "when Compose is inside of Android."
+                "when Compose is inside of Android."
 
         findViewById<TextView>(R.id.text2).text =
             "The inner scrollable container is Compose, the other one is Android. You can only " +
-            "scroll in one orientation at a time."
+                "scroll in one orientation at a time."
 
         val container = findViewById<ViewGroup>(R.id.container)
         container.addView(
@@ -294,9 +541,9 @@ open class ComposeScrollInAndroidScrollDifferentOrientation : ComponentActivity(
                         modifier = Modifier
                             .padding(48.dp)
                             .background(color = Color.Gray)
-                            .fillMaxWidth()
-                            .height(456.dp)
-                            .verticalScroll(rememberScrollState())
+                            .height(700.dp)
+                            .width(456.dp)
+                            .horizontalScroll(rememberScrollState())
                     ) {
                         Box(
                             Modifier
@@ -325,11 +572,11 @@ open class ComposeInAndroidDialogDismissDialogDuringDispatch : FragmentActivity(
 
         findViewById<TextView>(R.id.text1).text =
             "Demonstrates that a synchronous touch even that causes itself to be removed from " +
-            "the hierarchy is safe."
+                "the hierarchy is safe."
 
         findViewById<TextView>(R.id.text2).text =
             "Open the dialog, then click the compose button in the dialog to remove the compose " +
-            "button from the hierarchy synchronously."
+                "button from the hierarchy synchronously."
 
         findViewById<Button>(R.id.showDialogButton).setOnClickListener { showDialog() }
     }

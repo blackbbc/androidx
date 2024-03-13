@@ -16,16 +16,18 @@
 
 package androidx.room.compiler.processing.ksp
 
+import androidx.kruth.assertThat
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.className
 import androidx.room.compiler.processing.util.getField
-import androidx.room.compiler.processing.util.getMethod
+import androidx.room.compiler.processing.util.getMethodByJvmName
 import androidx.room.compiler.processing.util.runKspTest
-import com.google.common.truth.Truth.assertThat
+import androidx.room.compiler.processing.util.runProcessorTest
 import com.squareup.javapoet.ClassName
 import com.squareup.javapoet.ParameterizedTypeName
 import com.squareup.javapoet.TypeName
+import com.squareup.javapoet.WildcardTypeName
 import org.junit.Test
 
 class KSAsMemberOfTest {
@@ -46,7 +48,7 @@ class KSAsMemberOfTest {
             """.trimIndent()
         )
 
-        runKspTest(sources = listOf(src)) { invocation ->
+        runProcessorTest(sources = listOf(src)) { invocation ->
             val base = invocation.processingEnv.requireTypeElement("BaseClass")
             val sub = invocation.processingEnv.requireType("SubClass")
             base.getField("normalInt").let { prop ->
@@ -77,7 +79,7 @@ class KSAsMemberOfTest {
             val listOfStringsTypeName =
                 ParameterizedTypeName.get(
                     List::class.className(),
-                    String::class.className()
+                    WildcardTypeName.subtypeOf(String::class.className())
                 )
             base.getField("mapOfStringToGeneric2").let { prop ->
                 assertThat(
@@ -196,7 +198,7 @@ class KSAsMemberOfTest {
         runKspTest(sources = listOf(kotlinSrc, javaSrc)) { invocation ->
             listOf("KotlinClass", "JavaClass").forEach {
                 val typeElement = invocation.processingEnv.requireTypeElement(it)
-                typeElement.getMethod("staticFun").let { staticFun ->
+                typeElement.getMethodByJvmName("staticFun").let { staticFun ->
                     val asMember = staticFun.asMemberOf(typeElement.type)
                     assertThat(asMember.returnType.typeName).isEqualTo(TypeName.VOID)
                     assertThat(

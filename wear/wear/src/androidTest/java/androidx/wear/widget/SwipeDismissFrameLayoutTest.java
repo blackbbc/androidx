@@ -17,7 +17,6 @@
 package androidx.wear.widget;
 
 import static androidx.test.espresso.Espresso.onView;
-import static androidx.test.espresso.action.ViewActions.swipeRight;
 import static androidx.test.espresso.matcher.ViewMatchers.withEffectiveVisibility;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.wear.widget.util.AsyncViewActions.waitForMatchingView;
@@ -46,6 +45,7 @@ import androidx.test.filters.FlakyTest;
 import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.wear.test.R;
+import androidx.wear.utils.WearableNavigationHelper;
 import androidx.wear.widget.util.ArcSwipe;
 import androidx.wear.widget.util.FrameLocationAvoidingEdges;
 import androidx.wear.widget.util.WakeLockRule;
@@ -157,7 +157,14 @@ public class SwipeDismissFrameLayoutTest {
                         (SwipeDismissFrameLayout) activity.findViewById(R.id.swipe_dismiss_root);
                 // WHEN we check that the layout is dismissible
                 // THEN the layout is find to be dismissible
-                assertFalse(testLayout.isSwipeable());
+                // Use the default as set in the system, as different builds can have different
+                // behaviour here.
+                if (WearableNavigationHelper.isSwipeToDismissEnabled(
+                        ApplicationProvider.getApplicationContext())) {
+                    assertTrue(testLayout.isSwipeable());
+                } else {
+                    assertFalse(testLayout.isSwipeable());
+                }
             });
         }
     }
@@ -169,7 +176,7 @@ public class SwipeDismissFrameLayoutTest {
                      ActivityScenario.launch(createSimpleLayoutLaunchIntent())) {
             setUpSwipeableAndCallback(scenario, true);
             // WHEN we perform a swipe to dismiss
-            onView(withId(R.id.swipe_dismiss_root)).perform(swipeRight());
+            onView(withId(R.id.swipe_dismiss_root)).perform(swipeRightFromLeftCenterAvoidingEdge());
             // AND hidden
             assertHidden(R.id.swipe_dismiss_root);
         }
@@ -182,7 +189,7 @@ public class SwipeDismissFrameLayoutTest {
                      ActivityScenario.launch(createSimpleLayoutLaunchIntent())) {
             setUpSwipeableAndCallback(scenario, false);
             // WHEN we perform a swipe to dismiss
-            onView(withId(R.id.swipe_dismiss_root)).perform(swipeRight());
+            onView(withId(R.id.swipe_dismiss_root)).perform(swipeRightFromLeftCenterAvoidingEdge());
             // THEN the layout is not hidden
             assertNotHidden(R.id.swipe_dismiss_root);
         }
@@ -200,7 +207,7 @@ public class SwipeDismissFrameLayoutTest {
                         (SwipeDismissFrameLayout) activity.findViewById(R.id.swipe_dismiss_root);
                 testLayout.removeCallback(mDismissCallback);
             });
-            onView(withId(R.id.swipe_dismiss_root)).perform(swipeRight());
+            onView(withId(R.id.swipe_dismiss_root)).perform(swipeRightFromLeftCenterAvoidingEdge());
             // THEN the layout is not hidden
             assertNotHidden(R.id.swipe_dismiss_root);
         }

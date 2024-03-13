@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -21,12 +28,14 @@ plugins {
     id("com.android.library")
     id("AndroidXComposePlugin")
     id("org.jetbrains.kotlin.android")
-    id("kotlin-kapt")
+    id("com.google.devtools.ksp")
 }
 
 dependencies {
-    kotlinPlugin(projectOrArtifact(":compose:compiler:compiler"))
     implementation(libs.kotlinStdlib)
+    // workaround for https://github.com/gradle/gradle/issues/8489
+    implementation("androidx.activity:activity:1.7.1")
+    implementation("androidx.lifecycle:lifecycle-common:2.6.1")
 
     implementation(projectOrArtifact(":compose:integration-tests:demos:common"))
     implementation(projectOrArtifact(":compose:foundation:foundation"))
@@ -34,10 +43,9 @@ dependencies {
     implementation(projectOrArtifact(":paging:paging-compose"))
     implementation(projectOrArtifact(":paging:paging-compose:paging-compose-samples"))
 
-    def room_version = "2.3.0-alpha02"
-    api("androidx.room:room-runtime:$room_version")
-    kapt("androidx.room:room-compiler:$room_version")
-    implementation("androidx.room:room-ktx:$room_version")
+    ksp(projectOrArtifact(":room:room-compiler"))
+    implementation(projectOrArtifact(":room:room-ktx"))
+    implementation(projectOrArtifact(":room:room-paging"))
 }
 
 androidx {
@@ -45,4 +53,8 @@ androidx {
     publish = Publish.NONE
     inceptionYear = "2020"
     description = "This is a project for Paging demos."
+}
+
+android {
+    namespace "androidx.paging.compose.demos"
 }

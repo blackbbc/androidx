@@ -16,8 +16,9 @@
 
 package androidx.compose.ui.graphics.drawscope
 
-import androidx.compose.ui.geometry.Offset
+import androidx.annotation.FloatRange
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.BlendMode
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
@@ -34,11 +36,13 @@ import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.degrees
+import androidx.compose.ui.graphics.internal.JvmDefaultWithCompatibility
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.center
+import androidx.compose.ui.unit.toIntSize
 
 /**
  * Simultaneously translate the [DrawScope] coordinate space by [left] and [top] as well as modify
@@ -62,8 +66,11 @@ inline fun DrawScope.inset(
     block: DrawScope.() -> Unit
 ) {
     drawContext.transform.inset(left, top, right, bottom)
-    block()
-    drawContext.transform.inset(-left, -top, -right, -bottom)
+    try {
+        block()
+    } finally {
+        drawContext.transform.inset(-left, -top, -right, -bottom)
+    }
 }
 
 /**
@@ -80,8 +87,11 @@ inline fun DrawScope.inset(
     block: DrawScope.() -> Unit
 ) {
     drawContext.transform.inset(inset, inset, inset, inset)
-    block()
-    drawContext.transform.inset(-inset, -inset, -inset, -inset)
+    try {
+        block()
+    } finally {
+        drawContext.transform.inset(-inset, -inset, -inset, -inset)
+    }
 }
 
 /**
@@ -116,8 +126,11 @@ inline fun DrawScope.translate(
     block: DrawScope.() -> Unit
 ) {
     drawContext.transform.translate(left, top)
-    block()
-    drawContext.transform.translate(-left, -top)
+    try {
+        block()
+    } finally {
+        drawContext.transform.translate(-left, -top)
+    }
 }
 
 /**
@@ -262,10 +275,82 @@ inline fun DrawScope.withTransform(
     // and reset it afterwards
     val previousSize = size
     canvas.save()
-    transformBlock(transform)
-    drawBlock()
-    canvas.restore()
-    size = previousSize
+    try {
+        transformBlock(transform)
+        drawBlock()
+    } finally {
+        canvas.restore()
+        size = previousSize
+    }
+}
+
+@Deprecated(
+    message = "Please use a new overload accepting nullable GraphicsLayer",
+    level = DeprecationLevel.HIDDEN
+)
+inline fun DrawScope.draw(
+    density: Density,
+    layoutDirection: LayoutDirection,
+    canvas: Canvas,
+    size: Size,
+    block: DrawScope.() -> Unit
+) {
+    draw(density, layoutDirection, canvas, size, null, block)
+}
+
+/**
+ * Draws into the provided [Canvas] with the commands specified in the lambda with this
+ * [DrawScope] as a receiver
+ *
+ * @sample androidx.compose.ui.graphics.samples.DrawScopeRetargetingSample
+ *
+ * @param density [Density] used to assist in conversions of density independent pixels to raw
+ * pixels to draw
+ * @param layoutDirection [LayoutDirection] of the layout being drawn in.
+ * @param canvas target canvas to render into
+ * @param size bounds relative to the current canvas translation in which the [DrawScope]
+ * should draw within
+ * @param graphicsLayer Current [GraphicsLayer] we are drawing into. Might be null if the [canvas]
+ * is not provided by a [GraphicsLayer], for example in the case of a software-accelerated drawing
+ * @param block lambda that is called to issue drawing commands on this [DrawScope]
+ */
+inline fun DrawScope.draw(
+    density: Density,
+    layoutDirection: LayoutDirection,
+    canvas: Canvas,
+    size: Size,
+    graphicsLayer: GraphicsLayer? = null,
+    block: DrawScope.() -> Unit
+) {
+    // Remember the previous drawing parameters in case we are temporarily re-directing our
+    // drawing to a separate Layer/RenderNode only to draw that content back into the original
+    // Canvas. If there is no previous canvas that was being drawing into, this ends up
+    // resetting these parameters back to defaults defensively
+    val prevDensity = drawContext.density
+    val prevLayoutDirection = drawContext.layoutDirection
+    val prevCanvas = drawContext.canvas
+    val prevSize = drawContext.size
+    val prevLayer = drawContext.graphicsLayer
+    drawContext.apply {
+        this.density = density
+        this.layoutDirection = layoutDirection
+        this.canvas = canvas
+        this.size = size
+        this.graphicsLayer = graphicsLayer
+    }
+    canvas.save()
+    try {
+        this.block()
+    } finally {
+        canvas.restore()
+        drawContext.apply {
+            this.density = prevDensity
+            this.layoutDirection = prevLayoutDirection
+            this.canvas = prevCanvas
+            this.size = prevSize
+            this.graphicsLayer = prevLayer
+        }
+    }
 }
 
 /**
@@ -281,6 +366,7 @@ inline fun DrawScope.withTransform(
  * @sample androidx.compose.ui.graphics.samples.DrawScopeSample
  */
 @DrawScopeMarker
+@JvmDefaultWithCompatibility
 interface DrawScope : Density {
 
     /**
@@ -328,8 +414,7 @@ interface DrawScope : Density {
         strokeWidth: Float = Stroke.HairlineWidth,
         cap: StrokeCap = Stroke.DefaultCap,
         pathEffect: PathEffect? = null,
-        /*FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
     )
@@ -356,8 +441,7 @@ interface DrawScope : Density {
         strokeWidth: Float = Stroke.HairlineWidth,
         cap: StrokeCap = Stroke.DefaultCap,
         pathEffect: PathEffect? = null,
-        /*FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
     )
@@ -380,8 +464,7 @@ interface DrawScope : Density {
         brush: Brush,
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
-        /*FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -405,8 +488,7 @@ interface DrawScope : Density {
         color: Color,
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -427,8 +509,7 @@ interface DrawScope : Density {
     fun drawImage(
         image: ImageBitmap,
         topLeft: Offset = Offset.Zero,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -456,18 +537,77 @@ interface DrawScope : Density {
      * @param colorFilter ColorFilter to apply to the [image] when drawn into the destination
      * @param blendMode Blending algorithm to apply to destination
      */
+    @Deprecated(
+        "Prefer usage of drawImage that consumes an optional FilterQuality parameter",
+        level = DeprecationLevel.HIDDEN,
+        replaceWith = ReplaceWith(
+            "drawImage(image, srcOffset, srcSize, dstOffset, dstSize, alpha, style, " +
+                "colorFilter, blendMode, FilterQuality.Low)",
+            "androidx.compose.ui.graphics.drawscope",
+            "androidx.compose.ui.graphics.FilterQuality"
+        )
+    ) // Binary API compatibility.
     fun drawImage(
         image: ImageBitmap,
         srcOffset: IntOffset = IntOffset.Zero,
         srcSize: IntSize = IntSize(image.width, image.height),
         dstOffset: IntOffset = IntOffset.Zero,
         dstSize: IntSize = srcSize,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
     )
+
+    /**
+     * Draws the subset of the given image described by the `src` argument into
+     * the canvas in the axis-aligned rectangle given by the `dst` argument.
+     *
+     * If no src rect is provided, the entire image is scaled into the corresponding destination
+     * bounds
+     *
+     * @param image The source image to draw
+     * @param srcOffset Optional offset representing the top left offset of the source image
+     * to draw, this defaults to the origin of [image]
+     * @param srcSize Optional dimensions of the source image to draw relative to [srcOffset],
+     * this defaults the width and height of [image]
+     * @param dstOffset Optional offset representing the top left offset of the destination
+     * to draw the given image, this defaults to the origin of the current translation
+     * tarting top left offset in the destination to draw the image
+     * @param dstSize Optional dimensions of the destination to draw, this defaults to [srcSize]
+     * @param alpha Opacity to be applied to [image] from 0.0f to 1.0f representing
+     * fully transparent to fully opaque respectively
+     * @param style Specifies whether the image is to be drawn filled in or as a rectangular stroke
+     * @param colorFilter ColorFilter to apply to the [image] when drawn into the destination
+     * @param blendMode Blending algorithm to apply to destination
+     * @param filterQuality Sampling algorithm applied to the [image] when it is scaled and drawn
+     * into the destination. The default is [FilterQuality.Low] which scales using a bilinear
+     * sampling algorithm
+     */
+    fun drawImage(
+        image: ImageBitmap,
+        srcOffset: IntOffset = IntOffset.Zero,
+        srcSize: IntSize = IntSize(image.width, image.height),
+        dstOffset: IntOffset = IntOffset.Zero,
+        dstSize: IntSize = srcSize,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
+        style: DrawStyle = Fill,
+        colorFilter: ColorFilter? = null,
+        blendMode: BlendMode = DefaultBlendMode,
+        filterQuality: FilterQuality = DefaultFilterQuality
+    ) {
+        drawImage(
+            image = image,
+            srcOffset = srcOffset,
+            srcSize = srcSize,
+            dstOffset = dstOffset,
+            dstSize = dstSize,
+            alpha = alpha,
+            style = style,
+            colorFilter = colorFilter,
+            blendMode = blendMode
+        )
+    }
 
     /**
      * Draws a rounded rectangle with the provided size, offset and radii for the x and y axis
@@ -489,8 +629,7 @@ interface DrawScope : Density {
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
         cornerRadius: CornerRadius = CornerRadius.Zero,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -516,8 +655,7 @@ interface DrawScope : Density {
         size: Size = this.size.offsetSize(topLeft),
         cornerRadius: CornerRadius = CornerRadius.Zero,
         style: DrawStyle = Fill,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
     )
@@ -539,8 +677,7 @@ interface DrawScope : Density {
         brush: Brush,
         radius: Float = size.minDimension / 2.0f,
         center: Offset = this.center,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -563,8 +700,7 @@ interface DrawScope : Density {
         color: Color,
         radius: Float = size.minDimension / 2.0f,
         center: Offset = this.center,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -590,8 +726,7 @@ interface DrawScope : Density {
         brush: Brush,
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -617,8 +752,7 @@ interface DrawScope : Density {
         color: Color,
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -653,8 +787,7 @@ interface DrawScope : Density {
         useCenter: Boolean,
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -689,8 +822,7 @@ interface DrawScope : Density {
         useCenter: Boolean,
         topLeft: Offset = Offset.Zero,
         size: Size = this.size.offsetSize(topLeft),
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -713,8 +845,7 @@ interface DrawScope : Density {
     fun drawPath(
         path: Path,
         color: Color,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -736,8 +867,7 @@ interface DrawScope : Density {
     fun drawPath(
         path: Path,
         brush: Brush,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         style: DrawStyle = Fill,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
@@ -766,8 +896,7 @@ interface DrawScope : Density {
         strokeWidth: Float = Stroke.HairlineWidth,
         cap: StrokeCap = StrokeCap.Butt,
         pathEffect: PathEffect? = null,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
     )
@@ -795,11 +924,36 @@ interface DrawScope : Density {
         strokeWidth: Float = Stroke.HairlineWidth,
         cap: StrokeCap = StrokeCap.Butt,
         pathEffect: PathEffect? = null,
-        /*@FloatRange(from = 0.0, to = 1.0)*/
-        alpha: Float = 1.0f,
+        @FloatRange(from = 0.0, to = 1.0) alpha: Float = 1.0f,
         colorFilter: ColorFilter? = null,
         blendMode: BlendMode = DefaultBlendMode
     )
+
+    /**
+     * Record the corresponding drawing commands for this [GraphicsLayer] instance using the
+     * [Density], [LayoutDirection] and [IntSize] from the provided [DrawScope] as defaults.
+     * This will retarget the underlying canvas of the provided DrawScope to draw within the layer
+     * itself and reset it to the original canvas on the conclusion of this method call.
+     */
+    fun GraphicsLayer.buildLayer(
+        size: IntSize = this@DrawScope.size.toIntSize(),
+        block: DrawScope.() -> Unit
+    ): GraphicsLayer = buildLayer(
+        this@DrawScope,
+        this@DrawScope.layoutDirection,
+        size
+    ) {
+        this@DrawScope.draw(
+            // we can use this@buildLayer.drawContext directly as the values in this@DrawScope
+            // and this@buildLayer are the same
+            drawContext.density,
+            drawContext.layoutDirection,
+            drawContext.canvas,
+            drawContext.size,
+            drawContext.graphicsLayer,
+            block
+        )
+    }
 
     /**
      * Helper method to offset the provided size with the offset in box width and height
@@ -815,6 +969,13 @@ interface DrawScope : Density {
          * in the destination
          */
         val DefaultBlendMode: BlendMode = BlendMode.SrcOver
+
+        /**
+         * Default FilterQuality used for determining the filtering algorithm
+         * to apply when scaling [ImageBitmap] objects. Maps to the default
+         * behavior of bilinear filtering
+         */
+        val DefaultFilterQuality: FilterQuality = FilterQuality.Low
     }
 }
 
@@ -831,34 +992,22 @@ object Fill : DrawStyle()
 
 /**
  * [DrawStyle] that provides information for drawing content with a stroke
+ *
+ * @param width Configure the width of the stroke in pixels
+ * @param miter Set the stroke miter value. This is used to control the behavior of miter joins when
+ * the joins angle is sharp. This value must be >= 0
+ * @param cap Return the paint's Cap, controlling how the start and end of stroked lines and paths
+ * are treated. The default is [StrokeCap.Butt]
+ * @param join Set's the treatment where lines and curve segments join on a stroked path. The
+ * default is [StrokeJoin.Miter]
+ * @param pathEffect Effect to apply to the stroke, null indicates a solid stroke line is to be
+ * drawn
  */
 class Stroke(
-    /**
-     * Configure the width of the stroke in pixels
-     */
     val width: Float = 0.0f,
-
-    /**
-     * Set the stroke miter value. This is used to control the behavior of miter
-     * joins when the joins angle is sharp. This value must be >= 0.
-     */
     val miter: Float = DefaultMiter,
-
-    /**
-     * Return the paint's Cap, controlling how the start and end of stroked
-     * lines and paths are treated. The default is [StrokeCap.Butt]
-     */
-    val cap: StrokeCap = StrokeCap.Butt,
-
-    /**
-     * Set's the treatment where lines and curve segments join on a stroked path.
-     * The default is [StrokeJoin.Miter]
-     */
-    val join: StrokeJoin = StrokeJoin.Miter,
-
-    /**
-     * Effect to apply to the stroke, null indicates a solid stroke line is to be drawn
-     */
+    val cap: StrokeCap = DefaultCap,
+    val join: StrokeJoin = DefaultJoin,
     val pathEffect: PathEffect? = null
 ) : DrawStyle() {
     companion object {

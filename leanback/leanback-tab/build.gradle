@@ -1,5 +1,10 @@
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -11,6 +16,10 @@ dependencies {
     api("androidx.annotation:annotation:1.1.0")
     api("com.google.android.material:material:1.0.0")
     api("androidx.viewpager:viewpager:1.0.0")
+
+    // To avoid manifest merger warnings due to duplicate package names
+    // It can be removed if material library is updated to a newer version
+    implementation("androidx.vectordrawable:vectordrawable-animated:1.1.0")
 
     androidTestImplementation(libs.testExtJunit)
     androidTestImplementation(libs.testCore)
@@ -31,13 +40,14 @@ android {
     defaultConfig {
         minSdkVersion 21
     }
+    namespace "androidx.leanback.tab"
 }
 
 androidx {
-    name = "AndroidX Leanback Tab"
+    name = "Leanback Tab"
     publish = Publish.SNAPSHOT_AND_RELEASE
     mavenVersion = LibraryVersions.LEANBACK_TAB
-    mavenGroup = LibraryGroups.LEANBACK
     inceptionYear = "2020"
     description = "This library adds top tab navigation component to be used in TV"
+    metalavaK2UastEnabled = true
 }

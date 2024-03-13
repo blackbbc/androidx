@@ -37,7 +37,6 @@ import androidx.appcompat.widget.ForwardingListener;
 import androidx.appcompat.widget.TooltipCompat;
 
 /**
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class ActionMenuItemView extends AppCompatTextView
@@ -93,6 +92,11 @@ public class ActionMenuItemView extends AppCompatTextView
 
         mAllowTextWithIcon = shouldAllowTextWithIcon();
         updateTextButtonVisibility();
+    }
+
+    @Override
+    public CharSequence getAccessibilityClassName() {
+        return android.widget.Button.class.getName();
     }
 
     /**
