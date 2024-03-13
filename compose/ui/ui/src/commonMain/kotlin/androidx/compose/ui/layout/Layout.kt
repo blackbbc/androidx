@@ -23,21 +23,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReusableComposeNode
 import androidx.compose.runtime.SkippableUpdater
 import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.currentCompositeKeyHash
+import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.UiComposable
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.materialize
+import androidx.compose.ui.materializeWithCompositionLocalInjectionInternal
 import androidx.compose.ui.node.ComposeUiNode
+import androidx.compose.ui.node.ComposeUiNode.Companion.SetCompositeKeyHash
+import androidx.compose.ui.node.ComposeUiNode.Companion.SetMeasurePolicy
+import androidx.compose.ui.node.ComposeUiNode.Companion.SetModifier
+import androidx.compose.ui.node.ComposeUiNode.Companion.SetResolvedCompositionLocals
 import androidx.compose.ui.node.LayoutNode
-import androidx.compose.ui.node.MeasureBlocks
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.simpleIdentityToString
+import androidx.compose.ui.node.checkMeasuredSize
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.util.fastMap
+import androidx.compose.ui.util.fastForEach
 
 /**
  * [Layout] is the main core component for layout. It can be used to measure and position
@@ -64,143 +69,197 @@ import androidx.compose.ui.util.fastMap
  * @see androidx.compose.foundation.layout.BoxWithConstraints
  */
 @Suppress("ComposableLambdaParameterPosition")
-@Composable inline fun Layout(
-    content: @Composable () -> Unit,
+@UiComposable
+@Composable
+inline fun Layout(
+    content: @Composable @UiComposable () -> Unit,
     modifier: Modifier = Modifier,
     measurePolicy: MeasurePolicy
 ) {
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
+    val compositeKeyHash = currentCompositeKeyHash
+    val localMap = currentComposer.currentCompositionLocalMap
+    val materialized = currentComposer.materialize(modifier)
     ReusableComposeNode<ComposeUiNode, Applier<Any>>(
         factory = ComposeUiNode.Constructor,
         update = {
-            set(measurePolicy, ComposeUiNode.SetMeasurePolicy)
-            set(density, ComposeUiNode.SetDensity)
-            set(layoutDirection, ComposeUiNode.SetLayoutDirection)
+            set(measurePolicy, SetMeasurePolicy)
+            set(localMap, SetResolvedCompositionLocals)
+            @OptIn(ExperimentalComposeUiApi::class)
+            set(compositeKeyHash, SetCompositeKeyHash)
+            set(materialized, SetModifier)
         },
-        skippableUpdate = materializerOf(modifier),
         content = content
     )
 }
 
-@Suppress("ComposableLambdaParameterPosition")
+/**
+ * [Layout] is the main core component for layout for "leaf" nodes. It can be used to measure and
+ * position zero children.
+ *
+ * The measurement, layout and intrinsic measurement behaviours of this layout will be defined
+ * by the [measurePolicy] instance. See [MeasurePolicy] for more details.
+ *
+ * For a composable able to define its content according to the incoming constraints,
+ * see [androidx.compose.foundation.layout.BoxWithConstraints].
+ *
+ * Example usage:
+ * @sample androidx.compose.ui.samples.LayoutUsage
+ *
+ * Example usage with custom intrinsic measurements:
+ * @sample androidx.compose.ui.samples.LayoutWithProvidedIntrinsicsUsage
+ *
+ * @param modifier Modifiers to be applied to the layout.
+ * @param measurePolicy The policy defining the measurement and positioning of the layout.
+ *
+ * @see Layout
+ * @see MeasurePolicy
+ * @see androidx.compose.foundation.layout.BoxWithConstraints
+ */
+@Suppress("NOTHING_TO_INLINE")
 @Composable
-@Deprecated(
-    "This composable was deprecated. Please use the alternative Layout overloads instead."
-)
-internal fun Layout(
-    content: @Composable () -> Unit,
-    minIntrinsicWidthMeasureBlock: IntrinsicMeasureBlock,
-    minIntrinsicHeightMeasureBlock: IntrinsicMeasureBlock,
-    maxIntrinsicWidthMeasureBlock: IntrinsicMeasureBlock,
-    maxIntrinsicHeightMeasureBlock: IntrinsicMeasureBlock,
+@UiComposable
+inline fun Layout(
     modifier: Modifier = Modifier,
-    measureBlock: MeasureBlock
+    measurePolicy: MeasurePolicy
 ) {
-    val measurePolicy = object : MeasurePolicy {
-        override fun MeasureScope.measure(
-            measurables: List<Measurable>,
-            constraints: Constraints
-        ) = measureBlock(this, measurables, constraints)
-
-        override fun IntrinsicMeasureScope.minIntrinsicWidth(
-            measurables: List<IntrinsicMeasurable>,
-            height: Int
-        ) = minIntrinsicWidthMeasureBlock(this, measurables, height)
-
-        override fun IntrinsicMeasureScope.minIntrinsicHeight(
-            measurables: List<IntrinsicMeasurable>,
-            width: Int
-        ) = minIntrinsicHeightMeasureBlock(this, measurables, width)
-
-        override fun IntrinsicMeasureScope.maxIntrinsicWidth(
-            measurables: List<IntrinsicMeasurable>,
-            height: Int
-        ) = maxIntrinsicWidthMeasureBlock(this, measurables, height)
-
-        override fun IntrinsicMeasureScope.maxIntrinsicHeight(
-            measurables: List<IntrinsicMeasurable>,
-            width: Int
-        ) = maxIntrinsicHeightMeasureBlock(this, measurables, width)
-    }
-
-    Layout(content, modifier, measurePolicy)
+    val compositeKeyHash = currentCompositeKeyHash
+    val materialized = currentComposer.materialize(modifier)
+    val localMap = currentComposer.currentCompositionLocalMap
+    ReusableComposeNode<ComposeUiNode, Applier<Any>>(
+        factory = ComposeUiNode.Constructor,
+        update = {
+            set(measurePolicy, SetMeasurePolicy)
+            set(localMap, SetResolvedCompositionLocals)
+            set(materialized, SetModifier)
+            @OptIn(ExperimentalComposeUiApi::class)
+            set(compositeKeyHash, SetCompositeKeyHash)
+        },
+    )
 }
 
-@Deprecated(
-    "MeasureBlocks was deprecated. Please use MeasurePolicy and the Layout overloads using " +
-        "it instead."
-)
-internal fun measureBlocksOf(
-    minIntrinsicWidthMeasureBlock: IntrinsicMeasureBlock,
-    minIntrinsicHeightMeasureBlock: IntrinsicMeasureBlock,
-    maxIntrinsicWidthMeasureBlock: IntrinsicMeasureBlock,
-    maxIntrinsicHeightMeasureBlock: IntrinsicMeasureBlock,
-    measureBlock: MeasureBlock
-): MeasureBlocks {
-    return object : MeasureBlocks {
-        override fun measure(
-            measureScope: MeasureScope,
-            measurables: List<Measurable>,
-            constraints: Constraints
-        ) = measureScope.measureBlock(measurables, constraints)
-        override fun minIntrinsicWidth(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            h: Int
-        ) = intrinsicMeasureScope.minIntrinsicWidthMeasureBlock(measurables, h)
-        override fun minIntrinsicHeight(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            w: Int
-        ) = intrinsicMeasureScope.minIntrinsicHeightMeasureBlock(measurables, w)
-        override fun maxIntrinsicWidth(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            h: Int
-        ) = intrinsicMeasureScope.maxIntrinsicWidthMeasureBlock(measurables, h)
-        override fun maxIntrinsicHeight(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            w: Int
-        ) = intrinsicMeasureScope.maxIntrinsicHeightMeasureBlock(measurables, w)
-    }
+/**
+ * [Layout] is the main core component for layout. It can be used to measure and position
+ * zero or more layout children.
+ *
+ * This overload accepts a list of multiple composable content lambdas, which allows treating
+ * measurables put into different content lambdas differently - measure policy will provide
+ * a list of lists of Measurables, not just a single list. Such list has the same size
+ * as the list of contents passed into [Layout] and contains the list of measurables
+ * of the corresponding content lambda in the same order.
+ *
+ * Note that layouts emitted as part of all [contents] lambdas will be added as a direct children
+ * for this [Layout]. This means that if you set a custom z index on some children, the drawing
+ * order will be calculated as if they were all provided as part of one lambda.
+ *
+ * Example usage:
+ * @sample androidx.compose.ui.samples.LayoutWithMultipleContentsUsage
+ *
+ * @param contents The list of children composable contents to be laid out.
+ * @param modifier Modifiers to be applied to the layout.
+ * @param measurePolicy The policy defining the measurement and positioning of the layout.
+ *
+ * @see Layout for a simpler use case when you have only one content lambda.
+ */
+@Suppress("ComposableLambdaParameterPosition", "NOTHING_TO_INLINE")
+@UiComposable
+@Composable
+inline fun Layout(
+    contents: List<@Composable @UiComposable () -> Unit>,
+    modifier: Modifier = Modifier,
+    measurePolicy: MultiContentMeasurePolicy
+) {
+    Layout(
+        content = combineAsVirtualLayouts(contents),
+        modifier = modifier,
+        measurePolicy = remember(measurePolicy) { createMeasurePolicy(measurePolicy) }
+    )
 }
 
 @PublishedApi
+internal fun combineAsVirtualLayouts(
+    contents: List<@Composable @UiComposable () -> Unit>
+): @Composable @UiComposable () -> Unit = {
+    contents.fastForEach { content ->
+        val compositeKeyHash = currentCompositeKeyHash
+        ReusableComposeNode<ComposeUiNode, Applier<Any>>(
+            factory = ComposeUiNode.VirtualConstructor,
+            update = {
+                @OptIn(ExperimentalComposeUiApi::class)
+                set(compositeKeyHash, SetCompositeKeyHash)
+            },
+            content = content
+        )
+    }
+}
+
+/**
+ * This function uses a JVM-Name because the original name now has a different implementation for
+ * backwards compatibility [materializerOfWithCompositionLocalInjection].
+ * More details can be found at https://issuetracker.google.com/275067189
+ */
+@PublishedApi
+@JvmName("modifierMaterializerOf")
 internal fun materializerOf(
     modifier: Modifier
 ): @Composable SkippableUpdater<ComposeUiNode>.() -> Unit = {
+    val compositeKeyHash = currentCompositeKeyHash
     val materialized = currentComposer.materialize(modifier)
     update {
-        set(materialized, ComposeUiNode.SetModifier)
+        set(materialized, SetModifier)
+        @OptIn(ExperimentalComposeUiApi::class)
+        set(compositeKeyHash, SetCompositeKeyHash)
+    }
+}
+
+/**
+ * This function exists solely for solving a backwards-incompatibility with older compilations
+ * that used an older version of the `Layout` composable. New code paths should not call this.
+ * More details can be found at https://issuetracker.google.com/275067189
+ */
+@JvmName("materializerOf")
+@Deprecated(
+    "Needed only for backwards compatibility. Do not use.",
+    level = DeprecationLevel.WARNING
+)
+@PublishedApi
+internal fun materializerOfWithCompositionLocalInjection(
+    modifier: Modifier
+): @Composable SkippableUpdater<ComposeUiNode>.() -> Unit = {
+    val compositeKeyHash = currentCompositeKeyHash
+    val materialized = currentComposer.materializeWithCompositionLocalInjectionInternal(modifier)
+    update {
+        set(materialized, SetModifier)
+        @OptIn(ExperimentalComposeUiApi::class)
+        set(compositeKeyHash, SetCompositeKeyHash)
     }
 }
 
 @Suppress("ComposableLambdaParameterPosition")
 @Composable
+@UiComposable
 @Deprecated(
     "This API is unsafe for UI performance at scale - using it incorrectly will lead " +
         "to exponential performance issues. This API should be avoided whenever possible."
 )
 fun MultiMeasureLayout(
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
+    content: @Composable @UiComposable () -> Unit,
     measurePolicy: MeasurePolicy
 ) {
+    val compositeKeyHash = currentCompositeKeyHash
     val materialized = currentComposer.materialize(modifier)
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
+    val localMap = currentComposer.currentCompositionLocalMap
 
     ReusableComposeNode<LayoutNode, Applier<Any>>(
         factory = LayoutNode.Constructor,
         update = {
-            set(materialized, ComposeUiNode.SetModifier)
-            set(measurePolicy, ComposeUiNode.SetMeasurePolicy)
-            set(density, ComposeUiNode.SetDensity)
-            set(layoutDirection, ComposeUiNode.SetLayoutDirection)
+            set(measurePolicy, SetMeasurePolicy)
+            set(localMap, SetResolvedCompositionLocals)
             @Suppress("DEPRECATION")
             init { this.canMultiMeasure = true }
+            set(materialized, SetModifier)
+            @OptIn(ExperimentalComposeUiApi::class)
+            set(compositeKeyHash, SetCompositeKeyHash)
         },
         content = content
     )
@@ -237,6 +296,14 @@ internal enum class IntrinsicWidthHeight {
     Width, Height
 }
 
+// A large value to use as a replacement for Infinity with DefaultIntrinisicMeasurable.
+// A layout likely won't use this dimension as it is opposite from the one being measured in
+// the max/min Intrinsic Width/Height, but it is possible. For example, if the direct child
+// uses normal measurement/layout, we don't want to return Infinity sizes when its parent
+// asks for intrinsic size. 15 bits can fit in a Constraints, so should be safe unless
+// the parent adds to it and the other dimension is also very large (> 2^15).
+internal const val LargeDimension = (1 shl 15) - 1
+
 /**
  * A wrapper around a [Measurable] for intrinsic measurements in [Layout]. Consumers of
  * [Layout] don't identify intrinsic methods, but we can give a reasonable implementation
@@ -245,8 +312,8 @@ internal enum class IntrinsicWidthHeight {
  */
 internal class DefaultIntrinsicMeasurable(
     val measurable: IntrinsicMeasurable,
-    val minMax: IntrinsicMinMax,
-    val widthHeight: IntrinsicWidthHeight
+    private val minMax: IntrinsicMinMax,
+    private val widthHeight: IntrinsicWidthHeight
 ) : Measurable {
     override val parentData: Any?
         get() = measurable.parentData
@@ -258,14 +325,19 @@ internal class DefaultIntrinsicMeasurable(
             } else {
                 measurable.minIntrinsicWidth(constraints.maxHeight)
             }
-            return FixedSizeIntrinsicsPlaceable(width, constraints.maxHeight)
+            // Can't use infinity for height, so use a large number
+            val height =
+                if (constraints.hasBoundedHeight) constraints.maxHeight else LargeDimension
+            return FixedSizeIntrinsicsPlaceable(width, height)
         }
         val height = if (minMax == IntrinsicMinMax.Max) {
             measurable.maxIntrinsicHeight(constraints.maxWidth)
         } else {
             measurable.minIntrinsicHeight(constraints.maxWidth)
         }
-        return FixedSizeIntrinsicsPlaceable(constraints.maxWidth, height)
+        // Can't use infinity for width, so use a large number
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else LargeDimension
+        return FixedSizeIntrinsicsPlaceable(width, height)
     }
 
     override fun minIntrinsicWidth(height: Int): Int {
@@ -290,145 +362,64 @@ internal class DefaultIntrinsicMeasurable(
  * call.
  */
 internal class IntrinsicsMeasureScope(
-    density: Density,
-    override val layoutDirection: LayoutDirection
-) : MeasureScope, Density by density
+    intrinsicMeasureScope: IntrinsicMeasureScope,
+    override val layoutDirection: LayoutDirection,
+) : MeasureScope, IntrinsicMeasureScope by intrinsicMeasureScope {
+    override fun layout(
+        width: Int,
+        height: Int,
+        alignmentLines: Map<AlignmentLine, Int>,
+        rulers: (RulerScope.() -> Unit)?,
+        placementBlock: Placeable.PlacementScope.() -> Unit
+    ): MeasureResult {
+        val w = width.coerceAtLeast(0)
+        val h = height.coerceAtLeast(0)
+        checkMeasuredSize(w, h)
+        return object : MeasureResult {
+            override val width: Int
+                get() = w
+            override val height: Int
+                get() = h
+            override val alignmentLines: Map<AlignmentLine, Int>
+                get() = alignmentLines
+            override val rulers: (RulerScope.() -> Unit)?
+                get() = rulers
 
-/**
- * Default [MeasureBlocks] object implementation, providing intrinsic measurements
- * that use the measure block replacing the measure calls with intrinsic measurement calls.
- */
-@Deprecated("MeasuringIntrinsicsMeasureBlocks was deprecated. Please use MeasurePolicy instead.")
-internal fun MeasuringIntrinsicsMeasureBlocks(measureBlock: MeasureBlock) =
-    object : MeasureBlocks {
-        override fun measure(
-            measureScope: MeasureScope,
-            measurables: List<Measurable>,
-            constraints: Constraints
-        ) = measureScope.measureBlock(measurables, constraints)
-        override fun minIntrinsicWidth(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            h: Int
-        ) = intrinsicMeasureScope.MeasuringMinIntrinsicWidth(
-            measureBlock,
-            measurables,
-            h,
-            intrinsicMeasureScope.layoutDirection
-        )
-        override fun minIntrinsicHeight(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            w: Int
-        ) = intrinsicMeasureScope.MeasuringMinIntrinsicHeight(
-            measureBlock,
-            measurables,
-            w,
-            intrinsicMeasureScope.layoutDirection
-        )
-        override fun maxIntrinsicWidth(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            h: Int
-        ) = intrinsicMeasureScope.MeasuringMaxIntrinsicWidth(
-            measureBlock,
-            measurables,
-            h,
-            intrinsicMeasureScope.layoutDirection
-        )
-        override fun maxIntrinsicHeight(
-            intrinsicMeasureScope: IntrinsicMeasureScope,
-            measurables: List<IntrinsicMeasurable>,
-            w: Int
-        ) = intrinsicMeasureScope.MeasuringMaxIntrinsicHeight(
-            measureBlock,
-            measurables,
-            w,
-            intrinsicMeasureScope.layoutDirection
-        )
-
-        override fun toString(): String {
-            // this calls simpleIdentityToString on measureBlock because it is typically a lambda,
-            // which has a useless toString that doesn't hint at the source location
-            return simpleIdentityToString(
-                this,
-                "MeasuringIntrinsicsMeasureBlocks"
-            ) + "{ measureBlock=${simpleIdentityToString(measureBlock, null)} }"
+            override fun placeChildren() {
+                // Intrinsics should never be placed
+            }
         }
     }
-
-/**
- * Default implementation for the min intrinsic width of a layout. This works by running the
- * measure block with measure calls replaced with intrinsic measurement calls.
- */
-private fun Density.MeasuringMinIntrinsicWidth(
-    measureBlock: MeasureScope.(List<Measurable>, Constraints) -> MeasureResult,
-    measurables: List<IntrinsicMeasurable>,
-    h: Int,
-    layoutDirection: LayoutDirection
-): Int {
-    val mapped = measurables.fastMap {
-        DefaultIntrinsicMeasurable(it, IntrinsicMinMax.Min, IntrinsicWidthHeight.Width)
-    }
-    val constraints = Constraints(maxHeight = h)
-    val layoutReceiver = IntrinsicsMeasureScope(this, layoutDirection)
-    val layoutResult = layoutReceiver.measureBlock(mapped, constraints)
-    return layoutResult.width
 }
 
-/**
- * Default implementation for the min intrinsic width of a layout. This works by running the
- * measure block with measure calls replaced with intrinsic measurement calls.
- */
-private fun Density.MeasuringMinIntrinsicHeight(
-    measureBlock: MeasureScope.(List<Measurable>, Constraints) -> MeasureResult,
-    measurables: List<IntrinsicMeasurable>,
-    w: Int,
-    layoutDirection: LayoutDirection
-): Int {
-    val mapped = measurables.fastMap {
-        DefaultIntrinsicMeasurable(it, IntrinsicMinMax.Min, IntrinsicWidthHeight.Height)
-    }
-    val constraints = Constraints(maxWidth = w)
-    val layoutReceiver = IntrinsicsMeasureScope(this, layoutDirection)
-    val layoutResult = layoutReceiver.measureBlock(mapped, constraints)
-    return layoutResult.height
-}
+@OptIn(ExperimentalComposeUiApi::class)
+internal class ApproachIntrinsicsMeasureScope(
+    intrinsicMeasureScope: ApproachIntrinsicMeasureScope,
+    override val layoutDirection: LayoutDirection,
+) : ApproachMeasureScope, ApproachIntrinsicMeasureScope by intrinsicMeasureScope {
+    override fun layout(
+        width: Int,
+        height: Int,
+        alignmentLines: Map<AlignmentLine, Int>,
+        rulers: (RulerScope.() -> Unit)?,
+        placementBlock: Placeable.PlacementScope.() -> Unit
+    ): MeasureResult {
+        val w = width.coerceAtLeast(0)
+        val h = height.coerceAtLeast(0)
+        checkMeasuredSize(w, h)
+        return object : MeasureResult {
+            override val width: Int
+                get() = w
+            override val height: Int
+                get() = h
+            override val alignmentLines: Map<AlignmentLine, Int>
+                get() = alignmentLines
+            override val rulers: (RulerScope.() -> Unit)?
+                get() = rulers
 
-/**
- * Default implementation for the max intrinsic width of a layout. This works by running the
- * measure block with measure calls replaced with intrinsic measurement calls.
- */
-private fun Density.MeasuringMaxIntrinsicWidth(
-    measureBlock: MeasureScope.(List<Measurable>, Constraints) -> MeasureResult,
-    measurables: List<IntrinsicMeasurable>,
-    h: Int,
-    layoutDirection: LayoutDirection
-): Int {
-    val mapped = measurables.fastMap {
-        DefaultIntrinsicMeasurable(it, IntrinsicMinMax.Max, IntrinsicWidthHeight.Width)
+            override fun placeChildren() {
+                // Intrinsics should never be placed
+            }
+        }
     }
-    val constraints = Constraints(maxHeight = h)
-    val layoutReceiver = IntrinsicsMeasureScope(this, layoutDirection)
-    val layoutResult = layoutReceiver.measureBlock(mapped, constraints)
-    return layoutResult.width
-}
-
-/**
- * Default implementation for the max intrinsic height of a layout. This works by running the
- * measure block with measure calls replaced with intrinsic measurement calls.
- */
-private fun Density.MeasuringMaxIntrinsicHeight(
-    measureBlock: MeasureScope.(List<Measurable>, Constraints) -> MeasureResult,
-    measurables: List<IntrinsicMeasurable>,
-    w: Int,
-    layoutDirection: LayoutDirection
-): Int {
-    val mapped = measurables.fastMap {
-        DefaultIntrinsicMeasurable(it, IntrinsicMinMax.Max, IntrinsicWidthHeight.Height)
-    }
-    val constraints = Constraints(maxWidth = w)
-    val layoutReceiver = IntrinsicsMeasureScope(this, layoutDirection)
-    val layoutResult = layoutReceiver.measureBlock(mapped, constraints)
-    return layoutResult.height
 }

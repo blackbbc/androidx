@@ -21,7 +21,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityEvent;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.R;
 import androidx.core.view.ViewCompat.ScrollAxis;
 
@@ -32,9 +34,9 @@ public final class ViewGroupCompat {
 
     /**
      * This constant is a {@link #setLayoutMode(ViewGroup, int) layoutMode}.
-     * Clip bounds are the raw values of {@link android.view.View#getLeft() left},
-     * {@link android.view.View#getTop() top},
-     * {@link android.view.View#getRight() right} and {@link android.view.View#getBottom() bottom}.
+     * Clip bounds are the raw values of {@link View#getLeft() left},
+     * {@link View#getTop() top},
+     * {@link View#getRight() right} and {@link View#getBottom() bottom}.
      */
     public static final int LAYOUT_MODE_CLIP_BOUNDS = 0;
 
@@ -111,10 +113,7 @@ public final class ViewGroupCompat {
      * @see #setLayoutMode(ViewGroup, int)
      */
     public static int getLayoutMode(@NonNull ViewGroup group) {
-        if (Build.VERSION.SDK_INT >= 18) {
-            return group.getLayoutMode();
-        }
-        return LAYOUT_MODE_CLIP_BOUNDS;
+        return group.getLayoutMode();
     }
 
     /**
@@ -122,19 +121,19 @@ public final class ViewGroupCompat {
      * Valid values are either {@link #LAYOUT_MODE_CLIP_BOUNDS} or
      * {@link #LAYOUT_MODE_OPTICAL_BOUNDS}.
      *
+     * @param group ViewGroup for which to set the mode.
      * @param mode the layout mode to use during layout operations
      *
      * @see #getLayoutMode(ViewGroup)
      */
     public static void setLayoutMode(@NonNull ViewGroup group, int mode) {
-        if (Build.VERSION.SDK_INT >= 18) {
-            group.setLayoutMode(mode);
-        }
+        group.setLayoutMode(mode);
     }
 
     /**
      * Changes whether or not this ViewGroup should be treated as a single entity during
      * Activity Transitions.
+     * @param group ViewGroup for which to set the mode.
      * @param isTransitionGroup Whether or not the ViewGroup should be treated as a unit
      *                          in Activity transitions. If false, the ViewGroup won't transition,
      *                          only its children. If true, the entire ViewGroup will transition
@@ -142,7 +141,7 @@ public final class ViewGroupCompat {
      */
     public static void setTransitionGroup(@NonNull ViewGroup group, boolean isTransitionGroup) {
         if (Build.VERSION.SDK_INT >= 21) {
-            group.setTransitionGroup(isTransitionGroup);
+            Api21Impl.setTransitionGroup(group, isTransitionGroup);
         } else {
             group.setTag(R.id.tag_transition_group, isTransitionGroup);
         }
@@ -155,7 +154,7 @@ public final class ViewGroupCompat {
      */
     public static boolean isTransitionGroup(@NonNull ViewGroup group) {
         if (Build.VERSION.SDK_INT >= 21) {
-            return group.isTransitionGroup();
+            return Api21Impl.isTransitionGroup(group);
         }
         Boolean explicit = (Boolean) group.getTag(R.id.tag_transition_group);
         return (explicit != null && explicit)
@@ -179,11 +178,33 @@ public final class ViewGroupCompat {
     @SuppressWarnings("RedundantCast") // Intentionally invoking interface method.
     public static int getNestedScrollAxes(@NonNull ViewGroup group) {
         if (Build.VERSION.SDK_INT >= 21) {
-            return group.getNestedScrollAxes();
+            return Api21Impl.getNestedScrollAxes(group);
         }
         if (group instanceof NestedScrollingParent) {
             return ((NestedScrollingParent) group).getNestedScrollAxes();
         }
         return ViewCompat.SCROLL_AXIS_NONE;
+    }
+
+    @RequiresApi(21)
+    static class Api21Impl {
+        private Api21Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void setTransitionGroup(ViewGroup viewGroup, boolean isTransitionGroup) {
+            viewGroup.setTransitionGroup(isTransitionGroup);
+        }
+
+        @DoNotInline
+        static boolean isTransitionGroup(ViewGroup viewGroup) {
+            return viewGroup.isTransitionGroup();
+        }
+
+        @DoNotInline
+        static int getNestedScrollAxes(ViewGroup viewGroup) {
+            return viewGroup.getNestedScrollAxes();
+        }
     }
 }

@@ -16,21 +16,28 @@
 
 package androidx.room.log
 
+import androidx.room.compiler.processing.XAnnotation
+import androidx.room.compiler.processing.XAnnotationValue
 import androidx.room.compiler.processing.XElement
 import androidx.room.compiler.processing.XMessager
 import androidx.room.vo.Warning
+import javax.tools.Diagnostic
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
-import javax.tools.Diagnostic
 
 @RunWith(JUnit4::class)
 class RLogTest {
     @Test
     fun testSafeFormat() {
         val messager = object : XMessager() {
-            override fun onPrintMessage(kind: Diagnostic.Kind, msg: String, element: XElement?) {
-            }
+            override fun onPrintMessage(
+                kind: Diagnostic.Kind,
+                msg: String,
+                element: XElement?,
+                annotation: XAnnotation?,
+                annotationValue: XAnnotationValue?
+            ) {}
         }
         val logger = RLog(messager, emptySet(), null)
 

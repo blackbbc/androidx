@@ -24,10 +24,20 @@ import androidx.compose.ui.geometry.center
 import androidx.compose.ui.geometry.isFinite
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.geometry.isUnspecified
-import androidx.compose.ui.unit.center
+import kotlin.math.abs
 
 @Immutable
 sealed class Brush {
+
+    /**
+     * Return the intrinsic size of the [Brush].
+     * If the there is no intrinsic size (i.e. filling bounds with an arbitrary color) return
+     * [Size.Unspecified].
+     * If there is no intrinsic size in a single dimension, return [Size] with
+     * [Float.NaN] in the desired dimension.
+     */
+    open val intrinsicSize: Size = Size.Unspecified
+
     abstract fun applyTo(size: Size, p: Paint, alpha: Float)
 
     companion object {
@@ -47,11 +57,12 @@ sealed class Brush {
          * )
          * ```
          *
-         * @see androidx.compose.ui.graphics.samples.GradientBrushSample
+         * @sample androidx.compose.ui.graphics.samples.LinearGradientColorStopSample
+         * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colorStops Colors and their offset in the gradient area
          * @param start Starting position of the linear gradient. This can be set to
-         * [Offset.Infinite] to position at the far right and bottom of the drawing area
+         * [Offset.Zero] to position at the far left and top of the drawing area
          * @param end Ending position of the linear gradient. This can be set to
          * [Offset.Infinite] to position at the far right and bottom of the drawing area
          * @param tileMode Determines the behavior for how the shader is to fill a region outside
@@ -78,16 +89,17 @@ sealed class Brush {
          * ```
          *  Brush.linearGradient(
          *      listOf(Color.Red, Color.Green, Color.Blue),
-         *      start = Offset(0.0f, 50.0f)
+         *      start = Offset(0.0f, 50.0f),
          *      end = Offset(0.0f, 100.0f)
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.LinearGradientSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colors Colors to be rendered as part of the gradient
          * @param start Starting position of the linear gradient. This can be set to
-         * [Offset.Infinite] to position at the far right and bottom of the drawing area
+         * [Offset.Zero] to position at the far left and top of the drawing area
          * @param end Ending position of the linear gradient. This can be set to
          * [Offset.Infinite] to position at the far right and bottom of the drawing area
          * @param tileMode Determines the behavior for how the shader is to fill a region outside
@@ -119,6 +131,7 @@ sealed class Brush {
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.HorizontalGradientSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colors colors Colors to be rendered as part of the gradient
@@ -153,6 +166,7 @@ sealed class Brush {
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.HorizontalGradientColorStopSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colorStops Colors and offsets to determine how the colors are dispersed throughout
@@ -187,9 +201,9 @@ sealed class Brush {
          *      startY = 0.0f,
          *      endY = 100.0f
          * )
-         *
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.VerticalGradientSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colors colors Colors to be rendered as part of the gradient
@@ -224,6 +238,7 @@ sealed class Brush {
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.VerticalGradientColorStopSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colorStops Colors and offsets to determine how the colors are dispersed throughout
@@ -263,6 +278,7 @@ sealed class Brush {
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.RadialBrushColorStopSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colorStops Colors and offsets to determine how the colors are dispersed throughout
@@ -295,13 +311,13 @@ sealed class Brush {
          * ```
          * Brush.radialGradient(
          *      listOf(Color.Red, Color.Green, Color.Blue),
-         *      centerX = side1 / 2.0f,
-         *      centerY = side2 / 2.0f,
+         *      center = Offset(side1 / 2.0f, side2 / 2.0f),
          *      radius = side1 / 2.0f,
          *      tileMode = TileMode.Repeated
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.RadialBrushSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colors Colors to be rendered as part of the gradient
@@ -343,6 +359,7 @@ sealed class Brush {
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.SweepGradientColorStopSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colorStops Colors and offsets to determine how the colors are dispersed throughout
@@ -374,6 +391,7 @@ sealed class Brush {
          * )
          * ```
          *
+         * @sample androidx.compose.ui.graphics.samples.SweepGradientSample
          * @sample androidx.compose.ui.graphics.samples.GradientBrushSample
          *
          * @param colors List of colors to fill the sweep gradient
@@ -434,6 +452,13 @@ class LinearGradient internal constructor(
     private val tileMode: TileMode = TileMode.Clamp
 ) : ShaderBrush() {
 
+    override val intrinsicSize: Size
+        get() =
+            Size(
+                if (start.x.isFinite() && end.x.isFinite()) abs(start.x - end.x) else Float.NaN,
+                if (start.y.isFinite() && end.y.isFinite()) abs(start.y - end.y) else Float.NaN
+            )
+
     override fun createShader(size: Size): Shader {
         val startX = if (start.x == Float.POSITIVE_INFINITY) size.width else start.x
         val startY = if (start.y == Float.POSITIVE_INFINITY) size.height else start.y
@@ -492,6 +517,9 @@ class RadialGradient internal constructor(
     private val radius: Float,
     private val tileMode: TileMode = TileMode.Clamp
 ) : ShaderBrush() {
+
+    override val intrinsicSize: Size
+        get() = if (radius.isFinite()) Size(radius * 2, radius * 2) else Size.Unspecified
 
     override fun createShader(size: Size): Shader {
         val centerX: Float
@@ -625,8 +653,14 @@ abstract class ShaderBrush() : Brush() {
     final override fun applyTo(size: Size, p: Paint, alpha: Float) {
         var shader = internalShader
         if (shader == null || createdSize != size) {
-            shader = createShader(size).also { internalShader = it }
-            createdSize = size
+            if (size.isEmpty()) {
+                shader = null
+                internalShader = null
+                createdSize = Size.Unspecified
+            } else {
+                shader = createShader(size).also { internalShader = it }
+                createdSize = size
+            }
         }
         if (p.color != Color.Black) p.color = Color.Black
         if (p.shader != shader) p.shader = shader

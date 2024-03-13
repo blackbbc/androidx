@@ -275,6 +275,21 @@ control_character_regex = re.compile(r"""
 def remove_control_characters(line):
     return control_character_regex.sub("", line)
 
+# Removes strings from the input wherever they are found
+# This list is less convenient than the .ignore files:
+#   This list doesn't get autosuggested additions
+#   This list isn't automatically garbage collected
+#   Users interested in seeing the exemption history probably won't think to look here
+# This list does allow removing part of the text from a line and still validating the remainder of the line
+# If this list eventually gets long we might want to make it easier to update
+inline_ignores_regex = re.compile(
+    # b/300072778
+    "Sharing is only supported for boot loader classes because bootstrap classpath has been appended"
+)
+
+def remove_inline_ignores(line):
+    return re.sub(inline_ignores_regex, "", line)
+
 # Normalizes some filepaths to more easily simplify/skip some messages
 def normalize_paths(lines):
     # get OUT_DIR, DIST_DIR, and the path of the root of the checkout
@@ -490,6 +505,7 @@ def main():
     for log_path in log_paths:
         lines = readlines(log_path)
         lines = [remove_control_characters(line) for line in lines]
+        lines = [remove_inline_ignores(line) for line in lines]
         lines = normalize_paths(lines)
         all_lines += lines
     # load configuration
@@ -530,8 +546,9 @@ def main():
             print("  Try $ ./gradlew -Pandroidx.validateNoUnrecognizedMessages --rerun-tasks " + " ".join(extract_task_names(interesting_lines)))
             print("")
             print("Instructions:")
-            print("  Fix these messages if you can.")
-            print("  Otherwise, you may suppress them.")
+            print("  If you can fix these messages, do so.")
+            print("  If you cannot fix these messages, you may suppress them.")
+            print("    To automatically suppress new output from build server builds, run development/build_log_simplifier/update.sh")
             print("  See also https://android.googlesource.com/platform/frameworks/support/+/androidx-main/development/build_log_simplifier/VALIDATION_FAILURE.md")
             print("")
             new_exemptions_path = log_paths[0] + ".ignore"

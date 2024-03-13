@@ -32,14 +32,33 @@ import org.robolectric.util.ReflectionHelpers;
  */
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
-@Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
+@Config(minSdk = Build.VERSION_CODES.LOLLIPOP, maxSdk = 32) // maxSdk due to b/247175194
 public class SurfaceViewStretchedQuirkTest {
 
     @Test
     public void quirkExistsOnSamsungGalaxyZFold2() {
+        quirkExistsOnDevice("Samsung", "f2q");
+    }
+
+    @Test
+    public void quirkExistsOnSamsungGalaxyZFold3() {
+        quirkExistsOnDevice("Samsung", "q2q");
+    }
+
+    @Test
+    public void quirkExistsOnOppoFindN() {
+        quirkExistsOnDevice("Oppo", "OP4E75L1");
+    }
+
+    @Test
+    public void quirkExistsOnLenovoTabP12Pro() {
+        quirkExistsOnDevice("Lenovo", "Q706F");
+    }
+
+    public void quirkExistsOnDevice(String manufacturer, String device) {
         // Arrange.
-        ReflectionHelpers.setStaticField(Build.class, "DEVICE", "F2Q");
-        ReflectionHelpers.setStaticField(Build.class, "MANUFACTURER", "SAMSUNG");
+        ReflectionHelpers.setStaticField(Build.class, "DEVICE", device);
+        ReflectionHelpers.setStaticField(Build.class, "MANUFACTURER", manufacturer);
 
         // Act.
         final SurfaceViewStretchedQuirk quirk = DeviceQuirks.get(SurfaceViewStretchedQuirk.class);

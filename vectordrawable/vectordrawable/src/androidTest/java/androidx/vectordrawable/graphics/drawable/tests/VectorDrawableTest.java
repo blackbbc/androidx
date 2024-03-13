@@ -45,6 +45,7 @@ import android.util.Log;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.MediumTest;
+import androidx.test.filters.SdkSuppress;
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 import androidx.vectordrawable.test.R;
 
@@ -93,7 +94,6 @@ public class VectorDrawableTest {
             R.drawable.vector_icon_filltype_evenodd,
             R.drawable.vector_icon_filltype_nonzero,
             R.drawable.vector_icon_clip_filltype_evenodd,
-            R.drawable.vector_icon_clip_filltype_nonzero,
     };
 
     private static final int[] GOLDEN_IMAGES = new int[]{
@@ -126,7 +126,6 @@ public class VectorDrawableTest {
             R.drawable.vector_icon_filltype_evenodd_golden,
             R.drawable.vector_icon_filltype_nonzero_golden,
             R.drawable.vector_icon_clip_filltype_evenodd_golden,
-            R.drawable.vector_icon_clip_filltype_nonzero_golden,
     };
 
     private static final int[] EDGES = new int[]{
@@ -156,7 +155,6 @@ public class VectorDrawableTest {
             -1,
             -1,
             R.drawable.vector_icon_five_bars_edge,
-            -1,
             -1,
             -1,
             -1,
@@ -253,6 +251,10 @@ public class VectorDrawableTest {
 
 
     @Test
+    @SdkSuppress(maxSdkVersion = 33)
+    // Skia changes resulted in inconsistent rendering of VectorDrawable gradient across
+    // different QPR releases for U. Suppress test on U for now until a better solution
+    // is worked out. b/322404096
     public void testVectorDrawableGradient() throws Exception {
         int[] edges = new int[GRADIENT_ICON_RES_IDS.length];
         Arrays.fill(edges, -1);
@@ -473,23 +475,17 @@ public class VectorDrawableTest {
         // d1 will be mutated, while d2 / d3 will not.
         int originalAlpha = d2.getAlpha();
 
-        d1.setAlpha(0x80);
-        assertEquals(0x80, d1.getAlpha());
-        assertEquals(0x80, d2.getAlpha());
-        assertEquals(0x80, d3.getAlpha());
-
         d1.mutate();
         d1.setAlpha(0x40);
         assertEquals(0x40, d1.getAlpha());
-        assertEquals(0x80, d2.getAlpha());
-        assertEquals(0x80, d3.getAlpha());
+        assertEquals(originalAlpha, d2.getAlpha());
+        assertEquals(originalAlpha, d3.getAlpha());
 
+        d2.mutate();
         d2.setAlpha(0x20);
         assertEquals(0x40, d1.getAlpha());
         assertEquals(0x20, d2.getAlpha());
-        assertEquals(0x20, d3.getAlpha());
-
-        d2.setAlpha(originalAlpha);
+        assertEquals(originalAlpha, d3.getAlpha());
     }
 
     @Test

@@ -29,11 +29,10 @@ import androidx.annotation.DoNotInline
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.toRect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toAndroidRect
 import androidx.compose.ui.graphics.toArgb
 import java.lang.reflect.Method
+import kotlin.math.roundToInt
 
 /**
  * Empty [View] that hosts a [RippleDrawable] as its background. This is needed as
@@ -179,7 +178,12 @@ internal class RippleHostView(
         // another invalidation, etc.
         ripple.trySetRadius(radius)
         ripple.setColor(color, alpha)
-        val newBounds = size.toRect().toAndroidRect()
+        val newBounds = Rect(
+            0,
+            0,
+            size.width.roundToInt(),
+            size.height.roundToInt()
+        )
         // Drawing the background causes the view to update the bounds of the drawable
         // based on the view's bounds, so we need to adjust the view itself to match the
         // canvas' bounds.
@@ -376,7 +380,7 @@ private class UnprojectedRipple(private val bounded: Boolean) : RippleDrawable(
             // Note: above 28 the ripple alpha is clamped to 50%, so this might not be the
             // _actual_ alpha that is used in the ripple.
             alpha
-        }
+        }.coerceAtMost(1f)
         return color.copy(alpha = transformedAlpha)
     }
 

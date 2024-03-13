@@ -27,17 +27,19 @@ import androidx.compose.ui.text.Paragraph
 import androidx.compose.ui.text.ParagraphIntrinsics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.createFontFamilyResolver
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlin.math.ceil
+import kotlin.math.roundToInt
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
-import kotlin.math.roundToInt
 
 @LargeTest
 @RunWith(Parameterized::class)
@@ -49,18 +51,11 @@ class ParagraphBenchmark(
     companion object {
         @JvmStatic
         @Parameterized.Parameters(name = "length={0} type={1} alphabet={2}")
-        fun initParameters(): List<Array<Any>> = cartesian(
+        fun initParameters(): List<Array<Any?>> = cartesian(
             arrayOf(512),
             arrayOf(TextType.PlainText),
             arrayOf(Alphabet.Latin, Alphabet.Cjk)
         )
-
-        // A fake resource loader required to construct Paragraph
-        val resourceLoader = object : Font.ResourceLoader {
-            override fun load(font: Font): Any {
-                return false
-            }
-        }
     }
 
     @get:Rule
@@ -101,7 +96,7 @@ class ParagraphBenchmark(
     ): Paragraph {
         return Paragraph(
             paragraphIntrinsics = paragraphIntrinsics(text, spanStyles),
-            width = width
+            constraints = Constraints(maxWidth = ceil(width).toInt())
         )
     }
 
@@ -123,7 +118,7 @@ class ParagraphBenchmark(
             text = text,
             density = Density(density = instrumentationContext.resources.displayMetrics.density),
             style = TextStyle(fontSize = fontSize),
-            resourceLoader = resourceLoader,
+            fontFamilyResolver = createFontFamilyResolver(instrumentationContext),
             spanStyles = spanStyles
         )
     }

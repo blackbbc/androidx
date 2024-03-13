@@ -18,6 +18,7 @@ package androidx.compose.foundation.text.selection
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.isUnspecified
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
@@ -30,59 +31,100 @@ internal class MultiWidgetSelectionDelegate(
     private val layoutResultCallback: () -> TextLayoutResult?
 ) : Selectable {
 
-    override fun getSelection(
-        startPosition: Offset,
-        endPosition: Offset,
-        containerLayoutCoordinates: LayoutCoordinates,
-        adjustment: SelectionAdjustment,
-        previousSelection: Selection?,
-        isStartHandle: Boolean
-    ): Selection? {
-        val layoutCoordinates = getLayoutCoordinates() ?: return null
-        val textLayoutResult = layoutResultCallback() ?: return null
+    private var _previousTextLayoutResult: TextLayoutResult? = null
 
-        val relativePosition = containerLayoutCoordinates.localPositionOf(
-            layoutCoordinates, Offset.Zero
-        )
-        val startPx = startPosition - relativePosition
-        val endPx = endPosition - relativePosition
+    // previously calculated `lastVisibleOffset` for the `_previousTextLayoutResult`
+    private var _previousLastVisibleOffset: Int = -1
 
-        return getTextSelectionInfo(
+    /**
+     * TextLayoutResult is not expected to change repeatedly in a BasicText composable. At least
+     * most TextLayoutResult changes would likely affect Selection logic in some way. Therefore,
+     * this value only caches the last visible offset calculation for the latest seen
+     * TextLayoutResult instance. Object equality check is not worth the extra calculation as
+     * instance check is enough to accomplish whether a text layout has changed in a meaningful
+     * way.
+     */
+    private val TextLayoutResult.lastVisibleOffset: Int
+        @Synchronized get() {
+            if (_previousTextLayoutResult !== this) {
+                val lastVisibleLine = when {
+                    !didOverflowHeight || multiParagraph.didExceedMaxLines -> lineCount - 1
+                    else -> { // size.height < multiParagraph.height
+                        var finalVisibleLine = getLineForVerticalPosition(size.height.toFloat())
+                            .coerceAtMost(lineCount - 1)
+                        // if final visible line's top is equal to or larger than text layout
+                        // result's height, we need to check above lines one by one until we find
+                        // a line that fits in boundaries.
+                        while (
+                            finalVisibleLine >= 0 &&
+                            getLineTop(finalVisibleLine) >= size.height
+                        ) finalVisibleLine--
+                        finalVisibleLine.coerceAtLeast(0)
+                    }
+                }
+                _previousLastVisibleOffset = getLineEnd(lastVisibleLine, true)
+                _previousTextLayoutResult = this
+            }
+            return _previousLastVisibleOffset
+        }
+
+    override fun appendSelectableInfoToBuilder(builder: SelectionLayoutBuilder) {
+        val layoutCoordinates = getLayoutCoordinates() ?: return
+        val textLayoutResult = layoutResultCallback() ?: return
+
+        val relativePosition =
+            builder.containerCoordinates.localPositionOf(layoutCoordinates, Offset.Zero)
+        val localPosition = builder.currentPosition - relativePosition
+        val localPreviousHandlePosition = if (builder.previousHandlePosition.isUnspecified) {
+            Offset.Unspecified
+        } else {
+            builder.previousHandlePosition - relativePosition
+        }
+
+        builder.appendSelectableInfo(
             textLayoutResult = textLayoutResult,
-            selectionCoordinates = Pair(startPx, endPx),
+            localPosition = localPosition,
+            previousHandlePosition = localPreviousHandlePosition,
             selectableId = selectableId,
-            adjustment = adjustment,
-            previousSelection = previousSelection,
-            isStartHandle = isStartHandle
         )
     }
 
     override fun getSelectAllSelection(): Selection? {
         val textLayoutResult = layoutResultCallback() ?: return null
+        val start = 0
+        val end = textLayoutResult.layoutInput.text.length
 
-        return getAssembledSelectionInfo(
-            startOffset = 0,
-            endOffset = textLayoutResult.layoutInput.text.length,
-            handlesCrossed = false,
-            selectableId = selectableId,
-            textLayoutResult = textLayoutResult
+        return Selection(
+            start = Selection.AnchorInfo(
+                direction = textLayoutResult.getBidiRunDirection(start),
+                offset = start,
+                selectableId = selectableId
+            ),
+            end = Selection.AnchorInfo(
+                direction = textLayoutResult.getBidiRunDirection(max(end - 1, 0)),
+                offset = end,
+                selectableId = selectableId
+            ),
+            handlesCrossed = false
         )
     }
 
     override fun getHandlePosition(selection: Selection, isStartHandle: Boolean): Offset {
-        // Check if the selection handles's selectable is the current selectable.
+        // Check if the selection handle's selectable is the current selectable.
         if (isStartHandle && selection.start.selectableId != this.selectableId ||
             !isStartHandle && selection.end.selectableId != this.selectableId
         ) {
-            return Offset.Zero
+            return Offset.Unspecified
         }
 
-        if (getLayoutCoordinates() == null) return Offset.Zero
+        if (getLayoutCoordinates() == null) return Offset.Unspecified
 
-        val textLayoutResult = layoutResultCallback() ?: return Offset.Zero
+        val textLayoutResult = layoutResultCallback() ?: return Offset.Unspecified
+        val offset = if (isStartHandle) selection.start.offset else selection.end.offset
+        val coercedOffset = offset.coerceIn(0, textLayoutResult.lastVisibleOffset)
         return getSelectionHandleCoordinates(
             textLayoutResult = textLayoutResult,
-            offset = if (isStartHandle) selection.start.offset else selection.end.offset,
+            offset = coercedOffset,
             isStart = isStartHandle,
             areHandlesCrossed = selection.handlesCrossed
         )
@@ -101,56 +143,68 @@ internal class MultiWidgetSelectionDelegate(
 
     override fun getBoundingBox(offset: Int): Rect {
         val textLayoutResult = layoutResultCallback() ?: return Rect.Zero
+        val textLength = textLayoutResult.layoutInput.text.length
+        if (textLength < 1) return Rect.Zero
         return textLayoutResult.getBoundingBox(
-            offset.coerceIn(
-                0,
-                textLayoutResult.layoutInput.text.text.length - 1
-            )
+            offset.coerceIn(0, textLength - 1)
         )
+    }
+
+    override fun getLineLeft(offset: Int): Float {
+        val textLayoutResult = layoutResultCallback() ?: return -1f
+        val line = textLayoutResult.getLineForOffset(offset)
+        if (line >= textLayoutResult.lineCount) return -1f
+        return textLayoutResult.getLineLeft(line)
+    }
+
+    override fun getLineRight(offset: Int): Float {
+        val textLayoutResult = layoutResultCallback() ?: return -1f
+        val line = textLayoutResult.getLineForOffset(offset)
+        if (line >= textLayoutResult.lineCount) return -1f
+        return textLayoutResult.getLineRight(line)
+    }
+
+    override fun getCenterYForOffset(offset: Int): Float {
+        val textLayoutResult = layoutResultCallback() ?: return -1f
+        val line = textLayoutResult.getLineForOffset(offset)
+        if (line >= textLayoutResult.lineCount) return -1f
+        val top = textLayoutResult.getLineTop(line)
+        val bottom = textLayoutResult.getLineBottom(line)
+        return ((bottom - top) / 2) + top
+    }
+
+    override fun getRangeOfLineContaining(offset: Int): TextRange {
+        val textLayoutResult = layoutResultCallback() ?: return TextRange.Zero
+        val visibleTextLength = textLayoutResult.lastVisibleOffset
+        if (visibleTextLength < 1) return TextRange.Zero
+        val line = textLayoutResult.getLineForOffset(offset.coerceIn(0, visibleTextLength - 1))
+        return TextRange(
+            start = textLayoutResult.getLineStart(line),
+            end = textLayoutResult.getLineEnd(line, visibleEnd = true)
+        )
+    }
+
+    override fun getLastVisibleOffset(): Int {
+        val textLayoutResult = layoutResultCallback() ?: return 0
+        return textLayoutResult.lastVisibleOffset
     }
 }
 
 /**
- * Return information about the current selection in the Text.
+ * Appends a [SelectableInfo] to this [SelectionLayoutBuilder].
  *
- * @param textLayoutResult a result of the text layout.
- * @param selectionCoordinates The positions of the start and end of the selection in Text
- * composable coordinate system.
- *
- * @return [Selection] of the current composable, or null if the composable is not selected.
+ * @param textLayoutResult the [TextLayoutResult] for the selectable
+ * @param localPosition the position of the current handle if not being dragged
+ * or the drag position if it is
+ * @param previousHandlePosition the position of the previous handle
+ * @param selectableId the selectableId for the selectable
  */
-internal fun getTextSelectionInfo(
+internal fun SelectionLayoutBuilder.appendSelectableInfo(
     textLayoutResult: TextLayoutResult,
-    selectionCoordinates: Pair<Offset, Offset>,
+    localPosition: Offset,
+    previousHandlePosition: Offset,
     selectableId: Long,
-    adjustment: SelectionAdjustment,
-    previousSelection: Selection? = null,
-    isStartHandle: Boolean = true
-): Selection? {
-    val textRange = getTextSelectionRange(textLayoutResult, selectionCoordinates) ?: return null
-    val adjustedTextRange = adjustSelection(
-        textLayoutResult = textLayoutResult,
-        textRange = textRange,
-        isStartHandle = isStartHandle,
-        previousHandlesCrossed = previousSelection?.handlesCrossed ?: false,
-        adjustment = adjustment
-    )
-    return getAssembledSelectionInfo(
-        startOffset = adjustedTextRange.start,
-        endOffset = adjustedTextRange.end,
-        handlesCrossed = adjustedTextRange.reversed,
-        selectableId = selectableId,
-        textLayoutResult = textLayoutResult
-    )
-}
-
-internal fun getTextSelectionRange(
-    textLayoutResult: TextLayoutResult,
-    selectionCoordinates: Pair<Offset, Offset>
-): TextRange? {
-    val startPosition = selectionCoordinates.first
-    val endPosition = selectionCoordinates.second
-
+) {
     val bounds = Rect(
         0.0f,
         0.0f,
@@ -158,117 +212,123 @@ internal fun getTextSelectionRange(
         textLayoutResult.size.height.toFloat()
     )
 
-    val lastOffset = textLayoutResult.layoutInput.text.text.length
+    val currentXDirection = getXDirection(localPosition, bounds)
+    val currentYDirection = getYDirection(localPosition, bounds)
 
-    val containsWholeSelectionStart =
-        bounds.contains(Offset(startPosition.x, startPosition.y))
+    fun otherDirection(anchor: Selection.AnchorInfo?): Direction = anchor
+        ?.let { getDirectionById(it.selectableId, selectableId) }
+        ?: resolve2dDirection(currentXDirection, currentYDirection)
 
-    val containsWholeSelectionEnd =
-        bounds.contains(Offset(endPosition.x, endPosition.y))
+    val otherDirection: Direction
+    val startXHandleDirection: Direction
+    val startYHandleDirection: Direction
+    val endXHandleDirection: Direction
+    val endYHandleDirection: Direction
+    if (isStartHandle) {
+        otherDirection = otherDirection(previousSelection?.end)
+        startXHandleDirection = currentXDirection
+        startYHandleDirection = currentYDirection
+        endXHandleDirection = otherDirection
+        endYHandleDirection = otherDirection
+    } else {
+        otherDirection = otherDirection(previousSelection?.start)
+        startXHandleDirection = otherDirection
+        startYHandleDirection = otherDirection
+        endXHandleDirection = currentXDirection
+        endYHandleDirection = currentYDirection
+    }
 
-    val rawStartOffset =
-        if (containsWholeSelectionStart) {
-            textLayoutResult.getOffsetForPosition(startPosition).coerceIn(0, lastOffset)
-        } else {
-            // If the composable is selected, the start offset cannot be -1 for this composable. If the
-            // final start offset is still -1, it means this composable is not selected.
-            -1
-        }
-    val rawEndOffset =
-        if (containsWholeSelectionEnd) {
-            textLayoutResult.getOffsetForPosition(endPosition).coerceIn(0, lastOffset)
-        } else {
-            // If the composable is selected, the end offset cannot be -1 for this composable. If the
-            // final end offset is still -1, it means this composable is not selected.
-            -1
-        }
+    if (!isSelected(resolve2dDirection(currentXDirection, currentYDirection), otherDirection)) {
+        return
+    }
 
-    return getRefinedSelectionRange(
-        rawStartOffset = rawStartOffset,
-        rawEndOffset = rawEndOffset,
-        startPosition = startPosition,
-        endPosition = endPosition,
-        bounds = bounds,
-        lastOffset = lastOffset,
+    val textLength = textLayoutResult.layoutInput.text.length
+    val rawStartHandleOffset: Int
+    val rawEndHandleOffset: Int
+    if (isStartHandle) {
+        rawStartHandleOffset = getOffsetForPosition(localPosition, textLayoutResult)
+        rawEndHandleOffset = previousSelection?.end
+            ?.getPreviousAdjustedOffset(selectableIdOrderingComparator, selectableId, textLength)
+            ?: rawStartHandleOffset
+    } else {
+        rawEndHandleOffset = getOffsetForPosition(localPosition, textLayoutResult)
+        rawStartHandleOffset = previousSelection?.start
+            ?.getPreviousAdjustedOffset(selectableIdOrderingComparator, selectableId, textLength)
+            ?: rawEndHandleOffset
+    }
+
+    val rawPreviousHandleOffset = if (previousHandlePosition.isUnspecified) -1 else {
+        getOffsetForPosition(previousHandlePosition, textLayoutResult)
+    }
+
+    appendInfo(
+        selectableId = selectableId,
+        rawStartHandleOffset = rawStartHandleOffset,
+        startXHandleDirection = startXHandleDirection,
+        startYHandleDirection = startYHandleDirection,
+        rawEndHandleOffset = rawEndHandleOffset,
+        endXHandleDirection = endXHandleDirection,
+        endYHandleDirection = endYHandleDirection,
+        rawPreviousHandleOffset = rawPreviousHandleOffset,
+        textLayoutResult = textLayoutResult,
     )
 }
 
-/**
- * This method refines the selection info by processing the initial raw selection info.
- *
- * @param rawStartOffset unprocessed start offset calculated directly from input position.
- * A negative value of this parameter means that the start handle is not in this selectable.
- * @param rawEndOffset unprocessed end offset calculated directly from input position. A negative
- * value of this parameter means that the start handle is not in this selectable.
- * @param startPosition graphical position of the start of the selection, in composable's
- * coordinates.
- * @param endPosition graphical position of the end of the selection, in composable's coordinates.
- * @param bounds bounds of the current composable
- * @param lastOffset last offset of the text. It's actually the length of the text.
- *
- * @return [Selection] of the current composable, or null if the composable is not selected.
- */
-private fun getRefinedSelectionRange(
-    rawStartOffset: Int,
-    rawEndOffset: Int,
-    startPosition: Offset,
-    endPosition: Offset,
-    bounds: Rect,
-    lastOffset: Int
-): TextRange? {
-    val containsWholeSelectionStart = rawStartOffset >= 0
-    val containsWholeSelectionEnd = rawEndOffset >= 0
+private fun Selection.AnchorInfo.getPreviousAdjustedOffset(
+    selectableIdOrderingComparator: Comparator<Long>,
+    currentSelectableId: Long,
+    currentTextLength: Int
+): Int {
+    val compareResult = selectableIdOrderingComparator.compare(
+        this.selectableId,
+        currentSelectableId
+    )
 
-    val shouldProcessAsSinglecomposable =
-        containsWholeSelectionStart && containsWholeSelectionEnd
+    return when {
+        compareResult < 0 -> 0
+        compareResult > 0 -> currentTextLength
+        else -> offset
+    }
+}
 
-    return if (shouldProcessAsSinglecomposable) {
-        TextRange(rawStartOffset, rawEndOffset)
-    } else {
-        processCrossComposable(
-            startPosition = startPosition,
-            endPosition = endPosition,
-            rawStartOffset = rawStartOffset,
-            rawEndOffset = rawEndOffset,
-            lastOffset = lastOffset,
-            bounds = bounds,
-            containsWholeSelectionStart = containsWholeSelectionStart,
-            containsWholeSelectionEnd = containsWholeSelectionEnd
-        )
+private fun getXDirection(position: Offset, bounds: Rect): Direction = when {
+    position.x < bounds.left -> Direction.BEFORE
+    position.x > bounds.right -> Direction.AFTER
+    else -> Direction.ON
+}
+
+private fun getYDirection(position: Offset, bounds: Rect): Direction = when {
+    position.y < bounds.top -> Direction.BEFORE
+    position.y > bounds.bottom -> Direction.AFTER
+    else -> Direction.ON
+}
+
+private fun SelectionLayoutBuilder.getDirectionById(
+    anchorSelectableId: Long,
+    currentSelectableId: Long,
+): Direction {
+    val compareResult = selectableIdOrderingComparator.compare(
+        anchorSelectableId,
+        currentSelectableId
+    )
+
+    return when {
+        compareResult < 0 -> Direction.BEFORE
+        compareResult > 0 -> Direction.AFTER
+        else -> Direction.ON
     }
 }
 
 /**
- * [Selection] contains a lot of parameters. It looks more clean to assemble an object of this
- * class in a separate method.
- *
- * @param startOffset the final start offset to be returned.
- * @param endOffset the final end offset to be returned.
- * @param handlesCrossed true if the selection handles are crossed
- * @param selectableId the id of the current [Selectable] for which the [Selection] is being
- * calculated
- * @param textLayoutResult a result of the text layout.
- *
- * @return an assembled object of [Selection] using the offered selection info.
+ * Returns true if either of the directions are [Direction.ON]
+ * or if the directions are on opposite sides.
  */
-private fun getAssembledSelectionInfo(
-    startOffset: Int,
-    endOffset: Int,
-    handlesCrossed: Boolean,
-    selectableId: Long,
-    textLayoutResult: TextLayoutResult
-): Selection {
-    return Selection(
-        start = Selection.AnchorInfo(
-            direction = textLayoutResult.getBidiRunDirection(startOffset),
-            offset = startOffset,
-            selectableId = selectableId
-        ),
-        end = Selection.AnchorInfo(
-            direction = textLayoutResult.getBidiRunDirection(max(endOffset - 1, 0)),
-            offset = endOffset,
-            selectableId = selectableId
-        ),
-        handlesCrossed = handlesCrossed
-    )
+private fun isSelected(currentDirection: Direction, otherDirection: Direction): Boolean =
+    currentDirection == Direction.ON || currentDirection != otherDirection
+
+// map offsets above/below the text to 0/length respectively
+private fun getOffsetForPosition(position: Offset, textLayoutResult: TextLayoutResult): Int = when {
+    position.y <= 0f -> 0
+    position.y >= textLayoutResult.multiParagraph.height -> textLayoutResult.layoutInput.text.length
+    else -> textLayoutResult.getOffsetForPosition(position)
 }

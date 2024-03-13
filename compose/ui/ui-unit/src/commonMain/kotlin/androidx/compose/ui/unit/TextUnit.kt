@@ -20,6 +20,7 @@ package androidx.compose.ui.unit
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.util.floatFromBits
 import androidx.compose.ui.util.lerp
 
 /**
@@ -42,8 +43,8 @@ private const val UNIT_TYPE_EM = 0x02L shl 32 // 0x2_0000_0000
 /**
  * An enum class defining for type of [TextUnit].
  */
-@Suppress("INLINE_CLASS_DEPRECATED", "EXPERIMENTAL_FEATURE_WARNING")
-inline class TextUnitType(internal val type: Long) {
+@kotlin.jvm.JvmInline
+value class TextUnitType(internal val type: Long) {
     override fun toString(): String {
         return when (this) {
             Unspecified -> "Unspecified"
@@ -60,7 +61,12 @@ inline class TextUnitType(internal val type: Long) {
     }
 }
 
-@ExperimentalUnitApi
+/**
+ * Construct a new TextUnit.
+ *
+ * @param value of the dimension
+ * @param type dimension
+ */
 fun TextUnit(value: Float, type: TextUnitType): TextUnit = pack(type.type, value)
 
 /**
@@ -74,9 +80,9 @@ fun TextUnit(value: Float, type: TextUnitType): TextUnit = pack(type.type, value
  * Note that do not store this value in your persistent storage or send to another process since
  * the internal representation may be changed in future.
  */
-@Suppress("INLINE_CLASS_DEPRECATED", "EXPERIMENTAL_FEATURE_WARNING")
 @Immutable
-inline class TextUnit internal constructor(internal val packedValue: Long) {
+@kotlin.jvm.JvmInline
+value class TextUnit internal constructor(internal val packedValue: Long) {
     /**
      * This is the same as multiplying the [TextUnit] by -1.0.
      *
@@ -234,7 +240,7 @@ inline class TextUnit internal constructor(internal val packedValue: Long) {
      * For example, the value of 3.sp equals to 3, and value of 5.em equals to 5. The value of
      * [TextUnit]s whose [TextUnitType] is [TextUnitType.Unspecified] is undefined.
      */
-    val value get() = Float.fromBits((packedValue and 0xFFFF_FFFFL).toInt())
+    val value get() = floatFromBits((packedValue and 0xFFFF_FFFFL).toInt())
 }
 
 /**

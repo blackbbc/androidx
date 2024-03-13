@@ -16,6 +16,7 @@
 
 package androidx.compose.ui.benchmark.input.pointer
 
+import android.view.View
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,13 +87,19 @@ class ComposeTapIntegrationBenchmark {
         val y = (ItemHeightPx / 2) + (item * ItemHeightPx)
 
         benchmarkRule.runBenchmarkFor({ ComposeTapTestCase() }) {
-            doFramesUntilNoChangesPending()
+            lateinit var case: ComposeTapTestCase
+            lateinit var rootView: View
 
-            val case = getTestCase()
-            case.expectedLabel = expectedLabel
+            benchmarkRule.runOnUiThread {
+                doFramesUntilNoChangesPending()
 
-            val rootView = getHostView()
+                case = getTestCase()
+                case.expectedLabel = expectedLabel
 
+                rootView = getHostView()
+            }
+
+            // Simple Events
             val down = MotionEvent(
                 0,
                 android.view.MotionEvent.ACTION_DOWN,
@@ -113,7 +120,7 @@ class ComposeTapIntegrationBenchmark {
                 rootView
             )
 
-            benchmarkRule.measureRepeated {
+            benchmarkRule.measureRepeatedOnUiThread {
                 rootView.dispatchTouchEvent(down)
                 rootView.dispatchTouchEvent(up)
                 case.expectedClickCount++

@@ -86,7 +86,7 @@ class NavInflaterTest {
         assertThat(graph).isNotNull()
         val expectedUri = Uri.parse(
             "android-app://" +
-                instrumentation.targetContext.packageName + "/test"
+                instrumentation.targetContext.packageName + "/test/arg2"
         )
         val expectedDeepLinkRequest = NavDeepLinkRequest.Builder.fromUri(expectedUri).build()
         val result = graph.matchDeepLink(expectedDeepLinkRequest)
@@ -111,6 +111,19 @@ class NavInflaterTest {
         assertThat(result?.destination)
             .isNotNull()
         assertThat(result?.destination?.id).isEqualTo(R.id.second_test)
+    }
+
+    @Test
+    fun testInflateDeepLinkWithApplicationIdAction_nonNullableArg() {
+        val context = ApplicationProvider.getApplicationContext() as Context
+        val navInflater = NavInflater(context, TestNavigatorProvider())
+        val graph = navInflater.inflate(R.navigation.nav_simple)
+
+        assertThat(graph).isNotNull()
+        val expectedDeepLinkRequest = NavDeepLinkRequest.Builder.fromAction("test.action2").build()
+        val result = graph.matchDeepLink(expectedDeepLinkRequest)
+        assertThat(result)
+            .isNull()
     }
 
     @Test
@@ -149,6 +162,82 @@ class NavInflaterTest {
         assertThat(result?.destination)
             .isNotNull()
         assertThat(result?.destination?.id).isEqualTo(R.id.second_test)
+    }
+
+    @Test
+    fun testInflateDeepLinkWithApplicationIdMimeType_nonNullableArg() {
+        val context = ApplicationProvider.getApplicationContext() as Context
+        val navInflater = NavInflater(context, TestNavigatorProvider())
+        val graph = navInflater.inflate(R.navigation.nav_simple)
+
+        assertThat(graph).isNotNull()
+        val expectedDeepLinkRequest = NavDeepLinkRequest.Builder.fromMimeType("type/test2").build()
+        val result = graph.matchDeepLink(expectedDeepLinkRequest)
+        assertThat(result)
+            .isNull()
+    }
+
+    @Test
+    fun testInflateWithDataPatternApplicationId() {
+        val context = ApplicationProvider.getApplicationContext() as Context
+        val activityNavigator = ActivityNavigator(context)
+        val navInflater = NavInflater(
+            context,
+            TestNavigatorProvider().apply { addNavigator(activityNavigator) }
+        )
+
+        val graph = navInflater.inflate(R.navigation.nav_applicationid_arg)
+        val destination = graph.nodes.get(R.id.dataPattern_appId) as ActivityNavigator.Destination
+
+        assertThat(destination.dataPattern)
+            .isEqualTo("http://www.example.com/${context.packageName}")
+    }
+
+    @Test
+    fun testInflateWithNullDataPattern() {
+        val context = ApplicationProvider.getApplicationContext() as Context
+        val activityNavigator = ActivityNavigator(context)
+        val navInflater = NavInflater(
+            context,
+            TestNavigatorProvider().apply { addNavigator(activityNavigator) }
+        )
+
+        val graph = navInflater.inflate(R.navigation.nav_applicationid_arg)
+        val destination = graph.nodes.get(R.id.dataPattern_null) as ActivityNavigator.Destination
+
+        assertThat(destination.dataPattern).isNull()
+    }
+
+    @Test
+    fun testInflateWithDataApplicationId() {
+        val context = ApplicationProvider.getApplicationContext() as Context
+        val activityNavigator = ActivityNavigator(context)
+
+        val navInflater = NavInflater(
+            context,
+            TestNavigatorProvider().apply { addNavigator(activityNavigator) }
+        )
+
+        val graph = navInflater.inflate(R.navigation.nav_applicationid_arg)
+        val destination = graph.nodes.get(R.id.data_appId) as ActivityNavigator.Destination
+
+        assertThat(destination.data)
+            .isEqualTo(Uri.parse("http://www.example.com/${context.packageName}"))
+    }
+
+    @Test
+    fun testInflateWithNullData() {
+        val context = ApplicationProvider.getApplicationContext() as Context
+        val activityNavigator = ActivityNavigator(context)
+        val navInflater = NavInflater(
+            context,
+            TestNavigatorProvider().apply { addNavigator(activityNavigator) }
+        )
+
+        val graph = navInflater.inflate(R.navigation.nav_applicationid_arg)
+        val destination = graph.nodes.get(R.id.data_null) as ActivityNavigator.Destination
+
+        assertThat(destination.data).isNull()
     }
 
     @Test
@@ -268,6 +357,7 @@ class NavInflaterTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun testActionArguments() {
         val context = ApplicationProvider.getApplicationContext() as Context
         val navInflater = NavInflater(context, TestNavigatorProvider())

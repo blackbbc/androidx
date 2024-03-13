@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
 
 plugins {
@@ -28,14 +34,14 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-common-java8:2.2.0"
     implementation 'androidx.annotation:annotation:1.1.0'
     implementation(libs.robolectric)
-    implementation("androidx.annotation:annotation-experimental:1.1.0")
-    compileOnly libs.kotlinStdlib // Due to :annotation-experimental
+    implementation("androidx.annotation:annotation-experimental:1.4.0")
 
-    testImplementation("junit:junit:4.13")
+    testImplementation(project(":car:app:app-projected"))
+    testImplementation(libs.junit)
     testImplementation(libs.testCore)
     testImplementation(libs.testRunner)
     testImplementation(libs.junit)
-    testImplementation(libs.mockitoCore)
+    testImplementation(libs.mockitoCore4)
     testImplementation(libs.robolectric)
     testImplementation(libs.truth)
 
@@ -44,18 +50,19 @@ dependencies {
 
 android {
     defaultConfig {
-        minSdkVersion 23
+        minSdkVersion 21
         multiDexEnabled = true
     }
     lintOptions {
         disable("InvalidPackage")
     }
+    namespace "androidx.car.app.testing"
 }
 
 androidx {
     name = "androidx.car.app:app-testing"
-    type = LibraryType.PUBLISHED_LIBRARY
-    mavenGroup = LibraryGroups.CAR_APP
+    type = LibraryType.PUBLISHED_TEST_LIBRARY
     inceptionYear = "2021"
     description = "androidx.car.app:app-testing"
+    metalavaK2UastEnabled = true
 }

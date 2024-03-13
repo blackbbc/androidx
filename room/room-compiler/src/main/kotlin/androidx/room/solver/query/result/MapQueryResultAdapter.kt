@@ -16,115 +16,58 @@
 
 package androidx.room.solver.query.result
 
-import androidx.room.compiler.processing.XType
-import androidx.room.ext.L
-import androidx.room.ext.T
+import androidx.room.compiler.codegen.XCodeBlock
+import androidx.room.parser.ParsedQuery
+import androidx.room.processor.Context
 import androidx.room.solver.CodeGenScope
-import com.squareup.javapoet.ClassName
-import com.squareup.javapoet.ParameterizedTypeName
 
 class MapQueryResultAdapter(
-    private val keyTypeArg: XType,
-    private val valueTypeArg: XType,
-    private val keyRowAdapter: RowAdapter,
-    private val valueRowAdapter: RowAdapter,
-    private val valueCollectionType: XType?
-) : QueryResultAdapter(listOf(keyRowAdapter, valueRowAdapter)) {
-    private val declaredToConcreteCollection = mapOf<ClassName, ClassName>(
-        ClassName.get(List::class.java) to ClassName.get(ArrayList::class.java),
-        ClassName.get(Set::class.java) to ClassName.get(HashSet::class.java)
-    )
-
-    private val declaredValueType = if (valueCollectionType != null) {
-        ParameterizedTypeName.get(
-            valueCollectionType.typeElement?.className,
-            valueTypeArg.typeName
-        )
-    } else {
-        valueTypeArg.typeName
-    }
-
-    private val concreteValueType = if (valueCollectionType != null) {
-        ParameterizedTypeName.get(
-            declaredToConcreteCollection[valueCollectionType.typeElement?.className],
-            valueTypeArg.typeName
-        )
-    } else {
-        valueTypeArg.typeName
-    }
-
-    private val mapType = ParameterizedTypeName.get(
-        ClassName.get(Map::class.java),
-        keyTypeArg.typeName,
-        declaredValueType
-    )
-
-    private val hashMapType = ParameterizedTypeName.get(
-        ClassName.get(HashMap::class.java),
-        keyTypeArg.typeName,
-        declaredValueType
-    )
+    context: Context,
+    parsedQuery: ParsedQuery,
+    private val mapValueResultAdapter: MapValueResultAdapter.NestedMapValueResultAdapter,
+) : MultimapQueryResultAdapter(context, parsedQuery, mapValueResultAdapter.rowAdapters) {
 
     override fun convert(outVarName: String, cursorVarName: String, scope: CodeGenScope) {
-        scope.builder().apply {
-            keyRowAdapter.onCursorReady(cursorVarName, scope)
-            valueRowAdapter.onCursorReady(cursorVarName, scope)
+        scope.builder.apply {
+            generateCursorIndexes(cursorVarName, scope)
+            addLocalVariable(
+                name = outVarName,
+                typeName = mapValueResultAdapter.getDeclarationTypeName(),
+                assignExpr = XCodeBlock.ofNewInstance(
+                    language,
+                    mapValueResultAdapter.getInstantiationTypeName()
+                )
+            )
+            beginControlFlow("while (%L.moveToNext())", cursorVarName).apply {
+                mapValueResultAdapter.convert(
+                    scope,
+                    outVarName,
+                    cursorVarName,
+                    dupeColumnsIndexAdapter,
+                )
+            }.endControlFlow()
+        }
+    }
 
-            val mapVarName = outVarName
-            addStatement("final $T $L = new $T()", mapType, mapVarName, hashMapType)
-
-            val tmpKeyVarName = scope.getTmpVar("_key")
-            val tmpValueVarName = scope.getTmpVar("_value")
-            beginControlFlow("while ($L.moveToNext())", cursorVarName).apply {
-                addStatement("final $T $L", keyTypeArg.typeName, tmpKeyVarName)
-                keyRowAdapter.convert(tmpKeyVarName, cursorVarName, scope)
-
-                // If valueCollectionType is null, this means that we have a 1-to-1 mapping, as
-                // opposed to a 1-to-many mapping.
-                if (valueCollectionType != null) {
-                    addStatement("final $T $L", valueTypeArg.typeName, tmpValueVarName)
-                    valueRowAdapter.convert(tmpValueVarName, cursorVarName, scope)
-                    val tmpCollectionVarName = scope.getTmpVar("_values")
-                    addStatement("$T $L", declaredValueType, tmpCollectionVarName)
-                    beginControlFlow("if ($L.containsKey($L))", mapVarName, tmpKeyVarName).apply {
-                        addStatement(
-                            "$L = $L.get($L)",
-                            tmpCollectionVarName,
-                            mapVarName,
-                            tmpKeyVarName
-                        )
-                    }
-                    nextControlFlow("else").apply {
-                        addStatement("$L = new $T()", tmpCollectionVarName, concreteValueType)
-                        addStatement(
-                            "$L.put($L, $L)",
-                            mapVarName,
-                            tmpKeyVarName,
-                            tmpCollectionVarName
-                        )
-                    }
-                    endControlFlow()
-                    addStatement("$L.add($L)", tmpCollectionVarName, tmpValueVarName)
-                } else {
-                    addStatement(
-                        "final $T $L",
-                        valueTypeArg.typeElement?.className,
-                        tmpValueVarName
-                    )
-                    valueRowAdapter.convert(tmpValueVarName, cursorVarName, scope)
-
-                    // For consistency purposes, in the one-to-one object mapping case, if
-                    // multiple values are encountered for the same key, we will only consider
-                    // the first ever encountered mapping.
-                    beginControlFlow("if (!$L.containsKey($L))", mapVarName, tmpKeyVarName).apply {
-                        addStatement("$L.put($L, $L)", mapVarName, tmpKeyVarName, tmpValueVarName)
-                    }
-                    endControlFlow()
-                }
+    private fun generateCursorIndexes(cursorVarName: String, scope: CodeGenScope) {
+        if (dupeColumnsIndexAdapter != null) {
+            // There are duplicate columns in the result objects, generate code that provides
+            // us with the indices resolved and pass it to the adapters so it can retrieve
+            // the index of each column used by it.
+            dupeColumnsIndexAdapter.onCursorReady(cursorVarName, scope)
+            rowAdapters.forEach {
+                check(it is QueryMappedRowAdapter)
+                val indexVarNames = dupeColumnsIndexAdapter.getIndexVarsForMapping(it.mapping)
+                it.onCursorReady(
+                    indices = indexVarNames,
+                    cursorVarName = cursorVarName,
+                    scope = scope
+                )
             }
-            endControlFlow()
-            keyRowAdapter.onCursorFinished()?.invoke(scope)
-            valueRowAdapter.onCursorFinished()?.invoke(scope)
+        } else {
+            rowAdapters.forEach {
+                it.onCursorReady(cursorVarName = cursorVarName, scope = scope)
+            }
         }
     }
 }

@@ -7,8 +7,6 @@ Using AndroidX remote build cache
 ZipFile closed
 # > Task :room:integration-tests:room-testapp:runErrorProne
 java\.util\.zip\.ZipException\: ZipFile closed
-# > Task :compose:internal-lint-checks:lint
-Classpath entry points to a non\-existent location\: \$OUT_DIR\/ui\/compose\/internal\-lint\-checks\/build\/classes\/kotlin\/main
 # > Task :compose:animation:animation-core:testDebugUnitTest
 androidx\.compose\.animation\.core\.AnimationClockTest \> testSubscriptionDuringFrameCallback FAILED
 kotlin\.UninitializedPropertyAccessException at AnimationClockTest\.kt\:[0-9]+
@@ -20,30 +18,32 @@ java.io.IOException: Stream closed
 # > Task :compose:compiler:compiler-hosted:integration-tests:testDebugUnitTest
 # If a test fails, we don't want the build to fail, we want to pass the test output to the tests server and for the tests server to report the failure
 [0-9]+ test.*failed.*
+There were failing tests\. See the report at: .*.html
 # Some status messages
-Starting a Gradle Daemon, [0-9]+ busy and [0-9]+ incompatible Daemons could not be reused, use \-\-status for details
-Starting a Gradle Daemon, [0-9]+ busy and [0-9]+ incompatible and [0-9]+ stopped Daemons could not be reused, use \-\-status for details
-Starting a Gradle Daemon \(subsequent builds will be faster\)
-To honour the JVM settings for this build a single\-use Daemon process will be forked\. See https://docs\.gradle\.org/[0-9]+\.[0-9]+\.[0-9]+/userguide/gradle_daemon\.html\#sec:disabling_the_daemon\.
+Starting a Gradle Daemon.*
 Remote build cache is disabled when running with \-\-offline\.
 [0-9]+ actionable tasks: [0-9]+ up\-to\-date
 [0-9]+ actionable tasks: [0-9]+ executed
 [0-9]+ actionable task: [0-9]+ executed
 [0-9]+ actionable tasks: [0-9]+ executed, [0-9]+ from cache, [0-9]+ up\-to\-date
 The remote build cache was disabled during the build due to errors\.
+The build is running offline\. A build scan will not be published at this time, but it can be published if you run the buildScanPublishPrevious task in the next build\.
+Calculating task graph as configuration cache cannot be reused because environment variable '.*' has changed\.
+Calculating task graph as configuration cache cannot be reused because file '[^ ]*' has changed\.
+Calculating task graph as no configuration cache is available for tasks:.*
+Reusing configuration cache\.
+Calculating task graph as configuration cache cannot be reused because an input to task '[^ ]*' has changed\.
+Calculating task graph as configuration cache cannot be reused because the set of paths ignored in file\-system\-check input tracking has changed\.
+See the profiling report at\: file\:\/\/\$OUT_DIR\/buildSrc\/build\/reports\/profile\/profile\-[0-9]+\-[0-9]+\-[0-9]+\-[0-9]+\-[0-9]+\-[0-9]+\.html
 # Some messages that encode the number of a certain type of other error
 [0-9]+ errors, [0-9]+ warnings \([0-9]+ warnings filtered by baseline lint\-baseline\.xml\)
 [0-9]+ errors, [0-9]+ warnings \([0-9]+ warning filtered by baseline lint\-baseline\.xml\)
-# > Task :webkit:integration-tests:testapp:compileReleaseJavaWithJavac
-\[ant\:jacocoReport\] Note\: Some input files use or override a deprecated API\.
-\[ant\:jacocoReport\] Note\: Recompile with \-Xlint\:deprecation for details\.
-\[ant\:jacocoReport\] Note\: Some input files use unchecked or unsafe operations\.
-\[ant\:jacocoReport\] Note\: Recompile with \-Xlint\:unchecked for details\.
+[0-9]+ problems were found reusing the configuration cache, [0-9]+ of which seems unique\.
+[0-9]+ problems were found reusing the configuration cache\.
+[0-9]+ problem was found reusing the configuration cache\.
+Configuration cache entry reused with [0-9]+ problem\.
 # b/179833331 , https://youtrack.jetbrains.com/issue/KT-35156
 # b/181258249 , https://youtrack.jetbrains.com/issue/KT-43881
-# > Task :jetifier-core:compileKotlin
-Could not perform incremental compilation\: Could not connect to Kotlin compile daemon
-Could not connect to kotlin daemon\. Using fallback strategy\.
 \.\.\. [0-9]+ more
 at java\.rmi\/sun\.rmi\.transport\.StreamRemoteCall\.exceptionReceivedFromServer\(StreamRemoteCall\.java\:[0-9]+\)
 at java\.rmi\/sun\.rmi\.transport\.StreamRemoteCall\.executeCall\(StreamRemoteCall\.java\:[0-9]+\)
@@ -55,6 +55,7 @@ at org\.jetbrains\.kotlin\.compilerRunner\.GradleKotlinCompilerWork\.incremental
 at org\.jetbrains\.kotlin\.compilerRunner\.GradleKotlinCompilerWork\.compileWithDaemon\(GradleKotlinCompilerWork\.kt\:[0-9]+\)
 at org\.jetbrains\.kotlin\.compilerRunner\.GradleKotlinCompilerWork\.compileWithDaemonOrFallbackImpl\(GradleKotlinCompilerWork\.kt\:[0-9]+\)
 at org\.jetbrains\.kotlin\.compilerRunner\.GradleKotlinCompilerWork\.run\(GradleKotlinCompilerWork\.kt\:[0-9]+\)
+at org\.jetbrains\.kotlin\.compilerRunner\.GradleCompilerRunnerWithWorkers\$GradleKotlinCompilerWorkAction\.execute\(GradleCompilerRunnerWithWorkers\.kt\:[0-9]+\)
 Caused by\: java\.lang\.AssertionError\: Incremental compilation is not enabled
 at org\.jetbrains\.kotlin\.incremental\.IncrementalCompilerRunner\.compileImpl\(IncrementalCompilerRunner\.kt\:[0-9]+\)
 at org\.jetbrains\.kotlin\.incremental\.IncrementalCompilerRunner\.compile\(IncrementalCompilerRunner\.kt\:[0-9]+\)
@@ -107,3 +108,43 @@ at com\.android\.build\.gradle\.internal\.lint\.AndroidLintWorkAction\.runLint\(
 at com\.android\.build\.gradle\.internal\.lint\.AndroidLintWorkAction\.execute\(AndroidLintWorkAction\.kt\:[0-9]+\)
 # > Task :buildSrc-tests:lintAnalyze
 .*\.android\/cache\/api\-versions\-[0-9]+\-[0-9A-Z]+rev[0-9]+\.bin does not exist
+# > Task :wear:wear-watchface:testDebugUnitTest
+System\.logW: A resource was acquired at attached stack trace but never released\. See java\.io\.Closeable for information on avoiding resource leaks\.java\.lang\.Throwable: Explicit termination method 'dispose' not called
+System\.logW: A resource was acquired at attached stack trace but never released\. See java\.io\.Closeable for information on avoiding resource leaks\.java\.lang\.Throwable: Explicit termination method 'release' not called
+# https://youtrack.jetbrains.com/issue/KT-46940
+warning\: The following options were not recognized by any processor\: \'\[.*\]\'
+# > Task :checkNativeApi / :generateNativeApi / :updateNativeApi
+Native API checking is currently not supported on non-linux devices
+# Known warning for Googlers
+It looks like you are a Googler running without remote build cache.*
+# built-in Gradle suggestions that a developer can't easily take when running remotely in CI
+\* Try:
+> Run with \-\-info or \-\-debug option to get more log output\.
+> Run with \-\-scan to get full insights\.
+# developers already see this message when local builds fail and don't need to also see it in CI
+\* Get more help at https://help\.gradle\.org
+# Flaky printout from kapt
+WARNING: Illegal reflective access by org\.jetbrains\.kotlin\.kapt3\.util\.ModuleManipulationUtilsKt .* to constructor com\.sun\.tools\.javac\.util\.Context\(\)
+WARNING: Please consider reporting this to the maintainers of org\.jetbrains\.kotlin\.kapt3\.util\.ModuleManipulationUtilsKt
+# b/225244932
+Index data read correctly
+Could not read index from network cache: null
+# androidx-studio-integration uses custom AGP and lint
+Using custom version .* of AGP due to GRADLE_PLUGIN_VERSION being set\.
+Using custom version .* of Lint due to LINT_VERSION being set\.
+Using custom version .* of metalava due to METALAVA_VERSION being set\.
+Publishing build scan\.\.\.
+https://ge\.androidx\.dev/s/.*
+# androidx-demos:compileReleaseJavaWithJavac
+Note: \$SUPPORT/samples/AndroidXDemos/src/main/java/com/example/androidx/util/DiffUtilActivity\.java uses unchecked or unsafe operations\.
+Calculating task graph as configuration cache cannot be reused because JVM has changed\.
+# b/270412262
+Failed to compile with Kotlin daemon: java\.lang\.RuntimeException: Could not connect to Kotlin compile daemon
+Using fallback strategy: Compile without Kotlin daemon
+Try \./gradlew \-\-stop if this issue persists\.
+# > Task :compose:ui:ui:compileReleaseKotlinAndroid
+e: Daemon compilation failed: Could not connect to Kotlin compile daemon
+java\.lang\.RuntimeException: Could not connect to Kotlin compile daemon
+Errors were stored into \$SUPPORT/\.gradle/kotlin/errors/errors\-[0-9]+\.log
+# b/306244551
+Generating lint files for.*

@@ -16,6 +16,7 @@
 
 package androidx.room.compiler.processing
 
+import androidx.kruth.assertWithMessage
 import androidx.room.compiler.processing.ksp.KspExecutableElement
 import androidx.room.compiler.processing.ksp.KspFieldElement
 import androidx.room.compiler.processing.util.Source
@@ -23,7 +24,6 @@ import androidx.room.compiler.processing.util.compileFiles
 import androidx.room.compiler.processing.util.kspProcessingEnv
 import androidx.room.compiler.processing.util.kspResolver
 import androidx.room.compiler.processing.util.runKspTest
-import com.google.common.truth.Truth.assertWithMessage
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration
@@ -72,7 +72,7 @@ class TopLevelMembersTest {
                                 declaration = method
                             )
                             assertWithMessage(pkg).that(
-                                element.containing.isTypeElement()
+                                element.enclosingElement.isTypeElement()
                             ).isFalse()
                             assertWithMessage(pkg).that(element.isStatic()).isTrue()
                         }
@@ -86,7 +86,7 @@ class TopLevelMembersTest {
                                 declaration = it
                             )
                             assertWithMessage(pkg).that(
-                                element.containing.isTypeElement()
+                                element.enclosingElement.isTypeElement()
                             ).isFalse()
                             assertWithMessage(pkg).that(element.isStatic()).isTrue()
                         }

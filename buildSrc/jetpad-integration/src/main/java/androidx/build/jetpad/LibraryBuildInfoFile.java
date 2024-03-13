@@ -16,7 +16,9 @@
 
 package androidx.build.jetpad;
 
+import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Objects;
 
 /**
  * Object outlining the format of a library's build info file.
@@ -36,29 +38,48 @@ import java.util.ArrayList;
  * @property dependencies a list of dependencies on other androidx libraries
  * @property checks arraylist of [Check]s that is used by Jetpad
  */
-public class LibraryBuildInfoFile {
+public final class LibraryBuildInfoFile {
     public String groupId;
     public String artifactId;
     public String version;
+    public String kotlinVersion;
     public String path;
     public String sha;
     public String groupZipPath;
     public String projectZipPath;
     public Boolean groupIdRequiresSameVersion;
     public ArrayList<Dependency> dependencies;
+    public ArrayList<Dependency> dependencyConstraints;
+    public Boolean shouldPublishDocs;
     public ArrayList<Check> checks;
 
     /**
      * @property isTipOfTree boolean that specifies whether the dependency is tip-of-tree
      */
-    public class Dependency {
+    public static final class Dependency implements Serializable {
         public String groupId;
         public String artifactId;
         public String version;
         public boolean isTipOfTree;
+        public static final long serialVersionUID = 12345L;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Dependency that = (Dependency) o;
+            return isTipOfTree == that.isTipOfTree && groupId.equals(that.groupId)
+                    && artifactId.equals(
+                    that.artifactId) && version.equals(that.version);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(groupId, artifactId, version, isTipOfTree);
+        }
     }
 
-    public class Check {
+    public static final class Check {
         public String name;
         public boolean passing;
     }

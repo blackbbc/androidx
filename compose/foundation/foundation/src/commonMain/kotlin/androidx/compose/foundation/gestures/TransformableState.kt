@@ -24,6 +24,7 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateTo
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.MutatorMutex
+import androidx.compose.foundation.internal.JvmDefaultWithCompatibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import kotlinx.coroutines.coroutineScope
  * transformations are consumed by the user as well as to write custom transformation methods
  * using [transform] suspend function.
  */
+@JvmDefaultWithCompatibility
 interface TransformableState {
     /**
      * Call this function to take control of transformations and gain the ability to send transform
@@ -61,6 +63,7 @@ interface TransformableState {
 /**
  * Scope used for suspending transformation operations
  */
+@JvmDefaultWithCompatibility
 interface TransformScope {
     /**
      * Attempts to transform by [zoomChange] in relative multiplied value, by [panChange] in
@@ -245,8 +248,11 @@ private class DefaultTransformableState(
     ): Unit = coroutineScope {
         transformMutex.mutateWith(transformScope, transformPriority) {
             isTransformingState.value = true
-            block()
-            isTransformingState.value = false
+            try {
+                block()
+            } finally {
+                isTransformingState.value = false
+            }
         }
     }
 

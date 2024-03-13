@@ -1,4 +1,10 @@
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -10,15 +16,20 @@ dependencies {
     implementation("androidx.annotation:annotation:1.2.0")
 
     androidTestImplementation(libs.testExtJunit)
+    androidTestImplementation(libs.testExtTruth)
     androidTestImplementation(libs.testCore)
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.testRules)
 }
 
 androidx {
-    name = "Android Support ExifInterface"
+    name = "ExifInterface"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.EXIFINTERFACE
     inceptionYear = "2016"
     description = "Android Support ExifInterface"
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.exifinterface"
 }

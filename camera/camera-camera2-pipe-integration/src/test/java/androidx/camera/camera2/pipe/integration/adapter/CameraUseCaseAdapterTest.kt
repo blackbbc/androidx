@@ -17,9 +17,16 @@
 package androidx.camera.camera2.pipe.integration.adapter
 
 import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCaptureSession.CaptureCallback
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CaptureRequest
 import android.os.Build
+import android.util.Size
 import android.view.Surface
+import androidx.camera.camera2.pipe.integration.impl.Camera2ImplConfig
+import androidx.camera.camera2.pipe.integration.impl.createCaptureRequestOption
+import androidx.camera.camera2.pipe.integration.interop.Camera2Interop
+import androidx.camera.camera2.pipe.integration.interop.ExperimentalCamera2Interop
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.impl.CameraCaptureCallback
 import androidx.camera.core.impl.CaptureConfig
@@ -34,6 +41,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricCameraPipeTestRunner::class)
 @Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
 class CameraUseCaseAdapterTest {
+
+    private val resolution: Size = Size(640, 480)
 
     @Test
     fun shouldApplyOptionsFromConfigToBuilder_whenDefaultConfigSet() {
@@ -54,7 +63,7 @@ class CameraUseCaseAdapterTest {
         val builder = CaptureConfig.Builder()
 
         // Act
-        CameraUseCaseAdapter.DefaultCaptureOptionsUnpacker.unpack(useCaseConfig, builder)
+        CameraUseCaseAdapter.DefaultCaptureOptionsUnpacker.INSTANCE.unpack(useCaseConfig, builder)
 
         // Assert
         val config = builder.build()
@@ -99,6 +108,7 @@ class CameraUseCaseAdapterTest {
                     }
                 })
                 addRepeatingCameraCaptureCallback(object : CameraCaptureCallback() {})
+                addCameraCaptureCallback(object : CameraCaptureCallback() {})
             }
             .build()
 
@@ -108,12 +118,204 @@ class CameraUseCaseAdapterTest {
         val builder = SessionConfig.Builder()
 
         // Act
-        CameraUseCaseAdapter.DefaultSessionOptionsUnpacker.unpack(useCaseConfig, builder)
+        CameraUseCaseAdapter.DefaultSessionOptionsUnpacker.unpack(resolution,
+            useCaseConfig, builder)
 
         // Assert
         val config = builder.build()
         config.assertEquals(useCaseConfig.defaultSessionConfig)
     }
+
+    @Test
+    @OptIn(ExperimentalCamera2Interop::class)
+    fun unpackerSessionConfig_ExtractsInteropCallbacks() {
+        // Arrange
+        val imageCaptureBuilder = ImageCapture.Builder()
+        val captureCallback = object : CaptureCallback() {}
+        val deviceCallback = object : CameraDevice.StateCallback() {
+            override fun onOpened(camera: CameraDevice) {
+                // unused
+            }
+
+            override fun onDisconnected(camera: CameraDevice) {
+                // unused
+            }
+
+            override fun onError(camera: CameraDevice, error: Int) {
+                // unused
+            }
+        }
+        val sessionStateCallback = object : CameraCaptureSession.StateCallback() {
+            override fun onConfigured(session: CameraCaptureSession) {
+                // unused
+            }
+
+            override fun onConfigureFailed(session: CameraCaptureSession) {
+                // unused
+            }
+        }
+
+        Camera2Interop.Extender<ImageCapture>(imageCaptureBuilder)
+            .setSessionCaptureCallback(captureCallback)
+            .setDeviceStateCallback(deviceCallback)
+            .setSessionStateCallback(sessionStateCallback)
+
+        // Act
+        val sessionBuilder = SessionConfig.Builder()
+        CameraUseCaseAdapter.DefaultSessionOptionsUnpacker.unpack(
+            resolution,
+            imageCaptureBuilder.useCaseConfig,
+            sessionBuilder
+        )
+        val sessionConfig = sessionBuilder.build()
+
+        // Assert
+        val interopCallback = sessionConfig.singleCameraCaptureCallbacks[0]
+        assertThat(
+            (interopCallback as CameraUseCaseAdapter.CaptureCallbackContainer).captureCallback
+        ).isEqualTo(captureCallback)
+        assertThat(sessionConfig.singleCameraCaptureCallbacks).containsExactly(interopCallback)
+        assertThat(sessionConfig.repeatingCameraCaptureCallbacks).containsExactly(interopCallback)
+        assertThat(sessionConfig.deviceStateCallbacks).containsExactly(deviceCallback)
+        assertThat(sessionConfig.sessionStateCallbacks).containsExactly(sessionStateCallback)
+    }
+
+    @Test
+    @OptIn(ExperimentalCamera2Interop::class)
+    fun unpackerSessionConfig_ExtractsInteropOptions() {
+        // Arrange
+        val physicalCameraId = "0"
+        val imageCaptureConfigBuilder = ImageCapture.Builder()
+
+        // Add 2 options to ensure that multiple options can be unpacked.
+        Camera2Interop.Extender<ImageCapture>(
+            imageCaptureConfigBuilder
+        ).setCaptureRequestOption<Int>(
+            CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO
+        ).setCaptureRequestOption<Int>(
+            CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH
+        ).apply {
+            if (Build.VERSION.SDK_INT >= 28) {
+                setPhysicalCameraId(physicalCameraId)
+            }
+        }
+        val useCaseConfig = imageCaptureConfigBuilder.useCaseConfig
+        val priorityAfMode = useCaseConfig.getCaptureRequestOptionPriority(
+            CaptureRequest.CONTROL_AF_MODE
+        )
+        val priorityFlashMode = useCaseConfig.getCaptureRequestOptionPriority(
+            CaptureRequest.FLASH_MODE
+        )
+        val sessionBuilder = SessionConfig.Builder()
+
+        // Act
+        CameraUseCaseAdapter.DefaultSessionOptionsUnpacker.unpack(resolution,
+            useCaseConfig, sessionBuilder)
+        val sessionConfig = sessionBuilder.build()
+
+        // Assert
+        val config =
+            Camera2ImplConfig(sessionConfig.implementationOptions)
+        assertThat(
+            config.getCaptureRequestOption<Int>(
+                CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF
+            )
+        ).isEqualTo(CaptureRequest.CONTROL_AF_MODE_AUTO)
+        assertThat(
+            config.getCaptureRequestOption<Int>(
+                CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF
+            )
+        ).isEqualTo(CaptureRequest.FLASH_MODE_TORCH)
+        if (Build.VERSION.SDK_INT >= 28) {
+            assertThat(
+                config.getPhysicalCameraId(null)
+            ).isEqualTo(physicalCameraId)
+        }
+        // Make sures the priority of Camera2Interop is preserved after unpacking.
+        assertThat(config.getCaptureRequestOptionPriority(CaptureRequest.CONTROL_AF_MODE))
+            .isEqualTo(priorityAfMode)
+        assertThat(config.getCaptureRequestOptionPriority(CaptureRequest.CONTROL_AF_MODE))
+            .isEqualTo(priorityFlashMode)
+    }
+
+    @Test
+    @OptIn(ExperimentalCamera2Interop::class)
+    fun unpackerCaptureConfig_ExtractsCaptureCallbacks() {
+        // Arrange
+        val imageCaptureBuilder = ImageCapture.Builder()
+        val captureCallback = object : CaptureCallback() {}
+
+        Camera2Interop.Extender<ImageCapture>(imageCaptureBuilder)
+            .setSessionCaptureCallback(captureCallback)
+
+        // Act
+        val captureBuilder = CaptureConfig.Builder()
+        CameraUseCaseAdapter.DefaultCaptureOptionsUnpacker.INSTANCE.unpack(
+            imageCaptureBuilder.useCaseConfig,
+            captureBuilder
+        )
+        val captureConfig = captureBuilder.build()
+
+        // Assert
+        val cameraCaptureCallback = captureConfig.cameraCaptureCallbacks[0]
+        assertThat(
+            (cameraCaptureCallback as CameraUseCaseAdapter.CaptureCallbackContainer).captureCallback
+        ).isEqualTo(captureCallback)
+    }
+
+    @Test
+    @OptIn(ExperimentalCamera2Interop::class)
+    fun unpackerCaptureConfig_ExtractsOptions() {
+        // Arrange
+        val imageCaptureConfigBuilder = ImageCapture.Builder()
+
+        // Add 2 options to ensure that multiple options can be unpacked.
+        Camera2Interop.Extender<ImageCapture>(
+            imageCaptureConfigBuilder
+        ).setCaptureRequestOption<Int>(
+            CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO
+        ).setCaptureRequestOption<Int>(
+            CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH
+        )
+        val useCaseConfig = imageCaptureConfigBuilder.useCaseConfig
+        val priorityAfMode = useCaseConfig.getCaptureRequestOptionPriority(
+            CaptureRequest.CONTROL_AF_MODE
+        )
+        val priorityFlashMode = useCaseConfig.getCaptureRequestOptionPriority(
+            CaptureRequest.FLASH_MODE
+        )
+
+        val captureBuilder = CaptureConfig.Builder()
+
+        // Act
+        CameraUseCaseAdapter.DefaultCaptureOptionsUnpacker.INSTANCE.unpack(
+            useCaseConfig, captureBuilder
+        )
+        val captureConfig = captureBuilder.build()
+
+        // Assert
+        val config = Camera2ImplConfig(captureConfig.implementationOptions)
+        assertThat(
+            config.getCaptureRequestOption<Int>(
+                CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF
+            )
+        ).isEqualTo(CaptureRequest.CONTROL_AF_MODE_AUTO)
+        assertThat(
+            config.getCaptureRequestOption<Int>(
+                CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF
+            )
+        ).isEqualTo(CaptureRequest.FLASH_MODE_TORCH)
+
+        // Make sures the priority of Camera2Interop is preserved after unpacking.
+        assertThat(config.getCaptureRequestOptionPriority(CaptureRequest.CONTROL_AF_MODE))
+            .isEqualTo(priorityAfMode)
+        assertThat(config.getCaptureRequestOptionPriority(CaptureRequest.CONTROL_AF_MODE))
+            .isEqualTo(priorityFlashMode)
+    }
+
+    private fun androidx.camera.core.impl.Config.getCaptureRequestOptionPriority(
+        key: CaptureRequest.Key<*>
+    ) = getOptionPriority(key.createCaptureRequestOption())
 
     private fun CaptureConfig.assertEquals(other: CaptureConfig) {
         assertThat(templateType).isEqualTo(other.templateType)

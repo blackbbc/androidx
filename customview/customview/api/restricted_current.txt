@@ -2,9 +2,9 @@
 package androidx.customview.view {
 
   public abstract class AbsSavedState implements android.os.Parcelable {
-    ctor protected AbsSavedState(android.os.Parcelable);
     ctor protected AbsSavedState(android.os.Parcel);
     ctor protected AbsSavedState(android.os.Parcel, ClassLoader?);
+    ctor protected AbsSavedState(android.os.Parcelable);
     method public int describeContents();
     method public final android.os.Parcelable? getSuperState();
     method public void writeToParcel(android.os.Parcel!, int);
@@ -57,8 +57,8 @@ package androidx.customview.widget {
     method public boolean checkTouchSlop(int);
     method public boolean checkTouchSlop(int, int);
     method public boolean continueSettling(boolean);
-    method public static androidx.customview.widget.ViewDragHelper! create(android.view.ViewGroup, androidx.customview.widget.ViewDragHelper.Callback);
-    method public static androidx.customview.widget.ViewDragHelper! create(android.view.ViewGroup, float, androidx.customview.widget.ViewDragHelper.Callback);
+    method public static androidx.customview.widget.ViewDragHelper create(android.view.ViewGroup, androidx.customview.widget.ViewDragHelper.Callback);
+    method public static androidx.customview.widget.ViewDragHelper create(android.view.ViewGroup, float, androidx.customview.widget.ViewDragHelper.Callback);
     method public android.view.View? findTopChildUnder(int, int);
     method public void flingCapturedView(int, int, int, int);
     method public int getActivePointerId();

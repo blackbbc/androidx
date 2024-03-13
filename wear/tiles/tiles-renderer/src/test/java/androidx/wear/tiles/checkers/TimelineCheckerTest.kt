@@ -16,19 +16,19 @@
 
 package androidx.wear.tiles.checkers
 
-import androidx.wear.tiles.LayoutElementBuilders
+import androidx.wear.protolayout.LayoutElementBuilders
+import androidx.wear.protolayout.TimelineBuilders
 import androidx.wear.tiles.TilesTestRunner
-import androidx.wear.tiles.TimelineBuilders
 import com.google.common.truth.Truth.assertThat
-import com.nhaarman.mockitokotlin2.any
-import com.nhaarman.mockitokotlin2.argumentCaptor
-import com.nhaarman.mockitokotlin2.doReturn
-import com.nhaarman.mockitokotlin2.doThrow
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.times
-import com.nhaarman.mockitokotlin2.verify
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 
 @RunWith(TilesTestRunner::class)
 class TimelineCheckerTest {
@@ -94,17 +94,21 @@ class TimelineCheckerTest {
     }
 
     private fun buildTimeline() =
-        TimelineBuilders.Timeline.builder().addTimelineEntry(
-            TimelineBuilders.TimelineEntry.builder().setLayout(
-                LayoutElementBuilders.Layout.builder().setRoot(
-                    LayoutElementBuilders.Text.builder().setText("Hello")
-                )
-            )
+        TimelineBuilders.Timeline.Builder().addTimelineEntry(
+            TimelineBuilders.TimelineEntry.Builder().setLayout(
+                LayoutElementBuilders.Layout.Builder().setRoot(
+                    LayoutElementBuilders.Text.Builder()
+                        .setText("Hello")
+                        .build()
+                ).build()
+            ).build()
         ).addTimelineEntry(
-            TimelineBuilders.TimelineEntry.builder().setLayout(
-                LayoutElementBuilders.Layout.builder().setRoot(
-                    LayoutElementBuilders.Text.builder().setText("World")
-                )
-            )
+            TimelineBuilders.TimelineEntry.Builder().setLayout(
+                LayoutElementBuilders.Layout.Builder().setRoot(
+                    LayoutElementBuilders.Text.Builder()
+                        .setText("World")
+                        .build()
+                ).build()
+            ).build()
         ).build()
 }

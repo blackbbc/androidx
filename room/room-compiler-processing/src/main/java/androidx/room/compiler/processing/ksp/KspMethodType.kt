@@ -19,44 +19,30 @@ package androidx.room.compiler.processing.ksp
 import androidx.room.compiler.processing.XMethodType
 import androidx.room.compiler.processing.XSuspendMethodType
 import androidx.room.compiler.processing.XType
+import androidx.room.compiler.processing.XTypeVariableType
 import com.squareup.javapoet.TypeVariableName
 
 internal sealed class KspMethodType(
-    val env: KspProcessingEnv,
-    val origin: KspMethodElement,
-    val containing: KspType?
-) : XMethodType {
-    override val parameterTypes: List<XType> by lazy {
-        if (containing == null) {
-            origin.parameters.map {
-                it.type
-            }
-        } else {
-            origin.parameters.map {
-                it.asMemberOf(containing)
-            }
-        }
-    }
+    env: KspProcessingEnv,
+    override val origin: KspMethodElement,
+    containing: KspType?
+) : KspExecutableType(env, origin, containing), XMethodType {
 
-    override val typeVariableNames: List<TypeVariableName> by lazy {
+    override val typeVariables: List<XTypeVariableType> by lazy {
         origin.declaration.typeParameters.map {
-            val typeParameterBounds = it.bounds.map {
-                it.typeName(env.resolver)
-            }.toList().toTypedArray()
-            TypeVariableName.get(
-                it.name.asString(),
-                *typeParameterBounds
-            )
+            KspMethodTypeVariableType(env, it)
         }
     }
 
-    /**
-     * Creates a MethodType where variance is inherited for java code generation.
-     *
-     * see [OverrideVarianceResolver] for details.
-     */
-    fun inheritVarianceForOverride(): XMethodType {
-        return OverrideVarianceResolver(env, this).resolve()
+    @Deprecated(
+        "Use typeVariables property and convert to JavaPoet names.",
+        replaceWith = ReplaceWith(
+            "typeVariables.map { it.asTypeName().toJavaPoet() }",
+            "androidx.room.compiler.codegen.toJavaPoet"
+        )
+    )
+    override val typeVariableNames: List<TypeVariableName> by lazy {
+        typeVariables.map { it.asTypeName().java as TypeVariableName }
     }
 
     private class KspNormalMethodType(
@@ -65,9 +51,14 @@ internal sealed class KspMethodType(
         containing: KspType?
     ) : KspMethodType(env, origin, containing) {
         override val returnType: XType by lazy {
-            origin.declaration.returnXType(
+            origin.declaration.returnKspType(
                 env = env,
                 containing = containing
+            ).copyWithScope(
+                KSTypeVarianceResolverScope.MethodReturnType(
+                    method = origin,
+                    asMemberOf = containing
+                )
             )
         }
     }

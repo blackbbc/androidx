@@ -24,6 +24,7 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.view.Surface;
 
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
 
@@ -33,8 +34,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Camera2 callbacks which release specific semaphores on each event.
  *
- * @hide
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @RestrictTo(Scope.LIBRARY)
 public final class SemaphoreReleasingCamera2Callbacks {
 
@@ -44,7 +45,6 @@ public final class SemaphoreReleasingCamera2Callbacks {
     /**
      * A device state callback which releases a different semaphore for each method.
      *
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     public static final class DeviceStateCallback extends CameraDevice.StateCallback {
@@ -95,7 +95,6 @@ public final class SemaphoreReleasingCamera2Callbacks {
     /**
      * A session state callback which releases a different semaphore for each method.
      *
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     public static final class SessionStateCallback extends CameraCaptureSession.StateCallback {
@@ -180,7 +179,6 @@ public final class SemaphoreReleasingCamera2Callbacks {
     /**
      * A session capture callback which releases a different semaphore for each method.
      *
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     public static final class SessionCaptureCallback extends CameraCaptureSession.CaptureCallback {

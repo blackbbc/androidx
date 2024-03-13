@@ -15,8 +15,6 @@
  */
 package androidx.core.util;
 
-import android.os.Build;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -47,12 +45,9 @@ public class ObjectsCompat {
      *         and {@code false} otherwise
      * @see Object#equals(Object)
      */
+    @SuppressWarnings("EqualsReplaceableByObjectsCall")
     public static boolean equals(@Nullable Object a, @Nullable Object b) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            return Objects.equals(a, b);
-        } else {
-            return (a == b) || (a != null && a.equals(b));
-        }
+        return Objects.equals(a, b);
     }
 
     /**
@@ -90,11 +85,7 @@ public class ObjectsCompat {
      * @see Arrays#hashCode(Object[])
      */
     public static int hash(@Nullable Object... values) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            return Objects.hash(values);
-        } else {
-            return Arrays.hashCode(values);
-        }
+        return Objects.hash(values);
     }
 
     /**

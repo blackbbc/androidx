@@ -14,6 +14,15 @@
  * limitations under the License.
  */
 
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.LibraryType
+
 plugins {
     id("AndroidXPlugin")
     id("com.android.application")
@@ -23,22 +32,28 @@ android {
     defaultConfig {
         applicationId "androidx.car.app.sample.showcase"
         minSdkVersion 23
-        versionCode 1
-        versionName "1.0"
+        // Increment this to generate signed builds for uploading to Playstore
+        // Make sure this is different from the showcase-automotive version
+        versionCode 106
+        versionName "106"
     }
 
     buildTypes {
+        debug {
+            pseudoLocalesEnabled true
+        }
         release {
             // Enables code shrinking, obfuscation, and optimization.
             minifyEnabled true
             proguardFiles getDefaultProguardFile(
-                    'proguard-android-optimize.txt'),
-                    'proguard-rules.pro'
+                    'proguard-android-optimize.txt')
         }
     }
+    namespace "androidx.car.app.sample.showcase"
 }
 
 dependencies {
     implementation(project(":car:app:app-samples:showcase-common"))
     implementation(project(":car:app:app-projected"))
 }
+

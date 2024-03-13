@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.internal.checkPrecondition
 import androidx.compose.ui.unit.Dp
 
 /**
@@ -72,7 +73,18 @@ class ImageVector internal constructor(
     /**
      * Blend mode used to apply [tintColor]
      */
-    val tintBlendMode: BlendMode
+    val tintBlendMode: BlendMode,
+
+    /**
+     * Determines if the vector asset should automatically be mirrored for right to left locales
+     */
+    val autoMirror: Boolean,
+
+    /**
+     * Identifier used to disambiguate between different ImageVector instances in a more efficient
+     * manner than equality. This can be used as a key for caching instances of ImageVectors.
+     */
+    internal val genId: Int = generateImageVectorId(),
 ) {
     /**
      * Builder used to construct a Vector graphic tree.
@@ -121,9 +133,74 @@ class ImageVector internal constructor(
         /**
          * Blend mode used to apply the tint color
          */
-        private val tintBlendMode: BlendMode = BlendMode.SrcIn
+        private val tintBlendMode: BlendMode = BlendMode.SrcIn,
+
+        /**
+         * Determines if the vector asset should automatically be mirrored for right to left locales
+         */
+        private val autoMirror: Boolean = false
     ) {
-        private val nodes = Stack<GroupParams>()
+
+        // Secondary constructor to maintain API compatibility that defaults autoMirror to false
+        @Deprecated(
+            "Replace with ImageVector.Builder that consumes an optional auto " +
+                "mirror parameter",
+            replaceWith = ReplaceWith(
+                "Builder(name, defaultWidth, defaultHeight, viewportWidth, " +
+                    "viewportHeight, tintColor, tintBlendMode, false)",
+                "androidx.compose.ui.graphics.vector"
+            ),
+            DeprecationLevel.HIDDEN
+        )
+        constructor(
+            /**
+             * Name of the vector asset
+             */
+            name: String = DefaultGroupName,
+
+            /**
+             * Intrinsic width of the Vector in [Dp]
+             */
+            defaultWidth: Dp,
+
+            /**
+             * Intrinsic height of the Vector in [Dp]
+             */
+            defaultHeight: Dp,
+
+            /**
+             *  Used to define the width of the viewport space. Viewport is basically the virtual
+             *  canvas where the paths are drawn on.
+             */
+            viewportWidth: Float,
+
+            /**
+             * Used to define the height of the viewport space. Viewport is basically the virtual canvas
+             * where the paths are drawn on.
+             */
+            viewportHeight: Float,
+
+            /**
+             * Optional color used to tint the entire vector image
+             */
+            tintColor: Color = Color.Unspecified,
+
+            /**
+             * Blend mode used to apply the tint color
+             */
+            tintBlendMode: BlendMode = BlendMode.SrcIn
+        ) : this(
+            name,
+            defaultWidth,
+            defaultHeight,
+            viewportWidth,
+            viewportHeight,
+            tintColor,
+            tintBlendMode,
+            false
+        )
+
+        private val nodes = ArrayList<GroupParams>()
 
         private var root = GroupParams()
         private var isConsumed = false
@@ -275,7 +352,8 @@ class ImageVector internal constructor(
                 viewportHeight,
                 root.asVectorGroup(),
                 tintColor,
-                tintBlendMode
+                tintBlendMode,
+                autoMirror
             )
 
             isConsumed = true
@@ -287,7 +365,7 @@ class ImageVector internal constructor(
          * Throws IllegalStateException if the ImageVector.Builder has already been consumed
          */
         private fun ensureNotConsumed() {
-            check(!isConsumed) {
+            checkPrecondition(!isConsumed) {
                 "ImageVector.Builder is single use, create a new instance " +
                     "to create a new ImageVector"
             }
@@ -330,10 +408,15 @@ class ImageVector internal constructor(
         )
     }
 
-    /**
-     * Provide an empty companion object to hang platform-specific companion extensions onto.
-     */
-    companion object { } // ktlint-disable no-empty-class-body
+    companion object {
+        private var imageVectorCount = 0
+
+        internal fun generateImageVectorId(): Int {
+            synchronized(this) {
+                return imageVectorCount++
+            }
+        }
+    }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -347,7 +430,7 @@ class ImageVector internal constructor(
         if (root != other.root) return false
         if (tintColor != other.tintColor) return false
         if (tintBlendMode != other.tintBlendMode) return false
-
+        if (autoMirror != other.autoMirror) return false
         return true
     }
 
@@ -360,6 +443,7 @@ class ImageVector internal constructor(
         result = 31 * result + root.hashCode()
         result = 31 * result + tintColor.hashCode()
         result = 31 * result + tintBlendMode.hashCode()
+        result = 31 * result + autoMirror.hashCode()
         return result
     }
 }
@@ -688,14 +772,8 @@ inline fun ImageVector.Builder.group(
     clearGroup()
 }
 
-@Suppress("INLINE_CLASS_DEPRECATED", "EXPERIMENTAL_FEATURE_WARNING")
-private inline class Stack<T>(private val backing: ArrayList<T> = ArrayList<T>()) {
-    val size: Int get() = backing.size
+private fun <T> ArrayList<T>.push(value: T): Boolean = add(value)
 
-    fun push(value: T) = backing.add(value)
-    fun pop(): T = backing.removeAt(size - 1)
-    fun peek(): T = backing[size - 1]
-    fun isEmpty() = backing.isEmpty()
-    fun isNotEmpty() = !isEmpty()
-    fun clear() = backing.clear()
-}
+private fun <T> ArrayList<T>.pop(): T = this.removeAt(size - 1)
+
+private fun <T> ArrayList<T>.peek(): T = this[size - 1]

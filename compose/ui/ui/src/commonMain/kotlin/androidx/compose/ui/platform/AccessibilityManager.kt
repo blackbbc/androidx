@@ -16,10 +16,14 @@
 
 package androidx.compose.ui.platform
 
+import androidx.compose.ui.internal.JvmDefaultWithCompatibility
+
 /**
  * Interface for managing accessibility.
  */
+@JvmDefaultWithCompatibility
 interface AccessibilityManager {
+
     /**
      * Calculate the recommended timeout for changes to the UI needed by this user. Controls should
      * remain on the screen for at least this long to give users time to react. Some users may need

@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -41,13 +46,14 @@ android {
     defaultConfig {
         minSdkVersion 23
     }
+    namespace "androidx.security.biometric"
 }
 
 androidx {
-    name = "AndroidX Security Biometric"
+    name = "Security Biometric"
     publish = Publish.SNAPSHOT_AND_RELEASE
     mavenVersion = LibraryVersions.SECURITY_BIOMETRIC
-    mavenGroup = LibraryGroups.SECURITY
     inceptionYear = "2020"
     description = "AndroidX Security Biometric"
+    metalavaK2UastEnabled = true
 }

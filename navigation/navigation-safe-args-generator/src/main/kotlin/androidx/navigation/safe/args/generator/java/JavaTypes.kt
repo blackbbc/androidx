@@ -35,13 +35,13 @@ import androidx.navigation.safe.args.generator.ObjectArrayType
 import androidx.navigation.safe.args.generator.ObjectType
 import androidx.navigation.safe.args.generator.ReferenceArrayType
 import androidx.navigation.safe.args.generator.ReferenceType
+import androidx.navigation.safe.args.generator.ReferenceValue
 import androidx.navigation.safe.args.generator.StringArrayType
 import androidx.navigation.safe.args.generator.StringType
-import androidx.navigation.safe.args.generator.models.Argument
-import androidx.navigation.safe.args.generator.ReferenceValue
 import androidx.navigation.safe.args.generator.StringValue
 import androidx.navigation.safe.args.generator.WritableValue
 import androidx.navigation.safe.args.generator.ext.toClassNameParts
+import androidx.navigation.safe.args.generator.models.Argument
 import androidx.navigation.safe.args.generator.models.ResReference
 import com.squareup.javapoet.ArrayTypeName
 import com.squareup.javapoet.ClassName
@@ -195,6 +195,65 @@ internal fun NavType.addBundlePutStatement(
         "$N.$N($S, $L)",
         bundle,
         bundlePutMethod(),
+        arg.name,
+        argValue
+    )
+}
+
+internal fun NavType.addSavedStateHandleSetStatement(
+    builder: MethodSpec.Builder,
+    arg: Argument,
+    savedStateHandle: String,
+    argValue: String
+): MethodSpec.Builder = when (this) {
+    is ObjectType -> builder.apply {
+        beginControlFlow(
+            "if ($T.class.isAssignableFrom($T.class) || $N == null)",
+            PARCELABLE_CLASSNAME, arg.type.typeName(), argValue
+        ).apply {
+            addStatement(
+                "$N.set($S, $T.class.cast($N))",
+                savedStateHandle, arg.name, PARCELABLE_CLASSNAME, argValue
+            )
+        }.nextControlFlow(
+            "else if ($T.class.isAssignableFrom($T.class))",
+            SERIALIZABLE_CLASSNAME, arg.type.typeName()
+        ).apply {
+            addStatement(
+                "$N.set($S, $T.class.cast($N))",
+                savedStateHandle, arg.name, SERIALIZABLE_CLASSNAME, argValue
+            )
+        }.nextControlFlow("else").apply {
+            addStatement(
+                "throw new UnsupportedOperationException($T.class.getName() + " +
+                    "\" must implement Parcelable or Serializable or must be an Enum.\")",
+                arg.type.typeName()
+            )
+        }.endControlFlow()
+    }
+    else -> builder.addStatement(
+        "$N.set($S, $N)",
+        savedStateHandle,
+        arg.name,
+        argValue
+    )
+}
+
+internal fun NavType.addSavedStateHandleSetStatement(
+    builder: MethodSpec.Builder,
+    arg: Argument,
+    savedStateHandle: String,
+    argValue: CodeBlock
+): MethodSpec.Builder = when (this) {
+    is ObjectType -> builder.apply {
+        addStatement(
+            "$N.set($S, $L)",
+            savedStateHandle, arg.name, argValue
+        )
+    }
+    else -> builder.addStatement(
+        "$N.set($S, $L)",
+        savedStateHandle,
         arg.name,
         argValue
     )

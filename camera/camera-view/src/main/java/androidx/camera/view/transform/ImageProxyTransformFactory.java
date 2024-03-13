@@ -16,15 +16,16 @@
 
 package androidx.camera.view.transform;
 
-import static androidx.camera.view.TransformUtils.getNormalizedToBuffer;
-import static androidx.camera.view.TransformUtils.getRectToRect;
-import static androidx.camera.view.TransformUtils.is90or270;
-import static androidx.camera.view.TransformUtils.rectToSize;
+import static androidx.camera.core.impl.utils.TransformUtils.getNormalizedToBuffer;
+import static androidx.camera.core.impl.utils.TransformUtils.getRectToRect;
+import static androidx.camera.core.impl.utils.TransformUtils.is90or270;
+import static androidx.camera.core.impl.utils.TransformUtils.rectToSize;
 
 import android.graphics.Matrix;
 import android.graphics.RectF;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageInfo;
@@ -43,6 +44,7 @@ import androidx.camera.view.TransformExperimental;
  * @see OutputTransform
  * @see CoordinateTransform
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @TransformExperimental
 public final class ImageProxyTransformFactory {
 

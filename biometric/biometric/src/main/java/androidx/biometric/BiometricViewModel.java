@@ -38,7 +38,6 @@ import java.util.concurrent.Executor;
  * <p>This model and all of its data is persisted over the lifetime of the client activity that
  * hosts the {@link BiometricPrompt}.
  *
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
 public class BiometricViewModel extends ViewModel {
@@ -219,6 +218,12 @@ public class BiometricViewModel extends ViewModel {
      * Whether the prompt should ignore cancel requests not initiated by the client.
      */
     private boolean mIsIgnoringCancel;
+
+    /**
+     * Whether {@link android.app.KeyguardManager} is being used directly for authentication with
+     * both biometric and credential authenticator types allowed.
+     */
+    private boolean mIsUsingKeyguardManagerForBiometricAndCredential;
 
     /**
      * Information associated with a successful authentication attempt.
@@ -499,6 +504,16 @@ public class BiometricViewModel extends ViewModel {
 
     void setIgnoringCancel(boolean ignoringCancel) {
         mIsIgnoringCancel = ignoringCancel;
+    }
+
+    boolean isUsingKeyguardManagerForBiometricAndCredential() {
+        return mIsUsingKeyguardManagerForBiometricAndCredential;
+    }
+
+    void setUsingKeyguardManagerForBiometricAndCredential(
+            boolean usingKeyguardManagerForBiometricAndCredential) {
+        mIsUsingKeyguardManagerForBiometricAndCredential =
+                usingKeyguardManagerForBiometricAndCredential;
     }
 
     @NonNull

@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -39,10 +44,14 @@ dependencies {
 }
 
 androidx {
-    name = "Android RecyclerView Selection"
+    name = "RecyclerView Selection"
     publish = Publish.SNAPSHOT_AND_RELEASE
     mavenVersion = LibraryVersions.RECYCLERVIEW_SELECTION
-    mavenGroup = LibraryGroups.RECYCLERVIEW
     inceptionYear = "2017"
     description = "Library providing item selection framework for RecyclerView. Support for touch based and band selection is provided."
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.recyclerview.selection"
 }

@@ -17,6 +17,7 @@
 package androidx.camera.camera2.pipe.core
 
 import androidx.annotation.GuardedBy
+import androidx.annotation.RequiresApi
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -33,10 +34,12 @@ import kotlinx.coroutines.launch
  *    OR acquire will return a token and the close method will not execute until after the token is
  *    released.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 internal class WakeLock(
     private val scope: CoroutineScope,
     private val timeout: Long = 0,
-    private val callback: () -> Unit
+    private val startTimeoutOnCreation: Boolean = false,
+    private val callback: () -> Unit,
 ) {
     private val lock = Any()
 
@@ -48,6 +51,12 @@ internal class WakeLock(
 
     @GuardedBy("lock")
     private var closed = false
+
+    init {
+        if (startTimeoutOnCreation) {
+            synchronized(lock) { startTimeout() }
+        }
+    }
 
     private inner class WakeLockToken : Token {
         private val closed = atomic(false)
@@ -97,21 +106,27 @@ internal class WakeLock(
         synchronized(lock) {
             count -= 1
             if (count == 0 && !closed) {
-                timeoutJob = scope.launch {
-                    delay(timeout)
-
-                    synchronized(lock) {
-                        if (closed || count != 0) {
-                            return@launch
-                        }
-                        timeoutJob = null
-                        closed = true
-                    }
-
-                    // Execute the callback
-                    callback()
-                }
+                startTimeout()
             }
         }
+    }
+
+    @GuardedBy("lock")
+    private fun startTimeout() {
+        timeoutJob =
+            scope.launch {
+                delay(timeout)
+
+                synchronized(lock) {
+                    if (closed || count != 0) {
+                        return@launch
+                    }
+                    timeoutJob = null
+                    closed = true
+                }
+
+                // Execute the callback
+                callback()
+            }
     }
 }

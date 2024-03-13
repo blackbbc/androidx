@@ -22,15 +22,14 @@ import static androidx.camera.core.impl.UseCaseConfig.OPTION_CAPTURE_CONFIG_UNPA
 import static androidx.camera.core.impl.UseCaseConfig.OPTION_DEFAULT_CAPTURE_CONFIG;
 import static androidx.camera.core.impl.UseCaseConfig.OPTION_DEFAULT_SESSION_CONFIG;
 import static androidx.camera.core.impl.UseCaseConfig.OPTION_SESSION_CONFIG_UNPACKER;
+import static androidx.camera.core.impl.UseCaseConfig.OPTION_ZSL_DISABLED;
 
 import android.content.Context;
-import android.graphics.Point;
-import android.hardware.camera2.CameraDevice;
 import android.util.Size;
-import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
-import androidx.camera.camera2.internal.compat.workaround.PreviewPixelHDRnet;
+import androidx.annotation.RequiresApi;
+import androidx.camera.core.ImageCapture.CaptureMode;
 import androidx.camera.core.impl.CaptureConfig;
 import androidx.camera.core.impl.Config;
 import androidx.camera.core.impl.MutableOptionsBundle;
@@ -42,12 +41,12 @@ import androidx.camera.core.impl.UseCaseConfigFactory;
  * Implementation of UseCaseConfigFactory to provide the default camera2 configurations for use
  * cases.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class Camera2UseCaseConfigFactory implements UseCaseConfigFactory {
-    private static final Size MAX_PREVIEW_SIZE = new Size(1920, 1080);
-    final WindowManager mWindowManager;
+    final DisplayInfoManager mDisplayInfoManager;
 
     public Camera2UseCaseConfigFactory(@NonNull Context context) {
-        mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        mDisplayInfoManager = DisplayInfoManager.getInstance(context);
     }
 
     /**
@@ -56,26 +55,14 @@ public final class Camera2UseCaseConfigFactory implements UseCaseConfigFactory {
      */
     @NonNull
     @Override
-    @SuppressWarnings("deprecation") /* getDefaultDisplay */
-    public Config getConfig(@NonNull CaptureType captureType) {
+    public Config getConfig(
+            @NonNull CaptureType captureType,
+            @CaptureMode int captureMode) {
         final MutableOptionsBundle mutableConfig = MutableOptionsBundle.create();
 
         SessionConfig.Builder sessionBuilder = new SessionConfig.Builder();
-        switch (captureType) {
-            case IMAGE_CAPTURE:
-            case PREVIEW:
-            case IMAGE_ANALYSIS:
-                sessionBuilder.setTemplateType(CameraDevice.TEMPLATE_PREVIEW);
-                break;
-            case VIDEO_CAPTURE:
-                sessionBuilder.setTemplateType(CameraDevice.TEMPLATE_RECORD);
-                break;
-        }
-
-        if (captureType == CaptureType.PREVIEW) {
-            // Set the WYSIWYG preview for CAPTURE_TYPE_PREVIEW
-            PreviewPixelHDRnet.setHDRnet(sessionBuilder);
-        }
+        sessionBuilder.setTemplateType(
+                TemplateTypeUtil.getSessionConfigTemplateType(captureType, captureMode));
 
         mutableConfig.insertOption(OPTION_DEFAULT_SESSION_CONFIG, sessionBuilder.build());
 
@@ -83,19 +70,8 @@ public final class Camera2UseCaseConfigFactory implements UseCaseConfigFactory {
                 Camera2SessionOptionUnpacker.INSTANCE);
 
         CaptureConfig.Builder captureBuilder = new CaptureConfig.Builder();
-
-        switch (captureType) {
-            case IMAGE_CAPTURE:
-                captureBuilder.setTemplateType(CameraDevice.TEMPLATE_STILL_CAPTURE);
-                break;
-            case PREVIEW:
-            case IMAGE_ANALYSIS:
-                captureBuilder.setTemplateType(CameraDevice.TEMPLATE_PREVIEW);
-                break;
-            case VIDEO_CAPTURE:
-                captureBuilder.setTemplateType(CameraDevice.TEMPLATE_RECORD);
-                break;
-        }
+        captureBuilder.setTemplateType(
+                TemplateTypeUtil.getCaptureConfigTemplateType(captureType, captureMode));
         mutableConfig.insertOption(OPTION_DEFAULT_CAPTURE_CONFIG, captureBuilder.build());
 
         // Only CAPTURE_TYPE_IMAGE_CAPTURE has its own ImageCaptureOptionUnpacker. Other
@@ -105,32 +81,20 @@ public final class Camera2UseCaseConfigFactory implements UseCaseConfigFactory {
                         : Camera2CaptureOptionUnpacker.INSTANCE);
 
         if (captureType == CaptureType.PREVIEW) {
-            mutableConfig.insertOption(OPTION_MAX_RESOLUTION, getPreviewSize());
+            Size previewSize = mDisplayInfoManager.getPreviewSize();
+            mutableConfig.insertOption(OPTION_MAX_RESOLUTION, previewSize);
         }
 
-        int targetRotation = mWindowManager.getDefaultDisplay().getRotation();
+        // The default rotation value should be determined by the max non-state-off display.
+        // Calling getMaxSizeDisplay() function with parameter `true` can skips the displays with
+        // off state.
+        int targetRotation = mDisplayInfoManager.getMaxSizeDisplay(true).getRotation();
         mutableConfig.insertOption(OPTION_TARGET_ROTATION, targetRotation);
 
-        return OptionsBundle.from(mutableConfig);
-    }
-
-    /**
-     * Returns the device's screen resolution, or 1080p, whichever is smaller.
-     */
-    @SuppressWarnings("deprecation") /* getDefaultDisplay */
-    private Size getPreviewSize() {
-        Point displaySize = new Point();
-        mWindowManager.getDefaultDisplay().getRealSize(displaySize);
-
-        Size displayViewSize;
-        if (displaySize.x > displaySize.y) {
-            displayViewSize = new Size(displaySize.x, displaySize.y);
-        } else {
-            displayViewSize = new Size(displaySize.y, displaySize.x);
+        if (captureType == CaptureType.VIDEO_CAPTURE || captureType == CaptureType.STREAM_SHARING) {
+            mutableConfig.insertOption(OPTION_ZSL_DISABLED, true);
         }
 
-        return displayViewSize.getWidth() * displayViewSize.getHeight()
-                > MAX_PREVIEW_SIZE.getWidth() * MAX_PREVIEW_SIZE.getHeight() ? MAX_PREVIEW_SIZE
-                : displayViewSize;
+        return OptionsBundle.from(mutableConfig);
     }
 }

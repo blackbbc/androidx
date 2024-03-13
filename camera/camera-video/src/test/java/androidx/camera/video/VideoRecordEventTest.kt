@@ -14,23 +14,28 @@
  * limitations under the License.
  */
 
+@file:RequiresApi(21)
+
 package androidx.camera.video
 
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.camera.video.VideoRecordEvent.Finalize.ERROR_NONE
+import androidx.camera.video.VideoRecordEvent.Finalize.ERROR_UNKNOWN
 import com.google.common.truth.Truth.assertThat
+import java.io.File
 import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.internal.DoNotInstrument
-import java.io.File
 
 private const val INVALID_FILE_PATH = "/invalid/file/path"
-private val TEST_OUTPUT_OPTION =
-    FileOutputOptions.builder().setFile(File(INVALID_FILE_PATH)).build()
-private val TEST_RECORDING_STATE = RecordingStats.of(0, 0, RecordingStats.AUDIO_RECORDING)
+private val TEST_OUTPUT_OPTION = FileOutputOptions.Builder(File(INVALID_FILE_PATH)).build()
+private val TEST_RECORDING_STATE =
+    RecordingStats.of(0, 0, AudioStats.of(AudioStats.AUDIO_STATE_ACTIVE, null, 0.0))
 private val TEST_OUTPUT_RESULT = OutputResults.of(Uri.EMPTY)
 
 @RunWith(RobolectricTestRunner::class)
@@ -45,7 +50,7 @@ class VideoRecordEventTest {
             TEST_RECORDING_STATE
         )
 
-        assertThat(event.eventType).isEqualTo(VideoRecordEvent.EVENT_TYPE_START)
+        assertThat(event).isInstanceOf(VideoRecordEvent.Start::class.java)
         assertThat(event.outputOptions).isEqualTo(TEST_OUTPUT_OPTION)
         assertThat(event.recordingStats).isEqualTo(TEST_RECORDING_STATE)
     }
@@ -58,18 +63,18 @@ class VideoRecordEventTest {
             TEST_OUTPUT_RESULT
         )
 
-        assertThat(event.eventType).isEqualTo(VideoRecordEvent.EVENT_TYPE_FINALIZE)
+        assertThat(event).isInstanceOf(VideoRecordEvent.Finalize::class.java)
         assertThat(event.outputOptions).isEqualTo(TEST_OUTPUT_OPTION)
         assertThat(event.recordingStats).isEqualTo(TEST_RECORDING_STATE)
         assertThat(event.outputResults).isEqualTo(TEST_OUTPUT_RESULT)
         assertThat(event.hasError()).isFalse()
-        assertThat(event.error).isEqualTo(VideoRecordEvent.ERROR_NONE)
+        assertThat(event.error).isEqualTo(ERROR_NONE)
         assertThat(event.cause).isNull()
     }
 
     @Test
     fun canCreateFinalizeWithError() {
-        val error = VideoRecordEvent.ERROR_UNKNOWN
+        val error = ERROR_UNKNOWN
         val cause = RuntimeException()
         val event = VideoRecordEvent.finalizeWithError(
             TEST_OUTPUT_OPTION,
@@ -79,7 +84,7 @@ class VideoRecordEventTest {
             cause
         )
 
-        assertThat(event.eventType).isEqualTo(VideoRecordEvent.EVENT_TYPE_FINALIZE)
+        assertThat(event).isInstanceOf(VideoRecordEvent.Finalize::class.java)
         assertThat(event.outputOptions).isEqualTo(TEST_OUTPUT_OPTION)
         assertThat(event.recordingStats).isEqualTo(TEST_RECORDING_STATE)
         assertThat(event.outputResults).isEqualTo(TEST_OUTPUT_RESULT)
@@ -95,7 +100,7 @@ class VideoRecordEventTest {
                 TEST_OUTPUT_OPTION,
                 TEST_RECORDING_STATE,
                 TEST_OUTPUT_RESULT,
-                VideoRecordEvent.ERROR_NONE,
+                ERROR_NONE,
                 RuntimeException()
             )
         }
@@ -108,7 +113,7 @@ class VideoRecordEventTest {
             TEST_RECORDING_STATE
         )
 
-        assertThat(event.eventType).isEqualTo(VideoRecordEvent.EVENT_TYPE_STATUS)
+        assertThat(event).isInstanceOf(VideoRecordEvent.Status::class.java)
         assertThat(event.outputOptions).isEqualTo(TEST_OUTPUT_OPTION)
         assertThat(event.recordingStats).isEqualTo(TEST_RECORDING_STATE)
     }
@@ -120,7 +125,7 @@ class VideoRecordEventTest {
             TEST_RECORDING_STATE
         )
 
-        assertThat(event.eventType).isEqualTo(VideoRecordEvent.EVENT_TYPE_PAUSE)
+        assertThat(event).isInstanceOf(VideoRecordEvent.Pause::class.java)
         assertThat(event.outputOptions).isEqualTo(TEST_OUTPUT_OPTION)
         assertThat(event.recordingStats).isEqualTo(TEST_RECORDING_STATE)
     }
@@ -132,7 +137,7 @@ class VideoRecordEventTest {
             TEST_RECORDING_STATE
         )
 
-        assertThat(event.eventType).isEqualTo(VideoRecordEvent.EVENT_TYPE_RESUME)
+        assertThat(event).isInstanceOf(VideoRecordEvent.Resume::class.java)
         assertThat(event.outputOptions).isEqualTo(TEST_OUTPUT_OPTION)
         assertThat(event.recordingStats).isEqualTo(TEST_RECORDING_STATE)
     }

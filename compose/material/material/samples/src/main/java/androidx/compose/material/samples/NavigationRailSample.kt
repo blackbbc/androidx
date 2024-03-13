@@ -17,9 +17,10 @@
 package androidx.compose.material.samples
 
 import androidx.annotation.Sampled
-import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.Icon
 import androidx.compose.material.NavigationRail
+import androidx.compose.material.NavigationRailDefaults
 import androidx.compose.material.NavigationRailItem
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
@@ -31,15 +32,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 
-@OptIn(ExperimentalMaterialApi::class)
 @Sampled
 @Composable
 fun NavigationRailSample() {
     var selectedItem by remember { mutableStateOf(0) }
     val items = listOf("Home", "Search", "Settings")
     val icons = listOf(Icons.Filled.Home, Icons.Filled.Search, Icons.Filled.Settings)
-    NavigationRail {
+    NavigationRail(windowInsets = NavigationRailDefaults.windowInsets) {
         items.forEachIndexed { index, item ->
             NavigationRailItem(
                 icon = { Icon(icons[index], contentDescription = item) },
@@ -51,7 +52,6 @@ fun NavigationRailSample() {
     }
 }
 
-@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun NavigationRailWithOnlySelectedLabelsSample() {
     var selectedItem by remember { mutableStateOf(0) }
@@ -70,7 +70,6 @@ fun NavigationRailWithOnlySelectedLabelsSample() {
     }
 }
 
-@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun CompactNavigationRailSample() {
     var selectedItem by remember { mutableStateOf(0) }
@@ -82,6 +81,27 @@ fun CompactNavigationRailSample() {
                 icon = { Icon(icons[index], contentDescription = item) },
                 selected = selectedItem == index,
                 onClick = { selectedItem = index }
+            )
+        }
+    }
+}
+
+@Composable
+fun NavigationRailBottomAlignSample() {
+    var selectedItem by remember { mutableStateOf(0) }
+    val items = listOf("Home", "Search", "Settings")
+    val icons = listOf(Icons.Filled.Home, Icons.Filled.Search, Icons.Filled.Settings)
+
+    NavigationRail {
+        // A Spacer that pushes the NavigationRail items to the bottom of the NavigationRail.
+        Spacer(Modifier.weight(1f))
+        items.forEachIndexed { index, item ->
+            NavigationRailItem(
+                icon = { Icon(icons[index], contentDescription = item) },
+                label = { Text(item) },
+                selected = selectedItem == index,
+                onClick = { selectedItem = index },
+                alwaysShowLabel = false
             )
         }
     }

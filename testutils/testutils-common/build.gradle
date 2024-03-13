@@ -1,3 +1,12 @@
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 /*
  * Copyright 2018 The Android Open Source Project
  *
@@ -14,6 +23,15 @@
  * limitations under the License.
  */
 
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.LibraryType
+
 plugins {
     id("AndroidXPlugin")
     id("kotlin")
@@ -21,4 +39,12 @@ plugins {
 
 dependencies {
     implementation(libs.kotlinStdlib)
+    implementation(libs.kotlinCoroutinesAndroid)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+}
+
+androidx {
+    type = LibraryType.INTERNAL_TEST_LIBRARY
 }

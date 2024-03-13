@@ -20,6 +20,7 @@ import android.graphics.Matrix;
 import android.util.Size;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.camera.core.UseCase;
 import androidx.camera.core.UseCaseGroup;
@@ -31,6 +32,7 @@ import androidx.camera.view.TransformExperimental;
  * <p> Represents the rotation, cropping and/or mirroring applied to the raw buffer of a
  * {@link UseCase} output.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @TransformExperimental
 public final class OutputTransform {
 
@@ -50,7 +52,6 @@ public final class OutputTransform {
      *                     other {@link OutputTransform}, we can at least make sure that they
      *                     have the same aspect ratio, and warn developers if not. Viewports with
      *                     different aspect ratios cannot be from the same {@link UseCaseGroup}.
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     public OutputTransform(@NonNull Matrix matrix, @NonNull Size viewPortSize) {
@@ -58,8 +59,13 @@ public final class OutputTransform {
         mViewPortSize = viewPortSize;
     }
 
+    /**
+     * Internal API that returns the underlying {@link Matrix} object.
+     *
+     */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     @NonNull
-    Matrix getMatrix() {
+    public Matrix getMatrix() {
         return mMatrix;
     }
 

@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 import org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode
 
@@ -33,9 +39,13 @@ dependencies {
 }
 
 androidx {
-    name = "Android Navigation Common Kotlin Extensions"
+    name = "Navigation Common Kotlin Extensions"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.NAVIGATION
     inceptionYear = "2018"
     description = "Android Navigation-Common-Ktx"
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.navigation.common.ktx"
 }

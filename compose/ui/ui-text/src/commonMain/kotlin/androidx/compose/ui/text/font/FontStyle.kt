@@ -21,8 +21,13 @@ package androidx.compose.ui.text.font
  *  @see Font
  *  @see FontFamily
  */
-@Suppress("INLINE_CLASS_DEPRECATED")
-inline class FontStyle(val value: Int) {
+@kotlin.jvm.JvmInline
+value class FontStyle
+@Deprecated(
+    "Please use FontStyle.Normal or FontStyle.Italic",
+    replaceWith = ReplaceWith("FontStyle.")
+)
+constructor(val value: Int) {
 
     override fun toString(): String {
         return when (this) {
@@ -34,9 +39,11 @@ inline class FontStyle(val value: Int) {
 
     companion object {
         /** Use the upright glyphs */
+        @Suppress("DEPRECATION")
         val Normal = FontStyle(0)
 
         /** Use glyphs designed for slanting */
+        @Suppress("DEPRECATION")
         val Italic = FontStyle(1)
 
         /** Returns a list of possible values of [FontStyle]. */

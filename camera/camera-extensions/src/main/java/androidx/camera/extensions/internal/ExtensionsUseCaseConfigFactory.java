@@ -16,29 +16,57 @@
 
 package androidx.camera.extensions.internal;
 
-import android.content.Context;
+import static androidx.camera.core.impl.UseCaseConfig.OPTION_ZSL_DISABLED;
+
+import android.graphics.ImageFormat;
+import android.util.Pair;
+import android.util.Size;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.camera.core.CameraInfo;
+import androidx.annotation.RequiresApi;
+import androidx.camera.core.ImageCapture.CaptureMode;
 import androidx.camera.core.impl.Config;
+import androidx.camera.core.impl.ImageAnalysisConfig;
 import androidx.camera.core.impl.MutableOptionsBundle;
 import androidx.camera.core.impl.OptionsBundle;
 import androidx.camera.core.impl.UseCaseConfigFactory;
-import androidx.camera.extensions.ExtensionMode;
+
+import java.util.List;
 
 /**
  * Implementation of UseCaseConfigFactory to provide the default extensions configurations for use
  * cases.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class ExtensionsUseCaseConfigFactory implements UseCaseConfigFactory {
     private final ImageCaptureConfigProvider mImageCaptureConfigProvider;
     private final PreviewConfigProvider mPreviewConfigProvider;
+    private final ImageAnalysisConfigProvider mImageAnalysisConfigProvider;
 
-    public ExtensionsUseCaseConfigFactory(@ExtensionMode.Mode int mode,
-            @NonNull CameraInfo cameraInfo, @NonNull Context context) {
-        mImageCaptureConfigProvider = new ImageCaptureConfigProvider(mode, cameraInfo, context);
-        mPreviewConfigProvider = new PreviewConfigProvider(mode, cameraInfo, context);
+    public ExtensionsUseCaseConfigFactory(@NonNull VendorExtender vendorExtender) {
+        mImageCaptureConfigProvider = new ImageCaptureConfigProvider(vendorExtender);
+        mPreviewConfigProvider = new PreviewConfigProvider(vendorExtender);
+        mImageAnalysisConfigProvider = new ImageAnalysisConfigProvider(vendorExtender);
+    }
+
+    private boolean isImageAnalysisSupported(
+            @Nullable List<Pair<Integer, Size[]>> supportedResolutions) {
+        if (supportedResolutions == null) {
+            return false;
+        }
+
+        for (Pair<Integer, Size[]> pair : supportedResolutions) {
+            int imageFormat = pair.first;
+            Size[] sizes = pair.second;
+            if (imageFormat == ImageFormat.YUV_420_888) {
+                if (sizes != null && sizes.length > 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -47,7 +75,10 @@ public final class ExtensionsUseCaseConfigFactory implements UseCaseConfigFactor
      */
     @Nullable
     @Override
-    public Config getConfig(@NonNull CaptureType captureType) {
+    public Config getConfig(
+            @NonNull CaptureType captureType,
+            @CaptureMode int captureMode
+    ) {
         MutableOptionsBundle mutableOptionsBundle;
 
         switch (captureType) {
@@ -59,9 +90,29 @@ public final class ExtensionsUseCaseConfigFactory implements UseCaseConfigFactor
                 mutableOptionsBundle =
                         MutableOptionsBundle.from(mPreviewConfigProvider.getConfig());
                 break;
+            case IMAGE_ANALYSIS: // invoked when ImageAnalysis is bound.
+                ImageAnalysisConfig config =  mImageAnalysisConfigProvider.getConfig();
+                List<Pair<Integer, Size[]>> supportedResolutions =
+                        config.getSupportedResolutions(/* valueIfMissing */ null);
+                if (!isImageAnalysisSupported(supportedResolutions)) {
+                    // This will be thrown when invoking bindToLifecycle.
+                    throw new IllegalArgumentException(
+                            "ImageAnalysis is not supported when Extension is enabled on "
+                                    + "this device. Check "
+                                    + "ExtensionsManager.isImageAnalysisSupported before binding "
+                                    + "the ImageAnalysis use case.");
+                }
+                mutableOptionsBundle = MutableOptionsBundle.from(config);
+                break;
+            case VIDEO_CAPTURE:
+                throw new IllegalArgumentException("Should not go here. VideoCapture is supported"
+                        + " by recording the preview stream when Extension is enabled.");
             default:
                 return null;
         }
+
+        // Disable ZSL when Extension is ON.
+        mutableOptionsBundle.insertOption(OPTION_ZSL_DISABLED, true);
 
         return OptionsBundle.from(mutableOptionsBundle);
     }

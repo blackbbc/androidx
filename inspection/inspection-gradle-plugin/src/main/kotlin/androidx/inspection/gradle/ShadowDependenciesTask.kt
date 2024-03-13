@@ -16,36 +16,32 @@
 
 package androidx.inspection.gradle
 
+import com.android.build.api.variant.Variant
 import com.github.jengelman.gradle.plugins.shadow.relocation.RelocateClassContext
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import com.github.jengelman.gradle.plugins.shadow.transformers.Transformer
 import com.github.jengelman.gradle.plugins.shadow.transformers.TransformerContext
+import java.io.File
+import java.util.jar.JarFile
+import org.apache.tools.zip.ZipEntry
+import org.apache.tools.zip.ZipOutputStream
 import org.gradle.api.Project
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.FileTreeElement
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.TaskProvider
-import org.gradle.api.tasks.bundling.Jar
-import shadow.org.apache.tools.zip.ZipEntry
-import shadow.org.apache.tools.zip.ZipOutputStream
-import java.io.File
-import java.util.jar.JarFile
 
-// variant.taskName relies on @ExperimentalStdlibApi api
-@ExperimentalStdlibApi
-@Suppress("DEPRECATION") // BaseVariant
 fun Project.registerShadowDependenciesTask(
-    variant: com.android.build.gradle.api.BaseVariant,
+    variant: Variant,
+    jarName: String?,
     zipTask: TaskProvider<Copy>
 ): TaskProvider<ShadowJar> {
-    val uberJar = registerUberJarTask(variant)
     val versionTask = project.registerGenerateInspectionPlatformVersionTask(variant)
     return tasks.register(
-        variant.taskName("shadowDependencies"),
+        variant.taskName("inspectionShadowDependencies"),
         ShadowJar::class.java
     ) {
-        it.dependsOn(uberJar)
         it.dependsOn(versionTask)
         val fileTree = project.fileTree(zipTask.get().destinationDir)
         fileTree.include("**/*.jar", "**/*.so")
@@ -60,46 +56,33 @@ fun Project.registerShadowDependenciesTask(
         it.transform(RenameServicesTransformer::class.java)
         it.from(versionTask.get().outputDir)
         it.destinationDirectory.set(taskWorkingDir(variant, "shadowedJar"))
-        it.archiveBaseName.set("${project.name}-shadowed")
+        it.archiveBaseName.set("${jarName ?: project.name}-nondexed")
+        it.archiveVersion.set("")
         it.dependsOn(zipTask)
         val prefix = "deps.${project.name.replace('-', '.')}"
+        @Suppress("UnstableApiUsage")
+        val runtimeDeps = variant.runtimeConfiguration.incoming.artifactView {
+            it.attributes.attribute(
+                Attribute.of("artifactType", String::class.java),
+                ArtifactTypeDefinition.JAR_TYPE
+            )
+        }.files.filter { it.name.endsWith("jar") }
+        it.exclude("**/module-info.class")
+        it.exclude("google/**/*.proto")
+        it.exclude("META-INF/versions/9/**/*.class")
+        it.from({ runtimeDeps.files })
         it.doFirst {
             val task = it as ShadowJar
-            val input = uberJar.get().outputs.files
-            task.from(input)
-            input.extractPackageNames().forEach { packageName ->
+            @Suppress("UnstableApiUsage")
+            runtimeDeps.files.flatMap { it.extractPackageNames() }.toSet().forEach { packageName ->
                 task.relocate(packageName, "$prefix.$packageName")
             }
         }
     }
 }
 
-/**
- * Merges all runtime dependencies in one jar and removes module-info.class,
- * because jarjar and dx fail to process these classes.
- */
-@Suppress("DEPRECATION") // BaseVariant
-private fun Project.registerUberJarTask(
-    variant: com.android.build.gradle.api.BaseVariant
-): TaskProvider<Jar> {
-    return tasks.register("uberRuntimeDepsJar", Jar::class.java) {
-        it.dependsOn(variant.assembleProvider)
-        it.archiveClassifier.set("uberRuntimeDepsJar")
-        it.exclude("**/module-info.class")
-        it.exclude("META-INF/versions/9/**/*.class")
-        it.from({
-            variant.runtimeConfiguration.incoming.artifactView {
-                it.attributes.attribute(
-                    Attribute.of("artifactType", String::class.java),
-                    ArtifactTypeDefinition.JAR_TYPE
-                )
-            }.files.filter { it.name.endsWith("jar") }.map(::zipTree)
-        })
-    }
-}
-
-private fun Iterable<File>.extractPackageNames(): Set<String> = map(::JarFile)
-    .map { jar -> jar.use { it.entries().toList() } }.flatten()
+private fun File.extractPackageNames(): Set<String> = JarFile(this)
+    .use { it.entries().toList() }
     .filter { jarEntry -> jarEntry.name.endsWith(".class") }
     .map { jarEntry -> jarEntry.name.substringBeforeLast("/").replace('/', '.') }
     .toSet()
@@ -113,6 +96,10 @@ private fun Iterable<File>.extractPackageNames(): Set<String> = map(::JarFile)
  */
 class RenameServicesTransformer : Transformer {
     private val renamed = mutableMapOf<String, String>()
+
+    override fun getName(): String {
+        return "RenameServicesTransformer"
+    }
 
     override fun canTransformResource(element: FileTreeElement?): Boolean {
         return element?.relativePath?.startsWith("META-INF/services") ?: false

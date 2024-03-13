@@ -20,6 +20,8 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.leanback.R;
 
 /**
@@ -38,8 +40,9 @@ public class VideoSupportFragment extends PlaybackSupportFragment {
     int mState = SURFACE_NOT_CREATED;
 
     @Override
-    public View onCreateView(
-            LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+    @Nullable
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         ViewGroup root = (ViewGroup) super.onCreateView(inflater, container, savedInstanceState);
         mVideoSurface = (SurfaceView) LayoutInflater.from(getContext()).inflate(
                 R.layout.lb_video_surface, root, false);
@@ -87,19 +90,19 @@ public class VideoSupportFragment extends PlaybackSupportFragment {
     }
 
     @Override
-    protected void onVideoSizeChanged(int width, int height) {
+    protected void onVideoSizeChanged(int videoWidth, int videoHeight) {
         int screenWidth = getView().getWidth();
         int screenHeight = getView().getHeight();
 
         ViewGroup.LayoutParams p = mVideoSurface.getLayoutParams();
-        if (screenWidth * height > width * screenHeight) {
+        if (screenWidth * videoHeight > videoWidth * screenHeight) {
             // fit in screen height
             p.height = screenHeight;
-            p.width = screenHeight * width / height;
+            p.width = screenHeight * videoWidth / videoHeight;
         } else {
             // fit in screen width
             p.width = screenWidth;
-            p.height = screenWidth * height / width;
+            p.height = screenWidth * videoHeight / videoWidth;
         }
         mVideoSurface.setLayoutParams(p);
     }

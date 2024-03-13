@@ -29,12 +29,14 @@ import android.text.TextUtils;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.OnBackPressedDispatcher;
 import androidx.annotation.IntDef;
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
 import androidx.annotation.RestrictTo;
 import androidx.car.app.CarContext;
 import androidx.car.app.annotations.CarProtocol;
+import androidx.car.app.annotations.ExperimentalCarApi;
+import androidx.car.app.annotations.KeepFields;
 import androidx.car.app.annotations.RequiresCarApi;
 import androidx.car.app.model.constraints.CarIconConstraints;
 import androidx.lifecycle.LifecycleOwner;
@@ -62,12 +64,12 @@ import java.util.Objects;
  * the action will note them accordingly.
  */
 @CarProtocol
+@KeepFields
 public final class Action {
     /**
      * The type of action represented by the {@link Action} instance.
-     *
-     * @hide
      */
+    @OptIn(markerClass = androidx.car.app.annotations.ExperimentalCarApi.class)
     @RestrictTo(LIBRARY)
     @IntDef(
             value = {
@@ -75,12 +77,28 @@ public final class Action {
                     TYPE_APP_ICON,
                     TYPE_BACK,
                     TYPE_PAN,
+                    TYPE_COMPOSE_MESSAGE,
             })
     @Retention(RetentionPolicy.SOURCE)
     public @interface ActionType {
     }
 
-    static final int FLAG_STANDARD = 1 << 16;
+    /**
+     * The flag of action represented by the {@link Action} instance.
+     */
+    @RestrictTo(LIBRARY)
+    @IntDef(
+            flag = true,
+            value = {
+                    FLAG_PRIMARY,
+                    FLAG_IS_PERSISTENT,
+                    FLAG_DEFAULT
+            })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface ActionFlag {
+    }
+
+    static final int TYPE_STANDARD = 1 << 16;
 
     /**
      * An app-defined custom action type.
@@ -92,19 +110,55 @@ public final class Action {
      *
      * @see #APP_ICON
      */
-    public static final int TYPE_APP_ICON = 2 | FLAG_STANDARD;
+    public static final int TYPE_APP_ICON = 2 | TYPE_STANDARD;
 
     /**
      * An action to navigate back in the user interface.
      *
      * @see #BACK
      */
-    public static final int TYPE_BACK = 3 | FLAG_STANDARD;
+    public static final int TYPE_BACK = 3 | TYPE_STANDARD;
 
     /**
      * An action to toggle the pan mode in a map-based template.
      */
-    public static final int TYPE_PAN = 4 | FLAG_STANDARD;
+    public static final int TYPE_PAN = 4 | TYPE_STANDARD;
+
+    /**
+     * An action to allow user compose a message.
+     */
+    @ExperimentalCarApi
+    @RequiresCarApi(7)
+    public static final int TYPE_COMPOSE_MESSAGE = 5 | TYPE_STANDARD;
+
+    /**
+     * Indicates that this action is the most important one, out of a set of other actions.
+     *
+     * <p>The action with this flag may be treated differently by the host depending on where they
+     * are used. For example, it may be colored or ordered differently to align with the vehicle's
+     * look and feel. See the documentation on where the {@link Action} is added for more details on
+     * any restriction(s) that might apply.
+     */
+    @RequiresCarApi(4)
+    public static final int FLAG_PRIMARY = 1 << 0;
+
+    /**
+     * Indicates that this action will not fade in/out inside an {@link ActionStrip}.
+     */
+    @RequiresCarApi(5)
+    public static final int FLAG_IS_PERSISTENT = 1 << 1;
+
+    /**
+     * Indicates that this action is the default action out of a set of other actions.
+     *
+     * <p>The action with this flag may be treated differently by the host depending on where
+     * they are used. For example, it may be set as the default action to be triggered when the
+     * Alerter times out in the AlertCard. The first action with the FLAG_DEFAULT in an action
+     * list will be treated as the Default Action. See the documentation on where the
+     * {@link Action} is added for more details on any restriction(s) that might apply.
+     */
+    @RequiresCarApi(5)
+    public static final int FLAG_DEFAULT = 1 << 2;
 
     /**
      * A standard action to show the app's icon.
@@ -113,6 +167,16 @@ public final class Action {
      */
     @NonNull
     public static final Action APP_ICON = new Action(TYPE_APP_ICON);
+
+    /**
+     * A standard action to show the message compose button
+     *
+     * <p>This action is interactive.
+     */
+    @NonNull
+    @ExperimentalCarApi
+    @RequiresCarApi(7)
+    public static final Action COMPOSE_MESSAGE = new Action(TYPE_COMPOSE_MESSAGE);
 
     /**
      * A standard action to navigate back in the user interface.
@@ -141,20 +205,18 @@ public final class Action {
     @NonNull
     public static final Action PAN = new Action(TYPE_PAN);
 
-    @Keep
+    private final boolean mIsEnabled;
     @Nullable
     private final CarText mTitle;
-    @Keep
     @Nullable
     private final CarIcon mIcon;
-    @Keep
     private final CarColor mBackgroundColor;
-    @Keep
     @Nullable
     private final OnClickDelegate mOnClickDelegate;
-    @Keep
     @ActionType
     private final int mType;
+    @ActionFlag
+    private final int mFlags;
 
     /**
      * Returns the title displayed in the action or {@code null} if the action does not have a
@@ -194,6 +256,13 @@ public final class Action {
         return mType;
     }
 
+    /** Returns flags affecting how this action should be treated */
+    @RequiresCarApi(4)
+    @ActionFlag
+    public int getFlags() {
+        return mFlags;
+    }
+
     /** Returns whether the action is a standard action such as {@link #BACK}. */
     public boolean isStandard() {
         return isStandardActionType(mType);
@@ -207,16 +276,25 @@ public final class Action {
         return mOnClickDelegate;
     }
 
+    /**
+     * Returns {@code true} if the action is enabled.
+     */
+    @RequiresCarApi(5)
+    public boolean isEnabled() {
+        return mIsEnabled;
+    }
+
     @Override
     @NonNull
     public String toString() {
-        return "[type: " + typeToString(mType) + ", icon: " + mIcon + ", bkg: " + mBackgroundColor
-                + "]";
+        return "[type: " + typeToString(mType) + ", icon: " + mIcon
+                + ", bkg: " + mBackgroundColor + ", isEnabled: " + mIsEnabled + "]";
     }
 
     /**
      * Converts the given {@code type} into a string representation.
      */
+    @OptIn(markerClass = androidx.car.app.annotations.ExperimentalCarApi.class)
     @NonNull
     public static String typeToString(@ActionType int type) {
         switch (type) {
@@ -228,6 +306,8 @@ public final class Action {
                 return "BACK";
             case TYPE_PAN:
                 return "PAN";
+            case TYPE_COMPOSE_MESSAGE:
+                return "COMPOSE_MESSAGE";
             default:
                 return "<unknown>";
         }
@@ -245,6 +325,8 @@ public final class Action {
         mBackgroundColor = DEFAULT;
         mOnClickDelegate = null;
         mType = type;
+        mFlags = 0;
+        mIsEnabled = true;
     }
 
     Action(Builder builder) {
@@ -253,6 +335,8 @@ public final class Action {
         mBackgroundColor = builder.mBackgroundColor;
         mOnClickDelegate = builder.mOnClickDelegate;
         mType = builder.mType;
+        mFlags = builder.mFlags;
+        mIsEnabled = builder.mIsEnabled;
     }
 
     /** Constructs an empty instance, used by serialization code. */
@@ -262,11 +346,13 @@ public final class Action {
         mBackgroundColor = DEFAULT;
         mOnClickDelegate = null;
         mType = TYPE_CUSTOM;
+        mFlags = 0;
+        mIsEnabled = true;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mTitle, mType, mOnClickDelegate == null, mIcon == null);
+        return Objects.hash(mTitle, mType, mOnClickDelegate == null, mIcon == null, mIsEnabled);
     }
 
     @Override
@@ -284,15 +370,18 @@ public final class Action {
         return Objects.equals(mTitle, otherAction.mTitle)
                 && mType == otherAction.mType
                 && Objects.equals(mIcon, otherAction.mIcon)
-                && Objects.equals(mOnClickDelegate == null, otherAction.mOnClickDelegate == null);
+                && Objects.equals(mOnClickDelegate == null, otherAction.mOnClickDelegate == null)
+                && Objects.equals(mFlags, otherAction.mFlags)
+                && mIsEnabled == otherAction.mIsEnabled;
     }
 
     static boolean isStandardActionType(@ActionType int type) {
-        return 0 != (type & FLAG_STANDARD);
+        return 0 != (type & TYPE_STANDARD);
     }
 
     /** A builder of {@link Action}. */
     public static final class Builder {
+        boolean mIsEnabled = true;
         @Nullable
         CarText mTitle;
         @Nullable
@@ -302,6 +391,8 @@ public final class Action {
         CarColor mBackgroundColor = DEFAULT;
         @ActionType
         int mType = TYPE_CUSTOM;
+        @ActionFlag
+        int mFlags = 0;
 
         /**
          * Sets the title to display in the action.
@@ -396,6 +487,26 @@ public final class Action {
         }
 
         /**
+         * Sets the initial enabled state for {@link Action}.
+         *
+         * <p>The default state of a {@link Action} is enabled.
+         */
+        @NonNull
+        @RequiresCarApi(5)
+        public Builder setEnabled(boolean enabled) {
+            mIsEnabled = enabled;
+            return this;
+        }
+
+        /** Sets flags affecting how this action should be treated. */
+        @NonNull
+        @RequiresCarApi(4)
+        public Builder setFlags(@ActionFlag int flags) {
+            mFlags |= flags;
+            return this;
+        }
+
+        /**
          * Constructs the {@link Action} defined by this builder.
          *
          * @throws IllegalStateException if the action is not a standard action and does not have an
@@ -403,6 +514,7 @@ public final class Action {
          *                               {@link #APP_ICON} or {@link #BACK}, or if an icon or
          *                               title is set on either {@link #APP_ICON} or {@link #BACK}
          */
+        @OptIn(markerClass = androidx.car.app.annotations.ExperimentalCarApi.class)
         @NonNull
         public Action build() {
             boolean isStandard = isStandardActionType(mType);
@@ -411,11 +523,10 @@ public final class Action {
                 throw new IllegalStateException("An action must have either an icon or a title");
             }
 
-            if ((mType == TYPE_APP_ICON || mType == TYPE_BACK)) {
+            if (mType == TYPE_APP_ICON || mType == TYPE_BACK) {
                 if (mOnClickDelegate != null) {
-                    throw new IllegalStateException(
-                            "An on-click listener can't be set on the standard back or "
-                                    + "app-icon action");
+                    throw new IllegalStateException(String.format(
+                            "An on-click listener can't be set on an action of type %s", mType));
                 }
 
                 if (mIcon != null || (mTitle != null && !TextUtils.isEmpty(mTitle.toString()))) {
@@ -429,6 +540,18 @@ public final class Action {
                 if (mOnClickDelegate != null) {
                     throw new IllegalStateException(
                             "An on-click listener can't be set on the pan mode action");
+                }
+            }
+
+            if (mType == TYPE_COMPOSE_MESSAGE) {
+                if (mOnClickDelegate != null) {
+                    throw new IllegalStateException(
+                            "An on-click listener can't be set on the compose action");
+                }
+
+                if (mTitle != null && !TextUtils.isEmpty(mTitle.toString())) {
+                    throw new IllegalStateException(
+                            "A title can't be set on the standard compose action");
                 }
             }
 
@@ -454,6 +577,8 @@ public final class Action {
             mOnClickDelegate = action.getOnClickDelegate();
             CarColor backgroundColor = action.getBackgroundColor();
             mBackgroundColor = backgroundColor == null ? DEFAULT : backgroundColor;
+            mFlags = action.getFlags();
+            mIsEnabled = action.isEnabled();
         }
     }
 }

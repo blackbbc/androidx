@@ -16,9 +16,13 @@
 
 package androidx.car.app.model;
 
+import static androidx.car.app.model.Action.FLAG_PRIMARY;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
+
+import androidx.car.app.TestUtils;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,11 +45,9 @@ public class ActionStripTest {
     }
 
     @Test
-    public void backgroundColor_throws() {
-        Action action1 = new Action.Builder().setTitle("Test").setBackgroundColor(
+    public void customBackgroundColor_doesNotThrow() {
+        Action action = new Action.Builder().setTitle("Test").setBackgroundColor(
                 CarColor.BLUE).build();
-        assertThrows(IllegalArgumentException.class,
-                () -> new ActionStrip.Builder().addAction(action1));
     }
 
     @Test
@@ -59,6 +61,28 @@ public class ActionStripTest {
 
         // Duplicated custom types will not throw.
         new ActionStrip.Builder().addAction(action1).addAction(action2).addAction(action2).build();
+    }
+
+    @Test
+    public void primaryActions_doesNotThrow() {
+        Action primaryAction =
+                new Action.Builder().setTitle("primaryAction").setOnClickListener(() -> {
+                }).setFlags(FLAG_PRIMARY).build();
+    }
+
+    @Test
+    public void unsupportedSpans_throws() {
+        CharSequence title = TestUtils.getCharSequenceWithColorSpan("Title");
+        Action action1 = new Action.Builder().setTitle(title).build();
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ActionStrip.Builder().addAction(action1));
+
+        CarText title2 = TestUtils.getCarTextVariantsWithDistanceAndDurationSpans("Title");
+        Action action2 = new Action.Builder().setTitle(title2).build();
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ActionStrip.Builder().addAction(action2));
     }
 
     @Test

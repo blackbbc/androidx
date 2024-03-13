@@ -16,6 +16,8 @@
 
 package androidx.compose.compiler.plugins.kotlin.lower
 
+import androidx.compose.compiler.plugins.kotlin.ModuleMetrics
+import androidx.compose.compiler.plugins.kotlin.analysis.StabilityInferencer
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
@@ -35,7 +37,6 @@ import org.jetbrains.kotlin.ir.util.DeepCopySymbolRemapper
 import org.jetbrains.kotlin.ir.util.statements
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
-import org.jetbrains.kotlin.resolve.BindingTrace
 
 /**
  * This transformer is a workaround for https://youtrack.jetbrains.com/issue/KT-44945 on non-JVM
@@ -59,8 +60,10 @@ import org.jetbrains.kotlin.resolve.BindingTrace
 class KlibAssignableParamTransformer(
     context: IrPluginContext,
     symbolRemapper: DeepCopySymbolRemapper,
-    bindingTrace: BindingTrace
-) : AbstractComposeLowering(context, symbolRemapper, bindingTrace), ModuleLoweringPass {
+    metrics: ModuleMetrics,
+    stabilityInferencer: StabilityInferencer,
+) : AbstractComposeLowering(context, symbolRemapper, metrics, stabilityInferencer),
+    ModuleLoweringPass {
     override fun lower(module: IrModuleFragment) {
         module.transformChildrenVoid(this)
     }
@@ -99,7 +102,7 @@ class KlibAssignableParamTransformer(
             IrBlockBodyImpl(
                 body.startOffset,
                 body.endOffset
-            ) {
+            ).apply {
                 statements.addAll(variables)
 
                 val updatedBody = body.statements.map {

@@ -230,6 +230,7 @@ public class MediaSessionService extends Service {
         initializePlayer();
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -264,7 +265,7 @@ public class MediaSessionService extends Service {
         }
         mMediaItemList.addAll(mediaItemList);
 
-        /**
+        /*
          * Points to the first media item in play list.
          */
         mCurrentIndex = 0;

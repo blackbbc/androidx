@@ -19,53 +19,31 @@ import static androidx.car.app.hardware.common.CarUnit.CarDistanceUnit;
 
 import static java.util.Objects.requireNonNull;
 
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.car.app.annotations.CarProtocol;
 import androidx.car.app.annotations.RequiresCarApi;
 import androidx.car.app.hardware.common.CarUnit;
 import androidx.car.app.hardware.common.CarValue;
+import androidx.car.app.annotations.KeepFields;
 
 import java.util.Objects;
 
 /** Information about car mileage. */
 @CarProtocol
 @RequiresCarApi(3)
+@KeepFields
 public final class Mileage {
-    // TODO(b/192106888): Remove when new values fully supported by Android Auto Host.
-    @Keep
-    @Nullable
-    private final CarValue<Float> mOdometer;
-
-    @Keep
     @Nullable
     private final CarValue<Float> mOdometerMeters;
 
-    @Keep
     @NonNull
     private final CarValue<@CarDistanceUnit Integer> mDistanceDisplayUnit;
 
     /** Returns the value of the odometer from the car hardware in meters. */
     @NonNull
     public CarValue<Float> getOdometerMeters() {
-        if (mOdometerMeters != null) {
-            return requireNonNull(mOdometerMeters);
-        }
-        return requireNonNull(mOdometer);
-    }
-
-    // TODO(b/192106888): Remove when new values fully supported by Android Auto Host.
-
-    /**
-     * Returns the value of the odometer from the car hardware in meters.
-     *
-     * @deprecated use {@link #getOdometerMeters()}
-     */
-    @NonNull
-    @Deprecated
-    public CarValue<Float> getOdometer() {
-        return getOdometerMeters();
+        return requireNonNull(mOdometerMeters);
     }
 
     /**
@@ -108,38 +86,21 @@ public final class Mileage {
     }
 
     Mileage(Builder builder) {
-        mOdometer = null;
         mOdometerMeters = requireNonNull(builder.mOdometerMeters);
         mDistanceDisplayUnit = requireNonNull(builder.mDistanceDisplayUnit);
     }
 
     /** Constructs an empty instance, used by serialization code. */
     private Mileage() {
-        mOdometer = CarValue.UNIMPLEMENTED_FLOAT;
-        mOdometerMeters = CarValue.UNIMPLEMENTED_FLOAT;
-        mDistanceDisplayUnit = CarValue.UNIMPLEMENTED_INTEGER;
+        mOdometerMeters = CarValue.UNKNOWN_FLOAT;
+        mDistanceDisplayUnit = CarValue.UNKNOWN_INTEGER;
     }
 
     /** A builder of {@link Mileage}. */
     public static final class Builder {
-        CarValue<Float> mOdometerMeters = CarValue.UNIMPLEMENTED_FLOAT;
+        CarValue<Float> mOdometerMeters = CarValue.UNKNOWN_FLOAT;
         CarValue<@CarDistanceUnit Integer> mDistanceDisplayUnit =
-                CarValue.UNIMPLEMENTED_INTEGER;
-
-        // TODO(b/192106888): Remove when new values fully supported by Android Auto Host.
-
-        /**
-         * Sets the odometer value in meters.
-         *
-         * @throws NullPointerException if {@code odometer} is {@code null}
-         * @deprecated use {@link #setOdometerMeters}
-         */
-        @NonNull
-        @Deprecated
-        public Builder setOdometer(@NonNull CarValue<Float> odometer) {
-            mOdometerMeters = requireNonNull(odometer);
-            return this;
-        }
+                CarValue.UNKNOWN_INTEGER;
 
         /**
          * Sets the odometer value in meters.

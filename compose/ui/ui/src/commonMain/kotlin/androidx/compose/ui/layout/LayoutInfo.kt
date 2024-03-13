@@ -16,8 +16,10 @@
 
 package androidx.compose.ui.layout
 
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ViewConfiguration
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 
 /**
  * The public information about the layouts used internally as nodes in the Compose UI hierarchy.
@@ -57,9 +59,36 @@ interface LayoutInfo {
     val parentInfo: LayoutInfo?
 
     /**
+     * The density in use for this layout.
+     */
+    val density: Density
+
+    /**
+     * The layout direction in use for this layout.
+     */
+    val layoutDirection: LayoutDirection
+
+    /**
+     * The [ViewConfiguration] in use for this layout.
+     */
+    val viewConfiguration: ViewConfiguration
+
+    /**
      * Returns true if this layout is currently a part of the layout tree.
      */
     val isAttached: Boolean
+
+    /**
+     * Unique and stable id representing this node to the semantics system.
+     */
+    val semanticsId: Int
+
+    /**
+     * True if the node is deactivated. For example, the children of
+     * [androidx.compose.ui.layout.SubcomposeLayout] which are retained to be reused in future
+     * are considered deactivated.
+     */
+    val isDeactivated: Boolean get() = false
 }
 
 /**
@@ -69,24 +98,8 @@ class ModifierInfo(
     val modifier: Modifier,
     val coordinates: LayoutCoordinates,
     val extra: Any? = null
-)
-
-/**
- * The info about the graphics layers used by tooling.
- */
-interface GraphicLayerInfo {
-    /**
-     * The ID of the layer. This is used by tooling to match a layer to the associated
-     * LayoutNode.
-     */
-    val layerId: Long
-
-    /**
-     * The uniqueDrawingId of the owner view of this graphics layer. This is used by
-     * tooling to match a layer to the associated owner AndroidComposeView.
-     */
-    @get:ExperimentalComposeUiApi
-    @ExperimentalComposeUiApi
-    val ownerViewId: Long
-        get() = 0
+) {
+    override fun toString(): String {
+        return "ModifierInfo($modifier, $coordinates, $extra)"
+    }
 }

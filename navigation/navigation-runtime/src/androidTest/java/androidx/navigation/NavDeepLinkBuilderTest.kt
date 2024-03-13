@@ -16,15 +16,17 @@
 
 package androidx.navigation
 
-import androidx.navigation.test.R
 import android.content.Context
 import android.os.Bundle
+import androidx.core.os.bundleOf
+import androidx.navigation.test.R
 import androidx.test.annotation.UiThreadTest
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
 import androidx.testutils.TestNavigator
 import androidx.testutils.test
+import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,14 +43,14 @@ class NavDeepLinkBuilderTest {
             test("start_test_with_default_arg") {
                 argument("defaultArg") { defaultValue = true }
             }
-            test("second_test") {
+            test("second_test/{arg2}") {
                 argument("arg2") { type = NavType.StringType }
                 argument("defaultArg") {
                     type = NavType.StringType
                     defaultValue = "defaultValue"
                 }
                 deepLink {
-                    uriPattern = "android-app://androidx.navigation.test/test"
+                    uriPattern = "android-app://androidx.navigation.test/test/{arg2}"
                     action = "test.action"
                     mimeType = "type/test"
                 }
@@ -73,7 +75,7 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(nav_simple_route_graph)
-        deepLinkBuilder.setDestination("second_test")
+        deepLinkBuilder.setDestination("second_test/{arg2}")
         val taskStackBuilder = deepLinkBuilder.createTaskStackBuilder()
         assertWithMessage("Expected one Intent").that(taskStackBuilder.intentCount).isEqualTo(1)
     }
@@ -99,7 +101,7 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(nav_simple_route_graph)
-        deepLinkBuilder.setDestination("second_test")
+        deepLinkBuilder.setDestination("second_test/{arg2}")
         val taskStackBuilder = deepLinkBuilder.createTaskStackBuilder()
         assertWithMessage("Expected one Intent").that(taskStackBuilder.intentCount).isEqualTo(1)
     }
@@ -164,9 +166,151 @@ class NavDeepLinkBuilderTest {
         }
         val deepLinkBuilder = NavDeepLinkBuilder(navController)
 
-        deepLinkBuilder.setDestination("second_test")
+        deepLinkBuilder.setDestination("second_test/{arg2}")
         val taskStackBuilder = deepLinkBuilder.createTaskStackBuilder()
         assertWithMessage("Expected one Intent").that(taskStackBuilder.intentCount).isEqualTo(1)
+    }
+
+    @Test
+    fun generateExplicitStartDestination() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_simple) // startDest=start_test
+        deepLinkBuilder.addDestination(R.id.start_test)
+        deepLinkBuilder.addDestination(R.id.second_test)
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(R.id.nav_root, R.id.second_test)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun generateExplicitStartDestinationWithArgs() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_simple) // startDest=start_test
+        deepLinkBuilder.addDestination(R.id.start_test, bundleOf("arg" to "arg1"))
+        deepLinkBuilder.addDestination(
+            R.id.second_test,
+            bundleOf("arg" to "arg2")
+        )
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        val args = intent.getParcelableArrayListExtra<Bundle>(NavController.KEY_DEEP_LINK_ARGS)
+            ?.map { it.getString("arg") }
+
+        assertThat(ids).asList().containsExactly(R.id.nav_root, R.id.second_test).inOrder()
+        assertThat(args).containsExactly("arg1", "arg2").inOrder()
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun generateExplicitNavRootWithArgs() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_simple) // startDest=start_test
+        // nav_root is the root id of nav_simple. Similar to adding the startDest explicitly.
+        deepLinkBuilder.addDestination(R.id.nav_root, bundleOf("arg" to "arg1"))
+
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        val args = intent.getParcelableArrayListExtra<Bundle>(NavController.KEY_DEEP_LINK_ARGS)
+            ?.map { it.getString("arg") }
+        assertThat(ids).asList().containsExactly(R.id.nav_root)
+        assertThat(args).containsExactly("arg1")
+    }
+
+    @Test
+    fun generateExplicitStartDestinationMultipleTimes() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_simple) // startDest=start_test
+        deepLinkBuilder.addDestination(R.id.start_test)
+        deepLinkBuilder.addDestination(R.id.start_test)
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(R.id.nav_root, R.id.start_test).inOrder()
+    }
+
+    @Test
+    fun generateNestedExplicitStartDestinationMultipleTimes() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_nested_start_destination) // startDest=nested_test
+            .addDestination(R.id.nested_test) // Implied by the graph.
+            .addDestination(R.id.nested_test) // An additional instance
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(R.id.root, R.id.nested_test).inOrder()
+    }
+
+    @Test
+    fun generateImplicitStartDestination() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_simple) // startDest=start_test
+        deepLinkBuilder.addDestination(R.id.second_test)
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(R.id.nav_root, R.id.second_test).inOrder()
+    }
+
+    @Test
+    fun generateImplicitStartDestinationNestedGraph() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_non_start_nest) // startDestination=start_test
+        deepLinkBuilder.addDestination(R.id.nested_navigation) // startDestination=nested_start
+        deepLinkBuilder.addDestination(R.id.nested_other)
+
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(
+            R.id.nav_root,
+            R.id.nested_navigation,
+            R.id.nested_other
+        ).inOrder()
+    }
+
+    @Test
+    fun generateExplicitStartDestinationNestedGraph() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_non_start_nest) // startDestination=start_test
+        deepLinkBuilder.addDestination(R.id.nested_navigation) // startDestination=nested_start
+        deepLinkBuilder.addDestination(R.id.nested_start) // Overrides implied start
+        deepLinkBuilder.addDestination(R.id.nested_start) // An additional nested_start
+
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(
+            R.id.nav_root,
+            R.id.nested_navigation,
+            R.id.nested_start
+        ).inOrder()
+    }
+
+    @Test
+    fun generateNavGraphToSameNavGraph() {
+        val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
+
+        deepLinkBuilder.setGraph(R.navigation.nav_non_start_nest) // startDestination=start_test
+        // Adding R.id.nav_root is similar to adding the startDestination of nav_root.
+        deepLinkBuilder.addDestination(R.id.nav_root) // This is the root of nav_non_start_test
+        deepLinkBuilder.addDestination(R.id.nav_root) // Second one should be added on top.
+
+        val intent = deepLinkBuilder.createTaskStackBuilder().intents[0]
+
+        val ids = intent.getIntArrayExtra(NavController.KEY_DEEP_LINK_IDS)
+        assertThat(ids).asList().containsExactly(R.id.nav_root, R.id.nav_root).inOrder()
     }
 
     @Test
@@ -175,9 +319,7 @@ class NavDeepLinkBuilderTest {
 
         deepLinkBuilder.setGraph(R.navigation.nav_simple)
         deepLinkBuilder.setDestination(R.id.second_test)
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        val args = bundleOf("test" to "test")
         deepLinkBuilder.setArguments(args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -193,10 +335,8 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(nav_simple_route_graph)
-        deepLinkBuilder.setDestination("second_test")
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        deepLinkBuilder.setDestination("second_test/{arg2}")
+        val args = bundleOf("test" to "test")
         deepLinkBuilder.setArguments(args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -213,9 +353,8 @@ class NavDeepLinkBuilderTest {
 
         deepLinkBuilder.setGraph(R.navigation.nav_simple)
         deepLinkBuilder.setDestination(R.id.second_test)
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        val args = bundleOf("test" to "test")
+
         deepLinkBuilder.setArguments(args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -232,10 +371,9 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(nav_simple_route_graph)
-        deepLinkBuilder.setDestination("second_test")
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        deepLinkBuilder.setDestination("second_test/{arg2}")
+        val args = bundleOf("test" to "test")
+
         deepLinkBuilder.setArguments(args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -253,9 +391,8 @@ class NavDeepLinkBuilderTest {
 
         deepLinkBuilder.setGraph(R.navigation.nav_simple)
         deepLinkBuilder.setDestination(R.id.second_test)
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        val args = bundleOf("test" to "test")
+
         deepLinkBuilder.setArguments(args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -272,10 +409,9 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(nav_simple_route_graph)
-        deepLinkBuilder.setDestination("second_test")
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        deepLinkBuilder.setDestination("second_test/{arg2}")
+        val args = bundleOf("test" to "test")
+
         deepLinkBuilder.setArguments(args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -292,9 +428,8 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(R.navigation.nav_simple)
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
+        val args = bundleOf("test" to "test")
+
         deepLinkBuilder.setDestination(R.id.second_test, args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
@@ -313,10 +448,9 @@ class NavDeepLinkBuilderTest {
         val deepLinkBuilder = NavDeepLinkBuilder(targetContext)
 
         deepLinkBuilder.setGraph(nav_simple_route_graph)
-        val args = Bundle().apply {
-            putString("test", "test")
-        }
-        deepLinkBuilder.setDestination("second_test", args)
+        val args = bundleOf("test" to "test")
+
+        deepLinkBuilder.setDestination("second_test/{arg2}", args)
         val firstPendingIntent = deepLinkBuilder.createPendingIntent()
 
         // Change the args but not the destination

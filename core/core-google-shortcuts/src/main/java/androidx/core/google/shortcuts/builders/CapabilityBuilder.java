@@ -21,17 +21,19 @@ import static androidx.core.google.shortcuts.builders.Constants.CAPABILITY_PARAM
 import static androidx.core.google.shortcuts.builders.Constants.CAPABILITY_TYPE;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 
-import com.google.firebase.appindexing.builders.IndexableBuilder;
+import com.google.android.gms.appindex.builders.IndexableBuilder;
 
 /**
  * Builder for the Capability section in the Shortcut Corpus.
  *
- * @hide
  */
 @RestrictTo(LIBRARY)
 public class CapabilityBuilder extends IndexableBuilder<CapabilityBuilder> {
+    private ParameterBuilder[] mParameters;
+
     public CapabilityBuilder() {
         super(CAPABILITY_TYPE);
     }
@@ -40,6 +42,12 @@ public class CapabilityBuilder extends IndexableBuilder<CapabilityBuilder> {
     @NonNull
     public CapabilityBuilder setParameter(
             @NonNull ParameterBuilder... parameter) {
+        mParameters = parameter;
         return put(CAPABILITY_PARAMETER_KEY, parameter);
+    }
+
+    @Nullable
+    public ParameterBuilder[] getParameters() {
+        return mParameters;
     }
 }

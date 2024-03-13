@@ -16,7 +16,6 @@
 
 package androidx.wear.phone.interactions.authentication
 
-import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -28,10 +27,16 @@ import android.os.IBinder
 import android.support.wearable.authentication.IAuthenticationRequestCallback
 import android.support.wearable.authentication.IAuthenticationRequestService
 import androidx.annotation.IntDef
+import androidx.annotation.RestrictTo
 import androidx.annotation.UiThread
 import java.util.ArrayDeque
 import java.util.Queue
 import java.util.concurrent.Executor
+import java.util.function.Consumer
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Provides a client for supporting remote authentication on Wear. The authentication session
@@ -41,13 +46,8 @@ import java.util.concurrent.Executor
  * ```
  * // PKCE (Proof Key for Code Exchange) is required for the auth
  * private var codeVerifier: CodeVerifier
- * private var authClient: RemoteAuthClient
- *
- * override public fun onCreate(b: Bundle) {
- *   super.onCreate(b);
- *   authClient = RemoteAuthClient.create(this);
- *   ...
- * }
+ * // Late initialization in place where it's used, or to be initialized in onCreate()
+ * private var lateinit authClient: RemoteAuthClient
  *
  * override public fun onDestroy() {
  *   authClient.close();
@@ -56,16 +56,17 @@ import java.util.concurrent.Executor
  *
  * public fun startAuthFlow() {
  *    // PKCE (Proof Key for Code Exchange) is required, store this code verifier here .
- *    // To access the resource later, both the auth token ans code verifier are needed.
+ *    // To access the resource later, both the auth token and code verifier are needed.
  *    codeVerifier = CodeVerifier()
  *
  *   // Construct your auth request.
+ *   authClient = RemoteAuthClient.create(this);
  *   authClient.sendAuthorizationRequest(
- *      OAuthRequest.Builder(this.applicationContext.packageName)
+ *      OAuthRequest.Builder(this.applicationContext)
  *          .setAuthProviderUrl(Uri.parse("https://...."))
  *          .setCodeChallenge(CodeChallenge(codeVerifier))
  *          .build(),
- *      Executors.newSingleThreadExecutor()
+ *      Executors.newSingleThreadExecutor(),
  *      new MyAuthCallback()
  *   );
  * }
@@ -81,7 +82,7 @@ import java.util.concurrent.Executor
  *     ...
  *   }
  *
- *   override public fun onAuthorizationError(request: OAuthRequest, errorCode: int) {
+ *   override fun onAuthorizationError(request: OAuthRequest, errorCode: Int) {
  *     // Compare against codes available in RemoteAuthClient.ErrorCode
  *     // You'll also want to display an error UI.
  *     ...
@@ -90,6 +91,7 @@ import java.util.concurrent.Executor
  * ```
  */
 public class RemoteAuthClient internal constructor(
+    private val remoteInteractionsManager: IRemoteInteractionsManager,
     private val serviceBinder: ServiceBinder,
     private val uiThreadExecutor: Executor,
     private val packageName: String
@@ -134,6 +136,32 @@ public class RemoteAuthClient internal constructor(
         internal const val ACTION_AUTH: String =
             "android.support.wearable.authentication.action.OAUTH"
 
+        /**
+         * The remote auth's availability is unknown.
+         *
+         * On older devices, [STATUS_UNKNOWN] is returned as we can not determine the availability states. To preserve
+         * compatibility with existing devices behavior, try [sendAuthorizationRequest] and handle
+         * error codes accordingly.
+         */
+        public const val STATUS_UNKNOWN = 0
+
+        /**
+         * Indicates that remote auth is unavailable because there is no paired device capable of handling the remote interaction.
+         */
+        public const val STATUS_UNAVAILABLE = 1
+
+        /**
+         * Indicates that remote auth is temporarily unavailable.
+         *
+         * There is a known paired device, but it is not currently connected or reachable to handle the remote interaction.
+         */
+        public const val STATUS_TEMPORARILY_UNAVAILABLE = 2
+
+        /**
+         * Indicates that remote auth is available with a connected device capable to handle the remote interaction.
+         */
+        public const val STATUS_AVAILABLE = 3
+
         /** Indicates 3p authentication is finished without error  */
         public const val NO_ERROR: Int = -1
 
@@ -143,10 +171,14 @@ public class RemoteAuthClient internal constructor(
         /** Indicates no phone is connected, or the phone connected doesn't support 3p auth */
         public const val ERROR_PHONE_UNAVAILABLE: Int = 1
 
-        /** Errors returned in [Callback.onAuthorizationError].  */
-        @Retention(AnnotationRetention.SOURCE)
+        /**
+         * Errors returned in [Callback.onAuthorizationError].
+         *
+         */
         @IntDef(NO_ERROR, ERROR_UNSUPPORTED, ERROR_PHONE_UNAVAILABLE)
-        internal annotation class ErrorCode
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+        @Retention(AnnotationRetention.SOURCE)
+        public annotation class ErrorCode
 
         /** service connection status */
         private const val STATE_DISCONNECTED: Int = 0
@@ -158,13 +190,14 @@ public class RemoteAuthClient internal constructor(
         public fun create(context: Context): RemoteAuthClient {
             val appContext: Context = context.applicationContext
             return RemoteAuthClient(
+                RemoteInteractionsManagerCompat(appContext),
                 object : ServiceBinder {
                     override fun bindService(
-                        intent: Intent?,
-                        connection: ServiceConnection?,
+                        intent: Intent,
+                        connection: ServiceConnection,
                         flags: Int
                     ): Boolean {
-                        return appContext.bindService(intent, connection!!, flags)
+                        return appContext.bindService(intent, connection, flags)
                     }
 
                     override fun unbindService(connection: ServiceConnection?) {
@@ -210,6 +243,50 @@ public class RemoteAuthClient internal constructor(
     }
 
     /**
+     * Returns status indicating whether remote auth operation (such as [sendAuthorizationRequest]) is available.
+     *
+     * In scenarios of restricted connection or temporary disconnection with a paired device,
+     * remote auth operations will not be available. Please check status before [sendAuthorizationRequest]
+     * to provide better experience for the user.
+     *
+     * On older wear devices which do not support availability status, it will always return [STATUS_UNKNOWN].
+     * Wear devices start to support determining the availability status from Wear Sdk WEAR_TIRAMISU_4.
+     *
+     * @sample androidx.wear.phone.interactions.samples.AuthAvailabilitySample
+     *
+     * @return a [Flow] with a stream of status updates that could be one of [STATUS_UNKNOWN],
+     *   [STATUS_UNAVAILABLE], [STATUS_TEMPORARILY_UNAVAILABLE], [STATUS_AVAILABLE].
+     *
+     */
+    public val availabilityStatus: Flow<Int> get() {
+        if (!remoteInteractionsManager.isAvailabilityStatusApiSupported) {
+            return flowOf(STATUS_UNKNOWN)
+        }
+
+        return getRemoteAuthAvailableInternal()
+    }
+
+    private fun getRemoteAuthAvailableInternal(): Flow<Int> {
+        return callbackFlow {
+            val callback =
+                object : Consumer<Int> {
+                    override fun accept(value: Int) {
+                        // Emit WearSDK values through AndroidX with 1:1 mapping.
+                        trySend(value)
+                    }
+                }
+
+            remoteInteractionsManager
+                .registerRemoteAuthClientStatusListener(Runnable::run, callback)
+
+            awaitClose {
+                remoteInteractionsManager
+                    .unregisterRemoteAuthClientStatusListener(callback)
+            }
+        }
+    }
+
+    /**
      * Send a remote auth request. This will cause an authorization UI to be presented on
      * the user's phone.
      * This request is asynchronous; the callback provided will be be notified when the request
@@ -228,7 +305,7 @@ public class RemoteAuthClient internal constructor(
         executor: Executor,
         clientCallback: Callback
     ) {
-        require(packageName == request.getPackageName()) {
+        require(packageName == request.packageName) {
             "The request's package name is different from the auth client's package name."
         }
 
@@ -275,7 +352,7 @@ public class RemoteAuthClient internal constructor(
 
     internal interface ServiceBinder {
         /** See [Context.bindService].  */
-        fun bindService(intent: Intent?, connection: ServiceConnection?, flags: Int): Boolean
+        fun bindService(intent: Intent, connection: ServiceConnection, flags: Int): Boolean
 
         /** See [Context.unbindService].  */
         fun unbindService(connection: ServiceConnection?)
@@ -337,15 +414,15 @@ public class RemoteAuthClient internal constructor(
          * <ul><li>"responseUrl": the response URL from the Auth request (Uri)
          * <ul><li>"error": an error code explaining why the request failed (int)
          */
+        @Suppress("DEPRECATION")
         override fun onResult(result: Bundle) {
             val errorCode = result.getInt(KEY_ERROR_CODE, NO_ERROR)
             val responseUrl: Uri? = result.getParcelable(KEY_RESPONSE_URL)
             onResult(OAuthResponse(errorCode, responseUrl))
         }
 
-        @SuppressLint("SyntheticAccessor")
         private fun onResult(response: OAuthResponse) {
-            @ErrorCode val error = response.getErrorCode()
+            @ErrorCode val error = response.errorCode
             uiThreadExecutor.execute(
                 Runnable {
                     removePendingCallback(this@RequestCallback)
@@ -355,7 +432,7 @@ public class RemoteAuthClient internal constructor(
                         }
                     } else {
                         executor.execute {
-                            clientCallback.onAuthorizationError(request, response.getErrorCode())
+                            clientCallback.onAuthorizationError(request, response.errorCode)
                         }
                     }
                 }

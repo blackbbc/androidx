@@ -22,12 +22,21 @@ import static androidx.car.app.model.constraints.RowListConstraints.ROW_LIST_CON
 
 import static java.util.Objects.requireNonNull;
 
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
 import androidx.car.app.Screen;
 import androidx.car.app.annotations.CarProtocol;
+import androidx.car.app.annotations.ExperimentalCarApi;
+import androidx.car.app.annotations.KeepFields;
+import androidx.car.app.annotations.RequiresCarApi;
+import androidx.car.app.messaging.model.CarMessage;
+import androidx.car.app.messaging.model.ConversationItem;
+import androidx.car.app.model.constraints.ActionsConstraints;
+import androidx.car.app.model.constraints.CarTextConstraints;
 import androidx.car.app.utils.CollectionUtils;
+
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,29 +63,59 @@ import java.util.Objects;
  * </ul>
  */
 @CarProtocol
+@KeepFields
 public final class ListTemplate implements Template {
-    @Keep
+    // These restrictions are imposed on ListTemplate to avoid exceeding the Android binder
+    // transaction limit of 1MB.
+    static final int MAX_ALLOWED_ITEMS = 100;
+    static final int MAX_MESSAGES_PER_CONVERSATION = 10;
+
     private final boolean mIsLoading;
-    @Keep
+    /**
+     * @deprecated use {@link Header.Builder#setTitle(CarText)}; mHeader replaces the need
+     * for this field.
+     */
+    @Deprecated
     @Nullable
     private final CarText mTitle;
-    @Keep
+    /**
+     * @deprecated use {@link Header.Builder#setStartHeaderAction(Action)}; mHeader replaces the
+     * need for this field.
+     */
+    @Deprecated
     @Nullable
     private final Action mHeaderAction;
-    @Keep
     @Nullable
     private final ItemList mSingleList;
-    @Keep
     private final List<SectionedItemList> mSectionedLists;
-    @Keep
+    /**
+     * @deprecated use {@link Header.Builder#addEndHeaderAction(Action)} for each action; mHeader
+     * replaces the need for this field.
+     */
+    @Deprecated
     @Nullable
     private final ActionStrip mActionStrip;
+
+    private final List<Action> mActions;
+
+    /**
+     * Represents a Header object to set the startHeaderAction, the title and the endHeaderActions
+     *
+     * @see ListTemplate.Builder#setHeader(Header)
+     */
+    @Nullable
+    @RequiresCarApi(7)
+    private final Header mHeader;
+
 
     /**
      * Returns the title of the template or {@code null} if not set.
      *
      * @see Builder#setTitle(CharSequence)
+     *
+     * @deprecated use {@link Header#getTitle()} instead.
      */
+    @Deprecated
     @Nullable
     public CarText getTitle() {
         return mTitle;
@@ -87,7 +126,10 @@ public final class ListTemplate implements Template {
      * {@code null} if not set.
      *
      * @see Builder#setHeaderAction(Action)
+     *
+     * @deprecated use {@link Header#getStartHeaderAction()} instead.
      */
+    @Deprecated
     @Nullable
     public Action getHeaderAction() {
         return mHeaderAction;
@@ -97,7 +139,10 @@ public final class ListTemplate implements Template {
      * Returns the {@link ActionStrip} for this template or {@code null} if not set.
      *
      * @see Builder#setActionStrip(ActionStrip)
+     *
+     * @deprecated use {@link Header#getEndHeaderActions()} instead.
      */
+    @Deprecated
     @Nullable
     public ActionStrip getActionStrip() {
         return mActionStrip;
@@ -133,6 +178,48 @@ public final class ListTemplate implements Template {
         return CollectionUtils.emptyIfNull(mSectionedLists);
     }
 
+    /**
+     * Returns the list of additional actions.
+     *
+     * @see ListTemplate.Builder#addAction(Action)
+     */
+    @NonNull
+    @RequiresCarApi(6)
+    public List<Action> getActions() {
+        return mActions;
+    }
+
+    /**
+     * Returns the {@link Header} to display in this template.
+     *
+     * <p>This method was introduced in API 7, but is backwards compatible even if the client is
+     * using API 6 or below. </p>
+     *
+     * @see ListTemplate.Builder#setHeader(Header)
+     */
+    @Nullable
+    public Header getHeader() {
+        if (mHeader != null) {
+            return mHeader;
+        }
+        if (mTitle == null && mHeaderAction == null && mActionStrip == null) {
+            return null;
+        }
+        Header.Builder headerBuilder = new Header.Builder();
+        if (mTitle != null) {
+            headerBuilder.setTitle(mTitle);
+        }
+        if (mHeaderAction != null) {
+            headerBuilder.setStartHeaderAction(mHeaderAction);
+        }
+        if (mActionStrip != null) {
+            for (Action action: mActionStrip.getActions()) {
+                headerBuilder.addEndHeaderAction(action);
+            }
+        }
+        return headerBuilder.build();
+    }
+
     @NonNull
     @Override
     public String toString() {
@@ -142,7 +229,7 @@ public final class ListTemplate implements Template {
     @Override
     public int hashCode() {
         return Objects.hash(mIsLoading, mTitle, mHeaderAction, mSingleList, mSectionedLists,
-                mActionStrip);
+                mActionStrip, mHeader);
     }
 
     @Override
@@ -160,7 +247,9 @@ public final class ListTemplate implements Template {
                 && Objects.equals(mHeaderAction, otherTemplate.mHeaderAction)
                 && Objects.equals(mSingleList, otherTemplate.mSingleList)
                 && Objects.equals(mSectionedLists, otherTemplate.mSectionedLists)
-                && Objects.equals(mActionStrip, otherTemplate.mActionStrip);
+                && Objects.equals(mActionStrip, otherTemplate.mActionStrip)
+                && Objects.equals(mActions, otherTemplate.mActions)
+                && Objects.equals(mHeader, otherTemplate.mHeader);
     }
 
     ListTemplate(Builder builder) {
@@ -170,6 +259,8 @@ public final class ListTemplate implements Template {
         mSingleList = builder.mSingleList;
         mSectionedLists = CollectionUtils.unmodifiableCopy(builder.mSectionedLists);
         mActionStrip = builder.mActionStrip;
+        mActions = CollectionUtils.unmodifiableCopy(builder.mActions);
+        mHeader = builder.mHeader;
     }
 
     /** Constructs an empty instance, used by serialization code. */
@@ -180,6 +271,17 @@ public final class ListTemplate implements Template {
         mSingleList = null;
         mSectionedLists = Collections.emptyList();
         mActionStrip = null;
+        mActions = Collections.emptyList();
+        mHeader = null;
+    }
+
+    /**
+     * Creates and returns a new {@link Builder} initialized with this {@link ListTemplate}'s data.
+     */
+    @ExperimentalCarApi
+    @NonNull
+    public ListTemplate.Builder toBuilder() {
+        return new ListTemplate.Builder(this);
     }
 
     /** A builder of {@link ListTemplate}. */
@@ -187,7 +289,7 @@ public final class ListTemplate implements Template {
         boolean mIsLoading;
         @Nullable
         ItemList mSingleList;
-        final List<SectionedItemList> mSectionedLists = new ArrayList<>();
+        final List<SectionedItemList> mSectionedLists;
         @Nullable
         CarText mTitle;
         @Nullable
@@ -195,6 +297,10 @@ public final class ListTemplate implements Template {
         @Nullable
         ActionStrip mActionStrip;
         boolean mHasSelectableList;
+
+        final List<Action> mActions;
+        @Nullable
+        Header mHeader;
 
         /**
          * Sets whether the template is in a loading state.
@@ -227,7 +333,10 @@ public final class ListTemplate implements Template {
          * @throws IllegalArgumentException if {@code headerAction} does not meet the template's
          *                                  requirements
          * @throws NullPointerException     if {@code headerAction} is {@code null}
+         *
+         * @deprecated Use {@link Header.Builder#setStartHeaderAction(Action)}
          */
+        @Deprecated
         @NonNull
         public Builder setHeaderAction(@NonNull Action headerAction) {
             ACTIONS_CONSTRAINTS_HEADER.validateOrThrow(
@@ -241,13 +350,19 @@ public final class ListTemplate implements Template {
          *
          * <p>Unless set with this method, the template will not have a title.
          *
-         * <p>Spans are not supported in the title of the action and will be ignored.
+         * <p>Only {@link DistanceSpan}s and {@link DurationSpan}s are supported in the input
+         * string.
          *
-         * @throws NullPointerException if {@code title} is null
+         * @throws NullPointerException     if {@code title} is null
+         * @throws IllegalArgumentException if {@code title} contains unsupported spans
+         *
+         * @deprecated Use {@link Header.Builder#setTitle(CarText)}
          */
+        @Deprecated
         @NonNull
         public Builder setTitle(@NonNull CharSequence title) {
             mTitle = CarText.create(requireNonNull(title));
+            CarTextConstraints.TEXT_ONLY.validateOrThrow(mTitle);
             return this;
         }
 
@@ -314,6 +429,17 @@ public final class ListTemplate implements Template {
         }
 
         /**
+         * Clears all of the {@link SectionedItemList}s added via
+         * {@link #addSectionedList(SectionedItemList)}
+         */
+        @ExperimentalCarApi
+        @NonNull
+        public Builder clearSectionedLists() {
+            mSectionedLists.clear();
+            return this;
+        }
+
+        /**
          * Sets the {@link ActionStrip} for this template or {@code null} to not display an {@link
          * ActionStrip}.
          *
@@ -327,11 +453,61 @@ public final class ListTemplate implements Template {
          *
          * @throws IllegalArgumentException if {@code actionStrip} does not meet the requirements
          * @throws NullPointerException     if {@code actionStrip} is {@code null}
+         *
+         * @deprecated Use {@link Header.Builder#addEndHeaderAction(Action) for each action}
          */
+        @Deprecated
         @NonNull
         public Builder setActionStrip(@NonNull ActionStrip actionStrip) {
             ACTIONS_CONSTRAINTS_SIMPLE.validateOrThrow(requireNonNull(actionStrip).getActions());
             mActionStrip = actionStrip;
+            return this;
+        }
+
+        /**
+         * Adds a template scoped action outside the rows.
+         *
+         * @throws IllegalArgumentException if {@code action} contains unsupported Action types,
+         *                                  or does not contain a valid {@link CarIcon} and
+         *                                  background {@link CarColor}, or if exceeds the
+         *                                  maximum number of allowed actions for the template.
+         * @see ActionsConstraints#ACTIONS_CONSTRAINTS_FAB
+         */
+        @NonNull
+        @RequiresCarApi(6)
+        public Builder addAction(@NonNull Action action) {
+            List<Action> mActionsCopy = new ArrayList<>(mActions);
+            mActionsCopy.add(requireNonNull(action));
+            ActionsConstraints.ACTIONS_CONSTRAINTS_FAB.validateOrThrow(mActionsCopy);
+            mActions.add(action);
+            return this;
+        }
+
+        /**
+         * Sets the {@link Header} for this template.
+         *
+         * <p>The end header actions will show up differently inside vs outside of a map template.
+         * See {@link Header.Builder#addEndHeaderAction} for more details.</p>
+         *
+         * @throws NullPointerException if {@code header} is null
+         */
+        @NonNull
+        @RequiresCarApi(7)
+        public Builder setHeader(@NonNull Header header) {
+            if (header.getStartHeaderAction() != null) {
+                mHeaderAction = header.getStartHeaderAction();
+            }
+            if (header.getTitle() != null) {
+                mTitle = header.getTitle();
+            }
+            if (!header.getEndHeaderActions().isEmpty()) {
+                ActionStrip.Builder actionStripBuilder = new ActionStrip.Builder();
+                for (Action action: header.getEndHeaderActions()) {
+                    actionStripBuilder.addAction(action);
+                }
+                mActionStrip = actionStripBuilder.build();
+            }
+            mHeader = header;
             return this;
         }
 
@@ -346,11 +522,11 @@ public final class ListTemplate implements Template {
          * host will ignore any items over that limit. Each {@link Row}s can add up to 2 lines of
          * texts via {@link Row.Builder#addText}.
          *
-         * <p>Either a header {@link Action} or the title must be set on the template.
+         * <p>If none of the header {@link Action}, the header title or the action strip have been
+         * set on the template, the header is hidden.
          *
          * @throws IllegalStateException    if the template is in a loading state but there are
-         *                                  lists added or vice versa, or if the template does
-         *                                  not have either a title or header {@link Action} set
+         *                                  lists added or vice versa
          * @throws IllegalArgumentException if the added {@link ItemList}(s) do not meet the
          *                                  template's requirements
          * @see androidx.car.app.constraints.ConstraintManager#getContentLimit(int)
@@ -371,8 +547,12 @@ public final class ListTemplate implements Template {
                 }
             }
 
-            if (CarText.isNullOrEmpty(mTitle) && mHeaderAction == null) {
-                throw new IllegalStateException("Either the title or header action must be set");
+            if (!mSectionedLists.isEmpty()) {
+                List<SectionedItemList> truncatedList = getTruncatedCopy(mSectionedLists);
+                mSectionedLists.clear();
+                mSectionedLists.addAll(truncatedList);
+            } else if (mSingleList != null) {
+                mSingleList = truncate(mSingleList, new TruncateCounter(MAX_ALLOWED_ITEMS));
             }
 
             return new ListTemplate(this);
@@ -380,6 +560,115 @@ public final class ListTemplate implements Template {
 
         /** Returns an empty {@link Builder} instance. */
         public Builder() {
+            mSectionedLists = new ArrayList<>();
+            mActions = new ArrayList<>();
         }
+
+        /** Creates a new {@link Builder}, populated from the input {@link ListTemplate} */
+        @OptIn(markerClass = ExperimentalCarApi.class)
+        Builder(@NonNull ListTemplate listTemplate) {
+            mIsLoading = listTemplate.isLoading();
+            mHeaderAction = listTemplate.getHeaderAction();
+            mTitle = listTemplate.getTitle();
+            mSingleList = listTemplate.getSingleList();
+
+            // Must be mutable
+            mSectionedLists = new ArrayList<>(listTemplate.getSectionedLists());
+
+            mActionStrip = listTemplate.getActionStrip();
+            mActions = new ArrayList<>(listTemplate.getActions());
+            mHeader = listTemplate.getHeader();
+        }
+    }
+
+    /** A wrapper around an int with helper methods to keep track of a truncation limit. */
+    private static class TruncateCounter {
+        private int mRemainingItems;
+
+        TruncateCounter(int initialLimit) {
+            mRemainingItems = initialLimit;
+        }
+
+        @CanIgnoreReturnValue
+        public int decrement() {
+            return --mRemainingItems;
+        }
+
+        @CanIgnoreReturnValue
+        public int decrement(int minus) {
+            mRemainingItems -= minus;
+            return mRemainingItems;
+        }
+
+        public boolean canFit(int value) {
+            return mRemainingItems >= value;
+        }
+
+        public int remainingItems() {
+            return mRemainingItems;
+        }
+    }
+
+    static List<SectionedItemList> getTruncatedCopy(List<SectionedItemList> originalList) {
+        TruncateCounter itemLimit = new TruncateCounter(MAX_ALLOWED_ITEMS);
+        List<SectionedItemList> result = new ArrayList<>();
+        for (SectionedItemList original : originalList) {
+            ItemList truncatedItemList = truncate(original.getItemList(), itemLimit);
+            result.add(SectionedItemList.create(
+                    truncatedItemList, original.getHeader().toCharSequence()));
+            if (itemLimit.remainingItems() <= 0) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    /** Truncates ListTemplates to not exceed the Android maximum binder transaction limit. */
+    @OptIn(markerClass = ExperimentalCarApi.class)
+    static ItemList truncate(ItemList itemList, TruncateCounter limit) {
+        ItemList.Builder builder = new ItemList.Builder(itemList);
+        builder.clearItems();
+        for (Item item : itemList.getItems()) {
+            // For Row and Grid items, no special truncation logic. Each item counts as 1.
+            if (!(item instanceof ConversationItem)) {
+                if (!limit.canFit(1)) {
+                    break;
+                }
+                builder.addItem(item);
+                limit.decrement();
+                continue;
+            }
+
+            // For ConversationItem, truncate the messages to max 10.
+            ConversationItem conversationItem = (ConversationItem) item;
+
+            // Each message counts a 1, and each ConversationItem counts as 1, so a minimum of 2
+            // spaces needs to remain.
+            if (!limit.canFit(2)) {
+                break;
+            }
+
+            // Rebuild the conversation item
+            ConversationItem.Builder conversationBuilder =
+                    new ConversationItem.Builder(conversationItem);
+            int maxMessagesAllowed =
+                    Math.min(limit.decrement(), MAX_MESSAGES_PER_CONVERSATION);
+            int originalMessagesSize = conversationItem.getMessages().size();
+            int messagesToAdd =
+                    Math.min(originalMessagesSize, maxMessagesAllowed);
+            // Messages are ordered oldest to the newest in a ConversationItem. Truncation should
+            // remove the oldest messages from the beginning of the list.
+            List<CarMessage> truncatedMessagesList =
+                    conversationItem.getMessages().subList(
+                            originalMessagesSize - messagesToAdd,
+                            originalMessagesSize);
+            conversationBuilder.setMessages(truncatedMessagesList);
+
+            builder.addItem(conversationBuilder.build());
+
+            limit.decrement(messagesToAdd);
+        }
+
+        return builder.build();
     }
 }

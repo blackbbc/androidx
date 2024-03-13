@@ -421,16 +421,13 @@ public final class MediaMetadataCompat implements Parcelable {
      * @param key The key the value is stored under
      * @return A {@link RatingCompat} or null
      */
+    @SuppressWarnings("deprecation")
     public RatingCompat getRating(@RatingKey String key) {
         RatingCompat rating = null;
         try {
-            if (Build.VERSION.SDK_INT >= 19) {
-                // On platform version 19 or higher, mBundle stores a Rating object. Convert it to
-                // RatingCompat.
-                rating = RatingCompat.fromRating(mBundle.getParcelable(key));
-            } else {
-                rating = mBundle.getParcelable(key);
-            }
+            // On platform version 19 or higher, mBundle stores a Rating object. Convert it to
+            // RatingCompat.
+            rating = RatingCompat.fromRating(mBundle.getParcelable(key));
         } catch (Exception e) {
             // ignore, value was not a bitmap
             Log.w(TAG, "Failed to retrieve a key as Rating.", e);
@@ -445,6 +442,7 @@ public final class MediaMetadataCompat implements Parcelable {
      * @param key The key the value is stored under
      * @return A {@link Bitmap} or null
      */
+    @SuppressWarnings("deprecation")
     public Bitmap getBitmap(@BitmapKey String key) {
         Bitmap bmp = null;
         try {
@@ -677,9 +675,9 @@ public final class MediaMetadataCompat implements Parcelable {
          * @param source The original metadata to copy.
          * @param maxBitmapSize The maximum height/width for bitmaps contained
          *            in the metadata.
-         * @hide
          */
         @RestrictTo(LIBRARY)
+        @SuppressWarnings("deprecation")
         public Builder(MediaMetadataCompat source, int maxBitmapSize) {
             this(source);
             for (String key : mBundle.keySet()) {
@@ -817,13 +815,9 @@ public final class MediaMetadataCompat implements Parcelable {
                             + " key cannot be used to put a Rating");
                 }
             }
-            if (Build.VERSION.SDK_INT >= 19) {
-                // On platform version 19 or higher, use Rating instead of RatingCompat so mBundle
-                // can be unmarshalled.
-                mBundle.putParcelable(key, (Parcelable) value.getRating());
-            } else {
-                mBundle.putParcelable(key, value);
-            }
+            // On platform version 19 or higher, use Rating instead of RatingCompat so mBundle
+            // can be unmarshalled.
+            mBundle.putParcelable(key, (Parcelable) value.getRating());
             return this;
         }
 

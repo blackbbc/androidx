@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-@file:Suppress(
-    "NOTHING_TO_INLINE",
-    "INLINE_CLASS_DEPRECATED",
-    "EXPERIMENTAL_FEATURE_WARNING"
-)
+@file:Suppress("NOTHING_TO_INLINE")
 
 package androidx.compose.ui.unit
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.packInts
 import androidx.compose.ui.util.unpackInt1
 import androidx.compose.ui.util.unpackInt2
@@ -39,7 +36,8 @@ fun IntSize(width: Int, height: Int): IntSize = IntSize(packInts(width, height))
  * A two-dimensional size class used for measuring in [Int] pixels.
  */
 @Immutable
-inline class IntSize internal constructor(@PublishedApi internal val packedValue: Long) {
+@kotlin.jvm.JvmInline
+value class IntSize internal constructor(@PublishedApi internal val packedValue: Long) {
 
     /**
      * The horizontal aspect of the size in [Int] pixels.
@@ -112,3 +110,20 @@ val IntSize.center: IntOffset
 // temporary while PxSize is transitioned to Size
 @Stable
 fun IntSize.toSize() = Size(width.toFloat(), height.toFloat())
+
+/**
+ * Convert a [Size] to an [IntSize]. This rounds the width and height values down to the nearest
+ * integer.
+ */
+@Stable
+fun Size.toIntSize(): IntSize = IntSize(this.width.toInt(), this.height.toInt())
+
+/**
+ * Convert a [Size] to an [IntSize]. This rounds [Size.width] and [Size.height] to the nearest
+ * integer.
+ */
+@Stable
+fun Size.roundToIntSize(): IntSize = IntSize(
+    this.width.fastRoundToInt(),
+    this.height.fastRoundToInt()
+)

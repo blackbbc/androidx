@@ -16,7 +16,6 @@
 
 package androidx.paging.integration.testapp.v3room
 
-import android.annotation.SuppressLint
 import android.app.Application
 import androidx.arch.core.executor.ArchTaskExecutor
 import androidx.lifecycle.AndroidViewModel
@@ -31,8 +30,8 @@ import androidx.paging.insertSeparators
 import androidx.paging.integration.testapp.room.Customer
 import androidx.paging.integration.testapp.room.SampleDatabase
 import androidx.room.Room
-import kotlinx.coroutines.flow.map
 import java.util.UUID
+import kotlinx.coroutines.flow.map
 
 class V3RoomViewModel(application: Application) : AndroidViewModel(application) {
     val database = Room.databaseBuilder(
@@ -48,16 +47,18 @@ class V3RoomViewModel(application: Application) : AndroidViewModel(application) 
         return customer
     }
 
-    @SuppressLint("RestrictedApi")
     internal fun insertCustomer() {
         ArchTaskExecutor.getInstance()
             .executeOnDiskIO { database.customerDao.insert(createCustomer()) }
     }
 
-    @SuppressLint("RestrictedApi")
     internal fun clearAllCustomers() {
-        ArchTaskExecutor.getInstance()
-            .executeOnDiskIO { database.customerDao.removeAll() }
+        ArchTaskExecutor.getInstance().executeOnDiskIO {
+            database.runInTransaction {
+                database.remoteKeyDao.delete()
+                database.customerDao.removeAll()
+            }
+        }
     }
 
     @OptIn(ExperimentalPagingApi::class)
@@ -65,7 +66,7 @@ class V3RoomViewModel(application: Application) : AndroidViewModel(application) 
         PagingConfig(10),
         remoteMediator = V3RemoteMediator(
             database,
-            NetworkCustomerPagingSource.FACTORY()
+            NetworkCustomerPagingSource.FACTORY
         )
     ) {
         database.customerDao.loadPagedAgeOrderPagingSource()

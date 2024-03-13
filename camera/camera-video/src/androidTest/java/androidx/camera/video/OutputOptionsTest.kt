@@ -19,22 +19,30 @@ package androidx.camera.video
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
+import android.location.Location
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.filters.SmallTest
+import androidx.testutils.assertThrows
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
+import java.io.File
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 @SmallTest
 @RunWith(AndroidJUnit4::class)
+@SdkSuppress(minSdkVersion = 21)
 class OutputOptionsTest {
 
     companion object {
         private const val FILE_SIZE_LIMIT = 1024L
+        private const val DURATION_LIMIT = 10000L
+        private const val INVALID_FILE_SIZE_LIMIT = -1L
+        private const val INVALID_DURATION_LIMIT = -1L
     }
 
     @Test
@@ -42,15 +50,11 @@ class OutputOptionsTest {
         val savedFile = File.createTempFile("CameraX", ".tmp")
         savedFile.deleteOnExit()
 
-        val fileOutputOptions = FileOutputOptions.builder()
-            .setFile(savedFile)
-            .setFileSizeLimit(FILE_SIZE_LIMIT)
+        val fileOutputOptions = FileOutputOptions.Builder(savedFile)
             .build()
 
         assertThat(fileOutputOptions).isNotNull()
-        assertThat(fileOutputOptions.type).isEqualTo(OutputOptions.OPTIONS_TYPE_FILE)
-        assertThat(fileOutputOptions.file).isNotNull()
-        assertThat(fileOutputOptions.fileSizeLimit).isEqualTo(FILE_SIZE_LIMIT)
+        assertThat(fileOutputOptions.file).isEqualTo(savedFile)
         savedFile.delete()
     }
 
@@ -65,20 +69,18 @@ class OutputOptionsTest {
             put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
         }
 
-        val mediaStoreOutputOptions = MediaStoreOutputOptions.builder()
-            .setContentResolver(contentResolver)
-            .setFileSizeLimit(FILE_SIZE_LIMIT)
-            .setCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-            .setContentValues(contentValues)
+        val mediaStoreOutputOptions = MediaStoreOutputOptions.Builder(
+            contentResolver,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(contentValues)
             .build()
 
+        assertThat(mediaStoreOutputOptions).isNotNull()
         assertThat(mediaStoreOutputOptions.contentResolver).isEqualTo(contentResolver)
-        assertThat(mediaStoreOutputOptions.collection).isEqualTo(
+        assertThat(mediaStoreOutputOptions.collectionUri).isEqualTo(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         )
         assertThat(mediaStoreOutputOptions.contentValues).isEqualTo(contentValues)
-        assertThat(mediaStoreOutputOptions.type).isEqualTo(OutputOptions.OPTIONS_TYPE_MEDIA_STORE)
-        assertThat(mediaStoreOutputOptions.fileSizeLimit).isEqualTo(FILE_SIZE_LIMIT)
     }
 
     @Test
@@ -89,28 +91,12 @@ class OutputOptionsTest {
             savedFile,
             ParcelFileDescriptor.MODE_READ_WRITE
         ).use { pfd ->
-            val fdOutputOptions = FileDescriptorOutputOptions.builder()
-                .setParcelFileDescriptor(pfd)
-                .setFileSizeLimit(FILE_SIZE_LIMIT)
+            val fdOutputOptions = FileDescriptorOutputOptions.Builder(pfd)
                 .build()
 
             assertThat(fdOutputOptions).isNotNull()
-            assertThat(fdOutputOptions.type).isEqualTo(OutputOptions.OPTIONS_TYPE_FILE_DESCRIPTOR)
-            assertThat(fdOutputOptions.parcelFileDescriptor).isNotNull()
-            assertThat(fdOutputOptions.fileSizeLimit).isEqualTo(FILE_SIZE_LIMIT)
+            assertThat(fdOutputOptions.parcelFileDescriptor).isEqualTo(pfd)
         }
-        savedFile.delete()
-    }
-
-    @Test
-    fun file_builderContainsCorrectDefaults() {
-        val savedFile = File.createTempFile("CameraX", ".tmp")
-        savedFile.deleteOnExit()
-        val fileOutputOptions = FileOutputOptions.builder()
-            .setFile(savedFile)
-            .build()
-
-        assertThat(fileOutputOptions.fileSizeLimit).isEqualTo(OutputOptions.FILE_SIZE_UNLIMITED)
         savedFile.delete()
     }
 
@@ -118,36 +104,89 @@ class OutputOptionsTest {
     fun mediaStore_builderContainsCorrectDefaults() {
         val context: Context = ApplicationProvider.getApplicationContext()
         val contentResolver: ContentResolver = context.contentResolver
-        val fileName = "OutputOptionTest"
-        val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.TITLE, fileName)
-            put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
-        }
 
-        val mediaStoreOutputOptions = MediaStoreOutputOptions.builder()
-            .setContentResolver(contentResolver)
-            .setCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-            .setContentValues(contentValues)
-            .build()
+        val mediaStoreOutputOptions = MediaStoreOutputOptions.Builder(
+            contentResolver,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).build()
 
-        assertThat(mediaStoreOutputOptions.fileSizeLimit)
-            .isEqualTo(OutputOptions.FILE_SIZE_UNLIMITED)
+        assertThat(mediaStoreOutputOptions.contentValues)
+            .isEqualTo(MediaStoreOutputOptions.EMPTY_CONTENT_VALUES)
     }
 
     @Test
-    fun fileDescriptor_builderContainsCorrectDefaults() {
-        val savedFile = File.createTempFile("CameraX", ".tmp")
-        ParcelFileDescriptor.open(
-            savedFile,
-            ParcelFileDescriptor.MODE_READ_WRITE
-        ).use { pfd ->
-            val fdOutputOptions = FileDescriptorOutputOptions.builder()
-                .setParcelFileDescriptor(pfd)
-                .build()
+    fun canBuildOutputOptions() {
+        val outputOptions = FakeOutputOptions.Builder()
+            .setFileSizeLimit(FILE_SIZE_LIMIT)
+            .setDurationLimitMillis(DURATION_LIMIT)
+            .build()
 
-            assertThat(fdOutputOptions.fileSizeLimit).isEqualTo(OutputOptions.FILE_SIZE_UNLIMITED)
-        }
-        savedFile.delete()
+        assertThat(outputOptions).isNotNull()
+        assertThat(outputOptions.fileSizeLimit).isEqualTo(FILE_SIZE_LIMIT)
+        assertThat(outputOptions.durationLimitMillis).isEqualTo(DURATION_LIMIT)
     }
+
+    @Test
+    fun defaultValuesCorrect() {
+        val outputOptions = FakeOutputOptions.Builder().build()
+
+        assertThat(outputOptions.location).isNull()
+        assertThat(outputOptions.fileSizeLimit).isEqualTo(OutputOptions.FILE_SIZE_UNLIMITED)
+        assertThat(outputOptions.durationLimitMillis).isEqualTo(OutputOptions.DURATION_UNLIMITED)
+    }
+
+    @Test
+    fun invalidFileSizeLimit_throwsException() {
+        assertThrows(IllegalArgumentException::class.java) {
+            FakeOutputOptions.Builder().setFileSizeLimit(INVALID_FILE_SIZE_LIMIT)
+        }
+    }
+
+    @Test
+    fun invalidDurationLimit_throwsException() {
+        assertThrows(IllegalArgumentException::class.java) {
+            FakeOutputOptions.Builder().setDurationLimitMillis(INVALID_DURATION_LIMIT)
+        }
+    }
+
+    @Test
+    fun setValidLocation() {
+        listOf(
+            createLocation(0.0, 0.0),
+            createLocation(90.0, 180.0),
+            createLocation(-90.0, -180.0),
+            createLocation(10.1234, -100.5678),
+        ).forEach { location ->
+            val outputOptions = FakeOutputOptions.Builder().setLocation(location).build()
+
+            assertWithMessage("Test $location failed")
+                .that(outputOptions.location).isEqualTo(location)
+        }
+    }
+
+    @Test
+    fun setInvalidLocation() {
+        listOf(
+            createLocation(Double.NaN, 0.0),
+            createLocation(0.0, Double.NaN),
+            createLocation(90.5, 0.0),
+            createLocation(-90.5, 0.0),
+            createLocation(0.0, 180.5),
+            createLocation(0.0, -180.5),
+        ).forEach { location ->
+            assertThrows(IllegalArgumentException::class.java) {
+                FakeOutputOptions.Builder().setLocation(location)
+            }
+        }
+    }
+
+    private fun createLocation(
+        latitude: Double,
+        longitude: Double,
+        provider: String = "FakeProvider"
+    ): Location =
+        Location(provider).apply {
+            this.latitude = latitude
+            this.longitude = longitude
+        }
 }

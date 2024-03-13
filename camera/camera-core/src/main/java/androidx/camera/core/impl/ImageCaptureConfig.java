@@ -18,19 +18,23 @@ package androidx.camera.core.impl;
 
 import android.graphics.ImageFormat;
 
+import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCapture.CaptureMode;
 import androidx.camera.core.ImageReaderProxyProvider;
 import androidx.camera.core.internal.IoConfig;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
 
 import java.util.concurrent.Executor;
 
 /**
  * Configuration for an image capture use case.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class ImageCaptureConfig implements UseCaseConfig<ImageCapture>, ImageOutputConfig,
         IoConfig {
 
@@ -38,16 +42,15 @@ public final class ImageCaptureConfig implements UseCaseConfig<ImageCapture>, Im
     // *********************************************************************************************
 
     public static final Option<Integer> OPTION_IMAGE_CAPTURE_MODE =
-            Option.create(
-                    "camerax.core.imageCapture.captureMode", int.class);
+            Option.create("camerax.core.imageCapture.captureMode", int.class);
     public static final Option<Integer> OPTION_FLASH_MODE =
             Option.create("camerax.core.imageCapture.flashMode", int.class);
     public static final Option<CaptureBundle> OPTION_CAPTURE_BUNDLE =
             Option.create("camerax.core.imageCapture.captureBundle", CaptureBundle.class);
-    public static final Option<CaptureProcessor> OPTION_CAPTURE_PROCESSOR =
-            Option.create("camerax.core.imageCapture.captureProcessor", CaptureProcessor.class);
     public static final Option<Integer> OPTION_BUFFER_FORMAT =
             Option.create("camerax.core.imageCapture.bufferFormat", Integer.class);
+    public static final Option<Integer> OPTION_OUTPUT_FORMAT =
+            Option.create("camerax.core.imageCapture.outputFormat", Integer.class);
     public static final Option<Integer> OPTION_MAX_CAPTURE_STAGES =
             Option.create("camerax.core.imageCapture.maxCaptureStages", Integer.class);
     public static final Option<ImageReaderProxyProvider> OPTION_IMAGE_READER_PROXY_PROVIDER =
@@ -55,6 +58,19 @@ public final class ImageCaptureConfig implements UseCaseConfig<ImageCapture>, Im
                     ImageReaderProxyProvider.class);
     public static final Option<Boolean> OPTION_USE_SOFTWARE_JPEG_ENCODER =
             Option.create("camerax.core.imageCapture.useSoftwareJpegEncoder", boolean.class);
+    public static final Option<Integer> OPTION_FLASH_TYPE =
+            Option.create("camerax.core.imageCapture.flashType", int.class);
+    public static final Option<Integer> OPTION_JPEG_COMPRESSION_QUALITY =
+            Option.create("camerax.core.imageCapture.jpegCompressionQuality", int.class);
+    public static final Option<ImageCapture.ScreenFlash> OPTION_SCREEN_FLASH =
+            Option.create("camerax.core.imageCapture.screenFlash", ImageCapture.ScreenFlash.class);
+    public static final Option<ResolutionSelector> OPTION_POSTVIEW_RESOLUTION_SELECTOR =
+            Option.create("camerax.core.useCase.postviewResolutionSelector",
+                    ResolutionSelector.class);
+
+    public static final Option<Boolean> OPTION_POSTVIEW_ENABLED =
+            Option.create("camerax.core.useCase.isPostviewEnabled",
+                    Boolean.class);
 
     // *********************************************************************************************
 
@@ -138,29 +154,6 @@ public final class ImageCaptureConfig implements UseCaseConfig<ImageCapture>, Im
     }
 
     /**
-     * Returns the {@link CaptureProcessor}.
-     *
-     * @param valueIfMissing The value to return if this configuration option has not been set.
-     * @return The stored value or <code>valueIfMissing</code> if the value does not exist in this
-     * configuration.
-     */
-    @Nullable
-    public CaptureProcessor getCaptureProcessor(@Nullable CaptureProcessor valueIfMissing) {
-        return retrieveOption(OPTION_CAPTURE_PROCESSOR, valueIfMissing);
-    }
-
-    /**
-     * Returns the {@link CaptureProcessor}.
-     *
-     * @return The stored value, if it exists in this configuration.
-     * @throws IllegalArgumentException if the option does not exist in this configuration.
-     */
-    @NonNull
-    public CaptureProcessor getCaptureProcessor() {
-        return retrieveOption(OPTION_CAPTURE_PROCESSOR);
-    }
-
-    /**
      * Returns the {@link ImageFormat} of the capture in memory.
      *
      * @param valueIfMissing The value to return if this configuration option has not been set.
@@ -217,7 +210,6 @@ public final class ImageCaptureConfig implements UseCaseConfig<ImageCapture>, Im
     /**
      * Gets the caller provided {@link ImageReaderProxy}.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     @Nullable
@@ -228,11 +220,79 @@ public final class ImageCaptureConfig implements UseCaseConfig<ImageCapture>, Im
     /**
      * Returns whether ImageCapture should use a software JPEG encoder, if available.
      *
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     public boolean isSoftwareJpegEncoderRequested() {
         return retrieveOption(OPTION_USE_SOFTWARE_JPEG_ENCODER, false);
+    }
+
+    /**
+     * Returns the {@link ImageCapture.FlashType}.
+     *
+     * @param valueIfMissing The value to return if this configuration option has not been set.
+     * @return The stored value, if it exists in this configuration.
+     */
+    @ImageCapture.FlashType
+    public int getFlashType(@ImageCapture.FlashType int valueIfMissing) {
+        return retrieveOption(OPTION_FLASH_TYPE, valueIfMissing);
+    }
+
+    /**
+     * Returns the {@link ImageCapture.FlashType}.
+     *
+     * @return The stored value, if it exists in this configuration.
+     * @throws IllegalArgumentException if the option does not exist in this configuration.
+     */
+    @ImageCapture.FlashType
+    public int getFlashType() {
+        return retrieveOption(OPTION_FLASH_TYPE);
+    }
+
+    /**
+     * Returns the JPEG compression quality setting.
+     *
+     * @param valueIfMissing The value to return if this configuration option has not been set.
+     * @return The stored value or <code>valueIfMissing</code> if the value does not exist in this
+     * configuration.
+     */
+    @IntRange(from = 1, to = 100)
+    public int getJpegQuality(@IntRange(from = 1, to = 100) int valueIfMissing) {
+        return retrieveOption(OPTION_JPEG_COMPRESSION_QUALITY, valueIfMissing);
+    }
+
+
+    /**
+     * Returns the JPEG compression quality setting.
+     *
+     * @return The stored value, if it exists in this configuration.
+     * @throws IllegalArgumentException if the option does not exist in this configuration.
+     */
+    @IntRange(from = 1, to = 100)
+    public int getJpegQuality() {
+        return retrieveOption(OPTION_JPEG_COMPRESSION_QUALITY);
+    }
+
+    /**
+     * Gets the caller provided {@link ImageCapture.ScreenFlash} instance.
+     */
+    @Nullable
+    public ImageCapture.ScreenFlash getScreenFlash() {
+        return retrieveOption(OPTION_SCREEN_FLASH, null);
+    }
+
+    /**
+     * @return the {@link ResolutionSelector} used to determine the size of the postview.
+     */
+    @Nullable
+    public ResolutionSelector getPostviewResolutionSelector() {
+        return retrieveOption(OPTION_POSTVIEW_RESOLUTION_SELECTOR, null);
+    }
+
+    /**
+     * @return if postview is enabled.
+     */
+    public boolean isPostviewEnabled() {
+        return retrieveOption(OPTION_POSTVIEW_ENABLED, false);
     }
 
     // Implementations of IO default methods

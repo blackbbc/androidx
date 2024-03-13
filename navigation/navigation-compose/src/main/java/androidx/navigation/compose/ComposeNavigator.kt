@@ -16,18 +16,18 @@
 
 package androidx.navigation.compose
 
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavOptions
 import androidx.navigation.Navigator
-import androidx.navigation.NavigatorState
 import androidx.navigation.compose.ComposeNavigator.Destination
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Navigator that navigates through [Composable]s. Every destination using this Navigator must
@@ -36,24 +36,18 @@ import kotlinx.coroutines.flow.StateFlow
  */
 @Navigator.Name("composable")
 public class ComposeNavigator : Navigator<Destination>() {
-    private var attached by mutableStateOf(false)
 
     /**
-     * Get the back stack from the [state]. NavHost will compose at least
-     * once (due to the use of [androidx.compose.runtime.DisposableEffect]) before
-     * the Navigator is attached, so we specifically return an empty flow if we
-     * aren't attached yet.
+     * Get the map of transitions currently in progress from the [state].
      */
-    internal val backStack: StateFlow<List<NavBackStackEntry>> get() = if (attached) {
-        state.backStack
-    } else {
-        MutableStateFlow(emptyList())
-    }
+    internal val transitionsInProgress get() = state.transitionsInProgress
 
-    override fun onAttach(state: NavigatorState) {
-        super.onAttach(state)
-        attached = true
-    }
+    /**
+     * Get the back stack from the [state].
+     */
+    public val backStack get() = state.backStack
+
+    internal val isPop = mutableStateOf(false)
 
     override fun navigate(
         entries: List<NavBackStackEntry>,
@@ -61,8 +55,9 @@ public class ComposeNavigator : Navigator<Destination>() {
         navigatorExtras: Extras?
     ) {
         entries.forEach { entry ->
-            state.push(entry)
+            state.pushWithTransition(entry)
         }
+        isPop.value = false
     }
 
     override fun createDestination(): Destination {
@@ -70,7 +65,32 @@ public class ComposeNavigator : Navigator<Destination>() {
     }
 
     override fun popBackStack(popUpTo: NavBackStackEntry, savedState: Boolean) {
-        state.pop(popUpTo, savedState)
+        state.popWithTransition(popUpTo, savedState)
+        isPop.value = true
+    }
+
+    /**
+     * Function to prepare the entry for transition.
+     *
+     * This should be called when the entry needs to move the [Lifecycle.State] in preparation for
+     * a transition such as when using predictive back.
+     */
+    public fun prepareForTransition(entry: NavBackStackEntry) {
+        state.prepareForTransition(entry)
+    }
+
+    /**
+     * Callback to mark a navigation in transition as complete.
+     *
+     * This should be called in conjunction with [navigate] and [popBackStack] as those
+     * calls merely start a transition to the target destination, and requires manually marking
+     * the transition as complete by calling this method.
+     *
+     * Failing to call this method could result in entries being prevented from reaching their
+     * final [Lifecycle.State].
+     */
+    public fun onTransitionComplete(entry: NavBackStackEntry) {
+        state.markTransitionComplete(entry)
     }
 
     /**
@@ -79,8 +99,34 @@ public class ComposeNavigator : Navigator<Destination>() {
     @NavDestination.ClassType(Composable::class)
     public class Destination(
         navigator: ComposeNavigator,
-        internal val content: @Composable (NavBackStackEntry) -> Unit
-    ) : NavDestination(navigator)
+        internal val content:
+            @Composable AnimatedContentScope.(@JvmSuppressWildcards NavBackStackEntry) -> Unit
+    ) : NavDestination(navigator) {
+
+        @Deprecated(
+            message = "Deprecated in favor of Destination that supports AnimatedContent",
+            level = DeprecationLevel.HIDDEN,
+        )
+        constructor(
+            navigator: ComposeNavigator,
+            content: @Composable (NavBackStackEntry) -> @JvmSuppressWildcards Unit
+        ) : this(navigator, content = { entry -> content(entry) })
+
+        internal var enterTransition: (@JvmSuppressWildcards
+        AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition?)? = null
+
+        internal var exitTransition: (@JvmSuppressWildcards
+        AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition?)? = null
+
+        internal var popEnterTransition: (@JvmSuppressWildcards
+        AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition?)? = null
+
+        internal var popExitTransition: (@JvmSuppressWildcards
+        AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition?)? = null
+
+        internal var sizeTransform: (@JvmSuppressWildcards
+        AnimatedContentTransitionScope<NavBackStackEntry>.() -> SizeTransform?)? = null
+    }
 
     internal companion object {
         internal const val NAME = "composable"

@@ -36,7 +36,6 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RestrictTo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +51,6 @@ public class CustomTabsClient {
     private final ComponentName mServiceComponentName;
     private final Context mApplicationContext;
 
-    /**@hide*/
     CustomTabsClient(ICustomTabsService service, ComponentName componentName,
             Context applicationContext) {
         mService = service;
@@ -138,6 +136,7 @@ public class CustomTabsClient {
      * @param ignoreDefault If set, the default VIEW handler won't get priority over other browsers.
      * @return The preferred package name for handling Custom Tabs, or <code>null</code>.
      */
+    @SuppressWarnings("deprecation")
     public static @Nullable String getPackageName(
             @NonNull Context context, @Nullable List<String> packages, boolean ignoreDefault) {
         PackageManager pm = context.getPackageManager();
@@ -275,9 +274,8 @@ public class CustomTabsClient {
      * a standard session using {@link #attachSession} after connection.
      *
      * {@see PendingSession}
-     * @hide
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY)
+    @ExperimentalPendingSession
     @NonNull
     public static CustomTabsSession.PendingSession newPendingSession(
             @NonNull Context context, @Nullable final CustomTabsCallback callback, int id) {
@@ -395,6 +393,68 @@ public class CustomTabsClient {
                     }
                 });
             }
+
+            @Override
+            public void onActivityResized(final int height, final int width,
+                    final @Nullable Bundle extras)
+                    throws RemoteException {
+                if (callback == null) return;
+                mHandler.post(new Runnable() {
+                    @SuppressWarnings("NullAway") // b/316641009
+                    @Override
+                    public void run() {
+                        callback.onActivityResized(height, width, extras);
+                    }
+                });
+            }
+
+            @Override
+            public void onWarmupCompleted(final @NonNull Bundle extras) throws RemoteException {
+                if (callback == null) return;
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onWarmupCompleted(extras);
+                    }
+                });
+            }
+
+            @Override
+            public void onActivityLayout(final int left, final int top, final int right,
+                    final int bottom, @CustomTabsCallback.ActivityLayoutState int state,
+                    @NonNull Bundle extras)
+                    throws RemoteException {
+                if (callback == null) return;
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onActivityLayout(left, top, right, bottom, state, extras);
+                    }
+                });
+            }
+
+            @Override
+            public void onMinimized(@NonNull Bundle extras) throws RemoteException {
+                if (callback == null) return;
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onMinimized(extras);
+                    }
+                });
+            }
+
+            @Override
+            public void onUnminimized(@NonNull Bundle extras)
+                    throws RemoteException {
+                if (callback == null) return;
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onUnminimized(extras);
+                    }
+                });
+            }
         };
     }
 
@@ -402,9 +462,8 @@ public class CustomTabsClient {
      * Associate {@link CustomTabsSession.PendingSession} with the service
      * and turn it into a {@link CustomTabsSession}.
      *
-     * @hide
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY)
+    @ExperimentalPendingSession
     @SuppressWarnings("NullAway") // TODO: b/141869399
     @Nullable
     public CustomTabsSession attachSession(@NonNull CustomTabsSession.PendingSession session) {

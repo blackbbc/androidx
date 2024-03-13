@@ -21,7 +21,13 @@ package androidx.room.compiler.processing
  *
  * @see [javax.lang.model.element.ExecutableElement]
  */
-interface XExecutableElement : XHasModifiers, XElement {
+interface XExecutableElement : XHasModifiers, XParameterizable, XElement {
+
+    /**
+     * The descriptor of the method in JVM.
+     */
+    val jvmDescriptor: String
+
     /**
      * The element that declared this executable.
      *
@@ -31,9 +37,10 @@ interface XExecutableElement : XHasModifiers, XElement {
      *   be an [XTypeElement].
      *   * When running with KSP, if this function is in source, the value will **NOT** be an
      *   [XTypeElement]. If you need the generated synthetic java class name, you can use
-     *   [XMemberContainer.className] property.
+     *   [XMemberContainer.asClassName] property.
      */
-    val enclosingElement: XMemberContainer
+    override val enclosingElement: XMemberContainer
+
     /**
      * The list of parameters that should be passed into this method.
      *
@@ -45,8 +52,22 @@ interface XExecutableElement : XHasModifiers, XElement {
      * The list of `Throwable`s that are declared in this executable's signature.
      */
     val thrownTypes: List<XType>
+
     /**
      * Returns true if this method receives a vararg parameter.
      */
     fun isVarArgs(): Boolean
+
+    /**
+     * The type representation of the method where more type parameters might be resolved.
+     */
+    val executableType: XExecutableType
+
+    /**
+     * Returns the method as if it is declared in [other].
+     *
+     * This is specifically useful if you have a method that has type arguments and there is a
+     * subclass ([other]) where type arguments are specified to actual types.
+     */
+    fun asMemberOf(other: XType): XExecutableType
 }

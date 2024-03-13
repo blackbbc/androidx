@@ -23,7 +23,6 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 
 /**
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
 @SuppressWarnings("WeakerAccess")
@@ -50,6 +49,15 @@ public final class StartupLogger {
      */
     public static void i(@NonNull String message) {
         Log.i(TAG, message);
+    }
+
+    /**
+     * Warning level logging.
+     *
+     * @param message The message being logged
+     */
+    public static void w(@NonNull String message) {
+        Log.w(TAG, message);
     }
 
     /**

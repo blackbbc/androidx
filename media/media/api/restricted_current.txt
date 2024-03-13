@@ -14,8 +14,8 @@ package android.support.v4.media {
     method public boolean isConnected();
     method public void search(String, android.os.Bundle!, android.support.v4.media.MediaBrowserCompat.SearchCallback);
     method public void sendCustomAction(String, android.os.Bundle!, android.support.v4.media.MediaBrowserCompat.CustomActionCallback?);
-    method public void subscribe(String, android.support.v4.media.MediaBrowserCompat.SubscriptionCallback);
     method public void subscribe(String, android.os.Bundle, android.support.v4.media.MediaBrowserCompat.SubscriptionCallback);
+    method public void subscribe(String, android.support.v4.media.MediaBrowserCompat.SubscriptionCallback);
     method public void unsubscribe(String);
     method public void unsubscribe(String, android.support.v4.media.MediaBrowserCompat.SubscriptionCallback);
     field public static final String CUSTOM_ACTION_DOWNLOAD = "android.support.v4.media.action.DOWNLOAD";
@@ -219,8 +219,8 @@ package android.support.v4.media.session {
     method public boolean dispatchMediaButtonEvent(android.view.KeyEvent!);
     method public android.os.Bundle! getExtras();
     method public long getFlags();
-    method public static android.support.v4.media.session.MediaControllerCompat! getMediaController(android.app.Activity);
     method public Object! getMediaController();
+    method public static android.support.v4.media.session.MediaControllerCompat! getMediaController(android.app.Activity);
     method public android.support.v4.media.MediaMetadataCompat! getMetadata();
     method public String! getPackageName();
     method public android.support.v4.media.session.MediaControllerCompat.PlaybackInfo! getPlaybackInfo();
@@ -333,6 +333,7 @@ package android.support.v4.media.session {
     method public void setQueue(java.util.List<android.support.v4.media.session.MediaSessionCompat.QueueItem!>!);
     method public void setQueueTitle(CharSequence!);
     method public void setRatingType(@android.support.v4.media.RatingCompat.Style int);
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void setRegistrationCallback(android.support.v4.media.session.MediaSessionCompat.RegistrationCallback?, android.os.Handler);
     method public void setRepeatMode(@android.support.v4.media.session.PlaybackStateCompat.RepeatMode int);
     method public void setSessionActivity(android.app.PendingIntent!);
     method public void setShuffleMode(@android.support.v4.media.session.PlaybackStateCompat.ShuffleMode int);
@@ -400,6 +401,11 @@ package android.support.v4.media.session {
     field public static final int UNKNOWN_ID = -1; // 0xffffffff
   }
 
+  @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public static interface MediaSessionCompat.RegistrationCallback {
+    method public void onCallbackRegistered(int, int);
+    method public void onCallbackUnregistered(int, int);
+  }
+
   public static final class MediaSessionCompat.Token implements android.os.Parcelable {
     method public int describeContents();
     method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public static android.support.v4.media.session.MediaSessionCompat.Token! fromBundle(android.os.Bundle!);
@@ -413,8 +419,8 @@ package android.support.v4.media.session {
   }
 
   public class ParcelableVolumeInfo implements android.os.Parcelable {
-    ctor public ParcelableVolumeInfo(int, int, int, int, int);
     ctor public ParcelableVolumeInfo(android.os.Parcel!);
+    ctor public ParcelableVolumeInfo(int, int, int, int, int);
     method public int describeContents();
     method public void writeToParcel(android.os.Parcel!, int);
     field public static final android.os.Parcelable.Creator<android.support.v4.media.session.ParcelableVolumeInfo!>! CREATOR;
@@ -509,14 +515,14 @@ package android.support.v4.media.session {
   public static final class PlaybackStateCompat.Builder {
     ctor public PlaybackStateCompat.Builder();
     ctor public PlaybackStateCompat.Builder(android.support.v4.media.session.PlaybackStateCompat!);
-    method public android.support.v4.media.session.PlaybackStateCompat.Builder! addCustomAction(String!, String!, int);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! addCustomAction(android.support.v4.media.session.PlaybackStateCompat.CustomAction!);
+    method public android.support.v4.media.session.PlaybackStateCompat.Builder! addCustomAction(String!, String!, int);
     method public android.support.v4.media.session.PlaybackStateCompat! build();
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setActions(@android.support.v4.media.session.PlaybackStateCompat.Actions long);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setActiveQueueItemId(long);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setBufferedPosition(long);
-    method @Deprecated public android.support.v4.media.session.PlaybackStateCompat.Builder! setErrorMessage(CharSequence!);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setErrorMessage(int, CharSequence!);
+    method @Deprecated public android.support.v4.media.session.PlaybackStateCompat.Builder! setErrorMessage(CharSequence!);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setExtras(android.os.Bundle!);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setState(@android.support.v4.media.session.PlaybackStateCompat.State int, long, float);
     method public android.support.v4.media.session.PlaybackStateCompat.Builder! setState(@android.support.v4.media.session.PlaybackStateCompat.State int, long, float, long);
@@ -605,8 +611,8 @@ package androidx.media {
   }
 
   public static final class AudioFocusRequestCompat.Builder {
-    ctor public AudioFocusRequestCompat.Builder(int);
     ctor public AudioFocusRequestCompat.Builder(androidx.media.AudioFocusRequestCompat);
+    ctor public AudioFocusRequestCompat.Builder(int);
     method public androidx.media.AudioFocusRequestCompat! build();
     method public androidx.media.AudioFocusRequestCompat.Builder setAudioAttributes(androidx.media.AudioAttributesCompat);
     method public androidx.media.AudioFocusRequestCompat.Builder setFocusGain(int);
@@ -619,6 +625,7 @@ package androidx.media {
     method public static int abandonAudioFocusRequest(android.media.AudioManager, androidx.media.AudioFocusRequestCompat);
     method @IntRange(from=0) public static int getStreamMaxVolume(android.media.AudioManager, @androidx.core.app.NotificationCompat.StreamType int);
     method @IntRange(from=0) public static int getStreamMinVolume(android.media.AudioManager, @androidx.core.app.NotificationCompat.StreamType int);
+    method public static boolean isVolumeFixed(android.media.AudioManager);
     method public static int requestAudioFocus(android.media.AudioManager, androidx.media.AudioFocusRequestCompat);
     field public static final int AUDIOFOCUS_GAIN = 1; // 0x1
     field public static final int AUDIOFOCUS_GAIN_TRANSIENT = 2; // 0x2
@@ -633,9 +640,9 @@ package androidx.media {
     method public final android.os.Bundle! getBrowserRootHints();
     method public final androidx.media.MediaSessionManager.RemoteUserInfo getCurrentBrowserInfo();
     method public android.support.v4.media.session.MediaSessionCompat.Token? getSessionToken();
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void notifyChildrenChanged(androidx.media.MediaSessionManager.RemoteUserInfo, String, android.os.Bundle);
     method public void notifyChildrenChanged(String);
     method public void notifyChildrenChanged(String, android.os.Bundle);
-    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void notifyChildrenChanged(androidx.media.MediaSessionManager.RemoteUserInfo, String, android.os.Bundle);
     method public android.os.IBinder! onBind(android.content.Intent!);
     method public void onCustomAction(String, android.os.Bundle!, androidx.media.MediaBrowserServiceCompat.Result<android.os.Bundle!>);
     method public abstract androidx.media.MediaBrowserServiceCompat.BrowserRoot? onGetRoot(String, int, android.os.Bundle?);
@@ -643,6 +650,8 @@ package androidx.media {
     method public void onLoadChildren(String, androidx.media.MediaBrowserServiceCompat.Result<java.util.List<android.support.v4.media.MediaBrowserCompat.MediaItem!>!>, android.os.Bundle);
     method public void onLoadItem(String!, androidx.media.MediaBrowserServiceCompat.Result<android.support.v4.media.MediaBrowserCompat.MediaItem!>);
     method public void onSearch(String, android.os.Bundle!, androidx.media.MediaBrowserServiceCompat.Result<java.util.List<android.support.v4.media.MediaBrowserCompat.MediaItem!>!>);
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void onSubscribe(String!, android.os.Bundle!);
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void onUnsubscribe(String!);
     method public void setSessionToken(android.support.v4.media.session.MediaSessionCompat.Token!);
     field public static final String SERVICE_INTERFACE = "android.media.browse.MediaBrowserService";
   }
@@ -721,7 +730,8 @@ package androidx.media.app {
     method public static android.support.v4.media.session.MediaSessionCompat.Token! getMediaSession(android.app.Notification!);
     method public androidx.media.app.NotificationCompat.MediaStyle! setCancelButtonIntent(android.app.PendingIntent!);
     method public androidx.media.app.NotificationCompat.MediaStyle! setMediaSession(android.support.v4.media.session.MediaSessionCompat.Token!);
-    method public androidx.media.app.NotificationCompat.MediaStyle! setShowActionsInCompactView(int...);
+    method @RequiresPermission(android.Manifest.permission.MEDIA_CONTENT_CONTROL) public androidx.media.app.NotificationCompat.MediaStyle setRemotePlaybackInfo(CharSequence, @DrawableRes int, android.app.PendingIntent?);
+    method public androidx.media.app.NotificationCompat.MediaStyle! setShowActionsInCompactView(int...!);
     method public androidx.media.app.NotificationCompat.MediaStyle! setShowCancelButton(boolean);
   }
 
@@ -731,9 +741,10 @@ package androidx.media.session {
 
   public class MediaButtonReceiver extends android.content.BroadcastReceiver {
     ctor public MediaButtonReceiver();
-    method public static android.app.PendingIntent! buildMediaButtonPendingIntent(android.content.Context!, long);
     method public static android.app.PendingIntent! buildMediaButtonPendingIntent(android.content.Context!, android.content.ComponentName!, long);
+    method public static android.app.PendingIntent! buildMediaButtonPendingIntent(android.content.Context!, long);
     method public static android.view.KeyEvent! handleIntent(android.support.v4.media.session.MediaSessionCompat!, android.content.Intent!);
+    method @RequiresApi(31) protected void onForegroundServiceStartNotAllowedException(android.content.Intent, android.app.ForegroundServiceStartNotAllowedException);
     method public void onReceive(android.content.Context!, android.content.Intent!);
   }
 
@@ -742,14 +753,21 @@ package androidx.media.session {
 package androidx.media.utils {
 
   public final class MediaConstants {
+    field public static final String BROWSER_ROOT_HINTS_KEY_CUSTOM_BROWSER_ACTION_LIMIT = "androidx.media.utils.MediaBrowserCompat.extras.CUSTOM_BROWSER_ACTION_LIMIT";
     field public static final String BROWSER_ROOT_HINTS_KEY_MEDIA_ART_SIZE_PIXELS = "android.media.extras.MEDIA_ART_SIZE_HINT_PIXELS";
     field public static final String BROWSER_ROOT_HINTS_KEY_ROOT_CHILDREN_LIMIT = "androidx.media.MediaBrowserCompat.Extras.KEY_ROOT_CHILDREN_LIMIT";
     field public static final String BROWSER_ROOT_HINTS_KEY_ROOT_CHILDREN_SUPPORTED_FLAGS = "androidx.media.MediaBrowserCompat.Extras.KEY_ROOT_CHILDREN_SUPPORTED_FLAGS";
+    field public static final String BROWSER_SERVICE_EXTRAS_KEY_APPLICATION_PREFERENCES_USING_CAR_APP_LIBRARY_INTENT = "androidx.media.BrowserRoot.Extras.APPLICATION_PREFERENCES_USING_CAR_APP_LIBRARY_INTENT";
+    field public static final String BROWSER_SERVICE_EXTRAS_KEY_CUSTOM_BROWSER_ACTION_ROOT_LIST = "androidx.media.utils.extras.CUSTOM_BROWSER_ACTION_ROOT_LIST";
+    field public static final String BROWSER_SERVICE_EXTRAS_KEY_FAVORITES_MEDIA_ITEM = "androidx.media.BrowserRoot.Extras.FAVORITES_MEDIA_ITEM";
     field public static final String BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED = "android.media.browse.SEARCH_SUPPORTED";
+    field public static final String DESCRIPTION_EXTRAS_KEY_COMPLETION_PERCENTAGE = "androidx.media.MediaItem.Extras.COMPLETION_PERCENTAGE";
     field public static final String DESCRIPTION_EXTRAS_KEY_COMPLETION_STATUS = "android.media.extra.PLAYBACK_STATUS";
     field public static final String DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT";
     field public static final String DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE = "android.media.browse.CONTENT_STYLE_GROUP_TITLE_HINT";
     field public static final String DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT";
+    field public static final String DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM = "android.media.browse.CONTENT_STYLE_SINGLE_ITEM_HINT";
+    field public static final String DESCRIPTION_EXTRAS_KEY_CUSTOM_BROWSER_ACTION_ID_LIST = "androidx.media.utils.extras.CUSTOM_BROWSER_ACTION_ID_LIST";
     field public static final int DESCRIPTION_EXTRAS_VALUE_COMPLETION_STATUS_FULLY_PLAYED = 2; // 0x2
     field public static final int DESCRIPTION_EXTRAS_VALUE_COMPLETION_STATUS_NOT_PLAYED = 0; // 0x0
     field public static final int DESCRIPTION_EXTRAS_VALUE_COMPLETION_STATUS_PARTIALLY_PLAYED = 1; // 0x1
@@ -757,6 +775,15 @@ package androidx.media.utils {
     field public static final int DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM = 3; // 0x3
     field public static final int DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM = 2; // 0x2
     field public static final int DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM = 1; // 0x1
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_EXTRAS = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_EXTRAS";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_ICON_URI = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_ICON_URI";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_ID = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_ID";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_LABEL = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_LABEL";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_MEDIA_ITEM_ID = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_MEDIA_ITEM_ID";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_RESULT_BROWSE_NODE = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_RESULT_BROWSE_NODE";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_RESULT_MESSAGE = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_RESULT_MESSAGE";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_RESULT_REFRESH_ITEM = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_RESULT_REFRESH_ITEM";
+    field public static final String EXTRAS_KEY_CUSTOM_BROWSER_ACTION_RESULT_SHOW_PLAYING_ITEM = "androidx.media.utils.extras.KEY_CUSTOM_BROWSER_ACTION_RESULT_SHOW_PLAYING_ITEM";
     field public static final String METADATA_KEY_CONTENT_ID = "androidx.media.MediaMetadatCompat.METADATA_KEY_CONTENT_ID";
     field public static final String METADATA_KEY_IS_ADVERTISEMENT = "android.media.metadata.ADVERTISEMENT";
     field public static final String METADATA_KEY_IS_EXPLICIT = "android.media.IS_EXPLICIT";
@@ -765,6 +792,7 @@ package androidx.media.utils {
     field public static final long METADATA_VALUE_ATTRIBUTE_PRESENT = 1L; // 0x1L
     field public static final String PLAYBACK_STATE_EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT = "android.media.extras.ERROR_RESOLUTION_ACTION_INTENT";
     field public static final String PLAYBACK_STATE_EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL = "android.media.extras.ERROR_RESOLUTION_ACTION_LABEL";
+    field public static final String PLAYBACK_STATE_EXTRAS_KEY_ERROR_RESOLUTION_USING_CAR_APP_LIBRARY_INTENT = "androidx.media.PlaybackStateCompat.Extras.ERROR_RESOLUTION_USING_CAR_APP_LIBRARY_INTENT";
     field public static final String PLAYBACK_STATE_EXTRAS_KEY_MEDIA_ID = "androidx.media.PlaybackStateCompat.Extras.KEY_MEDIA_ID";
     field public static final String SESSION_EXTRAS_KEY_ACCOUNT_NAME = "androidx.media.MediaSessionCompat.Extras.KEY_ACCOUNT_NAME";
     field public static final String SESSION_EXTRAS_KEY_ACCOUNT_TYPE = "androidx.media.MediaSessionCompat.Extras.KEY_ACCOUNT_TYPE";

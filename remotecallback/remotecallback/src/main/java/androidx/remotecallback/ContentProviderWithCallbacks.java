@@ -27,6 +27,8 @@ import android.content.Intent;
 import android.content.pm.ProviderInfo;
 import android.os.Bundle;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 
 /**
@@ -38,6 +40,7 @@ import androidx.annotation.RestrictTo;
  * @param <T> Should be specified as the root class (e.g. class X extends
  *           ContentProviderWithCallbacks\<X>)
  */
+@SuppressWarnings("HiddenSuperclass")
 public abstract class ContentProviderWithCallbacks<T extends ContentProviderWithCallbacks> extends
         ContentProvider implements CallbackReceiver<T>, CallbackBase<T> {
 
@@ -49,8 +52,9 @@ public abstract class ContentProviderWithCallbacks<T extends ContentProviderWith
         mAuthority = info.authority;
     }
 
+    @Nullable
     @Override
-    public Bundle call(String method, String arg, Bundle extras) {
+    public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
         if (ProviderRelayReceiver.METHOD_PROVIDER_CALLBACK.equals(method)) {
             CallbackHandlerRegistry.sInstance.invokeCallback(getContext(), this, extras);
             return null;
@@ -58,22 +62,21 @@ public abstract class ContentProviderWithCallbacks<T extends ContentProviderWith
         return super.call(method, arg, extras);
     }
 
+    @NonNull
     @Override
-    public T createRemoteCallback(Context context) {
+    public T createRemoteCallback(@NonNull Context context) {
         return CallbackHandlerRegistry.sInstance.getAndResetStub(getClass(), context, mAuthority);
     }
 
     /**
-     * @hide
      */
+    @NonNull
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     @Override
-    public RemoteCallback toRemoteCallback(Class<T> cls, Context context, String authority,
-            Bundle args, String method) {
-        if (authority == null) {
-            throw new IllegalStateException(
-                    "ContentProvider must be attached before creating callbacks");
-        }
+    public RemoteCallback toRemoteCallback(@NonNull Class<T> cls, @NonNull Context context,
+            @Nullable String authority,
+            @NonNull Bundle args, @NonNull String method) {
+
         Intent intent = new Intent(ACTION_PROVIDER_RELAY);
         intent.setComponent(new ComponentName(context.getPackageName(),
                 ProviderRelayReceiver.class.getName()));

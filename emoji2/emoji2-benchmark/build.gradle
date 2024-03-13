@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -24,8 +30,25 @@ plugins {
     id("androidx.benchmark")
 }
 
+ext {
+    fontDir = project(':noto-emoji-compat-font').projectDir
+}
+
+android {
+    sourceSets {
+        androidTest {
+            assets {
+                srcDirs = [new File(fontDir, "supported-emojis").getAbsolutePath()]
+            }
+        }
+    }
+    namespace "androidx.emoji2.benchmark"
+
+}
+
 dependencies {
     androidTestImplementation(project(":emoji2:emoji2"))
+    androidTestImplementation(project(":emoji2:emoji2-bundled"))
     androidTestImplementation(projectOrArtifact(":benchmark:benchmark-junit4"))
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.testExtJunit)
@@ -41,7 +64,6 @@ dependencies {
 androidx {
     name = "Emoji2 Benchmarks"
     publish = Publish.NONE
-    mavenGroup = LibraryGroups.EMOJI2
     inceptionYear = "2021"
     description = "Emoji2 Benchmarks"
 }

@@ -16,7 +16,6 @@
 package androidx.emoji2.text;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
-import androidx.test.filters.SdkSuppress;
 import androidx.test.filters.SmallTest;
 
 import org.junit.Before;
@@ -25,7 +24,6 @@ import org.junit.runner.RunWith;
 
 @SmallTest
 @RunWith(AndroidJUnit4.class)
-@SdkSuppress(minSdkVersion = 19)
 public class UninitializedStateTest {
 
     @Before
@@ -33,14 +31,21 @@ public class UninitializedStateTest {
         EmojiCompat.reset(NoFontTestEmojiConfig.neverLoadsConfig());
     }
 
+    @SuppressWarnings("deprecation")
     @Test(expected = IllegalStateException.class)
     public void testHasEmojiGlyph() {
         EmojiCompat.get().hasEmojiGlyph("anystring");
     }
 
+    @SuppressWarnings("deprecation")
     @Test(expected = IllegalStateException.class)
     public void testHasEmojiGlyph_withMetadataVersion() {
         EmojiCompat.get().hasEmojiGlyph("anystring", 1);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testGetEmojiMatch_withMetadataVersion() {
+        EmojiCompat.get().getEmojiMatch("anystring", 1);
     }
 
     @Test(expected = IllegalStateException.class)

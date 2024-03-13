@@ -1,5 +1,10 @@
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -25,19 +30,13 @@ dependencies {
 }
 
 android {
-    sourceSets {
-        main {
-            // We use a non-standard manifest path.
-            manifest.srcFile 'AndroidManifest.xml'
-        }
-    }
+    namespace "androidx.emoji2.viewsintegration"
 }
 
 androidx {
-    name = "Android Emoji2 Compat view helpers"
+    name = "Emoji2 Views Helper"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.EMOJI2
-    mavenGroup = LibraryGroups.EMOJI2
     inceptionYear = "2017"
-    description = "View helpers for Emoji2"
+    description = "Provide helper classes for Emoji2 views."
+    metalavaK2UastEnabled = true
 }

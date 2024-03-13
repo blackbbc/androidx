@@ -17,8 +17,10 @@
 package androidx.room.compiler.processing.ksp
 
 import androidx.room.compiler.processing.XNullability
+import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSType
-import com.squareup.javapoet.TypeName
+import com.squareup.kotlinpoet.javapoet.JTypeName
+import com.squareup.kotlinpoet.javapoet.KTypeName
 
 /**
  * Representation of `void` in KSP.
@@ -30,14 +32,22 @@ import com.squareup.javapoet.TypeName
 internal class KspVoidType(
     env: KspProcessingEnv,
     ksType: KSType,
-    val boxed: Boolean
-) : KspType(env, ksType) {
-    override val typeName: TypeName
-        get() = if (boxed || nullability == XNullability.NULLABLE) {
-            TypeName.VOID.box()
+    originalKSAnnotations: Sequence<KSAnnotation> = ksType.annotations,
+    val boxed: Boolean,
+    scope: KSTypeVarianceResolverScope? = null,
+    typeAlias: KSType? = null,
+) : KspType(env, ksType, originalKSAnnotations, scope, typeAlias) {
+    override fun resolveJTypeName(): JTypeName {
+        return if (boxed || nullability == XNullability.NULLABLE) {
+            JTypeName.VOID.box()
         } else {
-            TypeName.VOID
+            JTypeName.VOID
         }
+    }
+
+    override fun resolveKTypeName(): KTypeName {
+        return com.squareup.kotlinpoet.UNIT
+    }
 
     override fun boxed(): KspType {
         return if (boxed) {
@@ -46,16 +56,18 @@ internal class KspVoidType(
             KspVoidType(
                 env = env,
                 ksType = ksType,
-                boxed = true
+                boxed = true,
+                scope = scope,
+                typeAlias = typeAlias,
             )
         }
     }
 
-    override fun copyWithNullability(nullability: XNullability): KspType {
-        return KspVoidType(
-            env = env,
-            ksType = ksType.withNullability(nullability),
-            boxed = boxed || nullability == XNullability.NULLABLE
-        )
-    }
+    override fun copy(
+        env: KspProcessingEnv,
+        ksType: KSType,
+        originalKSAnnotations: Sequence<KSAnnotation>,
+        scope: KSTypeVarianceResolverScope?,
+        typeAlias: KSType?,
+    ) = KspVoidType(env, ksType, originalKSAnnotations, boxed, scope, typeAlias)
 }

@@ -1,26 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 7.1.0-alpha02" type="baseline" client="cli" name="Lint" variant="all" version="7.1.0-alpha02">
+<issues format="6" by="lint 8.4.0-alpha09" type="baseline" client="gradle" dependencies="false" name="AGP (8.4.0-alpha09)" variant="all" version="8.4.0-alpha09">
 
     <issue
-        id="Instantiatable"
-        message="`MainActivity` must extend android.app.Activity"
-        errorLine1="        android:name=&quot;androidx.car.app.sample.navigation.common.app.MainActivity&quot;"
-        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="ForegroundServicePermission"
+        message="foregroundServiceType:location requires permission:[android.permission.FOREGROUND_SERVICE_LOCATION] AND any permission in list:[android.permission.ACCESS_COARSE_LOCATION, android.permission.ACCESS_FINE_LOCATION]"
+        errorLine1="    &lt;service"
+        errorLine2="    ^">
         <location
-            file="src/main/AndroidManifest.xml"
-            line="37"
-            column="23"/>
-    </issue>
-
-    <issue
-        id="Instantiatable"
-        message="`NavigationCarAppService` must extend android.app.Service"
-        errorLine1="        android:name=&quot;androidx.car.app.sample.navigation.common.car.NavigationCarAppService&quot;"
-        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/AndroidManifest.xml"
-            line="54"
-            column="23"/>
+            file="src/main/AndroidManifest.xml"/>
     </issue>
 
 </issues>

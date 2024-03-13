@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -27,14 +33,16 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin project(":compose:compiler:compiler")
-    implementation("androidx.annotation:annotation:1.1.0")
+    implementation("androidx.annotation:annotation:1.1.0", {
+        exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib"
+    })
     // Following dependencies will be provided by inspected app itself
     // because compose:ui-inspector can be run only in app with compose:ui:ui
     // thus all its transitive dependencies will be present too.
     compileOnly(libs.kotlinStdlib)
     compileOnly("androidx.inspection:inspection:1.0.0")
-    compileOnly(project(":compose:runtime:runtime"))
+    compileOnly("androidx.compose.runtime:runtime:1.2.1")
+    compileOnly(project(":compose:ui:ui-graphics"))
     compileOnly(project(":compose:ui:ui"))
     // we ignore its transitive dependencies, because ui-inspection should
     // depend on them as "compile-only" deps.
@@ -44,23 +52,29 @@ dependencies {
     implementation(libs.kotlinReflect, {
         exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib"
     })
+    implementation("androidx.collection:collection:1.4.0")
     androidTestImplementation(libs.kotlinStdlib)
     androidTestImplementation(libs.kotlinCoroutinesAndroid)
+    androidTestImplementation(libs.testCore)
+    androidTestImplementation(project(":compose:foundation:foundation-layout"))
+    androidTestImplementation(project(":compose:ui:ui-tooling"))
     androidTestImplementation(project(":compose:ui:ui-tooling-data"))
     androidTestImplementation(project(":compose:ui:ui"))
+    androidTestImplementation(project(":compose:ui:ui-util"))
     androidTestImplementation(project(":compose:ui:ui-test-junit4"))
+    androidTestImplementation(project(":internal-testutils-fonts"))
     androidTestImplementation(project(":compose:material:material"))
     androidTestImplementation(project(":inspection:inspection-testing"))
-    androidTestImplementation(project(":activity:activity-compose"))
+    androidTestImplementation("androidx.activity:activity-compose:1.3.1")
     androidTestImplementation(libs.testRunner)
+    androidTestImplementation(libs.testRules)
     androidTestImplementation(libs.testExtJunit)
     androidTestImplementation(libs.truth)
 }
 
 androidx {
-    name = "Android Compose Layout Inspector"
+    name = "Compose Layout Inspector"
     type = LibraryType.IDE_PLUGIN
-    mavenGroup = LibraryGroups.Compose.UI
     inceptionYear = "2021"
     description = "Compose layout inspector. Exposes information to our tools for better IDE support."
 }
@@ -78,21 +92,15 @@ android {
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
-            version "3.10.2"
+            version libs.versions.cmake.get()
         }
     }
-
-    lintOptions {
-        // Restriction not important for inspectors, which only runs at dev-time
-        disable("SyntheticAccessor")
-    }
+    namespace "androidx.compose.ui.inspection"
 }
 
 tasks.withType(KotlinCompile).configureEach {
     kotlinOptions {
-        useIR = true
         freeCompilerArgs += [
-                "-Xopt-in=kotlin.RequiresOptIn",
                 "-P", "plugin:androidx.compose.compiler.plugins.kotlin:sourceInformation=true"
         ]
     }

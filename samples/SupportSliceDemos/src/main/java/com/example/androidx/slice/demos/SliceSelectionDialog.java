@@ -20,7 +20,6 @@ import static android.app.slice.Slice.HINT_LARGE;
 import static android.app.slice.Slice.HINT_TITLE;
 import static android.app.slice.SliceItem.FORMAT_TEXT;
 
-import android.annotation.SuppressLint;
 import android.app.ProgressDialog;
 import android.app.slice.SliceProvider;
 import android.content.ComponentName;
@@ -148,6 +147,7 @@ public class SliceSelectionDialog {
         }).start();
     }
 
+    @SuppressWarnings("deprecation")
     private static void showSliceList(Context context, Consumer<Uri> selectedCallback,
             ProviderInfo provider, String label) {
         ProgressDialog dialog = ProgressDialog.show(context, null, "Loading...");
@@ -231,7 +231,6 @@ public class SliceSelectionDialog {
         return String.valueOf(findTitle(context, content, SliceMetadata.from(context, content)));
     }
 
-    @SuppressLint("RestrictedApi")
     protected static CharSequence findTitle(Context context, Slice loadedSlice,
             SliceMetadata metaData) {
         ListContent content = new ListContent(loadedSlice);

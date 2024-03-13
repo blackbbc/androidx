@@ -16,7 +16,6 @@
 
 package androidx.room.benchmark
 
-import android.os.Build
 import androidx.benchmark.junit4.BenchmarkRule
 import androidx.benchmark.junit4.measureRepeated
 import androidx.room.Dao
@@ -30,7 +29,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.LargeTest
-import androidx.test.filters.SdkSuppress
+import androidx.testutils.generateAllEnumerations
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -41,7 +40,6 @@ import org.junit.runners.Parameterized
 
 @LargeTest
 @RunWith(Parameterized::class)
-@SdkSuppress(minSdkVersion = Build.VERSION_CODES.JELLY_BEAN) // TODO Fix me for API 15 - b/120098504
 class InvalidationTrackerBenchmark(private val sampleSize: Int, private val mode: Mode) {
 
     @get:Rule
@@ -66,7 +64,7 @@ class InvalidationTrackerBenchmark(private val sampleSize: Int, private val mode
             .build()
 
         val observer = object : InvalidationTracker.Observer("user") {
-            override fun onInvalidated(tables: MutableSet<String>) {}
+            override fun onInvalidated(tables: Set<String>) {}
         }
         db.invalidationTracker.addObserver(observer)
 
@@ -103,19 +101,21 @@ class InvalidationTrackerBenchmark(private val sampleSize: Int, private val mode
     companion object {
         @JvmStatic
         @Parameterized.Parameters(name = "sampleSize={0}, mode={1}")
-        fun data(): List<Array<Any>> {
-            return mutableListOf<Array<Any>>().apply {
-                arrayOf(
+        fun data(): List<Array<Any>> =
+            generateAllEnumerations(
+                listOf(
+                    100,
+                    1000,
+                    5000,
+                    // Removed due to due to slow run times, see b/267544445 for details.
+                    // 10000
+                ),
+                listOf(
                     Mode.MEASURE_INSERT,
                     Mode.MEASURE_DELETE,
                     Mode.MEASURE_INSERT_AND_DELETE
-                ).forEach { mode ->
-                    arrayOf(100, 1000, 5000, 10000).forEach { sampleSize ->
-                        add(arrayOf(sampleSize, mode))
-                    }
-                }
-            }
-        }
+                )
+            )
 
         private const val DB_NAME = "invalidation-benchmark-test"
     }

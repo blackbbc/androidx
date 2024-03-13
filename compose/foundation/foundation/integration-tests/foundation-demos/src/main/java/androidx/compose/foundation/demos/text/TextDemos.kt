@@ -16,35 +16,202 @@
 
 package androidx.compose.foundation.demos.text
 
+import androidx.compose.foundation.demos.text2.BasicSecureTextFieldDemos
+import androidx.compose.foundation.demos.text2.BasicTextFieldCustomPinFieldDemo
+import androidx.compose.foundation.demos.text2.BasicTextFieldDemos
+import androidx.compose.foundation.demos.text2.BasicTextFieldFilterDemos
+import androidx.compose.foundation.demos.text2.BasicTextFieldInScrollableDemo
+import androidx.compose.foundation.demos.text2.BasicTextFieldLongTextDemo
+import androidx.compose.foundation.demos.text2.BasicTextFieldOutputTransformationDemos
+import androidx.compose.foundation.demos.text2.BasicTextFieldValueCallbackDemo
+import androidx.compose.foundation.demos.text2.DecorationBoxDemos
+import androidx.compose.foundation.demos.text2.KeyboardActionsDemos
+import androidx.compose.foundation.demos.text2.KeyboardOptionsDemos
+import androidx.compose.foundation.demos.text2.NestedReceiveContentDemo
+import androidx.compose.foundation.demos.text2.ScrollableDemos
+import androidx.compose.foundation.demos.text2.ScrollableDemosRtl
+import androidx.compose.foundation.demos.text2.SwapFieldSameStateDemo
+import androidx.compose.foundation.demos.text2.TextFieldCursorNotBlinkingInUnfocusedWindowDemo
+import androidx.compose.foundation.demos.text2.TextFieldLineLimitsDemos
+import androidx.compose.foundation.demos.text2.TextFieldReceiveContentDemo
+import androidx.compose.foundation.samples.BasicTextFieldUndoSample
 import androidx.compose.integration.demos.common.ComposableDemo
 import androidx.compose.integration.demos.common.DemoCategory
 
 val TextDemos = DemoCategory(
     "Text",
     listOf(
-        ComposableDemo("Static text") { TextDemo() },
-        ComposableDemo("Typeface") { TypefaceDemo() },
-        ComposableDemo("Text selection") { TextSelectionDemo() },
-        ComposableDemo("Text selection sample") { TextSelectionSample() },
-        ComposableDemo("Multi paragraph") { MultiParagraphDemo() },
-        ComposableDemo("Interactive text") { InteractiveTextDemo() },
+        ComposableDemo("Text Accessibility") { TextAccessibilityDemo() },
         DemoCategory(
-            "Input fields",
+            "Text Canvas",
             listOf(
-                ComposableDemo("Basic input fields") { InputFieldDemo() },
-                ComposableDemo("Keyboard Types") { KeyboardTypeDemo() },
-                ComposableDemo("Ime Action") { ImeActionDemo() },
-                ComposableDemo("Various input fields") { VariousInputFieldDemo() },
-                ComposableDemo("Tricky input field") { InputFieldTrickyUseCase() },
-                ComposableDemo("Focus transition") { TextFieldFocusTransition() },
-                ComposableDemo("Tail Following Text Field") { TailFollowingTextFieldDemo() },
-                ComposableDemo("Scrollable text fields") { ScrollableTextFieldDemo() },
-                ComposableDemo("Min/Max Lines") { BasicTextFieldMinMaxDemo() },
-                ComposableDemo("Ime SingleLine") { ImeSingleLineDemo() },
-                ComposableDemo("Capitalization/AutoCorrect") { CapitalizationAutoCorrectDemo() },
-                ComposableDemo("TextFieldValue") { TextFieldValueDemo() }
+                ComposableDemo("Brush") { TextBrushDemo() },
+                ComposableDemo("Brush Span") { BrushAnimatingSpanDemo() },
+                ComposableDemo("drawText") { DrawTextDemo() },
+                ComposableDemo("Stroke") { TextStrokeDemo() }
             )
         ),
-        ComposableDemo("Text Accessibility") { TextAccessibilityDemo() }
+        DemoCategory(
+            "Animation",
+            listOf(
+                ComposableDemo("color = { animatedColor.value }") { TextColorAnimation() },
+                ComposableDemo("GraphicsLayer (skew, scale, etc)") { TextAnimationDemo() },
+            )
+        ),
+        DemoCategory(
+            "Text Layout",
+            listOf(
+                ComposableDemo("Static text") { TextDemo() },
+                DemoCategory(
+                    "Line breaking",
+                    listOf(
+                        ComposableDemo("Line Break") { TextLineBreakDemo() },
+                        ComposableDemo("Hyphens") { TextDemoHyphens() },
+                        ComposableDemo("Ellipsize") { EllipsizeDemo() },
+                        ComposableDemo("Ellipsize and letterspacing") {
+                            EllipsizeWithLetterSpacing()
+                        },
+                        ComposableDemo("Letterspacing") {
+                            LetterSpacingDemo()
+                        }
+                    )
+                ),
+                DemoCategory(
+                    "Text Overflow",
+                    listOf(
+                        ComposableDemo("TextOverflow demo") { TextOverflowDemo() },
+                        ComposableDemo("Visible overflow in drawText") {
+                            TextOverflowVisibleInDrawText()
+                        },
+                        ComposableDemo("Visible overflow in Popup") {
+                            TextOverflowVisibleInPopupDemo()
+                        },
+                        ComposableDemo("Min/max lines") { BasicTextMinMaxLinesDemo() },
+                        ComposableDemo("Get last character after clip") {
+                            LastClippedCharacterDemo()
+                        }
+                    )
+                ),
+                ComposableDemo("IncludeFontPadding & Clip") { TextFontPaddingDemo() },
+                ComposableDemo("Line Height Behavior") { TextLineHeightDemo() },
+                ComposableDemo("Layout Reuse") { TextReuseLayoutDemo() },
+                ComposableDemo("Multi paragraph") { MultiParagraphDemo() },
+            )
+        ),
+        DemoCategory(
+            "Fonts",
+            listOf(
+                ComposableDemo("Typeface") { TypefaceDemo() },
+                ComposableDemo("Variable Fonts") { VariableFontsDemo() },
+                ComposableDemo("FontFamily fallback") { FontFamilyDemo() },
+                ComposableDemo("All system font families") { SystemFontFamilyDemo() },
+                ComposableDemo("Emoji Compat") { EmojiCompatDemo() },
+            )
+        ),
+        DemoCategory(
+            "Legacy Text Input (BasicTextFieldv1)",
+            listOf(
+                ComposableDemo("Basic input fields") { InputFieldDemo() },
+                ComposableDemo("Capitalization/AutoCorrect") {
+                    CapitalizationAutoCorrectDemo()
+                },
+                DemoCategory(
+                    "Cursor",
+                    listOf(
+                        ComposableDemo("Cursor configuration") { TextFieldCursorBlinkingDemo() },
+                        ComposableDemo("Unfocused window") {
+                            CursorNotBlinkingInUnfocusedWindowDemo()
+                        }
+                    )
+                ),
+                DemoCategory(
+                    "Focus",
+                    listOf(
+                        ComposableDemo("Focus transition") { TextFieldFocusTransition() },
+                        ComposableDemo("Focus keyboard interaction") {
+                            TextFieldFocusKeyboardInteraction()
+                        },
+                        ComposableDemo("Focus immediately") { FocusTextFieldImmediatelyDemo() },
+                        ComposableDemo("TextField focus") { TextFieldFocusDemo() },
+                    )
+                ),
+                ComposableDemo("Full-screen field") { FullScreenTextFieldDemo() },
+                ComposableDemo("Ime Action") { ImeActionDemo() },
+                ComposableDemo("Ime SingleLine") { ImeSingleLineDemo() },
+                ComposableDemo("Inside Dialog") { TextFieldsInDialogDemo() },
+                ComposableDemo("Inside scrollable") { TextFieldsInScrollableDemo() },
+                ComposableDemo("Keyboard Types") { KeyboardTypeDemo() },
+                ComposableDemo("Min/Max Lines") { BasicTextFieldMinMaxDemo() },
+                ComposableDemo("Reject Text Change") { RejectTextChangeDemo() },
+                ComposableDemo("Scrollable text fields") { ScrollableTextFieldDemo() },
+                ComposableDemo("Visual Transformation") { VisualTransformationDemo() },
+                ComposableDemo("TextFieldValue") { TextFieldValueDemo() },
+                ComposableDemo("Tail Following Text Field") { TailFollowingTextFieldDemo() },
+                ComposableDemo("Secondary input system") { PlatformTextInputAdapterDemo() },
+                ComposableDemo("Read-only field") { ReadOnlyTextFieldDemo() },
+                ComposableDemo("Interop") { InteropTextFieldDemo() }
+            )
+        ),
+        DemoCategory(
+            "Text Input (BasicTextFieldv2)",
+            listOf(
+                ComposableDemo("Basic text input") { BasicTextFieldDemos() },
+                ComposableDemo("Value/callback overload") { BasicTextFieldValueCallbackDemo() },
+                ComposableDemo("Keyboard Options") { KeyboardOptionsDemos() },
+                ComposableDemo("Keyboard Actions") { KeyboardActionsDemos() },
+                ComposableDemo("Decoration Box") { DecorationBoxDemos() },
+                ComposableDemo("Line limits") { TextFieldLineLimitsDemos() },
+                DemoCategory("Scroll", listOf(
+                    ComposableDemo("Ltr") { ScrollableDemos() },
+                    ComposableDemo("Rtl") { ScrollableDemosRtl() },
+                )),
+                ComposableDemo("Inside Scrollable") { BasicTextFieldInScrollableDemo() },
+                ComposableDemo("Filters") { BasicTextFieldFilterDemos() },
+                DemoCategory("Receive Content", listOf(
+                    ComposableDemo("Basic") { TextFieldReceiveContentDemo() },
+                    ComposableDemo("Nested") { NestedReceiveContentDemo() },
+                )),
+                ComposableDemo("Output transformation") {
+                    BasicTextFieldOutputTransformationDemos()
+                },
+                ComposableDemo("Secure Field") { BasicSecureTextFieldDemos() },
+                ComposableDemo("Swap the field but reuse the state") { SwapFieldSameStateDemo() },
+                ComposableDemo("Custom PIN field") { BasicTextFieldCustomPinFieldDemo() },
+                ComposableDemo("Undo/Redo") { BasicTextFieldUndoSample() },
+                ComposableDemo("Long text") { BasicTextFieldLongTextDemo() },
+                ComposableDemo("Cursor") { TextFieldCursorNotBlinkingInUnfocusedWindowDemo() }
+            )
+        ),
+        DemoCategory(
+            "Selection",
+            listOf(
+                ComposableDemo("Text selection") { TextSelectionDemo() },
+                ComposableDemo("Text selection sample") { TextSelectionSample() },
+                ComposableDemo("Overflowed Selection") { TextOverflowedSelectionDemo() },
+                ComposableDemo("Scrollable Column Text Selection") {
+                    TextScrollableColumnSelectionDemo()
+                },
+                ComposableDemo("Selection Minimum Touch Target") {
+                    MinTouchTargetTextSelection()
+                },
+                ComposableDemo("Selection & DropdownMenu") { DropdownMenuSelection() },
+            )
+        ),
+        DemoCategory(
+            "\uD83D\uDD75️️️ Memory allocs",
+            listOf(
+                ComposableDemo("\uD83D\uDD75️ SetText") { MemoryAllocsSetText() },
+                ComposableDemo("\uD83D\uDD75️ IfNotEmptyText") { MemoryAllocsIfNotEmptyText() },
+                ComposableDemo("\uD83E\uDDA5 LazyList reuse") { MemoryAllocsLazyList() }
+            )
+        ),
+        DemoCategory(
+            "Interactive text",
+            listOf(
+                ComposableDemo("ClickableText with hover") { InteractiveTextDemo() },
+                ComposableDemo("\uD83D\uDD17 Hyperlinks") { Hyperlinks() }
+            )
+        ),
+        ComposableDemo("Text Pointer Icon") { TextPointerIconDemo() },
     )
 )

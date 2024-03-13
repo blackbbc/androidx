@@ -16,26 +16,31 @@
 
 package androidx.room.processor
 
+import androidx.room.compiler.codegen.CodeLanguage
+import androidx.room.compiler.codegen.XCodeBlock
+import androidx.room.compiler.codegen.XPropertySpec
+import androidx.room.compiler.codegen.XTypeSpec
+import androidx.room.compiler.processing.XExecutableParameterElement
 import androidx.room.compiler.processing.XMethodElement
 import androidx.room.compiler.processing.XMethodType
 import androidx.room.compiler.processing.XSuspendMethodType
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XVariableElement
 import androidx.room.compiler.processing.isSuspendFunction
+import androidx.room.ext.DEFERRED_TYPES
 import androidx.room.ext.KotlinTypeNames
-import androidx.room.ext.L
-import androidx.room.ext.N
-import androidx.room.ext.RoomCoroutinesTypeNames
-import androidx.room.ext.T
+import androidx.room.ext.RoomCoroutinesTypeNames.COROUTINES_ROOM
 import androidx.room.parser.ParsedQuery
-import androidx.room.solver.prepared.binder.CallablePreparedQueryResultBinder.Companion.createPreparedBinder
+import androidx.room.solver.TypeAdapterExtras
+import androidx.room.solver.prepared.binder.CoroutinePreparedQueryResultBinder
 import androidx.room.solver.prepared.binder.PreparedQueryResultBinder
 import androidx.room.solver.query.result.CoroutineResultBinder
 import androidx.room.solver.query.result.QueryResultBinder
-import androidx.room.solver.shortcut.binder.CallableDeleteOrUpdateMethodBinder.Companion.createDeleteOrUpdateBinder
-import androidx.room.solver.shortcut.binder.CallableInsertMethodBinder.Companion.createInsertBinder
+import androidx.room.solver.shortcut.binder.CoroutineDeleteOrUpdateMethodBinder
+import androidx.room.solver.shortcut.binder.CoroutineInsertMethodBinder
+import androidx.room.solver.shortcut.binder.CoroutineUpsertMethodBinder
 import androidx.room.solver.shortcut.binder.DeleteOrUpdateMethodBinder
-import androidx.room.solver.shortcut.binder.InsertMethodBinder
+import androidx.room.solver.shortcut.binder.InsertOrUpsertMethodBinder
 import androidx.room.solver.transaction.binder.CoroutineTransactionMethodBinder
 import androidx.room.solver.transaction.binder.InstantTransactionMethodBinder
 import androidx.room.solver.transaction.binder.TransactionMethodBinder
@@ -55,7 +60,7 @@ abstract class MethodProcessorDelegate(
 
     abstract fun extractReturnType(): XType
 
-    abstract fun extractParams(): List<XVariableElement>
+    abstract fun extractParams(): List<XExecutableParameterElement>
 
     fun extractQueryParams(query: ParsedQuery): List<QueryParameter> {
         return extractParams().map { variableElement ->
@@ -71,7 +76,11 @@ abstract class MethodProcessorDelegate(
         }
     }
 
-    abstract fun findResultBinder(returnType: XType, query: ParsedQuery): QueryResultBinder
+    abstract fun findResultBinder(
+        returnType: XType,
+        query: ParsedQuery,
+        extrasCreator: TypeAdapterExtras.() -> Unit
+    ): QueryResultBinder
 
     abstract fun findPreparedResultBinder(
         returnType: XType,
@@ -81,9 +90,14 @@ abstract class MethodProcessorDelegate(
     abstract fun findInsertMethodBinder(
         returnType: XType,
         params: List<ShortcutQueryParameter>
-    ): InsertMethodBinder
+    ): InsertOrUpsertMethodBinder
 
     abstract fun findDeleteOrUpdateMethodBinder(returnType: XType): DeleteOrUpdateMethodBinder
+
+    abstract fun findUpsertMethodBinder(
+        returnType: XType,
+        params: List<ShortcutQueryParameter>
+    ): InsertOrUpsertMethodBinder
 
     abstract fun findTransactionMethodBinder(
         callType: TransactionMethod.CallType
@@ -97,11 +111,6 @@ abstract class MethodProcessorDelegate(
         ): MethodProcessorDelegate {
             val asMember = executableElement.asMemberOf(containing)
             return if (asMember.isSuspendFunction()) {
-                val hasCoroutineArtifact = context.processingEnv
-                    .findTypeElement(RoomCoroutinesTypeNames.COROUTINES_ROOM.toString()) != null
-                if (!hasCoroutineArtifact) {
-                    context.logger.e(ProcessorErrors.MISSING_ROOM_COROUTINE_ARTIFACT)
-                }
                 SuspendMethodProcessorDelegate(
                     context,
                     containing,
@@ -120,6 +129,23 @@ abstract class MethodProcessorDelegate(
     }
 }
 
+fun MethodProcessorDelegate.isSuspendAndReturnsDeferredType(): Boolean {
+    if (!executableElement.isSuspendFunction()) {
+        return false
+    }
+
+    val deferredTypes = DEFERRED_TYPES.mapNotNull {
+        context.processingEnv.findType(it.canonicalName)
+    }
+
+    val returnType = extractReturnType()
+    val hasDeferredReturnType = deferredTypes.any { deferredType ->
+        deferredType.rawType.isAssignableFrom(returnType.rawType)
+    }
+
+    return hasDeferredReturnType
+}
+
 /**
  * Default delegate for DAO methods.
  */
@@ -136,8 +162,11 @@ class DefaultMethodProcessorDelegate(
 
     override fun extractParams() = executableElement.parameters
 
-    override fun findResultBinder(returnType: XType, query: ParsedQuery) =
-        context.typeAdapterStore.findQueryResultBinder(returnType, query)
+    override fun findResultBinder(
+        returnType: XType,
+        query: ParsedQuery,
+        extrasCreator: TypeAdapterExtras.() -> Unit
+    ) = context.typeAdapterStore.findQueryResultBinder(returnType, query, extrasCreator)
 
     override fun findPreparedResultBinder(
         returnType: XType,
@@ -152,9 +181,20 @@ class DefaultMethodProcessorDelegate(
     override fun findDeleteOrUpdateMethodBinder(returnType: XType) =
         context.typeAdapterStore.findDeleteOrUpdateMethodBinder(returnType)
 
+    override fun findUpsertMethodBinder(
+        returnType: XType,
+        params: List<ShortcutQueryParameter>
+    ) = context.typeAdapterStore.findUpsertMethodBinder(returnType, params)
+
     override fun findTransactionMethodBinder(callType: TransactionMethod.CallType) =
         InstantTransactionMethodBinder(
-            TransactionMethodAdapter(executableElement.name, callType)
+            returnType = executableElement.returnType,
+            adapter = TransactionMethodAdapter(
+                methodName = executableElement.name,
+                jvmMethodName = executableElement.jvmName,
+                callType = callType
+            ),
+            javaLambdaSyntaxAvailable = context.processingEnv.jvmVersion >= 8
         )
 }
 
@@ -170,7 +210,7 @@ class SuspendMethodProcessorDelegate(
 
     private val continuationParam: XVariableElement by lazy {
         val continuationType = context.processingEnv
-            .requireType(KotlinTypeNames.CONTINUATION.toString()).rawType
+            .requireType(KotlinTypeNames.CONTINUATION).rawType
         executableElement.parameters.last {
             it.type.rawType == continuationType
         }
@@ -185,65 +225,82 @@ class SuspendMethodProcessorDelegate(
             it == continuationParam
         }
 
-    override fun findResultBinder(returnType: XType, query: ParsedQuery) =
-        CoroutineResultBinder(
-            typeArg = returnType,
-            adapter = context.typeAdapterStore.findQueryResultAdapter(returnType, query),
-            continuationParamName = continuationParam.name
-        )
+    override fun findResultBinder(
+        returnType: XType,
+        query: ParsedQuery,
+        extrasCreator: TypeAdapterExtras.() -> Unit
+    ) = CoroutineResultBinder(
+        typeArg = returnType,
+        adapter =
+            context.typeAdapterStore.findQueryResultAdapter(returnType, query, extrasCreator),
+        continuationParamName = continuationParam.name
+    )
 
     override fun findPreparedResultBinder(
         returnType: XType,
         query: ParsedQuery
-    ) = createPreparedBinder(
-        returnType = returnType,
-        adapter = context.typeAdapterStore.findPreparedQueryResultAdapter(returnType, query)
-    ) { callableImpl, dbField ->
-        addStatement(
-            "return $T.execute($N, $L, $L, $N)",
-            RoomCoroutinesTypeNames.COROUTINES_ROOM,
-            dbField,
-            "true", // inTransaction
-            callableImpl,
-            continuationParam.name
-        )
-    }
+    ) = CoroutinePreparedQueryResultBinder(
+        adapter = context.typeAdapterStore.findPreparedQueryResultAdapter(returnType, query),
+        continuationParamName = continuationParam.name
+    )
 
     override fun findInsertMethodBinder(
         returnType: XType,
         params: List<ShortcutQueryParameter>
-    ) = createInsertBinder(
+    ) = CoroutineInsertMethodBinder(
         typeArg = returnType,
-        adapter = context.typeAdapterStore.findInsertAdapter(returnType, params)
-    ) { callableImpl, dbField ->
-        addStatement(
-            "return $T.execute($N, $L, $L, $N)",
-            RoomCoroutinesTypeNames.COROUTINES_ROOM,
-            dbField,
-            "true", // inTransaction
-            callableImpl,
-            continuationParam.name
-        )
-    }
+        adapter = context.typeAdapterStore.findInsertAdapter(returnType, params),
+        continuationParamName = continuationParam.name
+    )
+
+    override fun findUpsertMethodBinder(
+        returnType: XType,
+        params: List<ShortcutQueryParameter>
+    ) = CoroutineUpsertMethodBinder(
+        typeArg = returnType,
+        adapter = context.typeAdapterStore.findUpsertAdapter(returnType, params),
+        continuationParamName = continuationParam.name
+    )
 
     override fun findDeleteOrUpdateMethodBinder(returnType: XType) =
-        createDeleteOrUpdateBinder(
+        CoroutineDeleteOrUpdateMethodBinder(
             typeArg = returnType,
-            adapter = context.typeAdapterStore.findDeleteOrUpdateAdapter(returnType)
-        ) { callableImpl, dbField ->
-            addStatement(
-                "return $T.execute($N, $L, $L, $N)",
-                RoomCoroutinesTypeNames.COROUTINES_ROOM,
-                dbField,
+            adapter = context.typeAdapterStore.findDeleteOrUpdateAdapter(returnType),
+            continuationParamName = continuationParam.name
+        )
+
+    override fun findTransactionMethodBinder(callType: TransactionMethod.CallType) =
+        CoroutineTransactionMethodBinder(
+            returnType = executableElement.returnType,
+            adapter = TransactionMethodAdapter(
+                methodName = executableElement.name,
+                jvmMethodName = executableElement.jvmName,
+                callType = callType
+            ),
+            continuationParamName = continuationParam.name,
+            javaLambdaSyntaxAvailable = context.processingEnv.jvmVersion >= 8
+        )
+
+    private fun XCodeBlock.Builder.addCoroutineExecuteStatement(
+        callableImpl: XTypeSpec,
+        dbProperty: XPropertySpec
+    ) {
+        when (context.codeLanguage) {
+            CodeLanguage.JAVA -> addStatement(
+                "return %T.execute(%N, %L, %L, %N)",
+                COROUTINES_ROOM,
+                dbProperty,
                 "true", // inTransaction
                 callableImpl,
                 continuationParam.name
             )
+            CodeLanguage.KOTLIN -> addStatement(
+                "return %T.execute(%N, %L, %L)",
+                COROUTINES_ROOM,
+                dbProperty,
+                "true", // inTransaction
+                callableImpl
+            )
         }
-
-    override fun findTransactionMethodBinder(callType: TransactionMethod.CallType) =
-        CoroutineTransactionMethodBinder(
-            adapter = TransactionMethodAdapter(executableElement.name, callType),
-            continuationParamName = continuationParam.name
-        )
+    }
 }

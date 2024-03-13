@@ -16,28 +16,30 @@
 
 package androidx.camera.integration.camera2.pipe
 
-import android.app.Activity
-import android.hardware.camera2.CameraCharacteristics
-import android.os.Build
+import android.Manifest
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Trace
 import android.util.Log
+import android.util.Size
 import android.view.View
-import android.view.WindowManager
+import androidx.camera.camera2.pipe.CameraGraph
 import androidx.camera.camera2.pipe.CameraId
 import androidx.camera.camera2.pipe.CameraPipe
-import kotlinx.coroutines.runBlocking
 
 /**
  * This is the main activity for the CameraPipe test application.
  */
-class CameraPipeActivity : Activity() {
+@SuppressLint("RestrictedApiAndroidX")
+class CameraPipeActivity : CameraPermissionActivity() {
     private lateinit var cameraPipe: CameraPipe
     private lateinit var dataVisualizations: DataVisualizations
     private lateinit var ui: CameraPipeUi
+    private lateinit var cameraIdGroups: List<List<CameraId>>
 
-    private var lastCameraId: CameraId? = null
-    private var currentCamera: SimpleCamera? = null
+    private var lastCameraIds: List<CameraId>? = null
+    private var currentCameras: List<SimpleCamera>? = null
+    private var operatingMode: CameraGraph.OperatingMode = CameraGraph.OperatingMode.NORMAL
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,7 +47,7 @@ class CameraPipeActivity : Activity() {
         cameraPipe = (applicationContext as CameraPipeApplication).cameraPipe
 
         // This adjusts the UI to make the activity run a a full screen application.
-        configureFullScreenCameraWindow()
+        configureFullScreenCameraWindow(this)
 
         // Inflate the main ui for the camera activity.
         Trace.beginSection("CXCP-App#inflate")
@@ -58,6 +60,10 @@ class CameraPipeActivity : Activity() {
         ui.switchButton.setOnClickListener { startNextCamera() }
         Trace.endSection()
 
+        val cameraDevices = cameraPipe.cameras()
+        cameraIdGroups = cameraDevices.awaitCameraIds()!!.map { listOf(it) } +
+            cameraDevices.awaitConcurrentCameraIds()!!.filter { it.size <= 2 }.map { it.toList() }
+
         // TODO: Update this to work with newer versions of the visualizations and to accept
         //   the CameraPipeUi object as a parameter.
         dataVisualizations = DataVisualizations(this)
@@ -67,34 +73,61 @@ class CameraPipeActivity : Activity() {
         super.onStart()
         Log.i("CXCP-App", "Activity onStart")
 
-        val camera = currentCamera
-        if (camera == null) {
-            startNextCamera()
-        } else {
-            camera.start()
+        checkPermissionsAndRun(
+            setOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO
+            )
+        ) {
+            val cameras = currentCameras
+            if (cameras == null) {
+                startNextCamera()
+            } else {
+                for (camera in cameras) {
+                    camera.start()
+                }
+            }
         }
     }
 
     override fun onResume() {
         super.onResume()
         Log.i("CXCP-App", "Activity onResume")
+        currentCameras?.let {
+            for (camera in it) {
+                camera.resume()
+            }
+        }
     }
 
     override fun onPause() {
         super.onPause()
         Log.i("CXCP-App", "Activity onPause")
+        currentCameras?.let {
+            for (camera in it) {
+                camera.pause()
+            }
+        }
     }
 
     override fun onStop() {
         super.onStop()
         Log.i("CXCP-App", "Activity onStop")
-        currentCamera?.stop()
+        currentCameras?.let {
+            for (camera in it) {
+                camera.stop()
+            }
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         Log.i("CXCP-App", "Activity onDestroy")
-        currentCamera?.close()
+        currentCameras?.let {
+            for (camera in it) {
+                camera.close()
+            }
+        }
         dataVisualizations.close()
     }
 
@@ -102,86 +135,84 @@ class CameraPipeActivity : Activity() {
         Trace.beginSection("CXCP-App#startNextCamera")
 
         Trace.beginSection("CXCP-App#stopCamera")
-        var camera = currentCamera
-        camera?.stop()
+        var cameras = currentCameras
+        cameras?.let {
+            for (camera in it) {
+                camera.stop()
+            }
+        }
         Trace.endSection()
 
         Trace.beginSection("CXCP-App#findNextCamera")
-        val cameraId = runBlocking { findNextCamera(lastCameraId) }
+        val cameraIds = findNextCameraIdGroup(lastCameraIds)
         Trace.endSection()
 
         Trace.beginSection("CXCP-App#startCameraGraph")
-        camera = SimpleCamera.create(cameraPipe, cameraId, ui.viewfinder, listOf())
+        if (cameraIds.size == 1) {
+            cameras = listOf(
+                SimpleCamera.create(
+                    cameraPipe,
+                    cameraIds.first(),
+                    ui.viewfinder,
+                    emptyList(),
+                    operatingMode
+                )
+            )
+            ui.viewfinderText.text = cameras[0].cameraInfoString()
+            ui.viewfinder2.visibility = View.INVISIBLE
+            ui.viewfinderText2.visibility = View.INVISIBLE
+        } else {
+            cameras = SimpleCamera.create(
+                cameraPipe,
+                cameraIds,
+                listOf(ui.viewfinder, ui.viewfinder2),
+                listOf(Size(1280, 720), Size(1280, 720))
+            )
+            ui.viewfinderText.text = cameras[0].cameraInfoString()
+            ui.viewfinderText2.text = cameras[1].cameraInfoString()
+            ui.viewfinder2.visibility = View.VISIBLE
+            ui.viewfinderText2.visibility = View.VISIBLE
+        }
         Trace.endSection()
-        currentCamera = camera
-        lastCameraId = cameraId
-        ui.viewfinderText.text = camera.cameraInfoString()
+        currentCameras = cameras
+        lastCameraIds = cameraIds
 
-        camera.start()
+        for (camera in cameras) {
+            camera.start()
+        }
         Trace.endSection()
 
         Trace.endSection()
     }
 
-    private suspend fun findNextCamera(lastCameraId: CameraId?): CameraId {
-        val cameras: List<CameraId> = cameraPipe.cameras().ids()
+    private fun findNextCameraIdGroup(lastCameraIdGroup: List<CameraId>?): List<CameraId> {
         // By default, open the first back facing camera if no camera was previously configured.
-        if (lastCameraId == null) {
-            return cameras.firstOrNull {
-                cameraPipe.cameras().getMetadata(it)[CameraCharacteristics.LENS_FACING] ==
-                    CameraCharacteristics.LENS_FACING_BACK
-            } ?: cameras.first()
+        if (lastCameraIdGroup == null) {
+            return cameraIdGroups.first()
         }
+
+        // If a camera was previously opened and the operating mode is NORMAL, return the same
+        // camera but switch to HIGH_SPEED operating mode
+        if (lastCameraIdGroup.size == 1 && operatingMode == CameraGraph.OperatingMode.NORMAL) {
+            operatingMode = CameraGraph.OperatingMode.HIGH_SPEED
+            return lastCameraIdGroup
+        }
+
+        // If the operating mode is not NORMAL, continue finding the next camera, which will
+        // be opened in NORMAL operating mode
+        operatingMode = CameraGraph.OperatingMode.NORMAL
 
         // If a camera was previously open, select the next camera in the list of all cameras. It is
         // possible that the list of cameras contains only one camera, in which case this will return
         // the same camera as "currentCameraId"
 
-        val lastCameraIndex = cameras.indexOf(lastCameraId)
-        if (cameras.isEmpty() || lastCameraIndex == -1) {
+        val lastCamerasIndex = cameraIdGroups.indexOf(lastCameraIdGroup)
+        if (lastCamerasIndex == -1) {
             Log.e("CXCP-App", "Failed to find matching camera!")
-            return cameras.first()
+            return cameraIdGroups.first()
         }
 
         // When we reach the end of the list of cameras, loop.
-        return cameras[(lastCameraIndex + 1) % cameras.size]
-    }
-
-    @Suppress("DEPRECATION")
-    private fun configureFullScreenCameraWindow() {
-        Trace.beginSection("CXCP-App#windowFlags")
-        // Make the navigation bar semi-transparent.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION,
-            WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION
-        )
-
-        // Hide navigation to make the app full screen
-        // TODO: Alter this to use window insets class when running on Android R
-        val uiOptions = (
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LOW_PROFILE
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            )
-        window.decorView.systemUiVisibility = uiOptions
-
-        // Make portrait / landscape rotation seamless
-        val windowParams: WindowManager.LayoutParams = window.attributes
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            windowParams.rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
-        } else {
-            windowParams.rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_JUMPCUT
-        }
-
-        // Allow the app to draw over screen cutouts (notches, camera bumps, etc)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            windowParams.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }
-        window.attributes = windowParams
-
-        Trace.endSection()
+        return cameraIdGroups[(lastCamerasIndex + 1) % cameraIdGroups.size]
     }
 }

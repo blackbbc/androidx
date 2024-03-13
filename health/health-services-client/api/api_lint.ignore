@@ -1,9 +1,17 @@
 // Baseline format: 1.0
-ExecutorRegistration: androidx.health.services.client.ExerciseClient#clearUpdateListener(androidx.health.services.client.ExerciseUpdateListener):
-    Registration methods should have overload that accepts delivery Executor: `clearUpdateListener`
-ExecutorRegistration: androidx.health.services.client.PassiveMonitoringClient#registerDataCallback(java.util.Set<androidx.health.services.client.data.DataType>, android.app.PendingIntent, androidx.health.services.client.PassiveMonitoringCallback):
-    Registration methods should have overload that accepts delivery Executor: `registerDataCallback`
+ExecutorRegistration: androidx.health.services.client.ExerciseClient#clearUpdateCallbackAsync(androidx.health.services.client.ExerciseUpdateCallback):
+    Registration methods should have overload that accepts delivery Executor: `clearUpdateCallbackAsync`
 
 
-MissingGetterMatchingBuilder: androidx.health.services.client.data.ExerciseConfig.Builder#setAutoPauseAndResume(boolean):
-    androidx.health.services.client.data.ExerciseConfig does not declare a `isAutoPauseAndResume()` method matching method androidx.health.services.client.data.ExerciseConfig.Builder.setAutoPauseAndResume(boolean)
+GetterSetterNames: androidx.health.services.client.data.ExerciseTypeCapabilities#supportsAutoPauseAndResume:
+    Invalid name for boolean property `supportsAutoPauseAndResume`. Should start with one of `has`, `can`, `should`, `is`.
+
+
+InvalidNullabilityOverride: androidx.health.services.client.PassiveListenerService#onBind(android.content.Intent) parameter #0:
+    Invalid nullability on parameter `intent` in method `onBind`. Parameters of overrides cannot be NonNull if the super parameter is unannotated.
+
+
+PairedRegistration: androidx.health.services.client.MeasureClient#registerMeasureCallback(androidx.health.services.client.data.DeltaDataType<?,?>, androidx.health.services.client.MeasureCallback):
+    Found registerMeasureCallback but not unregisterMeasureCallback in androidx.health.services.client.MeasureClient
+PairedRegistration: androidx.health.services.client.MeasureClient#registerMeasureCallback(androidx.health.services.client.data.DeltaDataType<?,?>, java.util.concurrent.Executor, androidx.health.services.client.MeasureCallback):
+    Found registerMeasureCallback but not unregisterMeasureCallback in androidx.health.services.client.MeasureClient

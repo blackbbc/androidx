@@ -22,7 +22,9 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.CanvasHolder
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RenderEffect
 
 /**
  * RenderNode on Q+ devices, where it is officially supported.
@@ -30,6 +32,14 @@ import androidx.compose.ui.graphics.Path
 @RequiresApi(Build.VERSION_CODES.Q)
 internal class RenderNodeApi29(val ownerView: AndroidComposeView) : DeviceRenderNode {
     private val renderNode = RenderNode("Compose")
+
+    private var internalRenderEffect: RenderEffect? = null
+
+    private var internalCompositingStrategy: CompositingStrategy = CompositingStrategy.Auto
+
+    internal fun isUsingCompositingLayer(): Boolean = renderNode.useCompositingLayer
+
+    internal fun hasOverlappingRendering(): Boolean = renderNode.hasOverlappingRendering()
 
     override val uniqueId: Long get() = renderNode.uniqueId
 
@@ -68,6 +78,18 @@ internal class RenderNodeApi29(val ownerView: AndroidComposeView) : DeviceRender
         get() = renderNode.elevation
         set(value) {
             renderNode.elevation = value
+        }
+
+    override var ambientShadowColor: Int
+        get() = renderNode.ambientShadowColor
+        set(value) {
+            renderNode.ambientShadowColor = value
+        }
+
+    override var spotShadowColor: Int
+        get() = renderNode.spotShadowColor
+        set(value) {
+            renderNode.spotShadowColor = value
         }
 
     override var rotationZ: Float
@@ -122,6 +144,37 @@ internal class RenderNodeApi29(val ownerView: AndroidComposeView) : DeviceRender
         get() = renderNode.alpha
         set(value) {
             renderNode.alpha = value
+        }
+
+    override var renderEffect: RenderEffect?
+        get() = internalRenderEffect
+        set(value) {
+            internalRenderEffect = value
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                RenderNodeApi29VerificationHelper.setRenderEffect(renderNode, value)
+            }
+        }
+
+    override var compositingStrategy: CompositingStrategy
+        get() = internalCompositingStrategy
+        set(value) {
+            with(renderNode) {
+                when (value) {
+                    CompositingStrategy.Offscreen -> {
+                        setUseCompositingLayer(true, null)
+                        setHasOverlappingRendering(true)
+                    }
+                    CompositingStrategy.ModulateAlpha -> {
+                        setUseCompositingLayer(false, null)
+                        setHasOverlappingRendering(false)
+                    }
+                    else -> { // CompositingStrategy.Auto
+                        setUseCompositingLayer(false, null)
+                        setHasOverlappingRendering(true)
+                    }
+                }
+            }
+            internalCompositingStrategy = value
         }
 
     override val hasDisplayList: Boolean
@@ -190,6 +243,8 @@ internal class RenderNodeApi29(val ownerView: AndroidComposeView) : DeviceRender
             translationX = renderNode.translationX,
             translationY = renderNode.translationY,
             elevation = renderNode.elevation,
+            ambientShadowColor = renderNode.ambientShadowColor,
+            spotShadowColor = renderNode.spotShadowColor,
             rotationZ = renderNode.rotationZ,
             rotationX = renderNode.rotationX,
             rotationY = renderNode.rotationY,
@@ -198,6 +253,21 @@ internal class RenderNodeApi29(val ownerView: AndroidComposeView) : DeviceRender
             pivotY = renderNode.pivotY,
             clipToOutline = renderNode.clipToOutline,
             clipToBounds = renderNode.clipToBounds,
-            alpha = renderNode.alpha
+            alpha = renderNode.alpha,
+            renderEffect = internalRenderEffect,
+            compositingStrategy = internalCompositingStrategy
         )
+
+    override fun discardDisplayList() {
+        renderNode.discardDisplayList()
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.S)
+private object RenderNodeApi29VerificationHelper {
+
+    @androidx.annotation.DoNotInline
+    fun setRenderEffect(renderNode: RenderNode, target: RenderEffect?) {
+        renderNode.setRenderEffect(target?.asAndroidRenderEffect())
+    }
 }

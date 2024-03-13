@@ -81,11 +81,16 @@ internal val AnnotatedStringSaver = Saver<AnnotatedString, Any>(
     },
     restore = {
         val list = it as List<Any?>
+        // lift these to make types work
+        val spanStylesOrNull: List<AnnotatedString.Range<SpanStyle>>? =
+            restore(list[1], AnnotationRangeListSaver)
+        val paragraphStylesOrNull: List<AnnotatedString.Range<ParagraphStyle>>? =
+            restore(list[2], AnnotationRangeListSaver)
         AnnotatedString(
             text = restore(list[0])!!,
-            spanStyles = restore(list[1], AnnotationRangeListSaver)!!,
-            paragraphStyles = restore(list[2], AnnotationRangeListSaver)!!,
-            annotations = restore(list[3], AnnotationRangeListSaver)!!,
+            spanStylesOrNull = spanStylesOrNull?.ifEmpty { null },
+            paragraphStylesOrNull = paragraphStylesOrNull?.ifEmpty { null },
+            annotations = restore(list[3], AnnotationRangeListSaver),
         )
     }
 )
@@ -110,15 +115,22 @@ private enum class AnnotationType {
     Paragraph,
     Span,
     VerbatimTts,
+    Url, // UrlAnnotation
+    Link, // LinkAnnotation.Url
+    Clickable,
     String
 }
 
+@OptIn(ExperimentalTextApi::class)
 private val AnnotationRangeSaver = Saver<AnnotatedString.Range<out Any>, Any>(
     save = {
         val marker = when (it.item) {
             is ParagraphStyle -> AnnotationType.Paragraph
             is SpanStyle -> AnnotationType.Span
             is VerbatimTtsAnnotation -> AnnotationType.VerbatimTts
+            is UrlAnnotation -> AnnotationType.Url
+            is LinkAnnotation.Url -> AnnotationType.Link
+            is LinkAnnotation.Clickable -> AnnotationType.Clickable
             else -> AnnotationType.String
         }
 
@@ -128,6 +140,21 @@ private val AnnotationRangeSaver = Saver<AnnotatedString.Range<out Any>, Any>(
             AnnotationType.VerbatimTts -> save(
                 it.item as VerbatimTtsAnnotation,
                 VerbatimTtsAnnotationSaver,
+                this
+            )
+            AnnotationType.Url -> save(
+                it.item as UrlAnnotation,
+                UrlAnnotationSaver,
+                this
+            )
+            AnnotationType.Link -> save(
+                it.item as LinkAnnotation.Url,
+                LinkSaver,
+                this
+            )
+            AnnotationType.Clickable -> save(
+                it.item as LinkAnnotation.Clickable,
+                ClickableSaver,
                 this
             )
             AnnotationType.String -> save(it.item)
@@ -162,6 +189,18 @@ private val AnnotationRangeSaver = Saver<AnnotatedString.Range<out Any>, Any>(
                 val item: VerbatimTtsAnnotation = restore(list[1], VerbatimTtsAnnotationSaver)!!
                 AnnotatedString.Range(item = item, start = start, end = end, tag = tag)
             }
+            AnnotationType.Url -> {
+                val item: UrlAnnotation = restore(list[1], UrlAnnotationSaver)!!
+                AnnotatedString.Range(item = item, start = start, end = end, tag = tag)
+            }
+            AnnotationType.Link -> {
+                val item: LinkAnnotation.Url = restore(list[1], LinkSaver)!!
+                AnnotatedString.Range(item = item, start = start, end = end, tag = tag)
+            }
+            AnnotationType.Clickable -> {
+                val item: LinkAnnotation.Clickable = restore(list[1], ClickableSaver)!!
+                AnnotatedString.Range(item = item, start = start, end = end, tag = tag)
+            }
             AnnotationType.String -> {
                 val item: String = restore(list[1])!!
                 AnnotatedString.Range(item = item, start = start, end = end, tag = tag)
@@ -173,6 +212,22 @@ private val AnnotationRangeSaver = Saver<AnnotatedString.Range<out Any>, Any>(
 private val VerbatimTtsAnnotationSaver = Saver<VerbatimTtsAnnotation, Any>(
     save = { save(it.verbatim) },
     restore = { VerbatimTtsAnnotation(restore(it)!!) }
+)
+
+@OptIn(ExperimentalTextApi::class)
+private val UrlAnnotationSaver = Saver<UrlAnnotation, Any>(
+    save = { save(it.url) },
+    restore = { UrlAnnotation(restore(it)!!) }
+)
+
+private val LinkSaver = Saver<LinkAnnotation.Url, Any>(
+    save = { save(it.url) },
+    restore = { LinkAnnotation.Url(restore(it)!!) }
+)
+
+private val ClickableSaver = Saver<LinkAnnotation.Clickable, Any>(
+    save = { save(it.tag) },
+    restore = { LinkAnnotation.Clickable(restore(it)!!) }
 )
 
 internal val ParagraphStyleSaver = Saver<ParagraphStyle, Any>(
@@ -187,8 +242,8 @@ internal val ParagraphStyleSaver = Saver<ParagraphStyle, Any>(
     restore = {
         val list = it as List<Any?>
         ParagraphStyle(
-            textAlign = restore(list[0]),
-            textDirection = restore(list[1]),
+            textAlign = restore(list[0])!!,
+            textDirection = restore(list[1])!!,
             lineHeight = restore(list[2], TextUnit.Saver)!!,
             textIndent = restore(list[3], TextIndent.Saver)
         )
@@ -332,7 +387,6 @@ private val ShadowSaver = Saver<Shadow, Any>(
 internal val Color.Companion.Saver: Saver<Color, Any>
     get() = ColorSaver
 
-@OptIn(ExperimentalUnsignedTypes::class)
 private val ColorSaver = Saver<Color, Any>(
     save = { it.value },
     restore = { Color(it as ULong) }

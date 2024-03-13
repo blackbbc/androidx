@@ -18,12 +18,17 @@ package androidx.core.view.accessibility;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 
+import android.annotation.SuppressLint;
 import android.os.Build;
+import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityRecord;
+import android.widget.EditText;
 
+import androidx.annotation.DoNotInline;
 import androidx.annotation.IntDef;
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 
 import java.lang.annotation.Retention;
@@ -34,14 +39,14 @@ import java.lang.annotation.RetentionPolicy;
  */
 public final class AccessibilityEventCompat {
     /**
-     * Represents the event of a hover enter over a {@link android.view.View}.
+     * Represents the event of a hover enter over a {@link View}.
      * @deprecated Use {@link  AccessibilityEvent#TYPE_VIEW_HOVER_ENTER} directly.
      */
     @Deprecated
     public static final int TYPE_VIEW_HOVER_ENTER = AccessibilityEvent.TYPE_VIEW_HOVER_ENTER;
 
     /**
-     * Represents the event of a hover exit over a {@link android.view.View}.
+     * Represents the event of a hover exit over a {@link View}.
      * @deprecated Use {@link  AccessibilityEvent#TYPE_VIEW_HOVER_EXIT} directly.
      */
     @Deprecated
@@ -79,7 +84,7 @@ public final class AccessibilityEventCompat {
     public static final int TYPE_VIEW_SCROLLED = AccessibilityEvent.TYPE_VIEW_SCROLLED;
 
     /**
-     * Represents the event of changing the selection in an {@link android.widget.EditText}.
+     * Represents the event of changing the selection in an {@link EditText}.
      * @deprecated Use {@link AccessibilityEvent#TYPE_VIEW_TEXT_SELECTION_CHANGED} directly.
      */
     @Deprecated
@@ -88,16 +93,40 @@ public final class AccessibilityEventCompat {
 
     /**
      * Represents the event of an application making an announcement.
+     *
+     * <p>
+     * Note: This event carries no semantic meaning and is appropriate only in exceptional
+     * situations. Apps can generally achieve correct behavior for accessibility by
+     * accurately supplying the semantics of their UI. They should not need to specify what
+     * exactly is announced to users.
+     *
+     * <p>
+     * In general, only announce transitions that can't be handled by the following preferred
+     * alternatives:
+     * <ul>
+     *     <li>Label your controls concisely and precisely. Don’t generate a confirmation message
+     *     for simple actions like a button press.</li>
+     *     <li>For significant UI changes like window changes, use
+     *     {@link android.app.Activity#setTitle(CharSequence)} and
+     *     {@link androidx.core.view.ViewCompat#setAccessibilityPaneTitle(View, CharSequence)} )}.
+     *     </li>
+     *     <li>Use {@link androidx.core.view.ViewCompat#setAccessibilityLiveRegion(View, int)}
+     *     to inform the user of changes to critical views within the user interface. These
+     *     should still be used sparingly as they may generate announcements every time a View is
+     *     updated.</li>
+     * </ul>
      */
     public static final int TYPE_ANNOUNCEMENT = 0x00004000;
 
     /**
      * Represents the event of gaining accessibility focus.
+     * @see AccessibilityNodeInfoCompat.AccessibilityActionCompat#ACTION_ACCESSIBILITY_FOCUS
      */
     public static final int TYPE_VIEW_ACCESSIBILITY_FOCUSED = 0x00008000;
 
     /**
      * Represents the event of clearing accessibility focus.
+     * @see AccessibilityNodeInfoCompat.AccessibilityActionCompat#ACTION_CLEAR_ACCESSIBILITY_FOCUS
      */
     public static final int TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED = 0x00010000;
 
@@ -132,7 +161,7 @@ public final class AccessibilityEventCompat {
     public static final int TYPE_WINDOWS_CHANGED = 0x00400000;
 
     /**
-     * Represents the event of a context click on a {@link android.view.View}.
+     * Represents the event of a context click on a {@link View}.
      */
     public static final int TYPE_VIEW_CONTEXT_CLICKED = 0x00800000;
 
@@ -140,6 +169,11 @@ public final class AccessibilityEventCompat {
      * Represents the event of the assistant currently reading the users screen context.
      */
     public static final int TYPE_ASSIST_READING_CONTEXT = 0x01000000;
+
+    /**
+     * Represents the event of a scroll having completed and brought the target node on screen.
+     */
+    public static final int TYPE_VIEW_TARGETED_BY_SCROLL = 0x04000000;
 
     /**
      * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
@@ -157,26 +191,28 @@ public final class AccessibilityEventCompat {
      * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
      * The node's text changed.
      */
-    public static final int CONTENT_CHANGE_TYPE_TEXT = 0x00000002;
+    public static final int CONTENT_CHANGE_TYPE_TEXT = 1 << 1;
 
     /**
      * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
      * The node's content description changed.
      */
-    public static final int CONTENT_CHANGE_TYPE_CONTENT_DESCRIPTION = 0x00000004;
+    public static final int CONTENT_CHANGE_TYPE_CONTENT_DESCRIPTION = 1 << 2;
 
     /**
      * Change type for {@link AccessibilityEvent#TYPE_WINDOW_STATE_CHANGED} event:
      * The node's pane title changed.
+     * @see androidx.core.view.ViewCompat#setAccessibilityPaneTitle(View, CharSequence)
      */
-    public static final int CONTENT_CHANGE_TYPE_PANE_TITLE = 0x00000008;
+    public static final int CONTENT_CHANGE_TYPE_PANE_TITLE = 1 << 3;
 
     /**
      * Change type for {@link AccessibilityEvent#TYPE_WINDOW_STATE_CHANGED} event:
      * The node has a pane title, and either just appeared or just was assigned a title when it
      * had none before.
+     * @see androidx.core.view.ViewCompat#setAccessibilityPaneTitle(View, CharSequence)
      */
-    public static final int CONTENT_CHANGE_TYPE_PANE_APPEARED = 0x00000010;
+    public static final int CONTENT_CHANGE_TYPE_PANE_APPEARED = 1 << 4;
 
     /**
      * Change type for {@link AccessibilityEvent#TYPE_WINDOW_STATE_CHANGED} event:
@@ -186,15 +222,83 @@ public final class AccessibilityEventCompat {
      * No source will be returned if the node is no longer on the screen. To make the change more
      * clear for the user, the first entry in {@link AccessibilityRecord#getText()} can return the
      * value that would have been returned by {@code getSource().getPaneTitle()}.
+     * @see androidx.core.view.ViewCompat#setAccessibilityPaneTitle(View, CharSequence)
      */
-    public static final int CONTENT_CHANGE_TYPE_PANE_DISAPPEARED = 0x00000020;
+    public static final int CONTENT_CHANGE_TYPE_PANE_DISAPPEARED = 1 << 5;
 
     /**
      * Change type for {@link AccessibilityEvent#TYPE_WINDOW_CONTENT_CHANGED} event:
      * state description of the node as returned by
-     * {@link AccessibilityNodeInfo#getStateDescription} was changed.
+     * {@link AccessibilityNodeInfoCompat#getStateDescription} was changed.
      */
-    public static final int CONTENT_CHANGE_TYPE_STATE_DESCRIPTION = 0x00000040;
+    public static final int CONTENT_CHANGE_TYPE_STATE_DESCRIPTION = 1 << 6;
+
+    /**
+     * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
+     * A drag has started while accessibility is enabled. This is either via an
+     * AccessibilityAction, or via touch events. This is sent from the source that initiated the
+     * drag.
+     *
+     * @see AccessibilityNodeInfoCompat.AccessibilityActionCompat#ACTION_DRAG_START
+     */
+    public static final int CONTENT_CHANGE_TYPE_DRAG_STARTED = 1 << 7;
+
+    /**
+     * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
+     * A drag in with accessibility enabled has ended. This means the content has been
+     * successfully dropped. This is sent from the target that accepted the dragged content.
+     *
+     * @see AccessibilityNodeInfoCompat.AccessibilityActionCompat#ACTION_DRAG_DROP
+     */
+    public static final int CONTENT_CHANGE_TYPE_DRAG_DROPPED = 1 << 8;
+
+    /**
+     * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
+     * A drag in with accessibility enabled has ended. This means the content has been
+     * unsuccessfully dropped, the user has canceled the action via an AccessibilityAction, or
+     * no drop has been detected within a timeout and the drag was automatically cancelled. This is
+     * sent from the source that initiated the drag.
+     *
+     * @see AccessibilityNodeInfoCompat.AccessibilityActionCompat#ACTION_DRAG_CANCEL
+     */
+    public static final int CONTENT_CHANGE_TYPE_DRAG_CANCELLED = 1 << 9;
+
+    /**
+     * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
+     * The source node changed its content validity returned by
+     * {@link AccessibilityNodeInfoCompat#isContentInvalid()}.
+     * The view changing content validity should call
+     * {@link AccessibilityNodeInfoCompat#setContentInvalid(boolean)} and then send this event.
+     *
+     * @see AccessibilityNodeInfoCompat#isContentInvalid()
+     * @see AccessibilityNodeInfoCompat#setContentInvalid(boolean)
+     */
+    public static final int CONTENT_CHANGE_TYPE_CONTENT_INVALID = 1 << 10;
+
+    /**
+     * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
+     * The source node changed its erroneous content's error message returned by
+     * {@link AccessibilityNodeInfoCompat#getError()}.
+     * The view changing erroneous content's error message should call
+     * {@link AccessibilityNodeInfoCompat#setError(CharSequence)} and then send this event.
+     *
+     * @see AccessibilityNodeInfoCompat#getError()
+     * @see AccessibilityNodeInfoCompat#setError(CharSequence)
+     */
+    public static final int CONTENT_CHANGE_TYPE_ERROR = 1 << 11;
+
+
+    /**
+     * Change type for {@link #TYPE_WINDOW_CONTENT_CHANGED} event:
+     * The source node changed its ability to interact returned by
+     * {@link AccessibilityNodeInfoCompat#isEnabled()}.
+     * The view changing content's ability to interact should call
+     * {@link AccessibilityNodeInfoCompat#setEnabled(boolean)} and then send this event.
+     *
+     * @see AccessibilityNodeInfoCompat#isEnabled()
+     * @see AccessibilityNodeInfoCompat#setEnabled(boolean)
+     */
+    public static final int CONTENT_CHANGE_TYPE_ENABLED = 1 << 12;
 
     /**
      * Mask for {@link AccessibilityEvent} all types.
@@ -213,6 +317,7 @@ public final class AccessibilityEventCompat {
      * @see AccessibilityEvent#TYPE_WINDOW_CONTENT_CHANGED
      * @see AccessibilityEvent#TYPE_VIEW_SCROLLED
      * @see AccessibilityEvent#TYPE_VIEW_TEXT_SELECTION_CHANGED
+     * @see AccessibilityEvent#TYPE_VIEW_TARGETED_BY_SCROLL
      * @see #TYPE_ANNOUNCEMENT
      * @see #TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY
      * @see #TYPE_GESTURE_DETECTION_START
@@ -225,7 +330,6 @@ public final class AccessibilityEventCompat {
      */
     public static final int TYPES_ALL_MASK = 0xFFFFFFFF;
 
-    /** @hide */
     @IntDef(
             flag = true,
             value = {
@@ -233,7 +337,13 @@ public final class AccessibilityEventCompat {
                     CONTENT_CHANGE_TYPE_STATE_DESCRIPTION,
                     CONTENT_CHANGE_TYPE_SUBTREE,
                     CONTENT_CHANGE_TYPE_TEXT,
-                    CONTENT_CHANGE_TYPE_UNDEFINED
+                    CONTENT_CHANGE_TYPE_UNDEFINED,
+                    CONTENT_CHANGE_TYPE_DRAG_STARTED,
+                    CONTENT_CHANGE_TYPE_DRAG_DROPPED,
+                    CONTENT_CHANGE_TYPE_DRAG_CANCELLED,
+                    CONTENT_CHANGE_TYPE_CONTENT_INVALID,
+                    CONTENT_CHANGE_TYPE_ERROR,
+                    CONTENT_CHANGE_TYPE_ENABLED
             })
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     @Retention(RetentionPolicy.SOURCE)
@@ -259,9 +369,10 @@ public final class AccessibilityEventCompat {
     }
 
     /**
-     * Appends an {@link android.view.accessibility.AccessibilityRecord} to the end of
+     * Appends an {@link AccessibilityRecord} to the end of
      * event records.
      *
+     * @param event event for which to append the record.
      * @param record The record to append.
      *
      * @throws IllegalStateException If called from an AccessibilityService.
@@ -277,6 +388,7 @@ public final class AccessibilityEventCompat {
     /**
      * Gets the record at a given index.
      *
+     * @param event event for which to get the record.
      * @param index The index.
      * @return The record at the specified index.
      *
@@ -291,7 +403,7 @@ public final class AccessibilityEventCompat {
     /**
      * Creates an {@link AccessibilityRecordCompat} from an {@link AccessibilityEvent}
      * that can be used to manipulate the event properties defined in
-     * {@link android.view.accessibility.AccessibilityRecord}.
+     * {@link AccessibilityRecord}.
      * <p>
      * <strong>Note:</strong> Do not call {@link AccessibilityRecordCompat#recycle()} on the
      * returned {@link AccessibilityRecordCompat}. Call {@link AccessibilityEvent#recycle()}
@@ -313,15 +425,14 @@ public final class AccessibilityEventCompat {
      * Sets the bit mask of node tree changes signaled by an
      * {@link #TYPE_WINDOW_CONTENT_CHANGED} event.
      *
+     * @param event event for which to set the types.
      * @param changeTypes The bit mask of change types.
      * @throws IllegalStateException If called from an AccessibilityService.
      * @see #getContentChangeTypes(AccessibilityEvent)
      */
-    public static void setContentChangeTypes(AccessibilityEvent event,
+    public static void setContentChangeTypes(@NonNull AccessibilityEvent event,
             @ContentChangeType int changeTypes) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            event.setContentChangeTypes(changeTypes);
-        }
+        event.setContentChangeTypes(changeTypes);
     }
 
     /**
@@ -338,26 +449,22 @@ public final class AccessibilityEventCompat {
      *         <li>{@link AccessibilityEvent#CONTENT_CHANGE_TYPE_UNDEFINED}
      *         </ul>
      */
+    @SuppressLint("WrongConstant")
     @ContentChangeType
-    public static int getContentChangeTypes(AccessibilityEvent event) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            return event.getContentChangeTypes();
-        } else {
-            return 0;
-        }
+    public static int getContentChangeTypes(@NonNull AccessibilityEvent event) {
+        return event.getContentChangeTypes();
     }
 
     /**
      * Sets the movement granularity that was traversed.
      *
+     * @param event event for which to set the granularity.
      * @param granularity The granularity.
      *
      * @throws IllegalStateException If called from an AccessibilityService.
      */
-    public static void setMovementGranularity(AccessibilityEvent event, int granularity) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            event.setMovementGranularity(granularity);
-        }
+    public static void setMovementGranularity(@NonNull AccessibilityEvent event, int granularity) {
+        event.setMovementGranularity(granularity);
     }
 
     /**
@@ -365,12 +472,8 @@ public final class AccessibilityEventCompat {
      *
      * @return The granularity.
      */
-    public static int getMovementGranularity(AccessibilityEvent event) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            return event.getMovementGranularity();
-        } else {
-            return 0;
-        }
+    public static int getMovementGranularity(@NonNull AccessibilityEvent event) {
+        return event.getMovementGranularity();
     }
 
     /**
@@ -386,14 +489,13 @@ public final class AccessibilityEventCompat {
      * <li>etc.
      * </ul>
      *
+     * @param event event for which to set the action.
      * @param action The action.
      * @throws IllegalStateException If called from an AccessibilityService.
      * @see AccessibilityNodeInfoCompat#performAction(int)
      */
-    public static void setAction(AccessibilityEvent event, int action) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            event.setAction(action);
-        }
+    public static void setAction(@NonNull AccessibilityEvent event, int action) {
+        event.setAction(action);
     }
 
     /**
@@ -401,11 +503,74 @@ public final class AccessibilityEventCompat {
      *
      * @return The action.
      */
-    public static int getAction(AccessibilityEvent event) {
-        if (Build.VERSION.SDK_INT >= 16) {
-            return event.getAction();
+    public static int getAction(@NonNull AccessibilityEvent event) {
+        return event.getAction();
+    }
+
+    /**
+     * Whether the event should only be delivered to an
+     * {@link android.accessibilityservice.AccessibilityService} with the
+     * {@link android.accessibilityservice.AccessibilityServiceInfo#isAccessibilityTool} property
+     * set to true.
+     *
+     * <p>
+     * Initial value matches the {@link android.view.View#isAccessibilityDataSensitive} property
+     * from the event's source node, if present, or false by default.
+     * </p>
+     *
+     * @return True if the event should be delivered only to isAccessibilityTool services, false
+     * otherwise.
+     * @see #setAccessibilityDataSensitive
+     */
+    public static boolean isAccessibilityDataSensitive(@NonNull AccessibilityEvent event) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            return Api34Impl.isAccessibilityDataSensitive(event);
         } else {
-            return 0;
+            // To preserve behavior, assume the event's accessibility data is not sensitive.
+            return false;
+        }
+    }
+
+    /**
+     * Sets whether the event should only be delivered to an
+     * {@link android.accessibilityservice.AccessibilityService} with the
+     * {@link android.accessibilityservice.AccessibilityServiceInfo#isAccessibilityTool} property
+     * set to true.
+     *
+     * <p>
+     * This will be set automatically based on the event's source (if present). If creating and
+     * sending an event directly through {@link android.view.accessibility.AccessibilityManager}
+     * (where an event may have no source) then this method must be called explicitly if you want
+     * non-default behavior.
+     * </p>
+     *
+     * @param event The event to update.
+     * @param accessibilityDataSensitive True if the event should be delivered only to
+     *                                   isAccessibilityTool services, false otherwise.
+     * @throws IllegalStateException If called from an AccessibilityService.
+     */
+    public static void setAccessibilityDataSensitive(@NonNull AccessibilityEvent event,
+            boolean accessibilityDataSensitive) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            Api34Impl.setAccessibilityDataSensitive(event, accessibilityDataSensitive);
+        }
+    }
+
+    @RequiresApi(34)
+    static class Api34Impl {
+        private Api34Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static boolean isAccessibilityDataSensitive(AccessibilityEvent event) {
+            return event.isAccessibilityDataSensitive();
+        }
+
+        @DoNotInline
+        static void setAccessibilityDataSensitive(AccessibilityEvent event,
+                boolean accessibilityDataSensitive) {
+            event.setAccessibilityDataSensitive(accessibilityDataSensitive);
         }
     }
 }

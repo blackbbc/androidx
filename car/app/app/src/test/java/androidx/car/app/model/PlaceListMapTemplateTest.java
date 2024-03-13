@@ -19,10 +19,13 @@ package androidx.car.app.model;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import android.content.Context;
 import android.text.SpannableString;
 
+import androidx.car.app.OnDoneCallback;
 import androidx.car.app.TestUtils;
 import androidx.test.core.app.ApplicationProvider;
 
@@ -106,7 +109,7 @@ public class PlaceListMapTemplateTest {
     }
 
     @Test
-    public void addList_hasToggle_throws() {
+    public void addList_hasToggle() {
         SpannableString title = new SpannableString("Title");
         title.setSpan(mDistanceSpan, /* start= */ 0, /* end= */ 1, /* flags= */ 0);
         Row rowWithToggle =
@@ -114,18 +117,16 @@ public class PlaceListMapTemplateTest {
                 }).build()).build();
         Row rowMeetingRestrictions =
                 new Row.Builder().setTitle(title).addText("text1").addText("text2").build();
-        assertThrows(
-                IllegalArgumentException.class,
-                () ->
-                        new PlaceListMapTemplate.Builder()
-                                .setTitle("Title")
-                                .setItemList(new ItemList.Builder().addItem(rowWithToggle).build())
-                                .build());
 
         // Positive cases.
         new PlaceListMapTemplate.Builder()
                 .setTitle("Title")
                 .setItemList(new ItemList.Builder().addItem(rowMeetingRestrictions).build())
+                .build();
+
+        new PlaceListMapTemplate.Builder()
+                .setTitle("Title")
+                .setItemList(new ItemList.Builder().addItem(rowWithToggle).build())
                 .build();
     }
 
@@ -138,6 +139,7 @@ public class PlaceListMapTemplateTest {
         assertThat(template.getHeaderAction()).isNull();
         assertThat(template.getActionStrip()).isNull();
         assertThat(template.isCurrentLocationEnabled()).isFalse();
+        assertThat(template.getOnContentRefreshDelegate()).isNull();
     }
 
     @Test
@@ -284,25 +286,55 @@ public class PlaceListMapTemplateTest {
     }
 
     @Test
-    public void createInstance_noHeaderTitleOrAction_throws() {
+    public void createInstance_emptyHeaderTitleOrAction() {
+        ItemList itemList = TestUtils.createItemListWithDistanceSpan(6, false, mDistanceSpan);
+        PlaceListMapTemplate template =
+                new PlaceListMapTemplate.Builder().setItemList(itemList).build();
+        assertThat(template.getTitle()).isNull();
+        assertThat(template.getHeaderAction()).isNull();
+    }
+
+    @Test
+    public void createInstance_header_unsupportedSpans_throws() {
         ItemList itemList = TestUtils.createItemListWithDistanceSpan(6, false, mDistanceSpan);
 
+        CharSequence title = TestUtils.getCharSequenceWithColorSpan("Title");
+        CarText title2 = TestUtils.getCarTextVariantsWithColorSpan("Title");
         assertThrows(
-                IllegalStateException.class,
-                () ->
-                        new PlaceListMapTemplate.Builder()
-                                .setItemList(itemList)
-                                .setCurrentLocationEnabled(true)
-                                .build());
+                IllegalArgumentException.class,
+                () -> new PlaceListMapTemplate.Builder().setItemList(itemList).setTitle(title));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PlaceListMapTemplate.Builder().setItemList(itemList).setTitle(title2));
 
-        // Positive cases.
-        new PlaceListMapTemplate.Builder().setTitle("Title").setItemList(itemList).build();
-        new PlaceListMapTemplate.Builder().setHeaderAction(Action.BACK).setItemList(
-                itemList).build();
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title3 = TestUtils.getCharSequenceWithDistanceAndDurationSpans("Title");
+        CarText title4 = TestUtils.getCarTextVariantsWithDistanceAndDurationSpans("Title");
+        new PlaceListMapTemplate.Builder().setItemList(itemList).setTitle(title3).build();
+        new PlaceListMapTemplate.Builder().setItemList(itemList).setTitle(title4).build();
+    }
+
+    @Test
+    public void setOnContentRefreshListener_triggersListener() {
+        OnContentRefreshListener listener = mock(OnContentRefreshListener.class);
+        ItemList itemList = TestUtils.createItemListWithDistanceSpan(6, false, mDistanceSpan);
+        String title = "title";
+        PlaceListMapTemplate template =
+                new PlaceListMapTemplate.Builder()
+                        .setItemList(itemList)
+                        .setTitle(title)
+                        .setOnContentRefreshListener(listener)
+                        .build();
+
+        OnDoneCallback onDoneCallback = mock(OnDoneCallback.class);
+        template.getOnContentRefreshDelegate().sendContentRefreshRequested(onDoneCallback);
+        verify(listener).onContentRefreshRequested();
+        verify(onDoneCallback).onSuccess(null);
     }
 
     @Test
     public void equals() {
+        OnContentRefreshListener listener = mock(OnContentRefreshListener.class);
         ActionStrip actionStrip = new ActionStrip.Builder().addAction(Action.BACK).build();
         String title = "foo";
         Place place =
@@ -319,6 +351,7 @@ public class PlaceListMapTemplateTest {
                         .setTitle(title)
                         .setAnchor(place)
                         .setCurrentLocationEnabled(true)
+                        .setOnContentRefreshListener(listener)
                         .build();
 
         assertThat(template)
@@ -331,6 +364,7 @@ public class PlaceListMapTemplateTest {
                                 .setTitle(title)
                                 .setAnchor(place)
                                 .setCurrentLocationEnabled(true)
+                                .setOnContentRefreshListener(listener)
                                 .build());
     }
 
@@ -458,6 +492,26 @@ public class PlaceListMapTemplateTest {
                                 .setItemList(TestUtils.createItemListWithDistanceSpan(6, false,
                                         mDistanceSpan))
                                 .setCurrentLocationEnabled(false)
+                                .build());
+    }
+
+    @Test
+    public void notEquals_nonAndNonNullOnContentRefreshListeners() {
+        OnContentRefreshListener listener = mock(OnContentRefreshListener.class);
+        PlaceListMapTemplate template =
+                new PlaceListMapTemplate.Builder()
+                        .setTitle("Title")
+                        .setItemList(
+                                TestUtils.createItemListWithDistanceSpan(6, false, mDistanceSpan))
+                        .setOnContentRefreshListener(listener)
+                        .build();
+
+        assertThat(template)
+                .isNotEqualTo(
+                        new PlaceListMapTemplate.Builder()
+                                .setTitle("Title")
+                                .setItemList(TestUtils.createItemListWithDistanceSpan(6, false,
+                                        mDistanceSpan))
                                 .build());
     }
 }

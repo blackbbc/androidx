@@ -3,40 +3,31 @@ on:
   push:
   pull_request:
 
+env:
+  # Allow precise monitoring of the save/restore of Gradle User Home by `gradle-build-action`
+  # See https://github.com/marketplace/actions/gradle-build-action?version=v2.1.1#cache-debugging-and-analysis
+  GRADLE_BUILD_ACTION_CACHE_DEBUG_ENABLED: true
+  GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX: "2022.07.23"
 jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
       gradlew_flags: ${{ steps.global-constants.outputs.gradlew_flags }}
-      checkout_ref: ${{ steps.checkout-args.outputs.ref }}
-      checkout_repo: ${{ steps.checkout-args.outputs.repository }}
     steps:
       - name: "Setup global constants"
         id: global-constants
         run: |
           set -x
-          GRADLEW_FLAGS="-Dorg.gradle.internal.http.connectionTimeout=300000 \
-            -Dorg.gradle.internal.http.socketTimeout=300000                  \
-            -Dorg.gradle.internal.repository.max.retries=10                  \
-            -Dorg.gradle.internal.repository.initial.backoff=500             \
+          GRADLEW_FLAGS="-Dorg.gradle.internal.http.connectionTimeout=60000 \
+            -Dorg.gradle.internal.http.socketTimeout=60000                  \
+            -Dorg.gradle.internal.repository.max.retries=20                 \
+            -Dorg.gradle.internal.repository.initial.backoff=500            \
             --stacktrace"
           echo "::set-output name=gradlew_flags::$GRADLEW_FLAGS"
-      - name: "Compute actions/checkout arguments"
-        id: checkout-args
-        run: |
-          set -x
-
-          REF=${{ github.event.pull_request.head.ref }}
-          if [ -z "$REF" ]; then
-            REF=${{ github.event.ref }}
-          fi
-          echo "::set-output name=ref::$REF"
-
-          REPOSITORY=${{ github.event.pull_request.head.repo.full_name }}
-          if [ -z "$REPOSITORY" ]; then
-            REPOSITORY=${{ github.repository }}
-          fi
-          echo "::set-output name=repository::$REPOSITORY"
+      - name: Publish build scans link
+        # No scans are produced for PRs from forked repos, so omit this notice for forked PRs.
+        if: ${{ !(github.event.pull_request && github.event.pull_request.head.repo.fork) }}
+        run: echo "::notice title=All build scans for workflow::https://ge.androidx.dev/scans?search.names=CI%20run&search.values=$GITHUB_RUN_ID"
 
   lint:
     runs-on: ubuntu-latest
@@ -44,6 +35,10 @@ jobs:
     outputs:
       status: ${{ steps.output-status.outputs.status }}
       affectedFileArgs: ${{ steps.affected-file-args.outputs.files }}
+    env:
+      GRADLE_BUILD_CACHE_PASSWORD: ${{ secrets.GRADLE_BUILD_CACHE_PASSWORD }}
+      GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
     steps:
       - name: Pull request format
         uses: 'androidx/check-pr-format-action@main'
@@ -51,25 +46,20 @@ jobs:
           # Enforces a `Test: <stanza>` in the pull request
           checks: '["(.*)?Test:(.*)?"]'
 
-      - name: "Setup JDK 11"
+      - name: "Setup JDK 17"
         id: setup-java
         uses: actions/setup-java@v1
         with:
-          java-version: "11"
+          java-version: "17"
 
       - name: "Set environment variables"
         shell: bash
         run: |
           set -x
-          echo "ANDROID_SDK_ROOT=$HOME/Library/Android/sdk" >> $GITHUB_ENV
           echo "DIST_DIR=$HOME/dist" >> $GITHUB_ENV
 
       - name: "Checkout androidx repo"
         uses: actions/checkout@v2
-        with:
-          ref: ${{ needs.setup.outputs.checkout_ref }}
-          repository: ${{ needs.setup.outputs.checkout_repo }}
-          fetch-depth: 1
 
       - name: "Get changed files in push or pull_request"
         id: changed-files
@@ -86,112 +76,99 @@ jobs:
         id: ktlint-file-args
         run: |
           set -x
-          KTLINT_FILES=`echo "${{ steps.changed-files.outputs.files }}" | sed 's|[^ ]* *|--file=${{ github.workspace }}/&|g' | grep -v "*.txt"`
+          KTLINT_FILES=`echo "${{ steps.changed-files.outputs.files }}" | sed 's|[^ ]* *|--file=../&|g' | grep -v "*.txt"`
           echo "::set-output name=ktlint-file-args::$KTLINT_FILES"
 
       - name: "Parse changed-files as affected files args"
         id: affected-file-args
         run: |
           set -x
-          AFFECTED_FILES=`echo "${{ steps.changed-files.outputs.files_including_removals }}" | sed 's|[^ ]* *|--changedFilePath=&|g'`
+          AFFECTED_FILES=`echo "${{ steps.changed-files.outputs.files_including_removals }}" | sed 's|\([^ ]\+\)|--changedFilePath=\1|g'`
           echo "::set-output name=files::$AFFECTED_FILES"
+
+      - name: "Setup Gradle"
+        uses: gradle/gradle-build-action@v3-beta
+        with:
+          # Only save Gradle User Home state for builds on the 'androidx-main' branch.
+          # Builds on other branches will only read existing entries from the cache.
+          cache-read-only: ${{ github.ref != 'refs/heads/androidx-main' }}
+
+          # Don't reuse cache entries from any other Job.
+          gradle-home-cache-strict-match: true
+
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+          # Limit the size of the cache entry.
+          # These directories contain instrumented/transformed dependency jars which can be reconstructed relatively quickly.
+          gradle-home-cache-excludes: |
+            caches/jars-9
+            caches/transforms-3
+
       - name: "ktlint"
-        uses: eskatos/gradle-command-action@v1
         env:
           JAVA_HOME: ${{ steps.setup-java.outputs.path }}
-        with:
-          arguments: -q :ktlintCheckFile ${{ steps.ktlint-file-args.outputs.ktlint-file-args }} ${{ needs.setup.outputs.gradlew_flags }}
-          build-root-directory: room
-          configuration-cache-enabled: true
-          dependencies-cache-enabled: true
-          gradle-executable: activity/gradlew
-          wrapper-directory: activity/gradle/wrapper
-          wrapper-cache-enabled: true
+        working-directory: playground-projects/ktlint-playground
+        run: ./gradlew -q :ktlintCheckFile ${{ steps.ktlint-file-args.outputs.ktlint-file-args }} ${{ needs.setup.outputs.gradlew_flags }}
+
   build-modules:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        project: ["activity", "biometric", "compose-compiler", "fragment", "lifecycle", "navigation", "paging", "room", "work"]
+        # If you would like to remove some projects temporarily, use .github/ci-control/ci-config.json instead.
+        # Keep these in alphabetical order.
+        project: ["activity", "appcompat", "biometric", "collection", "compose-runtime", "core", "datastore", "fragment", "lifecycle", "navigation", "paging", "room", "sqlite", "work"]
         include:
-          - project: "compose-compiler"
-            project-root: "compose/compiler"
-          - project: "navigation"
-            custom-os: "macos-latest" # run one of them on a mac to ensure mac setup works
+          - project: "compose-runtime"
+            project-root: "compose/runtime"
+          - project: "collection"
+            custom-os: "macos-latest"
+          - project: "sqlite"
+            custom-os: "macos-latest"
     runs-on: ${{ matrix.custom-os || matrix.os }}
     needs: [setup, lint]
     env:
       artifact-id: ${{matrix.project}}
-      project-root: ${{matrix.project-root || matrix.project}}
+      project-root: playground-projects/${{matrix.project-root || matrix.project}}-playground
+      GRADLE_BUILD_CACHE_PASSWORD: ${{ secrets.GRADLE_BUILD_CACHE_PASSWORD }}
+      GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
     steps:
       - name: "Checkout androidx repo"
         uses: actions/checkout@v2
-        with:
-          ref: ${{ needs.setup.outputs.checkout_ref }}
-          repository: ${{ needs.setup.outputs.checkout_repo }}
-          fetch-depth: 1
-      - name: "Setup JDK 8 for tools.jar"
-        id: setup-java8
-        uses: actions/setup-java@v1
-        with:
-          java-version: "8"
-      - name: "set tools jar path"
-        id: setup-tools-jar
-        run: |
-          set -x
-          TOOLS_JAR=$JAVA_HOME/lib/tools.jar
-          echo "::set-output name=toolsJar::$TOOLS_JAR"
-      - name: "Setup JDK 11"
-        id: setup-java
-        uses: actions/setup-java@v1
-        with:
-          java-version: "11"
-
-      - name: "Set environment variables"
-        shell: bash
-        run: |
-          set -x
-          echo "ANDROID_SDK_ROOT=$HOME/Library/Android/sdk" >> $GITHUB_ENV
-          echo "DIST_DIR=$HOME/dist" >> $GITHUB_ENV
-      - name: "./gradlew findAffectedModules"
-        id: find-affected-modules
-        uses: eskatos/gradle-command-action@v1
+      - name: "Check if the project should be built"
+        id: check-ci-config
         env:
-          JAVA_HOME: ${{ steps.setup-java.outputs.path }}
-          JAVA_TOOLS_JAR: ${{ steps.setup-tools-jar.outputs.toolsJar }}
-        with:
-          arguments: findAffectedModules ${{ needs.lint.outputs.affectedFileArgs }} ${{ needs.setup.outputs.gradlew_flags }} --outputFilePath=${{ github.workspace }}/affected.txt
-          build-root-directory: ${{ env.project-root }}
-          configuration-cache-enabled: true
-          dependencies-cache-enabled: true
-          gradle-executable: ${{ env.project-root }}/gradlew
-          wrapper-directory: ${{ env.project-root }}/gradle/wrapper
-          wrapper-cache-enabled: true
-      - name: "Parse the output of find affected modules step to see if we should build"
-        id: affected-module-count
+          BRANCH_REF: ${{ github.head_ref || github.ref }}
         run: |
           set -x
-          AFFECTED_MODULE_COUNT=`grep -c ".*" ${{ github.workspace }}/affected.txt || true`
-          echo "::set-output name=count::$AFFECTED_MODULE_COUNT"
-      - name: "./gradlew buildOnServer buildTestApks"
-        uses: eskatos/gradle-command-action@v1
-        if: ${{ steps.affected-module-count.outputs.count > 0 }}
-        env:
-          JAVA_HOME: ${{ steps.setup-java.outputs.path }}
-          JAVA_TOOLS_JAR: ${{ steps.setup-tools-jar.outputs.toolsJar }}
+          RESULT=`.github/ci-control/should_run_project.py --project ${{ matrix.project }} --branch "$BRANCH_REF"`
+          echo "::set-output name=enabled::$RESULT"
+      - name: "Run build"
+        uses: ./.github/actions/build-single-project
+        if: ${{ steps.check-ci-config.outputs.enabled == 'true' }}
         with:
-          arguments: buildOnServer buildTestApks ${{ needs.setup.outputs.gradlew_flags }}
-          build-root-directory: ${{ env.project-root }}
-          configuration-cache-enabled: true
-          dependencies-cache-enabled: true
-          gradle-executable: ${{ env.project-root }}/gradlew
-          wrapper-directory: ${{ env.project-root }}/gradle/wrapper
-          wrapper-cache-enabled: true
-
+          project: ${{ matrix.project }}
+          project-root: ${{ env.project-root }}
+          gradle-cache-password: ${{ secrets.GRADLE_BUILD_CACHE_PASSWORD }}
+          gradle-enterprise-access-key: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+          gradle-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          gradle-flags: ${{ needs.setup.outputs.gradlew_flags }}
+      # Upload artifacts task should be in the build-single-project
+      # action but they have a tendency to fail and continue-on-error
+      # is not supported there yet.
+      # https://github.com/actions/runner/issues/1457
       - name: "Upload build artifacts"
         continue-on-error: true
-        if: always()
+        if: ${{ steps.check-ci-config.outputs.enabled == 'true' }}
         uses: actions/upload-artifact@v2
         with:
-          name: artifacts_${{ env.artifact-id }}
+          name: artifacts_${{ matrix.project }}
           path: ~/dist
+      - name: "Upload daemon logs"
+        continue-on-error: true
+        if: failure()
+        uses: actions/upload-artifact@v2
+        with:
+          name: gradle-daemon-logs_${{ matrix.project }}
+          path: ~/.gradle/daemon

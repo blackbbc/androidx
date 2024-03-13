@@ -51,6 +51,7 @@ public class RowTest {
         assertThat(row.isBrowsable()).isFalse();
         assertThat(row.getMetadata()).isEqualTo(Metadata.EMPTY_METADATA);
         assertThat(row.getRowImageType()).isEqualTo(Row.IMAGE_TYPE_SMALL);
+        assertThat(row.isEnabled()).isTrue();
     }
 
     @Test
@@ -88,10 +89,97 @@ public class RowTest {
     }
 
     @Test
+    public void title_unsupportedSpans_throws() {
+        CharSequence title = TestUtils.getCharSequenceWithColorSpan("Title");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle(title).build());
+        CarText title2 = TestUtils.getCarTextVariantsWithColorSpan("Title");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle(title2).build());
+
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence title3 = TestUtils.getCharSequenceWithDistanceAndDurationSpans("Title");
+        new Row.Builder().setTitle(title3).build();
+        CarText title4 = TestUtils.getCarTextVariantsWithDistanceAndDurationSpans("Title");
+        new Row.Builder().setTitle(title4).build();
+    }
+
+    @Test
+    public void text_unsupportedSpans_throws() {
+        CharSequence text = TestUtils.getCharSequenceWithClickableSpan("Text");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title").addText(text).build());
+        CarText text2 = TestUtils.getCarTextVariantsWithClickableSpan("Text");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title").addText(text2).build());
+
+        // DurationSpan and DistanceSpan do not throw
+        CharSequence text3 = TestUtils.getCharSequenceWithColorSpan("Text");
+        new Row.Builder().setTitle("Title").addText(text3).build();
+        CarText text4 = TestUtils.getCarTextVariantsWithColorSpan("Text");
+        new Row.Builder().setTitle("Title").addText(text4).build();
+    }
+
+    @Test
     public void setImage() {
         CarIcon image1 = BACK;
         Row row = new Row.Builder().setTitle("Title").setImage(image1).build();
         assertThat(image1).isEqualTo(row.getImage());
+    }
+
+    @Test
+    public void setExtraSmallImage() {
+        CarIcon image1 = BACK;
+        Row row = new Row.Builder().setTitle("Title")
+                .setImage(image1, Row.IMAGE_TYPE_EXTRA_SMALL).build();
+        assertThat(image1).isEqualTo(row.getImage());
+    }
+
+    @Test
+    public void setDecoration_positiveValue() {
+        int decoration = 5;
+        Row row = new Row.Builder().setTitle("Title").setNumericDecoration(decoration).build();
+        assertThat(decoration).isEqualTo(row.getNumericDecoration());
+    }
+
+    @Test
+    public void setDecoration_zero() {
+        int decoration = 0;
+        Row row = new Row.Builder().setTitle("Title").setNumericDecoration(decoration).build();
+        assertThat(decoration).isEqualTo(row.getNumericDecoration());
+    }
+
+    @Test
+    public void setDecoration_noDecoration() {
+        int decoration = Row.NO_DECORATION;
+        Row row = new Row.Builder().setTitle("Title").setNumericDecoration(decoration).build();
+        assertThat(decoration).isEqualTo(row.getNumericDecoration());
+    }
+
+    @Test
+    public void setDecoration_negative_throws() {
+        int decoration = -123;
+        Row.Builder rowBuilder =
+                new Row.Builder().setTitle("Title");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> rowBuilder.setNumericDecoration(decoration)
+        );
+    }
+
+    public void setDecoration_withToggle_throws() {
+        Toggle toggle = new Toggle.Builder(isChecked -> {}).build();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title")
+                        .setToggle(toggle)
+                        .setNumericDecoration(5)
+                        .build());
     }
 
     @Test
@@ -128,12 +216,104 @@ public class RowTest {
     }
 
     @Test
+    public void addAction() {
+        CarIcon icon = TestUtils.getTestCarIcon(ApplicationProvider.getApplicationContext(),
+                "ic_test_1");
+        Action customAction = new Action.Builder().setIcon(icon).build();
+        Row row = new Row.Builder()
+                .setTitle("Title")
+                .addAction(customAction)
+                .build();
+        assertThat(row.getActions()).containsExactly(customAction);
+    }
+
+    @Test
+    public void addAction_appIconInvalid_throws() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title").addAction(Action.APP_ICON).build());
+    }
+
+    @Test
+    public void addAction_backInvalid_throws() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title").addAction(Action.BACK).build());
+    }
+
+    @Test
+    public void addAction_panInvalid_throws() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title").addAction(Action.PAN).build());
+    }
+
+    @Test
+    public void addAction_manyActions_throws() {
+        CarIcon carIcon = TestUtils.getTestCarIcon(ApplicationProvider.getApplicationContext(),
+                "ic_test_1");
+        Action customAction = TestUtils.createAction("Title", carIcon);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title")
+                        .addAction(customAction)
+                        .addAction(customAction)
+                        .addAction(customAction)
+                        .build());
+    }
+
+    @Test
+    public void addAction_invalidActionNullIcon_throws() {
+        Action customAction = TestUtils.createAction("Title", null);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title")
+                        .addAction(customAction)
+                        .build());
+    }
+
+    public void addAction_browsableRow_throws() {
+        CarIcon carIcon = TestUtils.getTestCarIcon(ApplicationProvider.getApplicationContext(),
+                "ic_test_1");
+        Action customAction = TestUtils.createAction("Title", carIcon);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title")
+                        .setBrowsable(true)
+                        .addAction(customAction)
+                        .build());
+    }
+
+    public void addAction_withToggle_throws() {
+        Toggle toggle = new Toggle.Builder(isChecked -> {}).build();
+        CarIcon carIcon = TestUtils.getTestCarIcon(ApplicationProvider.getApplicationContext(),
+                "ic_test_1");
+        Action customAction = TestUtils.createAction("Title", carIcon);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Row.Builder().setTitle("Title")
+                        .setToggle(toggle)
+                        .addAction(customAction)
+                        .build());
+    }
+
+    @Test
     public void setMetadata() {
         Metadata metadata =
                 new Metadata.Builder().setPlace(
                         new Place.Builder(CarLocation.create(1, 1)).build()).build();
         Row row = new Row.Builder().setTitle("Title").setMetadata(metadata).build();
         assertThat(row.getMetadata()).isEqualTo(metadata);
+    }
+
+    @Test
+    public void setEnabledState() {
+        Row row = new Row.Builder().setTitle("Title").setEnabled(false).build();
+        assertThat(row.isEnabled()).isFalse();
     }
 
     @Test
@@ -182,6 +362,7 @@ public class RowTest {
                         })
                         .setBrowsable(false)
                         .setMetadata(Metadata.EMPTY_METADATA)
+                        .setEnabled(true)
                         .addText(title)
                         .build();
 
@@ -193,6 +374,7 @@ public class RowTest {
                         })
                         .setBrowsable(false)
                         .setMetadata(Metadata.EMPTY_METADATA)
+                        .setEnabled(true)
                         .addText(title)
                         .build())
                 .isEqualTo(row);
@@ -212,6 +394,13 @@ public class RowTest {
         Row row = new Row.Builder().setTitle("Title").setImage(BACK).build();
 
         assertThat(new Row.Builder().setTitle("Title").setImage(ALERT).build()).isNotEqualTo(row);
+    }
+
+    @Test
+    public void notEquals_differentEnabledState() {
+        Row row = new Row.Builder().setTitle("Title").setEnabled(true).build();
+
+        assertThat(new Row.Builder().setTitle("Title").setEnabled(false).build()).isNotEqualTo(row);
     }
 
     @Test

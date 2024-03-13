@@ -54,7 +54,6 @@ import java.util.Objects;
  * future. To adjust insets, use one of the supplied clone methods to obtain a new
  * WindowInsetsCompat instance with the adjusted properties.</p>
  */
-@SuppressWarnings("JavadocReference")
 public class WindowInsetsCompat {
     private static final String TAG = "WindowInsetsCompat";
 
@@ -167,7 +166,7 @@ public class WindowInsetsCompat {
     public static WindowInsetsCompat toWindowInsetsCompat(@NonNull WindowInsets insets,
             @Nullable View view) {
         WindowInsetsCompat wic = new WindowInsetsCompat(Preconditions.checkNotNull(insets));
-        if (view != null && ViewCompat.isAttachedToWindow(view)) {
+        if (view != null && view.isAttachedToWindow()) {
             // Pass the root window insets, which is useful if the Activity is adjustResize
             wic.setRootWindowInsets(ViewCompat.getRootWindowInsets(view));
             // Pass in the root view which allows the WIC to make of a copy of it's visible bounds
@@ -2014,7 +2013,6 @@ public class WindowInsetsCompat {
 
         /**
          * @return All inset types combined.
-         * @hide
          */
         @InsetsType
         @RestrictTo(LIBRARY_GROUP)
@@ -2049,7 +2047,6 @@ public class WindowInsetsCompat {
             }
         }
 
-        /** @hide */
         @RestrictTo(LIBRARY_GROUP)
         @Retention(RetentionPolicy.SOURCE)
         @IntDef(flag = true, value = {STATUS_BARS, NAVIGATION_BARS, CAPTION_BAR, IME, WINDOW_DECOR,

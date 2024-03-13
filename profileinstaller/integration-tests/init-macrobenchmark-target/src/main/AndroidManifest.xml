@@ -15,8 +15,7 @@
   -->
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="androidx.profileinstaller.integration.macrobenchmark.target">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:label="Profileinstaller Macrobenchmark Target"
@@ -25,7 +24,6 @@
         tools:ignore="MissingApplicationIcon">
 
         <!-- Profileable to enable macrobenchmark profiling -->
-        <!--suppress AndroidElementNotAllowed -->
         <profileable android:shell="true"/>
 
         <!--

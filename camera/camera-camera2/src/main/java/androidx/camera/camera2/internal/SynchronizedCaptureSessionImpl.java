@@ -26,306 +26,227 @@ import android.view.Surface;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.camera.camera2.internal.SynchronizedCaptureSessionOpener.SynchronizedSessionFeature;
+import androidx.annotation.RequiresApi;
 import androidx.camera.camera2.internal.annotation.CameraExecutor;
 import androidx.camera.camera2.internal.compat.params.SessionConfigurationCompat;
+import androidx.camera.camera2.internal.compat.quirk.CaptureSessionStuckQuirk;
+import androidx.camera.camera2.internal.compat.quirk.IncorrectCaptureStateQuirk;
+import androidx.camera.camera2.internal.compat.workaround.ForceCloseCaptureSession;
+import androidx.camera.camera2.internal.compat.workaround.ForceCloseDeferrableSurface;
+import androidx.camera.camera2.internal.compat.workaround.RequestMonitor;
+import androidx.camera.camera2.internal.compat.workaround.SessionResetPolicy;
 import androidx.camera.core.Logger;
 import androidx.camera.core.impl.DeferrableSurface;
-import androidx.camera.core.impl.utils.executor.CameraXExecutors;
+import androidx.camera.core.impl.Quirks;
+import androidx.camera.core.impl.annotation.ExecutedBy;
 import androidx.camera.core.impl.utils.futures.FutureChain;
 import androidx.camera.core.impl.utils.futures.Futures;
-import androidx.concurrent.futures.CallbackToFutureAdapter;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * <p>The SynchronizedCaptureSessionImpl synchronizing methods between the other
- * SynchronizedCaptureSessions to fix b/135050586, b/145725334, b/144817309, b/146773463. The
- * SynchronizedCaptureSessionBaseImpl would be a non-synchronizing version.
- *
- * <p>In b/144817309, the onClosed() callback on
- * {@link android.hardware.camera2.CameraCaptureSession.StateCallback}
- * might not be invoked if the capture session is not the latest one. To align the fixed
- * framework behavior, we manually call the onClosed() when a new CameraCaptureSession is created.
- *
- * <p>The b/135050586, b/145725334 need to close the {@link DeferrableSurface} to force the
- * {@link DeferrableSurface} recreate in the new CaptureSession.
- *
- * <p>b/146773463: It needs to check all the releasing capture sessions are ready for opening
- * next capture session.
+ * The SynchronizedCaptureSessionImpl applies workarounds for Quirks.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 class SynchronizedCaptureSessionImpl extends SynchronizedCaptureSessionBaseImpl {
 
     private static final String TAG = "SyncCaptureSessionImpl";
 
+    @NonNull
+    private final ScheduledExecutorService mScheduledExecutorService;
+
     @SuppressWarnings("WeakerAccess") /* synthetic accessor */
     private final Object mObjectLock = new Object();
-    @NonNull
-    private final Set<String> mEnabledFeature;
-    @NonNull
-    private final ListenableFuture<Void> mStartStreamingFuture;
-    @SuppressWarnings("WeakerAccess") /* synthetic accessor */
-    CallbackToFutureAdapter.Completer<Void> mStartStreamingCompleter;
 
     @Nullable
     @GuardedBy("mObjectLock")
     private List<DeferrableSurface> mDeferrableSurfaces;
     @Nullable
     @GuardedBy("mObjectLock")
-    ListenableFuture<Void> mOpeningCaptureSession;
-    @Nullable
-    @GuardedBy("mObjectLock")
-    ListenableFuture<List<Surface>> mStartingSurface;
+    ListenableFuture<List<Void>> mOpenSessionBlockerFuture;
 
-    /** Whether the capture session has submitted the repeating request. */
-    @GuardedBy("mObjectLock")
-    private boolean mHasSubmittedRepeating;
+    private final ForceCloseDeferrableSurface mCloseSurfaceQuirk;
+    private final ForceCloseCaptureSession mForceCloseSessionQuirk;
+    private final RequestMonitor mRequestMonitor;
+    private final SessionResetPolicy mSessionResetPolicy;
+    private final AtomicBoolean mClosed = new AtomicBoolean(false);
 
     SynchronizedCaptureSessionImpl(
-            @NonNull Set<String> enabledFeature,
+            @NonNull Quirks cameraQuirks,
+            @NonNull Quirks deviceQuirks,
             @NonNull CaptureSessionRepository repository,
             @NonNull @CameraExecutor Executor executor,
             @NonNull ScheduledExecutorService scheduledExecutorService,
             @NonNull Handler compatHandler) {
         super(repository, executor, scheduledExecutorService, compatHandler);
-        mEnabledFeature = enabledFeature;
-
-        if (enabledFeature.contains(SynchronizedCaptureSessionOpener.FEATURE_WAIT_FOR_REQUEST)) {
-            mStartStreamingFuture = CallbackToFutureAdapter.getFuture(completer -> {
-                // Opening and releasing the capture session quickly and constantly is a problem for
-                // LEGACY devices. See: b/146773463. It needs to check all the releasing capture
-                // sessions are ready for opening next capture session.
-                mStartStreamingCompleter = completer;
-                return "StartStreamingFuture[session=" + SynchronizedCaptureSessionImpl.this
-                        + "]";
-            });
-        } else {
-            mStartStreamingFuture = Futures.immediateFuture(null);
-        }
+        mCloseSurfaceQuirk = new ForceCloseDeferrableSurface(cameraQuirks, deviceQuirks);
+        mRequestMonitor = new RequestMonitor(cameraQuirks.contains(CaptureSessionStuckQuirk.class)
+                || cameraQuirks.contains(IncorrectCaptureStateQuirk.class));
+        mForceCloseSessionQuirk = new ForceCloseCaptureSession(deviceQuirks);
+        mSessionResetPolicy = new SessionResetPolicy(deviceQuirks);
+        mScheduledExecutorService = scheduledExecutorService;
     }
 
+    @ExecutedBy("mExecutor")
     @NonNull
     @Override
     public ListenableFuture<Void> openCaptureSession(@NonNull CameraDevice cameraDevice,
             @NonNull SessionConfigurationCompat sessionConfigurationCompat,
             @NonNull List<DeferrableSurface> deferrableSurfaces) {
         synchronized (mObjectLock) {
-            List<ListenableFuture<Void>> futureList =
-                    getBlockerFuture(SynchronizedCaptureSessionOpener.FEATURE_WAIT_FOR_REQUEST,
-                            mCaptureSessionRepository.getClosingCaptureSession());
+            // For b/146773463: It needs to check all the configured capture sessions are ready for
+            // opening next capture session.
+            List<SynchronizedCaptureSession>
+                    configured = mCaptureSessionRepository.getCaptureSessions();
+            List<ListenableFuture<Void>> futureList = new ArrayList<>();
+            for (SynchronizedCaptureSession session : configured) {
+                futureList.add(session.getOpeningBlocker());
+            }
+            mOpenSessionBlockerFuture = Futures.successfulAsList(futureList);
 
-            mOpeningCaptureSession =
-                    FutureChain.from(Futures.successfulAsList(futureList)).transformAsync(
-                            v -> super.openCaptureSession(cameraDevice,
-                                    sessionConfigurationCompat, deferrableSurfaces),
-                            CameraXExecutors.directExecutor());
-
-            return Futures.nonCancellationPropagating(mOpeningCaptureSession);
+            return Futures.nonCancellationPropagating(
+                    FutureChain.from(mOpenSessionBlockerFuture).transformAsync(v -> {
+                        if (mSessionResetPolicy.needAbortCapture()) {
+                            closeCreatedSession();
+                        }
+                        debugLog("start openCaptureSession");
+                        return super.openCaptureSession(cameraDevice, sessionConfigurationCompat,
+                                deferrableSurfaces);
+                    }, getExecutor()));
         }
     }
 
+    @ExecutedBy("mExecutor")
+    private void closeCreatedSession() {
+        List<SynchronizedCaptureSession> sessions = mCaptureSessionRepository.getCaptureSessions();
+        for (SynchronizedCaptureSession session : sessions) {
+            session.close();
+        }
+    }
+
+    @ExecutedBy("mExecutor")
     @NonNull
     @Override
-    public ListenableFuture<Void> getSynchronizedBlocker(
-            @SynchronizedSessionFeature @NonNull String feature) {
-        switch (feature) {
-            case SynchronizedCaptureSessionOpener.FEATURE_WAIT_FOR_REQUEST:
-                // Returns the future which is completed once the session starts streaming
-                // frames.
-                return Futures.nonCancellationPropagating(mStartStreamingFuture);
-            default:
-                return super.getSynchronizedBlocker(feature);
-        }
+    public ListenableFuture<Void> getOpeningBlocker() {
+        return Futures.makeTimeoutFuture(1500, mScheduledExecutorService,
+                mRequestMonitor.getRequestsProcessedFuture());
     }
 
-    private List<ListenableFuture<Void>> getBlockerFuture(
-            @SynchronizedSessionFeature @NonNull String feature,
-            List<SynchronizedCaptureSession> sessions) {
-        List<ListenableFuture<Void>> futureList = new ArrayList<>();
-        for (SynchronizedCaptureSession session : sessions) {
-            futureList.add(session.getSynchronizedBlocker(feature));
-        }
-        return futureList;
-    }
-
+    @ExecutedBy("mExecutor")
     @NonNull
     @Override
     public ListenableFuture<List<Surface>> startWithDeferrableSurface(
             @NonNull List<DeferrableSurface> deferrableSurfaces, long timeout) {
         synchronized (mObjectLock) {
             mDeferrableSurfaces = deferrableSurfaces;
-            return Futures.nonCancellationPropagating(
-                    super.startWithDeferrableSurface(deferrableSurfaces, timeout));
+            return super.startWithDeferrableSurface(deferrableSurfaces, timeout);
         }
     }
 
+    @ExecutedBy("mExecutor")
     @Override
     public boolean stop() {
         synchronized (mObjectLock) {
             if (isCameraCaptureSessionOpen()) {
-                closeConfiguredDeferrableSurfaces();
+                mCloseSurfaceQuirk.onSessionEnd(mDeferrableSurfaces);
             } else {
-                if (mOpeningCaptureSession != null) {
-                    mOpeningCaptureSession.cancel(true);
-                }
-                if (mStartingSurface != null) {
-                    mStartingSurface.cancel(true);
+                if (mOpenSessionBlockerFuture != null) {
+                    mOpenSessionBlockerFuture.cancel(true);
                 }
             }
             return super.stop();
         }
     }
 
+    @ExecutedBy("mExecutor")
     @Override
     public int setSingleRepeatingRequest(@NonNull CaptureRequest request,
             @NonNull CameraCaptureSession.CaptureCallback listener) throws CameraAccessException {
-        if (mEnabledFeature.contains(SynchronizedCaptureSessionOpener.FEATURE_WAIT_FOR_REQUEST)) {
-            synchronized (mObjectLock) {
-                mHasSubmittedRepeating = true;
-                CameraCaptureSession.CaptureCallback comboCaptureCallback =
-                        Camera2CaptureCallbacks.createComboCallback(mCaptureCallback, listener);
+        return super.setSingleRepeatingRequest(
+                request, mRequestMonitor.createMonitorListener(listener));
+    }
 
-                return super.setSingleRepeatingRequest(request, comboCaptureCallback);
-            }
-        } else {
-            return super.setSingleRepeatingRequest(request, listener);
-        }
+    @ExecutedBy("mExecutor")
+    @Override
+    public int captureBurstRequests(@NonNull List<CaptureRequest> requests,
+            @NonNull CameraCaptureSession.CaptureCallback listener) throws CameraAccessException {
+        return super.captureBurstRequests(
+                requests, mRequestMonitor.createMonitorListener(listener));
     }
 
     @Override
     public void onConfigured(@NonNull SynchronizedCaptureSession session) {
         debugLog("Session onConfigured()");
-        if (mEnabledFeature.contains(SynchronizedCaptureSessionOpener.FEATURE_FORCE_CLOSE)) {
-            Set<SynchronizedCaptureSession> staleCreatingSessions = new LinkedHashSet<>();
-            for (SynchronizedCaptureSession s :
-                    mCaptureSessionRepository.getCreatingCaptureSessions()) {
-                // Collect the sessions that started configuring before the current session. The
-                // current session and the session that starts configure after the current session
-                // are not included since they don't need to be closed.
-                if (s == session) {
-                    break;
-                }
-                staleCreatingSessions.add(s);
-            }
-            // Once the CaptureSession is configured, the stale CaptureSessions should not have
-            // chance to complete the configuration flow. Force change to configure fail since
-            // the configureFail will treat the CaptureSession is closed. More detail please see
-            // b/158540776.
-            forceOnConfigureFailed(staleCreatingSessions);
-        }
-
-        super.onConfigured(session);
-
-        // Once the new CameraCaptureSession is created, all the previous opened
-        // CameraCaptureSession can be treated as closed (more detail in b/144817309),
-        // trigger its associated StateCallback#onClosed callback to finish the
-        // session close flow.
-        if (mEnabledFeature.contains(SynchronizedCaptureSessionOpener.FEATURE_FORCE_CLOSE)) {
-            Set<SynchronizedCaptureSession> openedSessions = new LinkedHashSet<>();
-            for (SynchronizedCaptureSession s : mCaptureSessionRepository.getCaptureSessions()) {
-
-                // The entrySet keys of the LinkedHashMap should be insertion-ordered, so we
-                // get the previous capture sessions by iterate it from the beginning.
-                if (s == session) {
-                    break;
-                }
-                openedSessions.add(s);
-            }
-
-            forceOnClosed(openedSessions);
-        }
+        mForceCloseSessionQuirk.onSessionConfigured(session,
+                mCaptureSessionRepository.getCreatingCaptureSessions(),
+                mCaptureSessionRepository.getCaptureSessions(),
+                super::onConfigured);
     }
 
+    @ExecutedBy("mExecutor")
     @Override
     public void close() {
-        debugLog("Session call close()");
-        if (mEnabledFeature.contains(SynchronizedCaptureSessionOpener.FEATURE_WAIT_FOR_REQUEST)) {
-            synchronized (mObjectLock) {
-                if (!mHasSubmittedRepeating) {
-                    // If the release() is called before any repeating requests have been issued,
-                    // then the startStreamingFuture should be cancelled.
-                    mStartStreamingFuture.cancel(true);
-                }
+        if (!mClosed.compareAndSet(false, true)) {
+            debugLog("close() has been called. Skip this invocation.");
+            return;
+        }
+
+        if (mSessionResetPolicy.needAbortCapture()) {
+            try {
+                debugLog("Call abortCaptures() before closing session.");
+                abortCaptures();
+            } catch (Exception e) {
+                debugLog("Exception when calling abortCaptures()" + e);
             }
         }
 
-        mStartStreamingFuture.addListener(() -> {
+        debugLog("Session call close()");
+        mRequestMonitor.getRequestsProcessedFuture().addListener(() -> {
             // Checks the capture session is ready before closing. See: b/146773463.
             debugLog("Session call super.close()");
             super.close();
         }, getExecutor());
     }
 
-    void closeConfiguredDeferrableSurfaces() {
-        synchronized (mObjectLock) {
-            if (mDeferrableSurfaces == null) {
-                debugLog("deferrableSurface == null, maybe forceClose, skip close");
-                return;
-            }
-
-            if (mEnabledFeature.contains(
-                    SynchronizedCaptureSessionOpener.FEATURE_DEFERRABLE_SURFACE_CLOSE)) {
-                // Do not close for non-LEGACY devices. Reusing {@link DeferrableSurface} is only a
-                // problem for LEGACY devices. See: b/135050586.
-                // Another problem is the behavior of TextureView below API 23. It releases {@link
-                // SurfaceTexture}. Hence, request to close and recreate {@link DeferrableSurface}.
-                // See: b/145725334.
-                for (DeferrableSurface deferrableSurface : mDeferrableSurfaces) {
-                    deferrableSurface.close();
-                }
-                debugLog("deferrableSurface closed");
-            }
-        }
-    }
-
     @Override
     public void onClosed(@NonNull SynchronizedCaptureSession session) {
-        closeConfiguredDeferrableSurfaces();
+        synchronized (mObjectLock) {
+            mCloseSurfaceQuirk.onSessionEnd(mDeferrableSurfaces);
+        }
         debugLog("onClosed()");
         super.onClosed(session);
     }
 
-    static void forceOnClosed(@NonNull Set<SynchronizedCaptureSession> sessions) {
-        for (SynchronizedCaptureSession session : sessions) {
-            session.getStateCallback().onClosed(session);
-        }
+    @Override
+    public void finishClose() {
+        super.finishClose();
+        mRequestMonitor.stop();
     }
 
-    private void forceOnConfigureFailed(@NonNull Set<SynchronizedCaptureSession> sessions) {
-        for (SynchronizedCaptureSession session : sessions) {
-            session.getStateCallback().onConfigureFailed(session);
+    @ExecutedBy("mExecutor")
+    @Override
+    public void onCameraDeviceError(int error) {
+        super.onCameraDeviceError(error);
+        if (error == CameraDevice.StateCallback.ERROR_CAMERA_SERVICE) {
+            synchronized (mObjectLock) {
+                if (isCameraCaptureSessionOpen() && mDeferrableSurfaces != null) {
+                    debugLog("Close DeferrableSurfaces for CameraDevice error.");
+                    // b/290861504#comment4, close the DeferrableSurfaces.
+                    for (DeferrableSurface deferrableSurface : mDeferrableSurfaces) {
+                        deferrableSurface.close();
+                    }
+                }
+            }
         }
     }
 
     void debugLog(String message) {
         Logger.d(TAG, "[" + SynchronizedCaptureSessionImpl.this + "] " + message);
     }
-
-    private final CameraCaptureSession.CaptureCallback mCaptureCallback =
-            new CameraCaptureSession.CaptureCallback() {
-                @Override
-                public void onCaptureStarted(@NonNull CameraCaptureSession session,
-                        @NonNull CaptureRequest request, long timestamp, long frameNumber) {
-                    if (mStartStreamingCompleter != null) {
-                        mStartStreamingCompleter.set(null);
-                        mStartStreamingCompleter = null;
-                    }
-                }
-
-                @Override
-                public void onCaptureSequenceAborted(@NonNull CameraCaptureSession session,
-                        int sequenceId) {
-                    if (mStartStreamingCompleter != null) {
-                        mStartStreamingCompleter.setCancelled();
-                        mStartStreamingCompleter = null;
-                    }
-                }
-            };
 }

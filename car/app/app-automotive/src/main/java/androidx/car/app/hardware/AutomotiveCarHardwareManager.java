@@ -15,7 +15,7 @@
  */
 package androidx.car.app.hardware;
 
-import static androidx.annotation.RestrictTo.Scope.LIBRARY;
+import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
 
 import static java.util.Objects.requireNonNull;
 
@@ -23,6 +23,11 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RestrictTo;
+import androidx.car.app.CarContext;
+import androidx.car.app.HostDispatcher;
+import androidx.car.app.annotations.ExperimentalCarApi;
+import androidx.car.app.hardware.climate.AutomotiveCarClimate;
+import androidx.car.app.hardware.climate.CarClimate;
 import androidx.car.app.hardware.common.PropertyManager;
 import androidx.car.app.hardware.info.AutomotiveCarInfo;
 import androidx.car.app.hardware.info.AutomotiveCarSensors;
@@ -32,19 +37,26 @@ import androidx.car.app.hardware.info.CarSensors;
 /**
  * {@link CarHardwareManager} which uses Android Automotive OS APIs to access properties, sensors,
  * and actions.
- *
- * @hide
  */
-@RestrictTo(LIBRARY)
+@ExperimentalCarApi
 public final class AutomotiveCarHardwareManager implements CarHardwareManager {
 
     private final AutomotiveCarInfo mCarInfo;
     private final AutomotiveCarSensors mCarSensors;
+    private final AutomotiveCarClimate mCarClimate;
 
     public AutomotiveCarHardwareManager(@NonNull Context context) {
-        requireNonNull(context);
-        mCarInfo = new AutomotiveCarInfo(new PropertyManager(context));
+        Context appContext = requireNonNull(context.getApplicationContext());
+        PropertyManager mPropertyManager = new PropertyManager(appContext);
+        mCarInfo = new AutomotiveCarInfo(mPropertyManager);
         mCarSensors = new AutomotiveCarSensors();
+        mCarClimate = new AutomotiveCarClimate(mPropertyManager);
+    }
+
+    @RestrictTo(LIBRARY_GROUP)
+    public AutomotiveCarHardwareManager(@NonNull CarContext context,
+            @NonNull HostDispatcher dispatcher) {
+        this(context);
     }
 
     @NonNull
@@ -57,5 +69,11 @@ public final class AutomotiveCarHardwareManager implements CarHardwareManager {
     @Override
     public CarSensors getCarSensors() {
         return mCarSensors;
+    }
+
+    @NonNull
+    @Override
+    public CarClimate getCarClimate() {
+        return mCarClimate;
     }
 }

@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
-import androidx.build.AndroidXComposePlugin
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
+import androidx.build.PlatformIdentifier
 
 plugins {
     id("AndroidXPlugin")
@@ -24,101 +30,139 @@ plugins {
     id("AndroidXComposePlugin")
 }
 
-AndroidXComposePlugin.applyAndConfigureKotlinPlugin(project)
+androidXMultiplatform {
+    android()
+    desktop()
 
-android {
-    lintOptions {
-        disable("InvalidPackage")
-    }
-}
+    defaultPlatform(PlatformIdentifier.ANDROID)
 
-dependencies {
-    kotlinPlugin(project(":compose:compiler:compiler"))
-
-    if (!AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-        api(project(":compose:runtime:runtime"))
-        api(project(":compose:ui:ui"))
-        api(project(":compose:ui:ui-graphics"))
-        api(project(":compose:ui:ui-text"))
-        api(project(":compose:ui:ui-unit"))
-        api(libs.kotlinCoroutinesCore)
-        api(libs.kotlinCoroutinesTest)
-        api(libs.kotlinStdlib)
-        api(libs.kotlinStdlibCommon)
-
-        implementation(project(":compose:ui:ui-util"))
-        implementation("androidx.annotation:annotation:1.1.0")
-        implementation(libs.espressoCore)
-
-        androidTestImplementation(project(":activity:activity-compose"))
-        androidTestImplementation(project(":compose:material:material"))
-        androidTestImplementation(project(":compose:test-utils"))
-        androidTestImplementation(project(":compose:ui:ui-test-junit4"))
-        androidTestImplementation(libs.truth)
-        androidTestImplementation(libs.mockitoCore)
-        androidTestImplementation(libs.dexmakerMockito)
-        androidTestImplementation(libs.mockitoKotlin)
-    }
-}
-
-
-if (AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-    kotlin {
-        android()
-        jvm("desktop")
-
-        sourceSets {
-            commonMain.dependencies {
+    sourceSets {
+        commonMain {
+            dependencies {
                 api(project(":compose:ui:ui"))
                 api(project(":compose:ui:ui-text"))
                 api(project(":compose:ui:ui-unit"))
+                api(project(":compose:runtime:runtime"))
                 api(libs.kotlinStdlib)
 
                 implementation(project(":compose:ui:ui-util"))
             }
+        }
 
-            jvmMain.dependencies {
-                api(project(":compose:runtime:runtime"))
+        commonTest {
+            dependencies {
+            }
+        }
+
+        jvmMain {
+            dependsOn(commonMain)
+            dependencies {
                 api(libs.kotlinCoroutinesCore)
                 api(libs.kotlinCoroutinesTest)
                 api(libs.kotlinStdlibCommon)
             }
+        }
 
-            androidMain.dependencies {
+        androidMain {
+            dependsOn(jvmMain)
+            dependencies {
                 api(project(":compose:ui:ui-graphics"))
-
+                implementation("androidx.activity:activity-compose:1.3.0")
                 implementation("androidx.annotation:annotation:1.1.0")
-                implementation(libs.espressoCore)
+                implementation("androidx.core:core-ktx:1.12.0")
+                implementation("androidx.test.espresso:espresso-core:3.5.0")
+                implementation("androidx.test.espresso:espresso-idling-resource:3.5.0")
+                implementation("androidx.test:monitor:1.6.1")
             }
+        }
 
-            androidAndroidTest.dependencies {
-                implementation(project(":compose:material:material"))
-                implementation(project(":compose:test-utils"))
-                implementation(project(":compose:ui:ui-test-junit4"))
-                implementation(project(":activity:activity-compose"))
-                implementation(libs.truth)
-                implementation(libs.mockitoCore)
-                implementation(libs.dexmakerMockito)
-                implementation(libs.mockitoKotlin)
-            }
-
-            desktopMain.dependencies {
+        desktopMain {
+            dependsOn(jvmMain)
+            dependencies {
                 implementation(libs.junit)
                 implementation(libs.truth)
                 implementation(libs.skiko)
             }
+        }
 
-            androidMain.dependsOn(jvmMain)
-            desktopMain.dependsOn(jvmMain)
-            jvmMain.dependsOn(commonMain)
+        jvmTest {
+            dependencies {
+            }
+        }
+
+        androidCommonTest {
+            dependsOn(commonTest)
+            dependencies {
+                implementation(project(":compose:test-utils"))
+                implementation(libs.truth)
+            }
+        }
+
+        androidInstrumentedTest {
+            dependsOn(jvmTest)
+            dependsOn(androidCommonTest)
+            dependencies {
+                implementation(project(":compose:material:material"))
+                implementation(project(":compose:animation:animation"))
+                implementation(project(":compose:ui:ui-test"))
+                implementation("androidx.activity:activity-compose:1.3.1")
+                implementation("androidx.fragment:fragment-testing:1.4.1")
+
+                implementation(libs.mockitoCore)
+                implementation(libs.mockitoKotlin)
+                implementation(libs.dexmakerMockito)
+                implementation(libs.kotlinTest)
+                implementation(libs.testRules)
+                implementation(libs.testRunner)
+                implementation(libs.truth)
+
+            }
+        }
+
+        androidUnitTest {
+            dependsOn(jvmTest)
+            dependsOn(androidCommonTest)
+            dependencies {
+                implementation(libs.truth)
+                implementation(libs.robolectric)
+                implementation(libs.mockitoCore4)
+                implementation(libs.mockitoKotlin4)
+
+                implementation(project(":compose:animation:animation-core"))
+                implementation(project(":compose:material:material"))
+                implementation(project(":compose:test-utils"))
+            }
+        }
+
+        desktopTest {
+            dependsOn(jvmTest)
+            dependencies {
+                implementation(libs.truth)
+                implementation(libs.junit)
+                implementation(libs.kotlinTest)
+                implementation(libs.skikoCurrentOs)
+                implementation(project(":compose:foundation:foundation"))
+                implementation(project(":compose:ui:ui-test"))
+            }
         }
     }
 }
 
+android {
+    sourceSets {
+        test.java.srcDirs += "src/androidCommonTest/kotlin"
+        androidTest.java.srcDirs += "src/androidCommonTest/kotlin"
+    }
+
+    lintOptions {
+        disable("InvalidPackage")
+    }
+    namespace "androidx.compose.ui.test"
+}
+
 androidx {
     name = "Compose Testing"
-    type = LibraryType.PUBLISHED_LIBRARY
-    mavenGroup = LibraryGroups.Compose.UI
+    type = LibraryType.PUBLISHED_KOTLIN_ONLY_TEST_LIBRARY
     inceptionYear = "2019"
     description = "Compose testing library"
     legacyDisableKotlinStrictApiMode = true

@@ -29,6 +29,7 @@ import android.view.MenuItem;
 import android.view.SubMenu;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.core.content.ContextCompat;
@@ -37,7 +38,6 @@ import androidx.core.internal.view.SupportMenuItem;
 import androidx.core.view.ActionProvider;
 
 /**
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class ActionMenuItem implements SupportMenuItem {
@@ -180,6 +180,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public MenuItem setAlphabeticShortcut(char alphaChar, int alphaModifiers) {
         mShortcutAlphabeticChar = Character.toLowerCase(alphaChar);
@@ -238,6 +239,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public MenuItem setNumericShortcut(char numericChar, int numericModifiers) {
         mShortcutNumericChar = numericChar;
@@ -258,6 +260,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return this;
     }
 
+    @NonNull
     @Override
     public MenuItem setShortcut(char numericChar, char alphaChar, int numericModifiers,
             int alphaModifiers) {
@@ -320,6 +323,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return false;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setActionView(View actionView) {
         throw new UnsupportedOperationException();
@@ -340,6 +344,7 @@ public class ActionMenuItem implements SupportMenuItem {
         throw new UnsupportedOperationException();
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setActionView(int resId) {
         throw new UnsupportedOperationException();
@@ -350,11 +355,13 @@ public class ActionMenuItem implements SupportMenuItem {
         return null;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setSupportActionProvider(ActionProvider actionProvider) {
         throw new UnsupportedOperationException();
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setShowAsActionFlags(int actionEnum) {
         setShowAsAction(actionEnum);
@@ -381,6 +388,7 @@ public class ActionMenuItem implements SupportMenuItem {
         throw new UnsupportedOperationException();
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setContentDescription(CharSequence contentDescription) {
         mContentDescription = contentDescription;
@@ -392,6 +400,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return mContentDescription;
     }
 
+    @NonNull
     @Override
     public SupportMenuItem setTooltipText(CharSequence tooltipText) {
         mTooltipText = tooltipText;
@@ -403,6 +412,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return mTooltipText;
     }
 
+    @NonNull
     @Override
     public MenuItem setIconTintList(@Nullable ColorStateList iconTintList) {
         mIconTintList = iconTintList;
@@ -418,6 +428,7 @@ public class ActionMenuItem implements SupportMenuItem {
         return mIconTintList;
     }
 
+    @NonNull
     @Override
     public MenuItem setIconTintMode(PorterDuff.Mode iconTintMode) {
         mIconTintMode = iconTintMode;

@@ -28,6 +28,8 @@ import android.view.ViewGroup;
 import android.view.Window;
 
 import androidx.annotation.CallSuper;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentTransaction;
@@ -62,6 +64,7 @@ import java.lang.ref.WeakReference;
  *
  * When {@link FullWidthDetailsOverviewRowPresenter} is found in adapter,  DetailsSupportFragment will
  * setup default behavior of the DetailsOverviewRow:
+ * <ul>
  * <li>
  * The alignment of FullWidthDetailsOverviewRowPresenter is setup in
  * {@link #setupDetailsOverviewRowPresenter(FullWidthDetailsOverviewRowPresenter)}.
@@ -71,9 +74,11 @@ import java.lang.ref.WeakReference;
  * {@link #onSetDetailsOverviewRowStatus(FullWidthDetailsOverviewRowPresenter,
  * FullWidthDetailsOverviewRowPresenter.ViewHolder, int, int, int)}.
  * </li>
+ * </ul>
  *
  * <p>
  * The recommended activity themes to use with a DetailsSupportFragment are
+ * <ul>
  * <li>
  * {@link androidx.leanback.R.style#Theme_Leanback_Details} with activity
  * shared element transition for {@link FullWidthDetailsOverviewRowPresenter}.
@@ -83,6 +88,7 @@ import java.lang.ref.WeakReference;
  * if shared element transition is not needed, for example if first row is not rendered by
  * {@link FullWidthDetailsOverviewRowPresenter}.
  * </li>
+ * </ul>
  * </p>
  *
  * <p>
@@ -218,7 +224,7 @@ public class DetailsSupportFragment extends BaseSupportFragment {
     @Override
     void createStateMachineTransitions() {
         super.createStateMachineTransitions();
-        /**
+        /*
          * Part 1: Processing enter transitions after fragment.onCreate
          */
         mStateMachine.addTransition(STATE_START, STATE_ENTER_TRANSITION_INIT, EVT_ON_CREATE);
@@ -251,7 +257,7 @@ public class DetailsSupportFragment extends BaseSupportFragment {
         mStateMachine.addTransition(STATE_ENTER_TRANSITION_PENDING, STATE_ENTER_TRANSITION_COMPLETE,
                 EVT_ENTER_TRANSIITON_DONE);
 
-        /**
+        /*
          * Part 2: modification to the entrance transition defined in BaseSupportFragment
          */
         // Must finish enter transition before perform entrance transition.
@@ -270,7 +276,7 @@ public class DetailsSupportFragment extends BaseSupportFragment {
         mStateMachine.addTransition(STATE_ENTRANCE_ON_PREPARED,
                 STATE_SET_ENTRANCE_START_STATE, EVT_ONSTART);
 
-        /**
+        /*
          * Part 3: onSafeStart()
          */
         // for onSafeStart: the condition is onStart called, entrance transition complete
@@ -468,8 +474,9 @@ public class DetailsSupportFragment extends BaseSupportFragment {
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
+    @Nullable
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         mRootView = (BrowseFrameLayout) inflater.inflate(
                 R.layout.lb_details_fragment, container, false);
         mBackgroundView = mRootView.findViewById(R.id.details_background_view);
@@ -530,7 +537,7 @@ public class DetailsSupportFragment extends BaseSupportFragment {
     }
 
     /**
-     * @deprecated override {@link #onInflateTitleView(LayoutInflater,ViewGroup,Bundle)} instead.
+     * @deprecated override {@link BrandedSupportFragment#onInflateTitleView(LayoutInflater, ViewGroup, Bundle)} instead.
      */
     @Deprecated
     protected View inflateTitle(LayoutInflater inflater, ViewGroup parent,
@@ -539,8 +546,11 @@ public class DetailsSupportFragment extends BaseSupportFragment {
     }
 
     @Override
-    public View onInflateTitleView(LayoutInflater inflater, ViewGroup parent,
-                                   Bundle savedInstanceState) {
+    public @NonNull View onInflateTitleView(
+            @NonNull LayoutInflater inflater,
+            @Nullable ViewGroup parent,
+            @Nullable Bundle savedInstanceState
+    ) {
         return inflateTitle(inflater, parent, savedInstanceState);
     }
 

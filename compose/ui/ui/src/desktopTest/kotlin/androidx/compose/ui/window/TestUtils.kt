@@ -16,20 +16,25 @@
 
 package androidx.compose.ui.window
 
+import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import java.awt.GraphicsEnvironment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assume.assumeFalse
-import java.awt.GraphicsEnvironment
+import org.junit.Assume.assumeTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun runApplicationTest(
@@ -45,6 +50,10 @@ internal fun runApplicationTest(
     useDelay: Boolean = false,
     body: suspend WindowTestScope.() -> Unit
 ) {
+    // b/271123970 These tests are flaky or fail.
+    // We reconsider enable them after upstreaming desktop changes
+    val composeForDesktopUpstreamed = false
+    assumeTrue(composeForDesktopUpstreamed)
     assumeFalse(GraphicsEnvironment.getLocalGraphicsEnvironment().isHeadlessInstance)
 
     runBlocking(Dispatchers.Swing) {
@@ -103,6 +112,7 @@ internal class WindowTestScope(
     private val useDelay: Boolean
 ) : CoroutineScope by CoroutineScope(scope.coroutineContext + Job()) {
     var isOpen by mutableStateOf(true)
+    private val initialRecomposers = Recomposer.runningRecomposers.value
 
     fun exitApplication() {
         isOpen = false
@@ -122,10 +132,10 @@ internal class WindowTestScope(
         repeat(100) {
             yield()
         }
+
+        Snapshot.sendApplyNotifications()
+        for (recomposerInfo in Recomposer.runningRecomposers.value - initialRecomposers) {
+            recomposerInfo.state.takeWhile { it > Recomposer.State.Idle }.collect()
+        }
     }
 }
-
-private val os = System.getProperty("os.name").lowercase()
-internal val isLinux = os.startsWith("linux")
-internal val isWindows = os.startsWith("win")
-internal val isMacOs = os.startsWith("mac")

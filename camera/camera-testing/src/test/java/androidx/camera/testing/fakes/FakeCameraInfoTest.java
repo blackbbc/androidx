@@ -17,11 +17,16 @@
 package androidx.camera.testing.fakes;
 
 
+import static android.graphics.ImageFormat.JPEG;
+import static android.graphics.ImageFormat.JPEG_R;
+
 import static com.google.common.truth.Truth.assertThat;
 
 import android.os.Build;
+import android.util.Size;
 
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.impl.ImageFormatConstants;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -29,6 +34,11 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.internal.DoNotInstrument;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
@@ -54,5 +64,40 @@ public final class FakeCameraInfoTest {
     @Test
     public void canRetrieveSensorRotation() {
         assertThat(mFakeCameraInfo.getSensorRotationDegrees()).isEqualTo(SENSOR_ROTATION_DEGREES);
+    }
+
+    @Test
+    public void canRetrieveSupportedResolutions() {
+        List<Size> resolutions = new ArrayList<>();
+        resolutions.add(new Size(1280, 720));
+        resolutions.add(new Size(640, 480));
+        mFakeCameraInfo.setSupportedResolutions(
+                ImageFormatConstants.INTERNAL_DEFINED_IMAGE_FORMAT_PRIVATE, resolutions);
+
+        assertThat(mFakeCameraInfo.getSupportedResolutions(
+                ImageFormatConstants.INTERNAL_DEFINED_IMAGE_FORMAT_PRIVATE))
+                .containsExactlyElementsIn(resolutions);
+    }
+
+    @Test
+    public void canRetrieveSupportedOutputFormats() {
+        mFakeCameraInfo.setSupportedResolutions(JPEG, new ArrayList<>());
+        mFakeCameraInfo.setSupportedResolutions(JPEG_R, new ArrayList<>());
+
+        Set<Integer> formats = new HashSet<>();
+        formats.add(JPEG);
+        formats.add(JPEG_R);
+        assertThat(mFakeCameraInfo.getSupportedOutputFormats()).containsExactlyElementsIn(formats);
+    }
+
+    @Test
+    public void canRetrieveSupportedFpsRanges() {
+        assertThat(mFakeCameraInfo.getSupportedFrameRateRanges()).isNotEmpty();
+
+    }
+
+    @Test
+    public void canRetrieveSupportedDynamicRanges() {
+        assertThat(mFakeCameraInfo.getSupportedDynamicRanges()).isNotEmpty();
     }
 }

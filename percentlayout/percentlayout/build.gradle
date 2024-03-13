@@ -1,4 +1,10 @@
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -21,12 +27,13 @@ android {
     sourceSets {
         main.res.srcDir "res"
     }
+    namespace "androidx.percentlayout"
 }
 
 androidx {
-    name = "Android Percent Support Library"
+    name = "Percent"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.PERCENTLAYOUT
     inceptionYear = "2015"
     description = "Android Percent Support Library"
+    metalavaK2UastEnabled = true
 }

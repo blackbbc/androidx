@@ -19,10 +19,9 @@ import puppeteer = require('puppeteer');
 import { log } from './logger';
 import { ContentNode } from './types';
 import { PlainTextFormatter } from './plain_text_formatter';
+import { transformUrl } from './url-transforms';
 
-// https://github.com/ebidel/try-puppeteer/commit/aacadb54abf861a807e9a71ee54d03abbf21d193
-// use --no-sandbox for some reason
-const CHROME_LAUNCH_ARGS = ['--no-sandbox', '--enable-dom-distiller'];
+const CHROME_LAUNCH_ARGS = ['--enable-dom-distiller'];
 
 // A list of DOM Node types that are usually not useful in the context
 // of fetching text content from the page.
@@ -38,6 +37,11 @@ export async function handleRequest(request: Request, response: Response) {
   if (url) {
     try {
       log(`Handling license request for ${url}`);
+      if (!isValidProtocol(url)) {
+        response.status(400).send('Invalid request.');
+        return;
+      }
+
       const nodes = await handleLicenseRequest(url);
       const content = PlainTextFormatter.plainTextFor(nodes);
       response.status(200).send(content);
@@ -50,14 +54,46 @@ export async function handleRequest(request: Request, response: Response) {
   }
 }
 
-async function handleLicenseRequest(url: string): Promise<ContentNode[]> {
-  const browser = await puppeteer.launch({ args: CHROME_LAUNCH_ARGS });
+/**
+ * Validates the protocol. Only allows `https?` requests.
+ * @param requestUrl The request url
+ * @return `true` if the protocol is valid.
+ */
+function isValidProtocol(requestUrl: string): boolean {
+  const url = new URL(requestUrl);
+  if (url.protocol === 'https:') {
+    // Allow https requests
+    return true;
+  } else if (url.protocol === 'http:') {
+    // Allow http requests
+    return true;
+  } else {
+    log(`Invalid protocol ${url.protocol}`);
+    return false;
+  }
+}
+
+async function handleLicenseRequest(url: string, enableLocalDebugging: boolean = false): Promise<ContentNode[]> {
+  const transformed = transformUrl(url);
+  if (url !== transformed) {
+    log(`Transformed request url to ${transformed}`);
+  }
+  const browser = await puppeteer.launch({
+    args: CHROME_LAUNCH_ARGS,
+    devtools: enableLocalDebugging,
+    // https://developer.chrome.com/articles/new-headless/
+    headless: 'new'
+  });
   const page = await browser.newPage();
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  if (enableLocalDebugging) {
+    page.on('console', (message) => {
+      log(`Puppeteer: ${message.text()}`);
+    });
+  }
+  await page.goto(transformed, { waitUntil: 'domcontentloaded' });
   const content = await page.evaluate(() => {
     // A map of banned nodes
     const BANNED_LOCAL_NAMES: BannedNames = {
-      'a': true,
       'button': true,
       'canvas': true,
       'footer': true,
@@ -113,6 +149,15 @@ async function handleLicenseRequest(url: string): Promise<ContentNode[]> {
       // of the node, and not the child nodes.
       const cloned = node.cloneNode();
       const localName = name;
+      // Handle elements of different types
+      if (cloned instanceof HTMLAnchorElement) {
+        // anchor element
+        // Ensure that it has reasonable href content
+        const href = cloned.href;
+        if (href.length <= 0 || href === '#') {
+          return null;
+        }
+      }
       const textContent = cloned.textContent;
       const children = contentForNodeList(node.childNodes);
       return {

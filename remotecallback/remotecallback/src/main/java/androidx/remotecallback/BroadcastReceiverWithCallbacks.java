@@ -25,6 +25,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 
 /**
@@ -35,6 +37,7 @@ import androidx.annotation.RestrictTo;
  * @param <T> Should be specified as the root class (e.g. class X extends
  *           BroadcastReceiverWithCallbacks\<X>)
  */
+@SuppressWarnings("HiddenSuperclass")
 public abstract class BroadcastReceiverWithCallbacks<T extends CallbackReceiver> extends
         BroadcastReceiver implements CallbackReceiver<T>, CallbackBase<T> {
 
@@ -51,18 +54,20 @@ public abstract class BroadcastReceiverWithCallbacks<T extends CallbackReceiver>
         }
     }
 
+    @NonNull
     @Override
-    public T createRemoteCallback(Context context) {
+    public T createRemoteCallback(@NonNull Context context) {
         return CallbackHandlerRegistry.sInstance.getAndResetStub(getClass(), context, null);
     }
 
     /**
-     * @hide
      */
+    @NonNull
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     @Override
-    public RemoteCallback toRemoteCallback(Class<T> cls, Context context, String authority,
-            Bundle args, String method) {
+    public RemoteCallback toRemoteCallback(@NonNull Class<T> cls, @NonNull Context context,
+            @Nullable String authority,
+            @NonNull Bundle args, @NonNull String method) {
         Intent intent = new Intent(ACTION_BROADCAST_CALLBACK);
         intent.setComponent(new ComponentName(context.getPackageName(), cls.getName()));
         args.putString(EXTRA_METHOD, method);

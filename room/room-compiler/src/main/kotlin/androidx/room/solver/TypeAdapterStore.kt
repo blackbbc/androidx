@@ -16,22 +16,33 @@
 
 package androidx.room.solver
 
+import androidx.annotation.VisibleForTesting
+import androidx.room.compiler.codegen.CodeLanguage
+import androidx.room.compiler.codegen.XTypeName
+import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.isArray
 import androidx.room.compiler.processing.isEnum
+import androidx.room.ext.CollectionTypeNames.ARRAY_MAP
+import androidx.room.ext.CollectionTypeNames.INT_SPARSE_ARRAY
+import androidx.room.ext.CollectionTypeNames.LONG_SPARSE_ARRAY
 import androidx.room.ext.CommonTypeNames
-import androidx.room.ext.GuavaBaseTypeNames
+import androidx.room.ext.GuavaTypeNames
+import androidx.room.ext.getValueClassUnderlyingElement
+import androidx.room.ext.isByteBuffer
 import androidx.room.ext.isEntityElement
 import androidx.room.ext.isNotByte
 import androidx.room.ext.isNotKotlinUnit
 import androidx.room.ext.isNotVoid
 import androidx.room.ext.isNotVoidObject
+import androidx.room.ext.isUUID
 import androidx.room.parser.ParsedQuery
 import androidx.room.parser.SQLTypeAffinity
 import androidx.room.processor.Context
 import androidx.room.processor.EntityProcessor
 import androidx.room.processor.FieldProcessor
 import androidx.room.processor.PojoProcessor
+import androidx.room.processor.ProcessorErrors
 import androidx.room.processor.ProcessorErrors.DO_NOT_USE_GENERIC_IMMUTABLE_MULTIMAP
 import androidx.room.solver.binderprovider.CoroutineFlowResultBinderProvider
 import androidx.room.solver.binderprovider.CursorQueryResultBinderProvider
@@ -39,9 +50,12 @@ import androidx.room.solver.binderprovider.DataSourceFactoryQueryResultBinderPro
 import androidx.room.solver.binderprovider.DataSourceQueryResultBinderProvider
 import androidx.room.solver.binderprovider.GuavaListenableFutureQueryResultBinderProvider
 import androidx.room.solver.binderprovider.InstantQueryResultBinderProvider
+import androidx.room.solver.binderprovider.ListenableFuturePagingSourceQueryResultBinderProvider
 import androidx.room.solver.binderprovider.LiveDataQueryResultBinderProvider
 import androidx.room.solver.binderprovider.PagingSourceQueryResultBinderProvider
 import androidx.room.solver.binderprovider.RxCallableQueryResultBinderProvider
+import androidx.room.solver.binderprovider.RxJava2PagingSourceQueryResultBinderProvider
+import androidx.room.solver.binderprovider.RxJava3PagingSourceQueryResultBinderProvider
 import androidx.room.solver.binderprovider.RxQueryResultBinderProvider
 import androidx.room.solver.prepared.binder.PreparedQueryResultBinder
 import androidx.room.solver.prepared.binderprovider.GuavaListenableFuturePreparedQueryResultBinderProvider
@@ -61,51 +75,61 @@ import androidx.room.solver.query.result.ImmutableListQueryResultAdapter
 import androidx.room.solver.query.result.ImmutableMapQueryResultAdapter
 import androidx.room.solver.query.result.ListQueryResultAdapter
 import androidx.room.solver.query.result.MapQueryResultAdapter
+import androidx.room.solver.query.result.MapValueResultAdapter
+import androidx.room.solver.query.result.MultimapQueryResultAdapter
+import androidx.room.solver.query.result.MultimapQueryResultAdapter.Companion.getMapColumnName
+import androidx.room.solver.query.result.MultimapQueryResultAdapter.Companion.validateMapKeyTypeArg
+import androidx.room.solver.query.result.MultimapQueryResultAdapter.Companion.validateMapValueTypeArg
+import androidx.room.solver.query.result.MultimapQueryResultAdapter.MapType.Companion.isSparseArray
 import androidx.room.solver.query.result.OptionalQueryResultAdapter
 import androidx.room.solver.query.result.PojoRowAdapter
 import androidx.room.solver.query.result.QueryResultAdapter
 import androidx.room.solver.query.result.QueryResultBinder
 import androidx.room.solver.query.result.RowAdapter
 import androidx.room.solver.query.result.SingleColumnRowAdapter
-import androidx.room.solver.query.result.SingleEntityQueryResultAdapter
+import androidx.room.solver.query.result.SingleItemQueryResultAdapter
+import androidx.room.solver.query.result.SingleNamedColumnRowAdapter
 import androidx.room.solver.shortcut.binder.DeleteOrUpdateMethodBinder
-import androidx.room.solver.shortcut.binder.InsertMethodBinder
+import androidx.room.solver.shortcut.binder.InsertOrUpsertMethodBinder
 import androidx.room.solver.shortcut.binderprovider.DeleteOrUpdateMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.GuavaListenableFutureDeleteOrUpdateMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.GuavaListenableFutureInsertMethodBinderProvider
-import androidx.room.solver.shortcut.binderprovider.InsertMethodBinderProvider
+import androidx.room.solver.shortcut.binderprovider.GuavaListenableFutureUpsertMethodBinderProvider
+import androidx.room.solver.shortcut.binderprovider.InsertOrUpsertMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.InstantDeleteOrUpdateMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.InstantInsertMethodBinderProvider
+import androidx.room.solver.shortcut.binderprovider.InstantUpsertMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.RxCallableDeleteOrUpdateMethodBinderProvider
 import androidx.room.solver.shortcut.binderprovider.RxCallableInsertMethodBinderProvider
+import androidx.room.solver.shortcut.binderprovider.RxCallableUpsertMethodBinderProvider
 import androidx.room.solver.shortcut.result.DeleteOrUpdateMethodAdapter
-import androidx.room.solver.shortcut.result.InsertMethodAdapter
+import androidx.room.solver.shortcut.result.InsertOrUpsertMethodAdapter
 import androidx.room.solver.types.BoxedBooleanToBoxedIntConverter
 import androidx.room.solver.types.BoxedPrimitiveColumnTypeAdapter
 import androidx.room.solver.types.ByteArrayColumnTypeAdapter
 import androidx.room.solver.types.ByteBufferColumnTypeAdapter
 import androidx.room.solver.types.ColumnTypeAdapter
 import androidx.room.solver.types.CompositeAdapter
-import androidx.room.solver.types.CompositeTypeConverter
 import androidx.room.solver.types.CursorValueReader
 import androidx.room.solver.types.EnumColumnTypeAdapter
-import androidx.room.solver.types.NoOpConverter
 import androidx.room.solver.types.PrimitiveBooleanToIntConverter
 import androidx.room.solver.types.PrimitiveColumnTypeAdapter
 import androidx.room.solver.types.StatementValueBinder
 import androidx.room.solver.types.StringColumnTypeAdapter
 import androidx.room.solver.types.TypeConverter
+import androidx.room.solver.types.UuidColumnTypeAdapter
+import androidx.room.solver.types.ValueClassConverterWrapper
+import androidx.room.vo.BuiltInConverterFlags
+import androidx.room.vo.MapInfo
 import androidx.room.vo.ShortcutQueryParameter
-import com.google.common.annotations.VisibleForTesting
+import androidx.room.vo.Warning
+import androidx.room.vo.isEnabled
 import com.google.common.collect.ImmutableList
 import com.google.common.collect.ImmutableListMultimap
+import com.google.common.collect.ImmutableMap
 import com.google.common.collect.ImmutableMultimap
 import com.google.common.collect.ImmutableSetMultimap
-import com.squareup.javapoet.ClassName
-import com.google.common.collect.ImmutableMap
-import java.util.LinkedList
 
-@Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
 /**
  * Holds all type adapters and can create on demand composite type adapters to convert a type into a
  * database column.
@@ -116,10 +140,9 @@ class TypeAdapterStore private constructor(
      * first type adapter has the highest priority
      */
     private val columnTypeAdapters: List<ColumnTypeAdapter>,
-    /**
-     * first converter has the highest priority
-     */
-    private val typeConverters: List<TypeConverter>
+    @get:VisibleForTesting
+    internal val typeConverterStore: TypeConverterStore,
+    private val builtInConverterFlags: BuiltInConverterFlags
 ) {
 
     companion object {
@@ -127,14 +150,18 @@ class TypeAdapterStore private constructor(
             return TypeAdapterStore(
                 context = context,
                 columnTypeAdapters = store.columnTypeAdapters,
-                typeConverters = store.typeConverters
+                typeConverterStore = store.typeConverterStore,
+                builtInConverterFlags = store.builtInConverterFlags
             )
         }
 
-        fun create(context: Context, vararg extras: Any): TypeAdapterStore {
+        fun create(
+            context: Context,
+            builtInConverterFlags: BuiltInConverterFlags,
+            vararg extras: Any
+        ): TypeAdapterStore {
             val adapters = arrayListOf<ColumnTypeAdapter>()
             val converters = arrayListOf<TypeConverter>()
-
             fun addAny(extra: Any?) {
                 when (extra) {
                     is TypeConverter -> converters.add(extra)
@@ -161,18 +188,24 @@ class TypeAdapterStore private constructor(
                 .forEach(::addColumnAdapter)
             StringColumnTypeAdapter.create(context.processingEnv).forEach(::addColumnAdapter)
             ByteArrayColumnTypeAdapter.create(context.processingEnv).forEach(::addColumnAdapter)
-            ByteBufferColumnTypeAdapter.create(context.processingEnv).forEach(::addColumnAdapter)
             PrimitiveBooleanToIntConverter.create(context.processingEnv).forEach(::addTypeConverter)
+            // null aware converter is able to automatically null wrap converters so we don't
+            // need this as long as we are running in KSP
             BoxedBooleanToBoxedIntConverter.create(context.processingEnv)
                 .forEach(::addTypeConverter)
             return TypeAdapterStore(
                 context = context, columnTypeAdapters = adapters,
-                typeConverters = converters
+                typeConverterStore = TypeConverterStore.create(
+                    context = context,
+                    typeConverters = converters,
+                    knownColumnTypes = adapters.map { it.out }
+                ),
+                builtInConverterFlags = builtInConverterFlags
             )
         }
     }
 
-    val queryResultBinderProviders: List<QueryResultBinderProvider> =
+    private val queryResultBinderProviders: List<QueryResultBinderProvider> =
         mutableListOf<QueryResultBinderProvider>().apply {
             add(CursorQueryResultBinderProvider(context))
             add(LiveDataQueryResultBinderProvider(context))
@@ -181,36 +214,41 @@ class TypeAdapterStore private constructor(
             addAll(RxCallableQueryResultBinderProvider.getAll(context))
             add(DataSourceQueryResultBinderProvider(context))
             add(DataSourceFactoryQueryResultBinderProvider(context))
+            add(RxJava2PagingSourceQueryResultBinderProvider(context))
+            add(RxJava3PagingSourceQueryResultBinderProvider(context))
+            add(ListenableFuturePagingSourceQueryResultBinderProvider(context))
             add(PagingSourceQueryResultBinderProvider(context))
             add(CoroutineFlowResultBinderProvider(context))
             add(InstantQueryResultBinderProvider(context))
         }
 
-    val preparedQueryResultBinderProviders: List<PreparedQueryResultBinderProvider> =
+    private val preparedQueryResultBinderProviders: List<PreparedQueryResultBinderProvider> =
         mutableListOf<PreparedQueryResultBinderProvider>().apply {
             addAll(RxPreparedQueryResultBinderProvider.getAll(context))
             add(GuavaListenableFuturePreparedQueryResultBinderProvider(context))
             add(InstantPreparedQueryResultBinderProvider(context))
         }
 
-    val insertBinderProviders: List<InsertMethodBinderProvider> =
-        mutableListOf<InsertMethodBinderProvider>().apply {
+    private val insertBinderProviders: List<InsertOrUpsertMethodBinderProvider> =
+        mutableListOf<InsertOrUpsertMethodBinderProvider>().apply {
             addAll(RxCallableInsertMethodBinderProvider.getAll(context))
             add(GuavaListenableFutureInsertMethodBinderProvider(context))
             add(InstantInsertMethodBinderProvider(context))
         }
 
-    val deleteOrUpdateBinderProvider: List<DeleteOrUpdateMethodBinderProvider> =
+    private val deleteOrUpdateBinderProvider: List<DeleteOrUpdateMethodBinderProvider> =
         mutableListOf<DeleteOrUpdateMethodBinderProvider>().apply {
             addAll(RxCallableDeleteOrUpdateMethodBinderProvider.getAll(context))
             add(GuavaListenableFutureDeleteOrUpdateMethodBinderProvider(context))
             add(InstantDeleteOrUpdateMethodBinderProvider(context))
         }
 
-    // type mirrors that be converted into columns w/o an extra converter
-    private val knownColumnTypeMirrors by lazy {
-        columnTypeAdapters.map { it.out }
-    }
+    private val upsertBinderProviders: List<InsertOrUpsertMethodBinderProvider> =
+        mutableListOf<InsertOrUpsertMethodBinderProvider>().apply {
+            addAll(RxCallableUpsertMethodBinderProvider.getAll(context))
+            add(GuavaListenableFutureUpsertMethodBinderProvider(context))
+            add(InstantUpsertMethodBinderProvider(context))
+        }
 
     /**
      * Searches 1 way to bind a value into a statement.
@@ -228,8 +266,11 @@ class TypeAdapterStore private constructor(
         }
 
         fun findTypeConverterAdapter(): ColumnTypeAdapter? {
-            val targetTypes = targetTypeMirrorsFor(affinity)
-            val binder = findTypeConverter(input, targetTypes) ?: return null
+            val targetTypes = affinity?.getTypeMirrors(context.processingEnv)
+            val binder = typeConverterStore.findConverterIntoStatement(
+                input = input,
+                columnTypes = targetTypes
+            ) ?: return null
             // columnAdapter should not be null but we are receiving errors on crash in `first()` so
             // this safeguard allows us to dispatch the real problem to the user (e.g. why we couldn't
             // find the right adapter)
@@ -241,23 +282,11 @@ class TypeAdapterStore private constructor(
         if (adapterByTypeConverter != null) {
             return adapterByTypeConverter
         }
-        val enumAdapter = createEnumTypeAdapter(input)
-        if (enumAdapter != null) {
-            return enumAdapter
+        val defaultAdapter = createDefaultTypeAdapter(input, affinity)
+        if (defaultAdapter != null) {
+            return defaultAdapter
         }
         return null
-    }
-
-    /**
-     * Returns which entities targets the given affinity.
-     */
-    private fun targetTypeMirrorsFor(affinity: SQLTypeAffinity?): List<XType> {
-        val specifiedTargets = affinity?.getTypeMirrors(context.processingEnv)
-        return if (specifiedTargets == null || specifiedTargets.isEmpty()) {
-            knownColumnTypeMirrors
-        } else {
-            specifiedTargets
-        }
     }
 
     /**
@@ -267,15 +296,18 @@ class TypeAdapterStore private constructor(
         if (output.isError()) {
             return null
         }
-        val adapter = findColumnTypeAdapter(output, affinity, skipEnumConverter = true)
+        val adapter = findColumnTypeAdapter(output, affinity, skipDefaultConverter = true)
         if (adapter != null) {
             // two way is better
             return adapter
         }
 
         fun findTypeConverterAdapter(): ColumnTypeAdapter? {
-            val targetTypes = targetTypeMirrorsFor(affinity)
-            val converter = findTypeConverter(targetTypes, output) ?: return null
+            val targetTypes = affinity?.getTypeMirrors(context.processingEnv)
+            val converter = typeConverterStore.findConverterFromCursor(
+                columnTypes = targetTypes,
+                output = output
+            ) ?: return null
             return CompositeAdapter(
                 output,
                 getAllColumnAdapters(converter.from).first(), null, converter
@@ -288,33 +320,12 @@ class TypeAdapterStore private constructor(
             return typeConverterAdapter
         }
 
-        val enumAdapter = createEnumTypeAdapter(output)
-        if (enumAdapter != null) {
-            return enumAdapter
+        val defaultAdapter = createDefaultTypeAdapter(output, affinity)
+        if (defaultAdapter != null) {
+            return defaultAdapter
         }
 
         return null
-    }
-
-    /**
-     * Tries to reverse the converter going through the same nodes, if possible.
-     */
-    @VisibleForTesting
-    fun reverse(converter: TypeConverter): TypeConverter? {
-        return when (converter) {
-            is NoOpConverter -> converter
-            is CompositeTypeConverter -> {
-                val r1 = reverse(converter.conv1) ?: return null
-                val r2 = reverse(converter.conv2) ?: return null
-                CompositeTypeConverter(r2, r1)
-            }
-            else -> {
-                typeConverters.firstOrNull {
-                    it.from.isSameType(converter.to) &&
-                        it.to.isSameType(converter.from)
-                }
-            }
-        }
     }
 
     /**
@@ -324,7 +335,7 @@ class TypeAdapterStore private constructor(
     fun findColumnTypeAdapter(
         out: XType,
         affinity: SQLTypeAffinity?,
-        skipEnumConverter: Boolean
+        skipDefaultConverter: Boolean
     ): ColumnTypeAdapter? {
         if (out.isError()) {
             return null
@@ -335,11 +346,14 @@ class TypeAdapterStore private constructor(
         }
 
         fun findTypeConverterAdapter(): ColumnTypeAdapter? {
-            val targetTypes = targetTypeMirrorsFor(affinity)
-            val intoStatement = findTypeConverter(out, targetTypes) ?: return null
+            val targetTypes = affinity?.getTypeMirrors(context.processingEnv)
+            val intoStatement = typeConverterStore.findConverterIntoStatement(
+                input = out,
+                columnTypes = targetTypes
+            ) ?: return null
             // ok found a converter, try the reverse now
-            val fromCursor = reverse(intoStatement)
-                ?: findTypeConverter(intoStatement.to, out) ?: return null
+            val fromCursor = typeConverterStore.reverse(intoStatement)
+                ?: typeConverterStore.findTypeConverter(intoStatement.to, out) ?: return null
             return CompositeAdapter(
                 out, getAllColumnAdapters(intoStatement.to).first(), intoStatement, fromCursor
             )
@@ -349,21 +363,48 @@ class TypeAdapterStore private constructor(
         if (adapterByTypeConverter != null) {
             return adapterByTypeConverter
         }
-        if (!skipEnumConverter) {
-            val enumAdapter = createEnumTypeAdapter(out)
-            if (enumAdapter != null) {
-                return enumAdapter
+
+        if (!skipDefaultConverter) {
+            val defaultAdapter = createDefaultTypeAdapter(out, affinity)
+            if (defaultAdapter != null) {
+                return defaultAdapter
             }
         }
         return null
     }
 
-    private fun createEnumTypeAdapter(type: XType): ColumnTypeAdapter? {
-        val typeElement = type.typeElement ?: return null
-        if (typeElement.isEnum()) {
-            return EnumColumnTypeAdapter(typeElement)
+    private fun createDefaultTypeAdapter(
+        type: XType,
+        affinity: SQLTypeAffinity?
+    ): ColumnTypeAdapter? {
+        val typeElement = type.typeElement
+        if (typeElement?.isValueClass() == true) {
+            // Extract the type value of the Value class element
+            val underlyingProperty = typeElement.getValueClassUnderlyingElement()
+            val underlyingTypeColumnAdapter = findColumnTypeAdapter(
+                // Find an adapter for the non-null underlying type, nullability will be handled
+                // by the value class adapter.
+                out = underlyingProperty.asMemberOf(type).makeNonNullable(),
+                affinity = affinity,
+                skipDefaultConverter = false
+            ) ?: return null
+
+            return ValueClassConverterWrapper(
+                valueTypeColumnAdapter = underlyingTypeColumnAdapter,
+                affinity = underlyingTypeColumnAdapter.typeAffinity,
+                out = type,
+                valuePropertyName = underlyingProperty.name
+            )
         }
-        return null
+        return when {
+            builtInConverterFlags.enums.isEnabled() &&
+                typeElement?.isEnum() == true -> EnumColumnTypeAdapter(typeElement, type)
+            builtInConverterFlags.uuid.isEnabled() &&
+                type.isUUID() -> UuidColumnTypeAdapter(type)
+            builtInConverterFlags.byteBuffer.isEnabled() &&
+                type.isByteBuffer() -> ByteBufferColumnTypeAdapter(type)
+            else -> null
+        }
     }
 
     private fun findDirectAdapterFor(
@@ -375,10 +416,6 @@ class TypeAdapterStore private constructor(
         }
     }
 
-    fun findTypeConverter(input: XType, output: XType): TypeConverter? {
-        return findTypeConverter(listOf(input), listOf(output))
-    }
-
     fun findDeleteOrUpdateMethodBinder(typeMirror: XType): DeleteOrUpdateMethodBinder {
         return deleteOrUpdateBinderProvider.first {
             it.matches(typeMirror)
@@ -388,16 +425,37 @@ class TypeAdapterStore private constructor(
     fun findInsertMethodBinder(
         typeMirror: XType,
         params: List<ShortcutQueryParameter>
-    ): InsertMethodBinder {
+    ): InsertOrUpsertMethodBinder {
         return insertBinderProviders.first {
             it.matches(typeMirror)
         }.provide(typeMirror, params)
     }
 
-    fun findQueryResultBinder(typeMirror: XType, query: ParsedQuery): QueryResultBinder {
+    fun findUpsertMethodBinder(
+        typeMirror: XType,
+        params: List<ShortcutQueryParameter>
+    ): InsertOrUpsertMethodBinder {
+        return upsertBinderProviders.first {
+            it.matches(typeMirror)
+        }.provide(typeMirror, params)
+    }
+
+    fun findQueryResultBinder(
+        typeMirror: XType,
+        query: ParsedQuery,
+        extrasCreator: TypeAdapterExtras.() -> Unit = { }
+    ): QueryResultBinder {
+        return findQueryResultBinder(typeMirror, query, TypeAdapterExtras().apply(extrasCreator))
+    }
+
+    fun findQueryResultBinder(
+        typeMirror: XType,
+        query: ParsedQuery,
+        extras: TypeAdapterExtras
+    ): QueryResultBinder {
         return queryResultBinderProviders.first {
             it.matches(typeMirror)
-        }.provide(typeMirror, query)
+        }.provide(typeMirror, query, extras)
     }
 
     fun findPreparedQueryResultBinder(
@@ -419,34 +477,71 @@ class TypeAdapterStore private constructor(
     fun findInsertAdapter(
         typeMirror: XType,
         params: List<ShortcutQueryParameter>
-    ): InsertMethodAdapter? {
-        return InsertMethodAdapter.create(typeMirror, params)
+    ): InsertOrUpsertMethodAdapter? {
+        return InsertOrUpsertMethodAdapter.createInsert(context, typeMirror, params)
     }
 
-    fun findQueryResultAdapter(typeMirror: XType, query: ParsedQuery): QueryResultAdapter? {
+    fun findUpsertAdapter(
+        typeMirror: XType,
+        params: List<ShortcutQueryParameter>
+    ): InsertOrUpsertMethodAdapter? {
+        return InsertOrUpsertMethodAdapter.createUpsert(context, typeMirror, params)
+    }
+
+    fun findQueryResultAdapter(
+        typeMirror: XType,
+        query: ParsedQuery,
+        extrasCreator: TypeAdapterExtras.() -> Unit = { }
+    ): QueryResultAdapter? {
+        return findQueryResultAdapter(typeMirror, query, TypeAdapterExtras().apply(extrasCreator))
+    }
+
+    fun findQueryResultAdapter(
+        typeMirror: XType,
+        query: ParsedQuery,
+        extras: TypeAdapterExtras
+    ): QueryResultAdapter? {
         if (typeMirror.isError()) {
             return null
         }
+
         // TODO: (b/192068912) Refactor the following since this if-else cascade has gotten large
         if (typeMirror.isArray() && typeMirror.componentType.isNotByte()) {
+            checkTypeNullability(
+                typeMirror,
+                extras,
+                "Array",
+                arrayComponentType = typeMirror.componentType
+            )
             val rowAdapter =
                 findRowAdapter(typeMirror.componentType, query) ?: return null
-            return ArrayQueryResultAdapter(rowAdapter)
+            return ArrayQueryResultAdapter(typeMirror, rowAdapter)
         } else if (typeMirror.typeArguments.isEmpty()) {
             val rowAdapter = findRowAdapter(typeMirror, query) ?: return null
-            return SingleEntityQueryResultAdapter(rowAdapter)
-        } else if (typeMirror.rawType.typeName == GuavaBaseTypeNames.OPTIONAL) {
+            return SingleItemQueryResultAdapter(rowAdapter)
+        } else if (typeMirror.rawType.asTypeName() == GuavaTypeNames.OPTIONAL) {
+            checkTypeNullability(
+                typeMirror,
+                extras,
+                "Optional"
+            )
             // Handle Guava Optional by unpacking its generic type argument and adapting that.
-            // The Optional adapter will reappend the Optional type.
+            // The Optional adapter will re-append the Optional type.
             val typeArg = typeMirror.typeArguments.first()
             // use nullable when finding row adapter as non-null adapters might return
             // default values
             val rowAdapter = findRowAdapter(typeArg.makeNullable(), query) ?: return null
             return GuavaOptionalQueryResultAdapter(
                 typeArg = typeArg,
-                resultAdapter = SingleEntityQueryResultAdapter(rowAdapter)
+                resultAdapter = SingleItemQueryResultAdapter(rowAdapter)
             )
-        } else if (typeMirror.rawType.typeName == CommonTypeNames.OPTIONAL) {
+        } else if (typeMirror.rawType.asTypeName() == CommonTypeNames.OPTIONAL) {
+            checkTypeNullability(
+                typeMirror,
+                extras,
+                "Optional"
+            )
+
             // Handle java.util.Optional similarly.
             val typeArg = typeMirror.typeArguments.first()
             // use nullable when finding row adapter as non-null adapters might return
@@ -454,9 +549,14 @@ class TypeAdapterStore private constructor(
             val rowAdapter = findRowAdapter(typeArg.makeNullable(), query) ?: return null
             return OptionalQueryResultAdapter(
                 typeArg = typeArg,
-                resultAdapter = SingleEntityQueryResultAdapter(rowAdapter)
+                resultAdapter = SingleItemQueryResultAdapter(rowAdapter)
             )
         } else if (typeMirror.isTypeOf(ImmutableList::class)) {
+            checkTypeNullability(
+                typeMirror,
+                extras
+            )
+
             val typeArg = typeMirror.typeArguments.first().extendsBoundOrSelf()
             val rowAdapter = findRowAdapter(typeArg, query) ?: return null
             return ImmutableListQueryResultAdapter(
@@ -464,6 +564,11 @@ class TypeAdapterStore private constructor(
                 rowAdapter = rowAdapter
             )
         } else if (typeMirror.isTypeOf(java.util.List::class)) {
+            checkTypeNullability(
+                typeMirror,
+                extras
+            )
+
             val typeArg = typeMirror.typeArguments.first().extendsBoundOrSelf()
             val rowAdapter = findRowAdapter(typeArg, query) ?: return null
             return ListQueryResultAdapter(
@@ -473,6 +578,7 @@ class TypeAdapterStore private constructor(
         } else if (typeMirror.isTypeOf(ImmutableMap::class)) {
             val keyTypeArg = typeMirror.typeArguments[0].extendsBoundOrSelf()
             val valueTypeArg = typeMirror.typeArguments[1].extendsBoundOrSelf()
+            checkTypeNullability(typeMirror, extras)
 
             // Create a type mirror for a regular Map in order to use MapQueryResultAdapter. This
             // avoids code duplication as Immutable Map can be initialized by creating an immutable
@@ -482,8 +588,11 @@ class TypeAdapterStore private constructor(
                 keyTypeArg,
                 valueTypeArg
             )
-            val resultAdapter = findQueryResultAdapter(mapType, query = query) ?: return null
+
+            val resultAdapter = findQueryResultAdapter(mapType, query, extras) ?: return null
             return ImmutableMapQueryResultAdapter(
+                context = context,
+                parsedQuery = query,
                 keyTypeArg = keyTypeArg,
                 valueTypeArg = valueTypeArg,
                 resultAdapter = resultAdapter
@@ -494,6 +603,7 @@ class TypeAdapterStore private constructor(
         ) {
             val keyTypeArg = typeMirror.typeArguments[0].extendsBoundOrSelf()
             val valueTypeArg = typeMirror.typeArguments[1].extendsBoundOrSelf()
+            checkTypeNullability(typeMirror, extras)
 
             if (valueTypeArg.typeElement == null) {
                 context.logger.e(
@@ -504,28 +614,87 @@ class TypeAdapterStore private constructor(
             }
 
             val immutableClassName = if (typeMirror.isTypeOf(ImmutableListMultimap::class)) {
-                ClassName.get(ImmutableListMultimap::class.java)
+                GuavaTypeNames.IMMUTABLE_LIST_MULTIMAP
             } else if (typeMirror.isTypeOf(ImmutableSetMultimap::class)) {
-                ClassName.get(ImmutableSetMultimap::class.java)
+                GuavaTypeNames.IMMUTABLE_SET_MULTIMAP
             } else {
                 // Return type is base class ImmutableMultimap which is not recommended.
                 context.logger.e(DO_NOT_USE_GENERIC_IMMUTABLE_MULTIMAP)
                 return null
             }
 
+            // Get @MapInfo info if any (this might be null)
+            val mapInfo = extras.getData(MapInfo::class)
+            val mapKeyColumn = getMapColumnName(context, query, keyTypeArg)
+            val mapValueColumn = getMapColumnName(context, query, valueTypeArg)
+            if (mapInfo != null && (mapKeyColumn != null || mapValueColumn != null)) {
+                context.logger.e(
+                    ProcessorErrors.CANNOT_USE_MAP_COLUMN_AND_MAP_INFO_SIMULTANEOUSLY
+                )
+            }
+
+            val mappedKeyColumnName = mapKeyColumn ?: mapInfo?.keyColumnName
+            val mappedValueColumnName = mapValueColumn ?: mapInfo?.valueColumnName
+
+            val keyRowAdapter = findRowAdapter(
+                typeMirror = keyTypeArg,
+                query = query,
+                columnName = mappedKeyColumnName
+            ) ?: return null
+
+            val valueRowAdapter = findRowAdapter(
+                typeMirror = valueTypeArg,
+                query = query,
+                columnName = mappedValueColumnName
+            ) ?: return null
+
+            validateMapKeyTypeArg(
+                context = context,
+                keyTypeArg = keyTypeArg,
+                keyReader = findCursorValueReader(keyTypeArg, null),
+                keyColumnName = mappedKeyColumnName
+            )
+            validateMapValueTypeArg(
+                context = context,
+                valueTypeArg = valueTypeArg,
+                valueReader = findCursorValueReader(valueTypeArg, null),
+                valueColumnName = mappedValueColumnName
+            )
             return GuavaImmutableMultimapQueryResultAdapter(
+                context = context,
+                parsedQuery = query,
                 keyTypeArg = keyTypeArg,
                 valueTypeArg = valueTypeArg,
-                keyRowAdapter = findRowAdapter(keyTypeArg, query) ?: return null,
-                valueRowAdapter = findRowAdapter(valueTypeArg, query) ?: return null,
+                keyRowAdapter = keyRowAdapter,
+                valueRowAdapter = valueRowAdapter,
                 immutableClassName = immutableClassName
             )
-        } else if (typeMirror.isTypeOf(java.util.Map::class)) {
-            // TODO: Handle nested collection values in the map
-            // TODO: Verify that hashCode() and equals() are declared by the keyTypeArg
+        } else if (typeMirror.isTypeOf(java.util.Map::class) ||
+            typeMirror.rawType.asTypeName().equalsIgnoreNullability(ARRAY_MAP) ||
+            typeMirror.rawType.asTypeName().equalsIgnoreNullability(LONG_SPARSE_ARRAY) ||
+            typeMirror.rawType.asTypeName().equalsIgnoreNullability(INT_SPARSE_ARRAY)
+        ) {
+            val mapType = when (typeMirror.rawType.asTypeName()) {
+                LONG_SPARSE_ARRAY -> MultimapQueryResultAdapter.MapType.LONG_SPARSE
+                INT_SPARSE_ARRAY -> MultimapQueryResultAdapter.MapType.INT_SPARSE
+                ARRAY_MAP -> MultimapQueryResultAdapter.MapType.ARRAY_MAP
+                else -> MultimapQueryResultAdapter.MapType.DEFAULT
+            }
+            val keyTypeArg = when (mapType) {
+                MultimapQueryResultAdapter.MapType.LONG_SPARSE ->
+                    context.processingEnv.requireType(XTypeName.PRIMITIVE_LONG)
+                MultimapQueryResultAdapter.MapType.INT_SPARSE ->
+                    context.processingEnv.requireType(XTypeName.PRIMITIVE_INT)
+                else ->
+                    typeMirror.typeArguments[0].extendsBoundOrSelf()
+            }
+            checkTypeNullability(typeMirror, extras)
 
-            val keyTypeArg = typeMirror.typeArguments[0].extendsBoundOrSelf()
-            val mapValueTypeArg = typeMirror.typeArguments[1].extendsBoundOrSelf()
+            val mapValueTypeArg = if (mapType.isSparseArray()) {
+                typeMirror.typeArguments[0].extendsBoundOrSelf()
+            } else {
+                typeMirror.typeArguments[1].extendsBoundOrSelf()
+            }
 
             if (mapValueTypeArg.typeElement == null) {
                 context.logger.e(
@@ -535,53 +704,208 @@ class TypeAdapterStore private constructor(
                 return null
             }
 
-            val collectionTypeRaw = context.COMMON_TYPES.READONLY_COLLECTION.rawType
+            // Get @MapInfo info if any (this might be null)
+            val mapInfo = extras.getData(MapInfo::class)
+            val mapColumn = getMapColumnName(context, query, keyTypeArg)
+            if (mapInfo != null && mapColumn != null) {
+                context.logger.e(
+                    ProcessorErrors.CANNOT_USE_MAP_COLUMN_AND_MAP_INFO_SIMULTANEOUSLY
+                )
+            }
 
-            if (collectionTypeRaw.isAssignableFrom(mapValueTypeArg.rawType)) {
-                // The Map's value type argument is assignable to a Collection, we need to make
-                // sure it is either a list or a set.
-                if (
-                    mapValueTypeArg.isTypeOf(java.util.List::class) ||
-                    mapValueTypeArg.isTypeOf(java.util.Set::class)
-                ) {
-                    val valueTypeArg =
-                        mapValueTypeArg.typeArguments.single().extendsBoundOrSelf()
-                    return MapQueryResultAdapter(
-                        keyTypeArg = keyTypeArg,
-                        valueTypeArg = valueTypeArg,
-                        keyRowAdapter = findRowAdapter(keyTypeArg, query) ?: return null,
-                        valueRowAdapter = findRowAdapter(valueTypeArg, query) ?: return null,
-                        valueCollectionType = mapValueTypeArg
-                    )
-                } else {
-                    context.logger.e(
-                        "Multimap 'value' collection type must be a List or Set. Found " +
-                            "${mapValueTypeArg.typeName}."
-                    )
-                }
-            } else {
-                return MapQueryResultAdapter(
+            val mappedKeyColumnName = mapColumn ?: mapInfo?.keyColumnName
+            val keyRowAdapter = findRowAdapter(
+                typeMirror = keyTypeArg,
+                query = query,
+                columnName = mappedKeyColumnName
+            ) ?: return null
+
+            validateMapKeyTypeArg(
+                context = context,
+                keyTypeArg = keyTypeArg,
+                keyReader = findCursorValueReader(keyTypeArg, null),
+                keyColumnName = mappedKeyColumnName
+            )
+
+            val mapValueResultAdapter = findMapValueResultAdapter(
+                query = query,
+                mapInfo = mapInfo,
+                mapValueTypeArg = mapValueTypeArg
+            ) ?: return null
+            return MapQueryResultAdapter(
+                context = context,
+                parsedQuery = query,
+                mapValueResultAdapter = MapValueResultAdapter.NestedMapValueResultAdapter(
+                    keyRowAdapter = keyRowAdapter,
                     keyTypeArg = keyTypeArg,
-                    valueTypeArg = mapValueTypeArg,
-                    keyRowAdapter = findRowAdapter(keyTypeArg, query) ?: return null,
-                    valueRowAdapter = findRowAdapter(mapValueTypeArg, query) ?: return null,
-                    valueCollectionType = null
+                    mapType = mapType,
+                    mapValueResultAdapter = mapValueResultAdapter
+                )
+            )
+        }
+        return null
+    }
+
+    private fun checkTypeNullability(
+        searchingType: XType,
+        extras: TypeAdapterExtras,
+        typeKeyword: String = "Collection",
+        arrayComponentType: XType? = null
+    ) {
+        if (context.codeLanguage != CodeLanguage.KOTLIN) {
+            return
+        }
+
+        val collectionType: XType = extras.getData(
+            ObservableQueryResultBinderProvider.OriginalTypeArg::class
+        )?.original ?: searchingType
+
+        if (collectionType.nullability != XNullability.NONNULL) {
+            context.logger.w(
+                Warning.UNNECESSARY_NULLABILITY_IN_DAO_RETURN_TYPE,
+                ProcessorErrors.nullableCollectionOrArrayReturnTypeInDaoMethod(
+                    searchingType.asTypeName().toString(context.codeLanguage),
+                    typeKeyword
+                )
+            )
+        }
+
+        // Since Array has typeArg in the componentType and not typeArguments, need a special check.
+        if (arrayComponentType != null && arrayComponentType.nullability != XNullability.NONNULL) {
+            context.logger.w(
+                Warning.UNNECESSARY_NULLABILITY_IN_DAO_RETURN_TYPE,
+                ProcessorErrors.nullableComponentInDaoMethodReturnType(
+                    searchingType.asTypeName().toString(context.codeLanguage)
+                )
+            )
+            return
+        }
+
+        collectionType.typeArguments.forEach { typeArg ->
+            if (typeArg.nullability != XNullability.NONNULL) {
+                context.logger.w(
+                    Warning.UNNECESSARY_NULLABILITY_IN_DAO_RETURN_TYPE,
+                    ProcessorErrors.nullableComponentInDaoMethodReturnType(
+                        searchingType.asTypeName().toString(context.codeLanguage)
+                    )
                 )
             }
         }
-        return null
+    }
+
+    private fun findMapValueResultAdapter(
+        query: ParsedQuery,
+        mapInfo: MapInfo?,
+        mapValueTypeArg: XType
+    ): MapValueResultAdapter? {
+        val collectionTypeRaw = context.COMMON_TYPES.READONLY_COLLECTION.rawType
+        if (collectionTypeRaw.isAssignableFrom(mapValueTypeArg.rawType)) {
+            // The Map's value type argument is assignable to a Collection, we need to make
+            // sure it is either a list or a set.
+            val listTypeRaw = context.COMMON_TYPES.LIST.rawType
+            val setTypeRaw = context.COMMON_TYPES.SET.rawType
+            val collectionValueType = when {
+                mapValueTypeArg.rawType.isAssignableFrom(listTypeRaw) ->
+                    MultimapQueryResultAdapter.CollectionValueType.LIST
+                mapValueTypeArg.rawType.isAssignableFrom(setTypeRaw) ->
+                    MultimapQueryResultAdapter.CollectionValueType.SET
+                else -> {
+                    context.logger.e(
+                        ProcessorErrors.valueCollectionMustBeListOrSetOrMap(
+                            mapValueTypeArg.asTypeName().toString(context.codeLanguage)
+                        )
+                    )
+                    return null
+                }
+            }
+
+            val valueTypeArg = mapValueTypeArg.typeArguments.single().extendsBoundOrSelf()
+            val mapColumnName = getMapColumnName(context, query, valueTypeArg)
+            if (mapColumnName != null && mapInfo != null) {
+                context.logger.e(
+                    ProcessorErrors.CANNOT_USE_MAP_COLUMN_AND_MAP_INFO_SIMULTANEOUSLY
+                )
+            }
+
+            val mappedValueColumnName = mapColumnName ?: mapInfo?.valueColumnName
+            val valueRowAdapter = findRowAdapter(
+                typeMirror = valueTypeArg,
+                query = query,
+                columnName = mappedValueColumnName
+            ) ?: return null
+
+            validateMapValueTypeArg(
+                context = context,
+                valueTypeArg = valueTypeArg,
+                valueReader = findCursorValueReader(valueTypeArg, null),
+                valueColumnName = mappedValueColumnName
+            )
+
+            return MapValueResultAdapter.EndMapValueResultAdapter(
+                valueRowAdapter = valueRowAdapter,
+                valueTypeArg = valueTypeArg,
+                valueCollectionType = collectionValueType
+            )
+        } else if (mapValueTypeArg.isTypeOf(java.util.Map::class)) {
+            val keyTypeArg = mapValueTypeArg.typeArguments[0].extendsBoundOrSelf()
+            val valueTypeArg = mapValueTypeArg.typeArguments[1].extendsBoundOrSelf()
+
+            val keyRowAdapter = findRowAdapter(
+                typeMirror = keyTypeArg,
+                query = query,
+                // No need to account for @MapInfo since nested maps did not support
+                // this now deprecated annotation anyway.
+                columnName = getMapColumnName(context, query, keyTypeArg)
+            ) ?: return null
+            val valueMapAdapter = findMapValueResultAdapter(
+                query = query,
+                mapInfo = mapInfo,
+                mapValueTypeArg = valueTypeArg
+            ) ?: return null
+            return MapValueResultAdapter.NestedMapValueResultAdapter(
+                keyRowAdapter = keyRowAdapter,
+                keyTypeArg = keyTypeArg,
+                mapType = MultimapQueryResultAdapter.MapType.DEFAULT,
+                mapValueResultAdapter = valueMapAdapter
+            )
+        } else {
+            val mappedValueColumnName = getMapColumnName(context, query, mapValueTypeArg)
+                ?: mapInfo?.valueColumnName
+            val valueRowAdapter = findRowAdapter(
+                typeMirror = mapValueTypeArg,
+                query = query,
+                columnName = mappedValueColumnName
+            ) ?: return null
+
+            validateMapValueTypeArg(
+                context = context,
+                valueTypeArg = mapValueTypeArg,
+                valueReader = findCursorValueReader(mapValueTypeArg, null),
+                valueColumnName = mappedValueColumnName
+            )
+            return MapValueResultAdapter.EndMapValueResultAdapter(
+                valueRowAdapter = valueRowAdapter,
+                valueTypeArg = mapValueTypeArg,
+                valueCollectionType = null
+            )
+        }
     }
 
     /**
      * Find a converter from cursor to the given type mirror.
      * If there is information about the query result, we try to use it to accept *any* POJO.
      */
-    fun findRowAdapter(typeMirror: XType, query: ParsedQuery): RowAdapter? {
+    fun findRowAdapter(
+        typeMirror: XType,
+        query: ParsedQuery,
+        columnName: String? = null
+    ): RowAdapter? {
         if (typeMirror.isError()) {
             return null
         }
+
         val typeElement = typeMirror.typeElement
-        if (typeElement != null && !typeMirror.typeName.isPrimitive) {
+        if (typeElement != null && !typeMirror.asTypeName().isPrimitive) {
             if (typeMirror.typeArguments.isNotEmpty()) {
                 // TODO one day support this
                 return null
@@ -602,6 +926,7 @@ class TypeAdapterStore private constructor(
                     PojoRowAdapter(
                         context = subContext,
                         info = resultInfo,
+                        query = query,
                         pojo = pojo,
                         out = typeMirror
                     )
@@ -625,6 +950,18 @@ class TypeAdapterStore private constructor(
             if (rowAdapter != null && rowAdapterLogs?.hasErrors() != true) {
                 rowAdapterLogs?.writeTo(context)
                 return rowAdapter
+            }
+
+            if (columnName != null) {
+                val singleNamedColumn = findCursorValueReader(
+                    typeMirror,
+                    query.resultInfo?.columns?.find {
+                        it.name == columnName
+                    }?.type
+                )
+                if (singleNamedColumn != null) {
+                    return SingleNamedColumnRowAdapter(singleNamedColumn, columnName)
+                }
             }
 
             if ((resultInfo?.columns?.size ?: 1) == 1) {
@@ -658,12 +995,22 @@ class TypeAdapterStore private constructor(
                 return PojoRowAdapter(
                     context = context,
                     info = null,
+                    query = query,
                     pojo = pojo,
                     out = typeMirror
                 )
             }
             return null
         } else {
+            if (columnName != null) {
+                val singleNamedColumn = findCursorValueReader(
+                    typeMirror,
+                    query.resultInfo?.columns?.find { it.name == columnName }?.type
+                )
+                if (singleNamedColumn != null) {
+                    return SingleNamedColumnRowAdapter(singleNamedColumn, columnName)
+                }
+            }
             val singleColumn = findCursorValueReader(typeMirror, null) ?: return null
             return SingleColumnRowAdapter(singleColumn)
         }
@@ -677,7 +1024,7 @@ class TypeAdapterStore private constructor(
             val typeArg = typeMirror.typeArguments.first().extendsBoundOrSelf()
             // An adapter for the collection type arg wrapped in the built-in collection adapter.
             val wrappedCollectionAdapter = findStatementValueBinder(typeArg, null)?.let {
-                CollectionQueryParameterAdapter(it)
+                CollectionQueryParameterAdapter(it, typeMirror.nullability)
             }
             // An adapter for the collection itself, likely a user provided type converter for the
             // collection.
@@ -695,108 +1042,14 @@ class TypeAdapterStore private constructor(
         } else if (typeMirror.isArray() && typeMirror.componentType.isNotByte()) {
             val component = typeMirror.componentType
             val binder = findStatementValueBinder(component, null) ?: return null
-            return ArrayQueryParameterAdapter(binder)
+            return ArrayQueryParameterAdapter(binder, typeMirror.nullability)
         } else {
             val binder = findStatementValueBinder(typeMirror, null) ?: return null
             return BasicQueryParameterAdapter(binder)
         }
     }
 
-    private fun findTypeConverter(input: XType, outputs: List<XType>): TypeConverter? {
-        return findTypeConverter(listOf(input), outputs)
-    }
-
-    private fun findTypeConverter(input: List<XType>, output: XType): TypeConverter? {
-        return findTypeConverter(input, listOf(output))
-    }
-
-    private fun findTypeConverter(
-        inputs: List<XType>,
-        outputs: List<XType>
-    ): TypeConverter? {
-        if (inputs.isEmpty()) {
-            return null
-        }
-        inputs.forEach { input ->
-            if (outputs.any { output -> input.isSameType(output) }) {
-                return NoOpConverter(input)
-            }
-        }
-
-        val excludes = arrayListOf<XType>()
-
-        val queue = LinkedList<TypeConverter>()
-        fun List<TypeConverter>.findMatchingConverter(): TypeConverter? {
-            // We prioritize exact match over assignable. To do that, this variable keeps any
-            // assignable match and if we cannot find exactly same type match, we'll return the
-            // assignable match.
-            var assignableMatchFallback: TypeConverter? = null
-            this.forEach { converter ->
-                outputs.forEach { output ->
-                    if (output.isSameType(converter.to)) {
-                        return converter
-                    } else if (assignableMatchFallback == null &&
-                        output.isAssignableFrom(converter.to)
-                    ) {
-                        // if we don't find exact match, we'll return this.
-                        assignableMatchFallback = converter
-                    }
-                }
-            }
-            return assignableMatchFallback
-        }
-        inputs.forEach { input ->
-            val candidates = getAllTypeConverters(input, excludes)
-            val match = candidates.findMatchingConverter()
-            if (match != null) {
-                return match
-            }
-            candidates.forEach {
-                excludes.add(it.to)
-                queue.add(it)
-            }
-        }
-        excludes.addAll(inputs)
-        while (queue.isNotEmpty()) {
-            val prev = queue.pop()
-            val from = prev.to
-            val candidates = getAllTypeConverters(from, excludes)
-            val match = candidates.findMatchingConverter()
-            if (match != null) {
-                return CompositeTypeConverter(prev, match)
-            }
-            candidates.forEach {
-                excludes.add(it.to)
-                queue.add(CompositeTypeConverter(prev, it))
-            }
-        }
-        return null
-    }
-
     private fun getAllColumnAdapters(input: XType): List<ColumnTypeAdapter> {
-        return columnTypeAdapters.filter {
-            input.isSameType(it.out)
-        }
-    }
-
-    /**
-     * Returns all type converters that can receive input type and return into another type.
-     * The returned list is ordered by priority such that if we have an exact match, it is
-     * prioritized.
-     */
-    private fun getAllTypeConverters(input: XType, excludes: List<XType>): List<TypeConverter> {
-        // for input, check assignability because it defines whether we can use the method or not.
-        // for excludes, use exact match
-        return typeConverters.filter { converter ->
-            converter.from.isAssignableFrom(input) &&
-                !excludes.any { it.isSameType(converter.to) }
-        }.sortedByDescending {
-            // if it is the same, prioritize
-            if (it.from.isSameType(input)) {
-                2
-            } else {
-                1
-            }
-        }
+        return columnTypeAdapters.filter { input.isSameType(it.out) }
     }
 }

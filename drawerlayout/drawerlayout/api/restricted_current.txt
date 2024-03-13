@@ -13,8 +13,8 @@ package androidx.drawerlayout.widget {
     method public void closeDrawer(int, boolean);
     method public void closeDrawers();
     method public float getDrawerElevation();
-    method public int getDrawerLockMode(int);
     method public int getDrawerLockMode(android.view.View);
+    method public int getDrawerLockMode(int);
     method public CharSequence? getDrawerTitle(int);
     method public android.graphics.drawable.Drawable? getStatusBarBackgroundDrawable();
     method public boolean isDrawerOpen(android.view.View);
@@ -22,20 +22,20 @@ package androidx.drawerlayout.widget {
     method public boolean isDrawerVisible(android.view.View);
     method public boolean isDrawerVisible(int);
     method public boolean isOpen();
-    method public void onDraw(android.graphics.Canvas!);
+    method public void onDraw(android.graphics.Canvas);
     method public void open();
     method public void openDrawer(android.view.View);
     method public void openDrawer(android.view.View, boolean);
     method public void openDrawer(int);
     method public void openDrawer(int, boolean);
     method public void removeDrawerListener(androidx.drawerlayout.widget.DrawerLayout.DrawerListener);
-    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void setChildInsets(androidx.core.view.WindowInsetsCompat!, boolean);
+    method @RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX) public void setChildInsets(androidx.core.view.WindowInsetsCompat?, boolean);
     method public void setDrawerElevation(float);
     method @Deprecated public void setDrawerListener(androidx.drawerlayout.widget.DrawerLayout.DrawerListener!);
     method public void setDrawerLockMode(int);
-    method public void setDrawerLockMode(int, int);
     method public void setDrawerLockMode(int, android.view.View);
-    method public void setDrawerShadow(android.graphics.drawable.Drawable!, int);
+    method public void setDrawerLockMode(int, int);
+    method public void setDrawerShadow(android.graphics.drawable.Drawable?, int);
     method public void setDrawerShadow(@DrawableRes int, int);
     method public void setDrawerTitle(int, CharSequence?);
     method public void setScrimColor(@ColorInt int);
@@ -60,11 +60,11 @@ package androidx.drawerlayout.widget {
 
   public static class DrawerLayout.LayoutParams extends android.view.ViewGroup.MarginLayoutParams {
     ctor public DrawerLayout.LayoutParams(android.content.Context, android.util.AttributeSet?);
-    ctor public DrawerLayout.LayoutParams(int, int);
-    ctor public DrawerLayout.LayoutParams(int, int, int);
-    ctor public DrawerLayout.LayoutParams(androidx.drawerlayout.widget.DrawerLayout.LayoutParams);
     ctor public DrawerLayout.LayoutParams(android.view.ViewGroup.LayoutParams);
     ctor public DrawerLayout.LayoutParams(android.view.ViewGroup.MarginLayoutParams);
+    ctor public DrawerLayout.LayoutParams(androidx.drawerlayout.widget.DrawerLayout.LayoutParams);
+    ctor public DrawerLayout.LayoutParams(int, int);
+    ctor public DrawerLayout.LayoutParams(int, int, int);
     field public int gravity;
   }
 
@@ -76,9 +76,9 @@ package androidx.drawerlayout.widget {
 
   public abstract static class DrawerLayout.SimpleDrawerListener implements androidx.drawerlayout.widget.DrawerLayout.DrawerListener {
     ctor public DrawerLayout.SimpleDrawerListener();
-    method public void onDrawerClosed(android.view.View!);
-    method public void onDrawerOpened(android.view.View!);
-    method public void onDrawerSlide(android.view.View!, float);
+    method public void onDrawerClosed(android.view.View);
+    method public void onDrawerOpened(android.view.View);
+    method public void onDrawerSlide(android.view.View, float);
     method public void onDrawerStateChanged(int);
   }
 

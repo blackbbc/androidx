@@ -161,7 +161,6 @@ class ResourcesFlusher {
         }
     }
 
-    @RequiresApi(16)
     private static void flushThemedResourcesCache(@NonNull final Object cache) {
         if (!sThemedResourceCacheClazzFetched) {
             try {

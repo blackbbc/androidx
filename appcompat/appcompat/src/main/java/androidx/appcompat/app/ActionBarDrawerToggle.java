@@ -21,7 +21,6 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
@@ -514,7 +513,6 @@ public class ActionBarDrawerToggle implements DrawerLayout.DrawerListener {
 
     private static class FrameworkActionBarDelegate implements Delegate {
         private final Activity mActivity;
-        private ActionBarDrawerToggleHoneycomb.SetIndicatorInfo mSetIndicatorInfo;
 
         FrameworkActionBarDelegate(Activity activity) {
             mActivity = activity;
@@ -522,15 +520,12 @@ public class ActionBarDrawerToggle implements DrawerLayout.DrawerListener {
 
         @Override
         public Drawable getThemeUpIndicator() {
-            if (Build.VERSION.SDK_INT >= 18) {
-                final TypedArray a = getActionBarThemedContext().obtainStyledAttributes(null,
-                        new int[] {android.R.attr.homeAsUpIndicator},
-                        android.R.attr.actionBarStyle, 0);
-                final Drawable result = a.getDrawable(0);
-                a.recycle();
-                return result;
-            }
-            return ActionBarDrawerToggleHoneycomb.getThemeUpIndicator(mActivity);
+            final TypedArray a = getActionBarThemedContext().obtainStyledAttributes(null,
+                    new int[]{android.R.attr.homeAsUpIndicator},
+                    android.R.attr.actionBarStyle, 0);
+            final Drawable result = a.getDrawable(0);
+            a.recycle();
+            return result;
         }
 
         @Override
@@ -553,28 +548,16 @@ public class ActionBarDrawerToggle implements DrawerLayout.DrawerListener {
         public void setActionBarUpIndicator(Drawable themeImage, int contentDescRes) {
             final ActionBar actionBar = mActivity.getActionBar();
             if (actionBar != null) {
-                if (Build.VERSION.SDK_INT >= 18) {
-                    actionBar.setHomeAsUpIndicator(themeImage);
-                    actionBar.setHomeActionContentDescription(contentDescRes);
-                } else {
-                    actionBar.setDisplayShowHomeEnabled(true);
-                    mSetIndicatorInfo = ActionBarDrawerToggleHoneycomb.setActionBarUpIndicator(
-                            mActivity, themeImage, contentDescRes);
-                    actionBar.setDisplayShowHomeEnabled(false);
-                }
+                actionBar.setHomeAsUpIndicator(themeImage);
+                actionBar.setHomeActionContentDescription(contentDescRes);
             }
         }
 
         @Override
         public void setActionBarDescription(int contentDescRes) {
-            if (Build.VERSION.SDK_INT >= 18) {
-                final ActionBar actionBar = mActivity.getActionBar();
-                if (actionBar != null) {
-                    actionBar.setHomeActionContentDescription(contentDescRes);
-                }
-            } else {
-                mSetIndicatorInfo = ActionBarDrawerToggleHoneycomb.setActionBarDescription(
-                    mSetIndicatorInfo, mActivity, contentDescRes);
+            final ActionBar actionBar = mActivity.getActionBar();
+            if (actionBar != null) {
+                actionBar.setHomeActionContentDescription(contentDescRes);
             }
         }
     }

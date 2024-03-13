@@ -19,34 +19,37 @@ package androidx.camera.camera2.pipe.integration.adapter
 import android.annotation.SuppressLint
 import android.graphics.Rect
 import android.hardware.camera2.CameraCharacteristics
-import android.util.Rational
+import androidx.annotation.RequiresApi
+import androidx.arch.core.util.Function
 import androidx.camera.camera2.pipe.CameraPipe
 import androidx.camera.camera2.pipe.core.Log.warn
 import androidx.camera.camera2.pipe.integration.config.CameraScope
 import androidx.camera.camera2.pipe.integration.impl.CameraProperties
 import androidx.camera.camera2.pipe.integration.impl.EvCompControl
+import androidx.camera.camera2.pipe.integration.impl.FlashControl
 import androidx.camera.camera2.pipe.integration.impl.FocusMeteringControl
+import androidx.camera.camera2.pipe.integration.impl.StillCaptureRequestControl
+import androidx.camera.camera2.pipe.integration.impl.TorchControl
 import androidx.camera.camera2.pipe.integration.impl.UseCaseCamera
-import androidx.camera.camera2.pipe.integration.impl.UseCaseManager
 import androidx.camera.camera2.pipe.integration.impl.UseCaseThreads
 import androidx.camera.camera2.pipe.integration.impl.ZoomControl
+import androidx.camera.camera2.pipe.integration.interop.Camera2CameraControl
+import androidx.camera.camera2.pipe.integration.interop.CaptureRequestOptions
+import androidx.camera.camera2.pipe.integration.interop.ExperimentalCamera2Interop
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.FocusMeteringResult
 import androidx.camera.core.ImageCapture
-import androidx.camera.core.TorchState
-import androidx.camera.core.impl.CameraCaptureResult
 import androidx.camera.core.impl.CameraControlInternal
 import androidx.camera.core.impl.CaptureConfig
 import androidx.camera.core.impl.Config
-import androidx.camera.core.impl.MutableOptionsBundle
 import androidx.camera.core.impl.SessionConfig
+import androidx.camera.core.impl.utils.executor.CameraXExecutors
+import androidx.camera.core.impl.utils.futures.FutureChain
 import androidx.camera.core.impl.utils.futures.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import kotlinx.coroutines.CoroutineStart
+import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * Adapt the [CameraControlInternal] interface to [CameraPipe].
@@ -56,142 +59,107 @@ import javax.inject.Inject
  * forward these interactions to the currently configured [UseCaseCamera].
  */
 @SuppressLint("UnsafeOptInUsageError")
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @CameraScope
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalCamera2Interop::class)
 class CameraControlAdapter @Inject constructor(
     private val cameraProperties: CameraProperties,
+    private val evCompControl: EvCompControl,
+    private val flashControl: FlashControl,
+    private val focusMeteringControl: FocusMeteringControl,
+    private val stillCaptureRequestControl: StillCaptureRequestControl,
+    private val torchControl: TorchControl,
     private val threads: UseCaseThreads,
-    private val useCaseManager: UseCaseManager,
-    private val cameraStateAdapter: CameraStateAdapter,
     private val zoomControl: ZoomControl,
-    private val evCompControl: EvCompControl
+    val camera2cameraControl: Camera2CameraControl,
 ) : CameraControlInternal {
-    private var interopConfig: Config = MutableOptionsBundle.create()
-    private var imageCaptureFlashMode: Int = ImageCapture.FLASH_MODE_OFF
-
-    private val focusMeteringControl = FocusMeteringControl(
-        cameraProperties,
-        useCaseManager,
-        threads
-    )
-
     override fun getSensorRect(): Rect {
         return cameraProperties.metadata[CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE]!!
     }
 
     override fun addInteropConfig(config: Config) {
-        interopConfig = Config.mergeConfigs(config, interopConfig)
+        camera2cameraControl.addCaptureRequestOptions(
+            CaptureRequestOptions.Builder.from(config).build()
+        )
     }
 
     override fun clearInteropConfig() {
-        interopConfig = MutableOptionsBundle.create()
+        camera2cameraControl.clearCaptureRequestOptions()
     }
 
     override fun getInteropConfig(): Config {
-        return interopConfig
+        return camera2cameraControl.getCaptureRequestOptions()
     }
 
-    override fun enableTorch(torch: Boolean): ListenableFuture<Void> {
-        // Launch UNDISPATCHED to preserve interaction order with the camera.
-        return threads.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            useCaseManager.camera?.let {
-                // Tell the camera to turn the torch on / off.
-                val result = it.setTorchAsync(torch)
-
-                // Update the torch state
-                cameraStateAdapter.setTorchState(
-                    when (torch) {
-                        true -> TorchState.ON
-                        false -> TorchState.OFF
-                    }
-                )
-
-                // Wait until the command is received by the camera.
-                result.await()
-            }
-        }.asListenableFuture()
-    }
+    override fun enableTorch(torch: Boolean): ListenableFuture<Void> =
+        Futures.nonCancellationPropagating(
+            FutureChain.from(
+                torchControl.setTorchAsync(torch).asListenableFuture()
+            ).transform(
+                Function { return@Function null }, CameraXExecutors.directExecutor()
+            )
+        )
 
     override fun startFocusAndMetering(
         action: FocusMeteringAction
-    ): ListenableFuture<FocusMeteringResult> {
-        // TODO(sushilnath@): use preview aspect ratio instead of sensor active array aspect ratio.
-        val sensorAspectRatio = Rational(sensorRect.width(), sensorRect.height())
-        return focusMeteringControl.startFocusAndMetering(action, sensorAspectRatio)
-    }
+    ): ListenableFuture<FocusMeteringResult> =
+        Futures.nonCancellationPropagating(focusMeteringControl.startFocusAndMetering(action))
 
     override fun cancelFocusAndMetering(): ListenableFuture<Void> {
-        warn { "TODO: cancelFocusAndMetering is not yet supported" }
-        return Futures.immediateFuture(null)
+        return Futures.nonCancellationPropagating(
+            threads.sequentialScope.async {
+                focusMeteringControl.cancelFocusAndMeteringAsync().join()
+                // Convert to null once the task is done, ignore the results.
+                return@async null
+            }.asListenableFuture()
+        )
     }
 
-    override fun setZoomRatio(ratio: Float): ListenableFuture<Void> {
-        return threads.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            useCaseManager.camera?.let {
-                zoomControl.zoomRatio = ratio
-                val zoomValue = ZoomValue(
-                    ratio,
-                    zoomControl.minZoom,
-                    zoomControl.maxZoom
-                )
-                cameraStateAdapter.setZoomState(zoomValue)
-            }
-        }.asListenableFuture()
-    }
+    override fun setZoomRatio(ratio: Float): ListenableFuture<Void> =
+        zoomControl.setZoomRatio(ratio)
 
-    override fun setLinearZoom(linearZoom: Float): ListenableFuture<Void> {
-        val ratio = zoomControl.toZoomRatio(linearZoom)
-        return setZoomRatio(ratio)
-    }
+    override fun setLinearZoom(linearZoom: Float): ListenableFuture<Void> =
+        zoomControl.setLinearZoom(linearZoom)
 
     override fun getFlashMode(): Int {
-        return imageCaptureFlashMode
+        return flashControl.flashMode
     }
 
-    override fun setFlashMode(flashMode: Int) {
-        warn { "TODO: setFlashMode is not yet supported" }
-        this.imageCaptureFlashMode = flashMode
+    override fun setFlashMode(@ImageCapture.FlashMode flashMode: Int) {
+        flashControl.setFlashAsync(flashMode)
     }
 
-    override fun triggerAf(): ListenableFuture<CameraCaptureResult> {
-        warn { "TODO: triggerAf is not yet supported" }
-        return Futures.immediateFuture(CameraCaptureResult.EmptyCameraCaptureResult.create())
+    override fun setScreenFlash(screenFlash: ImageCapture.ScreenFlash?) {
+        flashControl.setScreenFlash(screenFlash)
     }
 
-    override fun triggerAePrecapture(): ListenableFuture<CameraCaptureResult> {
-        warn { "TODO: triggerAePrecapture is not yet supported" }
-        return Futures.immediateFuture(CameraCaptureResult.EmptyCameraCaptureResult.create())
+    override fun setExposureCompensationIndex(exposure: Int): ListenableFuture<Int> =
+        Futures.nonCancellationPropagating(
+            evCompControl.updateAsync(exposure).asListenableFuture()
+        )
+
+    override fun setZslDisabledByUserCaseConfig(disabled: Boolean) {
+        // Override if Zero-Shutter Lag needs to be disabled by user case config.
     }
 
-    override fun cancelAfAeTrigger(cancelAfTrigger: Boolean, cancelAePrecaptureTrigger: Boolean) {
-        warn { "TODO: cancelAfAeTrigger is not yet supported" }
+    override fun isZslDisabledByByUserCaseConfig(): Boolean {
+        // Override if Zero-Shutter Lag needs to be disabled by user case config.
+        return false
     }
 
-    @SuppressLint("UnsafeOptInUsageError")
-    override fun setExposureCompensationIndex(exposure: Int): ListenableFuture<Int> {
-        return threads.scope.async(start = CoroutineStart.UNDISPATCHED) {
-            useCaseManager.camera?.let {
-                evCompControl.evCompIndex = exposure
-                cameraStateAdapter.setExposureState(
-                    EvCompValue(
-                        evCompControl.supported,
-                        evCompControl.evCompIndex,
-                        evCompControl.range,
-                        evCompControl.step,
-                    )
-                )
-                return@async exposure
-            }
-            // TODO: Consider throwing instead? This is only reached if there's no camera.
-            evCompControl.evCompIndex
-        }.asListenableFuture()
+    override fun addZslConfig(sessionConfigBuilder: SessionConfig.Builder) {
+        // Override if Zero-Shutter Lag needs to add config to session config.
     }
 
-    override fun submitCaptureRequests(captureConfigs: List<CaptureConfig>) {
-        val camera = useCaseManager.camera
-        checkNotNull(camera) { "Attempted to issue capture requests while the camera isn't ready." }
-        camera.capture(captureConfigs)
-    }
+    override fun submitStillCaptureRequests(
+        captureConfigs: List<CaptureConfig>,
+        @ImageCapture.CaptureMode captureMode: Int,
+        @ImageCapture.FlashType flashType: Int,
+    ) = stillCaptureRequestControl.issueCaptureRequests(
+        captureConfigs,
+        captureMode,
+        flashType
+    )
 
     override fun getSessionConfig(): SessionConfig {
         warn { "TODO: getSessionConfig is not yet supported" }

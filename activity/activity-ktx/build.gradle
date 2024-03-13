@@ -14,8 +14,15 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("AndroidXPlugin")
@@ -24,20 +31,21 @@ plugins {
 }
 
 dependencies {
+
     api(project(":activity:activity"))
-    api("androidx.core:core-ktx:1.1.0") {
+    api("androidx.core:core-ktx:1.9.0") {
         because "Mirror activity dependency graph for -ktx artifacts"
     }
-    api("androidx.lifecycle:lifecycle-runtime-ktx:2.3.1") {
+    api("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1") {
         because 'Mirror activity dependency graph for -ktx artifacts'
     }
-    api("androidx.lifecycle:lifecycle-viewmodel-ktx:2.3.1")
-    api("androidx.savedstate:savedstate-ktx:1.1.0") {
+    api("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
+    api("androidx.savedstate:savedstate-ktx:1.2.1") {
         because 'Mirror activity dependency graph for -ktx artifacts'
     }
     api(libs.kotlinStdlib)
 
-    androidTestImplementation("androidx.lifecycle:lifecycle-runtime-testing:2.3.1")
+    androidTestImplementation(projectOrArtifact(":lifecycle:lifecycle-runtime-testing"))
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.truth)
     androidTestImplementation(libs.testExtJunit)
@@ -52,7 +60,11 @@ dependencies {
 androidx {
     name = "Activity Kotlin Extensions"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.ACTIVITY
     inceptionYear = "2018"
     description = "Kotlin extensions for 'activity' artifact"
+    metalavaK2UastEnabled = true
+}
+
+android {
+    namespace "androidx.activity.ktx"
 }

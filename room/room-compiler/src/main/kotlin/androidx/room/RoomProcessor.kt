@@ -17,10 +17,12 @@
 package androidx.room
 
 import androidx.room.compiler.processing.XProcessingEnv
+import androidx.room.compiler.processing.XRoundEnv
 import androidx.room.compiler.processing.javac.JavacBasicAnnotationProcessor
 import androidx.room.processor.Context
 import androidx.room.processor.ProcessorErrors
 import androidx.room.util.SimpleJavaVersion
+import androidx.room.verifier.DatabaseVerifier
 import androidx.room.vo.Warning
 import javax.lang.model.SourceVersion
 
@@ -33,7 +35,11 @@ private const val ISOLATING_ANNOTATION_PROCESSORS_INDICATOR =
 /**
  * The annotation processor for Room.
  */
-class RoomProcessor : JavacBasicAnnotationProcessor() {
+class RoomProcessor : JavacBasicAnnotationProcessor(
+    configureEnv = { options ->
+        DatabaseProcessingStep.getEnvConfig(options)
+    }
+) {
 
     /** Helper variable to avoid reporting the warning twice. */
     private var jdkVersionHasBugReported = false
@@ -44,15 +50,13 @@ class RoomProcessor : JavacBasicAnnotationProcessor() {
 
     override fun getSupportedOptions(): MutableSet<String> {
         val supportedOptions = Context.ARG_OPTIONS.toMutableSet()
-        // XProcessingEnv is a cheap wrapper so it is fine to re-create.
-        val xProcessing = XProcessingEnv.create(processingEnv)
-        if (Context.BooleanProcessorOptions.INCREMENTAL.getValue(xProcessing)) {
+        if (Context.BooleanProcessorOptions.INCREMENTAL.getValue(xProcessingEnv)) {
             if (methodParametersVisibleInClassFiles()) {
                 // Room can be incremental
                 supportedOptions.add(ISOLATING_ANNOTATION_PROCESSORS_INDICATOR)
             } else {
                 if (!jdkVersionHasBugReported) {
-                    Context(xProcessing).logger.w(
+                    Context(xProcessingEnv).logger.w(
                         Warning.JDK_VERSION_HAS_BUG, ProcessorErrors.JDK_VERSION_HAS_BUG
                     )
                     jdkVersionHasBugReported = true
@@ -112,5 +116,11 @@ class RoomProcessor : JavacBasicAnnotationProcessor() {
 
     override fun getSupportedSourceVersion(): SourceVersion {
         return SourceVersion.latest()
+    }
+
+    override fun postRound(env: XProcessingEnv, round: XRoundEnv) {
+        if (round.isProcessingOver) {
+            DatabaseVerifier.cleanup()
+        }
     }
 }

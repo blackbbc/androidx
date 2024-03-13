@@ -19,7 +19,9 @@ package androidx.mediarouter.media;
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
@@ -33,6 +35,7 @@ import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.mediarouter.media.MediaRouter.RouteInfo;
+import androidx.mediarouter.testing.MediaRouterTestHelper;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.MediumTest;
@@ -62,7 +65,7 @@ public class MediaRouter2Test {
 
     private Context mContext;
     private MediaRouter mRouter;
-    private MediaRouter.Callback mPlaceholderCallback = new MediaRouter.Callback() { };
+    private MediaRouter.Callback mPlaceholderCallback = new MediaRouter.Callback() {};
     StubMediaRouteProviderService mService;
     StubMediaRouteProviderService.StubMediaRouteProvider mProvider;
     MediaRouteProviderService.MediaRouteProviderServiceImplApi30 mServiceImpl;
@@ -116,13 +119,22 @@ public class MediaRouter2Test {
 
     @After
     public void tearDown() {
-        getInstrumentation().runOnMainSync(() -> {
-            mRouter.removeCallback(mPlaceholderCallback);
-            for (MediaRouter.Callback callback : mCallbacks) {
-                mRouter.removeCallback(callback);
-            }
-            mCallbacks.clear();
-        });
+        getInstrumentation()
+                .runOnMainSync(
+                        () -> {
+                            for (RoutingSessionInfo sessionInfo :
+                                    mMr2ProviderServiceAdapter.getAllSessionInfo()) {
+                                mMr2ProviderServiceAdapter.onReleaseSession(
+                                        MediaRoute2ProviderService.REQUEST_ID_NONE,
+                                        sessionInfo.getId());
+                            }
+                            mRouter.removeCallback(mPlaceholderCallback);
+                            for (MediaRouter.Callback callback : mCallbacks) {
+                                mRouter.removeCallback(callback);
+                            }
+                            mCallbacks.clear();
+                            MediaRouterTestHelper.resetMediaRouter();
+                        });
         MediaRouter2TestActivity.finishActivity();
     }
 
@@ -146,7 +158,8 @@ public class MediaRouter2Test {
             }
 
             @Override
-            public void onRouteUnselected(MediaRouter router, RouteInfo route, int reason) {
+            public void onRouteUnselected(
+                    @NonNull MediaRouter router, @NonNull RouteInfo route, int reason) {
                 if (TextUtils.equals(route.getDescriptorId(), descriptorId)
                         && reason == MediaRouter.UNSELECT_REASON_STOPPED) {
                     onRouteUnselectedLatch.countDown();
@@ -154,7 +167,7 @@ public class MediaRouter2Test {
             }
 
             @Override
-            public void onRouteChanged(MediaRouter router, RouteInfo route) {
+            public void onRouteChanged(@NonNull MediaRouter router, @NonNull RouteInfo route) {
                 if (onRouteUnselectedLatch.getCount() == 0
                         && TextUtils.equals(route.getDescriptorId(), descriptorId)
                         && route.isEnabled()) {
@@ -186,6 +199,73 @@ public class MediaRouter2Test {
         assertTrue(onRouteEnabledLatch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
     }
 
+    @Test
+    @MediumTest
+    public void addUserRouteFromMr1_isSystemRoute_returnsFalse() throws Exception {
+        getInstrumentation()
+                .runOnMainSync(
+                        () -> {
+                            android.media.MediaRouter mediaRouter1 =
+                                    (android.media.MediaRouter)
+                                            mContext.getSystemService(Context.MEDIA_ROUTER_SERVICE);
+
+                            android.media.MediaRouter.RouteCategory sampleRouteCategory =
+                                    mediaRouter1.createRouteCategory(
+                                            "SAMPLE_ROUTE_CATEGORY", /* isGroupable= */ false);
+
+                            android.media.MediaRouter.UserRouteInfo sampleUserRoute =
+                                    mediaRouter1.createUserRoute(sampleRouteCategory);
+                            sampleUserRoute.setName("SAMPLE_USER_ROUTE");
+
+                            mediaRouter1.addUserRoute(sampleUserRoute);
+
+                            for (RouteInfo routeInfo : mRouter.getRoutes()) {
+                                // We are checking for this route using getRoutes rather than
+                                // through the onRouteAdded callback because of b/312700919
+                                if (routeInfo.getName().equals("SAMPLE_USER_ROUTE")) {
+                                    assertFalse(routeInfo.isSystemRoute());
+                                }
+                            }
+                        });
+
+    }
+
+    @Test
+    @MediumTest
+    public void defaultAndBluetoothRoutes_isSystemRoute_returnsTrue() {
+        getInstrumentation()
+                .runOnMainSync(
+                        () -> {
+                            for (RouteInfo routeInfo : mRouter.getRoutes()) {
+                                if (routeInfo.isDefaultOrBluetooth()) {
+                                    assertTrue(routeInfo.isSystemRoute());
+                                }
+                            }
+                        });
+    }
+
+    @SmallTest
+    @Test
+    public void setRouteVolume_onStaticNonGroupRoute() {
+        // We run session creation on the main thread to ensure the route creation from the setup
+        // method happens before the session creation. Otherwise, this call may call into an
+        // inconsistent adapter state.
+        getInstrumentation()
+                .runOnMainSync(
+                        () ->
+                                mMr2ProviderServiceAdapter.onCreateSession(
+                                        MediaRoute2ProviderService.REQUEST_ID_NONE,
+                                        mContext.getPackageName(),
+                                        StubMediaRouteProviderService.ROUTE_ID1,
+                                        /* sessionHints= */ null));
+        StubMediaRouteProviderService.StubMediaRouteProvider.StubRouteController createdController =
+                mProvider.mControllers.get(StubMediaRouteProviderService.ROUTE_ID1);
+        assertNotNull(createdController); // Avoids nullability warning.
+        assertNull(createdController.mLastSetVolume);
+        mMr2ProviderServiceAdapter.setRouteVolume(StubMediaRouteProviderService.ROUTE_ID1, 100);
+        assertEquals(100, (int) createdController.mLastSetVolume);
+    }
+
     @SmallTest
     @Test
     public void onBinderDied_releaseRoutingSessions() throws Exception {
@@ -205,8 +285,9 @@ public class MediaRouter2Test {
 
         try {
             List<Messenger> messengers =
-                    mServiceImpl.mClients.stream().map(client -> client.mMessenger)
-                    .collect(Collectors.toList());
+                    mServiceImpl.mClients.stream()
+                            .map(client -> client.mMessenger)
+                            .collect(Collectors.toList());
             getInstrumentation().runOnMainSync(() ->
                     messengers.forEach(mServiceImpl::onBinderDied));
             // It should have no session info.
@@ -230,7 +311,8 @@ public class MediaRouter2Test {
 
         addCallback(new MediaRouter.Callback() {
             @Override
-            public void onRouterParamsChanged(MediaRouter router, MediaRouterParams params) {
+            public void onRouterParamsChanged(
+                    @NonNull MediaRouter router, MediaRouterParams params) {
                 routerParams[0] = params;
                 onRouterParmasChangedLatch.countDown();
             }
@@ -251,7 +333,8 @@ public class MediaRouter2Test {
 
     void addCallback(MediaRouter.Callback callback) {
         getInstrumentation().runOnMainSync(() -> {
-            mRouter.addCallback(mSelector, callback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY
+            mRouter.addCallback(mSelector, callback,
+                    MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY
                             | MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN);
         });
         mCallbacks.add(callback);
@@ -261,7 +344,7 @@ public class MediaRouter2Test {
         CountDownLatch latch = new CountDownLatch(1);
         MediaRouter.Callback callback = new MediaRouter.Callback() {
             @Override
-            public void onRouteAdded(MediaRouter router, RouteInfo route) {
+            public void onRouteAdded(@NonNull MediaRouter router, @NonNull RouteInfo route) {
                 if (!route.isDefaultOrBluetooth()) {
                     latch.countDown();
                 }

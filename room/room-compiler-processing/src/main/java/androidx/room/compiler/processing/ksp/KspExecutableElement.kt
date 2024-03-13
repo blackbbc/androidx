@@ -16,50 +16,35 @@
 
 package androidx.room.compiler.processing.ksp
 
-import androidx.room.compiler.processing.XAnnotated
 import androidx.room.compiler.processing.XExecutableElement
-import androidx.room.compiler.processing.XExecutableParameterElement
 import androidx.room.compiler.processing.XHasModifiers
+import androidx.room.compiler.processing.XMemberContainer
 import androidx.room.compiler.processing.XType
-import androidx.room.compiler.processing.ksp.KspAnnotated.UseSiteFilter.Companion.NO_USE_SITE
+import androidx.room.compiler.processing.XTypeParameterElement
 import androidx.room.compiler.processing.util.ISSUE_TRACKER_LINK
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.isConstructor
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
-import com.google.devtools.ksp.symbol.Modifier
 
 internal abstract class KspExecutableElement(
     env: KspProcessingEnv,
-    open val containing: KspMemberContainer,
     override val declaration: KSFunctionDeclaration
-) : KspElement(
-    env = env,
-    declaration = declaration
-),
+) : KspElement(env, declaration),
     XExecutableElement,
-    XHasModifiers by KspHasModifiers.create(declaration),
-    XAnnotated by KspAnnotated.create(
-        env = env,
-        delegate = declaration,
-        filter = NO_USE_SITE
-    ) {
+    XHasModifiers by KspHasModifiers.create(declaration) {
 
-    override val equalityItems: Array<out Any?> by lazy {
-        arrayOf(containing, declaration)
-    }
+    override val jvmDescriptor: String
+        get() = this.jvmDescriptor()
 
     override val enclosingElement: KspMemberContainer by lazy {
         declaration.requireEnclosingMemberContainer(env)
     }
 
-    override val parameters: List<XExecutableParameterElement> by lazy {
-        declaration.parameters.map {
-            KspExecutableParameterElement(
-                env = env,
-                method = this,
-                parameter = it
-            )
-        }
+    override val closestMemberContainer: XMemberContainer
+        get() = enclosingElement
+
+    override val typeParameters: List<XTypeParameterElement> by lazy {
+        declaration.typeParameters.map { KspTypeParameterElement(env, it) }
     }
 
     @OptIn(KspExperimental::class)
@@ -73,12 +58,11 @@ internal abstract class KspExecutableElement(
     }
 
     override fun isVarArgs(): Boolean {
-        // in java, only the last argument can be a vararg so for suspend functions, it is never
-        // a vararg function. this would change if room generated kotlin code
-        return !declaration.modifiers.contains(Modifier.SUSPEND) &&
-            declaration.parameters.any {
-                it.isVararg
-            }
+        // TODO(b/254135327): Revisit with the introduction of a target language.
+        if (this is KspMethodElement && this.isSuspendFunction()) {
+            return false
+        }
+        return declaration.parameters.lastOrNull()?.isVararg ?: false
     }
 
     companion object {
@@ -96,22 +80,8 @@ internal abstract class KspExecutableElement(
             }
 
             return when {
-                declaration.isConstructor() -> {
-                    KspConstructorElement(
-                        env = env,
-                        containing = enclosingContainer as? KspTypeElement ?: error(
-                            "The container for $declaration should be a type element"
-                        ),
-                        declaration = declaration
-                    )
-                }
-                else -> {
-                    KspMethodElement.create(
-                        env = env,
-                        containing = enclosingContainer,
-                        declaration = declaration
-                    )
-                }
+                declaration.isConstructor() -> KspConstructorElement(env, declaration)
+                else -> KspMethodElement.create(env, declaration)
             }
         }
     }

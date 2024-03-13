@@ -22,19 +22,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 
 /**
- * Selection can be adjusted depends on context. For example, in touch mode dragging after a long
- * press adjusts selection by word. But selection by dragging handles is character precise
- * without adjustments. With a mouse, double-click selects by words and triple-clicks by paragraph.
- * @see [SelectionRegistrar.notifySelectionUpdate]
- */
-
-internal enum class SelectionAdjustment {
-    NONE,
-    CHARACTER,
-    WORD,
-    PARAGRAPH
-}
-/**
  *  An interface allowing a composable to subscribe and unsubscribe to selection changes.
  */
 internal interface SelectionRegistrar {
@@ -86,6 +73,7 @@ internal interface SelectionRegistrar {
      * @param layoutCoordinates [LayoutCoordinates] of the [Selectable].
      * @param startPosition coordinates of where the selection is initiated.
      * @param adjustment selection should be adjusted according to this param
+     * @param isInTouchMode whether the update is from a touch pointer
      *
      * @see notifySelectionUpdate
      * @see notifySelectionUpdateEnd
@@ -93,7 +81,8 @@ internal interface SelectionRegistrar {
     fun notifySelectionUpdateStart(
         layoutCoordinates: LayoutCoordinates,
         startPosition: Offset,
-        adjustment: SelectionAdjustment
+        adjustment: SelectionAdjustment,
+        isInTouchMode: Boolean
     )
 
     /**
@@ -101,50 +90,40 @@ internal interface SelectionRegistrar {
      * with selectAll [Selection].
      *
      * @param selectableId [selectableId] of the [Selectable]
+     * @param isInTouchMode whether the update is from a touch pointer
      */
-    fun notifySelectionUpdateSelectAll(selectableId: Long)
+    fun notifySelectionUpdateSelectAll(selectableId: Long, isInTouchMode: Boolean)
 
     /**
-     * Call this method to notify the [SelectionContainer] that  the selection has been updated.
+     * Call this method to notify the [SelectionContainer] that one of the selection handle has
+     * moved and selection should be updated.
      * The caller of this method should make sure that [notifySelectionUpdateStart] is always
      * called once before calling this function. And [notifySelectionUpdateEnd] is always called
      * once after the all updates finished.
      *
      * @param layoutCoordinates [LayoutCoordinates] of the [Selectable].
-     * @param startPosition coordinates of where the selection starts.
-     * @param endPosition coordinates of where the selection ends.
-     * @param adjustment selection should be adjusted according to this param
+     * @param previousPosition coordinates of where the selection starts.
+     * @param newPosition coordinates of where the selection ends.
+     * @param isStartHandle whether the moving selection handle the start handle.
+     * @param adjustment selection should be adjusted according to this parameter
+     * @param isInTouchMode whether the update is from a touch pointer
      *
+     * @return true if the selection handle movement is consumed. This function acts like a
+     * pointer input consumer when a selection handle is dragged. It expects the caller to
+     * accumulate the unconsumed pointer movement:
+     * 1. if it returns true, the caller will zero out the previous movement.
+     * 2. if it returns false, the caller will continue accumulate pointer movement.
      * @see notifySelectionUpdateStart
      * @see notifySelectionUpdateEnd
      */
     fun notifySelectionUpdate(
         layoutCoordinates: LayoutCoordinates,
-        startPosition: Offset,
-        endPosition: Offset,
-        adjustment: SelectionAdjustment
-    )
-
-    /**
-     * Call this method to notify the [SelectionContainer] that the selection end has been updated.
-     * The caller of this method should make sure that [notifySelectionUpdateStart] is always
-     * called once before calling this function. And [notifySelectionUpdateEnd] is always called
-     * once after the all updates finished.
-     * This function should be used when caller doesn't know the start of selection (for example,
-     * when it extends selection with shift pressed), otherwise startPosition should be provided.
-     *
-     * @param layoutCoordinates [LayoutCoordinates] of the [Selectable].
-     * @param endPosition coordinates of where the selection ends.
-     * @param adjustment selection should be adjusted according to this param
-     *
-     * @see notifySelectionUpdateStart
-     * @see notifySelectionUpdateEnd
-     */
-    fun notifySelectionUpdate(
-        layoutCoordinates: LayoutCoordinates,
-        endPosition: Offset,
-        adjustment: SelectionAdjustment
-    )
+        newPosition: Offset,
+        previousPosition: Offset,
+        isStartHandle: Boolean,
+        adjustment: SelectionAdjustment,
+        isInTouchMode: Boolean
+    ): Boolean
 
     /**
      * Call this method to notify the [SelectionContainer] that the selection update has stopped.

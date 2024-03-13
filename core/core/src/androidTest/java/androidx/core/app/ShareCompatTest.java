@@ -31,14 +31,13 @@ import android.support.v4.BaseInstrumentationTestCase;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.MediumTest;
-import androidx.test.filters.SdkSuppress;
 import androidx.test.rule.ActivityTestRule;
 
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-
+@SuppressWarnings("deprecation")
 @RunWith(AndroidJUnit4.class)
 @MediumTest
 public class ShareCompatTest extends BaseInstrumentationTestCase<TestActivity> {
@@ -54,6 +53,7 @@ public class ShareCompatTest extends BaseInstrumentationTestCase<TestActivity> {
         super(TestActivity.class);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void testBuilder() {
         Activity activity = mActivityTestRule.getActivity();
@@ -71,6 +71,7 @@ public class ShareCompatTest extends BaseInstrumentationTestCase<TestActivity> {
                 activity.getComponentName());
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void testBuilderWithoutActivity() {
         Context context = mActivityTestRule.getActivity().getApplicationContext();
@@ -86,6 +87,7 @@ public class ShareCompatTest extends BaseInstrumentationTestCase<TestActivity> {
         assertNull(intent.getParcelableExtra(ShareCompat.EXTRA_CALLING_ACTIVITY_INTEROP));
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     public void testBuilderWithWrappedActivity() {
         Activity activity = mActivityTestRule.getActivity();
@@ -104,8 +106,8 @@ public class ShareCompatTest extends BaseInstrumentationTestCase<TestActivity> {
                 activity.getComponentName());
     }
 
+    @SuppressWarnings("deprecation")
     @Test
-    @SdkSuppress(minSdkVersion = 16)
     public void testBuilderSingleStreamUri() {
         Activity activity = mActivityTestRule.getActivity();
         Uri uri = Uri.parse("content://fake/file");
@@ -119,7 +121,6 @@ public class ShareCompatTest extends BaseInstrumentationTestCase<TestActivity> {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 16)
     public void testBuilderMultipleStreamUris() {
         Activity activity = mActivityTestRule.getActivity();
         Uri uri1 = Uri.parse("content://fake/file1");

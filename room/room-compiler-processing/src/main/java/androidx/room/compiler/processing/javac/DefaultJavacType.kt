@@ -18,7 +18,9 @@ package androidx.room.compiler.processing.javac
 
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XType
-import androidx.room.compiler.processing.javac.kotlin.KmType
+import androidx.room.compiler.processing.javac.kotlin.KmTypeContainer
+import com.google.auto.common.MoreTypes
+import javax.lang.model.type.TypeKind
 import javax.lang.model.type.TypeMirror
 
 /**
@@ -27,15 +29,25 @@ import javax.lang.model.type.TypeMirror
 internal class DefaultJavacType private constructor(
     env: JavacProcessingEnv,
     typeMirror: TypeMirror,
-    override val nullability: XNullability,
-    override val kotlinType: KmType?
+    nullability: XNullability?,
+    override val kotlinType: KmTypeContainer?
 ) : JavacType(
-    env, typeMirror
+    env, typeMirror, nullability
 ) {
     constructor(
         env: JavacProcessingEnv,
+        typeMirror: TypeMirror
+    ) : this(
+        env = env,
+        typeMirror = typeMirror,
+        nullability = null,
+        kotlinType = null
+    )
+
+    constructor(
+        env: JavacProcessingEnv,
         typeMirror: TypeMirror,
-        kotlinType: KmType
+        kotlinType: KmTypeContainer
     ) : this(
         env = env,
         typeMirror = typeMirror,
@@ -64,6 +76,30 @@ internal class DefaultJavacType private constructor(
          * JavacDeclaredType.
          */
         get() = emptyList()
+
+    override fun boxed(): JavacType {
+        return when {
+            typeMirror.kind.isPrimitive -> {
+                env.wrap(
+                    typeMirror =
+                    env.typeUtils.boxedClass(MoreTypes.asPrimitiveType(typeMirror)).asType(),
+                    kotlinType = kotlinType,
+                    elementNullability = XNullability.NULLABLE
+                )
+            }
+            typeMirror.kind == TypeKind.VOID -> {
+                env.wrap(
+                    typeMirror =
+                    env.elementUtils.getTypeElement("java.lang.Void").asType(),
+                    kotlinType = kotlinType,
+                    elementNullability = XNullability.NULLABLE
+                )
+            }
+            else -> {
+                this
+            }
+        }
+    }
 
     override fun copyWithNullability(nullability: XNullability): JavacType {
         return DefaultJavacType(

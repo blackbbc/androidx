@@ -14,18 +14,29 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.ui.platform
 
+import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocal
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.autofill.Autofill
 import androidx.compose.ui.autofill.AutofillTree
+import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.graphics.GraphicsContext
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.input.pointer.PointerIconService
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.node.Owner
 import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextInputService
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -39,6 +50,7 @@ val LocalAccessibilityManager = staticCompositionLocalOf<AccessibilityManager?> 
  * The CompositionLocal that can be used to trigger autofill actions.
  * Eg. [Autofill.requestAutofillForNode].
  */
+@Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
 @get:ExperimentalComposeUiApi
 @ExperimentalComposeUiApi
 val LocalAutofill = staticCompositionLocalOf<Autofill?> { null }
@@ -49,6 +61,7 @@ val LocalAutofill = staticCompositionLocalOf<Autofill?> { null }
  * [AutofillTree] is a temporary data structure that will be replaced by Autofill Semantics
  * (b/138604305).
  */
+@Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
 @get:ExperimentalComposeUiApi
 @ExperimentalComposeUiApi
 val LocalAutofillTree = staticCompositionLocalOf<AutofillTree> {
@@ -63,12 +76,26 @@ val LocalClipboardManager = staticCompositionLocalOf<ClipboardManager> {
 }
 
 /**
+ * The CompositionLocal to provide access to a [GraphicsContext] instance for creation of
+ * [GraphicsLayer]s.
+ *
+ * Consumers that access this Local directly and call [GraphicsContext.createGraphicsLayer] are
+ * responsible for calling [GraphicsContext.releaseGraphicsLayer].
+ *
+ * It is recommended that consumers invoke [rememberGraphicsLayer] instead to ensure that a
+ * [GraphicsLayer] is released when the corresponding composable is disposed.
+ */
+val LocalGraphicsContext = staticCompositionLocalOf<GraphicsContext> {
+    noLocalProvidedFor("LocalGraphicsContext")
+}
+
+/**
  * Provides the [Density] to be used to transform between [density-independent pixel
- * units (DP)][androidx.compose.ui.unit.Dp] and [pixel units][androidx.compose.ui.unit.Px] or
+ * units (DP)][androidx.compose.ui.unit.Dp] and pixel units or
  * [scale-independent pixel units (SP)][androidx.compose.ui.unit.TextUnit] and
- * [pixel units][androidx.compose.ui.unit.Px]. This is typically used when a
- * [DP][androidx.compose.ui.unit.Dp] is provided and it must be converted in the body of [Layout]
- * or [DrawModifier].
+ * pixel units. This is typically used when a
+ * [DP][androidx.compose.ui.unit.Dp] is provided and it must be converted in the body of
+ * [Layout] or [DrawModifier].
  */
 val LocalDensity = staticCompositionLocalOf<Density> {
     noLocalProvidedFor("LocalDensity")
@@ -83,12 +110,21 @@ val LocalFocusManager = staticCompositionLocalOf<FocusManager> {
 
 /**
  * The CompositionLocal to provide platform font loading methods.
- *
- * Use [androidx.compose.ui.res.fontResource] instead.
- * @suppress
  */
+@Suppress("DEPRECATION")
+@Deprecated("LocalFontLoader is replaced with LocalFontFamilyResolver",
+    replaceWith = ReplaceWith("LocalFontFamilyResolver")
+)
+@get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 val LocalFontLoader = staticCompositionLocalOf<Font.ResourceLoader> {
     noLocalProvidedFor("LocalFontLoader")
+}
+
+/**
+ * The CompositionLocal for compose font resolution from FontFamily.
+ */
+val LocalFontFamilyResolver = staticCompositionLocalOf<FontFamily.Resolver> {
+    noLocalProvidedFor("LocalFontFamilyResolver")
 }
 
 /**
@@ -96,6 +132,14 @@ val LocalFontLoader = staticCompositionLocalOf<Font.ResourceLoader> {
  */
 val LocalHapticFeedback = staticCompositionLocalOf<HapticFeedback> {
     noLocalProvidedFor("LocalHapticFeedback")
+}
+
+/**
+ * The CompositionLocal to provide an instance of InputModeManager which controls the current
+ * input mode.
+ */
+val LocalInputModeManager = staticCompositionLocalOf<InputModeManager> {
+    noLocalProvidedFor("LocalInputManager")
 }
 
 /**
@@ -108,7 +152,16 @@ val LocalLayoutDirection = staticCompositionLocalOf<LayoutDirection> {
 /**
  * The CompositionLocal to provide communication with platform text input service.
  */
+@Deprecated("Use PlatformTextInputModifierNode instead.")
 val LocalTextInputService = staticCompositionLocalOf<TextInputService?> { null }
+
+/**
+ * The [CompositionLocal] to provide a [SoftwareKeyboardController] that can control the current
+ * software keyboard.
+ *
+ * Will be null if the software keyboard cannot be controlled.
+ */
+val LocalSoftwareKeyboardController = staticCompositionLocalOf<SoftwareKeyboardController?> { null }
 
 /**
  * The CompositionLocal to provide text-related toolbar.
@@ -138,6 +191,10 @@ val LocalWindowInfo = staticCompositionLocalOf<WindowInfo> {
     noLocalProvidedFor("LocalWindowInfo")
 }
 
+internal val LocalPointerIconService = staticCompositionLocalOf<PointerIconService?> {
+    null
+}
+
 @ExperimentalComposeUiApi
 @Composable
 internal fun ProvideCommonCompositionLocals(
@@ -151,15 +208,21 @@ internal fun ProvideCommonCompositionLocals(
         LocalAutofillTree provides owner.autofillTree,
         LocalClipboardManager provides owner.clipboardManager,
         LocalDensity provides owner.density,
-        LocalFocusManager provides owner.focusManager,
-        LocalFontLoader provides owner.fontLoader,
+        LocalFocusManager provides owner.focusOwner,
+        @Suppress("DEPRECATION") LocalFontLoader
+            providesDefault @Suppress("DEPRECATION") owner.fontLoader,
+        LocalFontFamilyResolver providesDefault owner.fontFamilyResolver,
         LocalHapticFeedback provides owner.hapticFeedBack,
+        LocalInputModeManager provides owner.inputModeManager,
         LocalLayoutDirection provides owner.layoutDirection,
         LocalTextInputService provides owner.textInputService,
+        LocalSoftwareKeyboardController provides owner.softwareKeyboardController,
         LocalTextToolbar provides owner.textToolbar,
         LocalUriHandler provides uriHandler,
         LocalViewConfiguration provides owner.viewConfiguration,
         LocalWindowInfo provides owner.windowInfo,
+        LocalPointerIconService provides owner.pointerIconService,
+        LocalGraphicsContext provides owner.graphicsContext,
         content = content
     )
 }

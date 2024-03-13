@@ -16,22 +16,29 @@
 package androidx.emoji2.text;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Paint.FontMetricsInt;
+import android.text.Spannable;
+import android.text.SpannableString;
 import android.text.TextPaint;
+import android.text.style.BackgroundColorSpan;
+import android.text.style.MetricAffectingSpan;
 
+import androidx.annotation.NonNull;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
-import androidx.test.filters.SdkSuppress;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -41,7 +48,6 @@ import org.mockito.stubbing.Answer;
 
 @LargeTest
 @RunWith(AndroidJUnit4.class)
-@SdkSuppress(minSdkVersion = 19)
 public class EmojiSpanTest {
 
     @Before
@@ -51,8 +57,8 @@ public class EmojiSpanTest {
 
     @Test
     public void testGetSize() {
-        final short dimensionX = 18;
-        final short dimensionY = 20;
+        final int dimensionX = 18;
+        final int dimensionY = 20;
         final int fontHeight = 10;
         final float expectedRatio = fontHeight * 1.0f / dimensionY;
         final TextPaint paint = mock(TextPaint.class);
@@ -68,7 +74,7 @@ public class EmojiSpanTest {
             }
         });
 
-        final EmojiMetadata metadata = mock(EmojiMetadata.class);
+        final TypefaceEmojiRasterizer metadata = mock(TypefaceEmojiRasterizer.class);
         when(metadata.getWidth()).thenReturn(dimensionX);
         when(metadata.getHeight()).thenReturn(dimensionY);
         final EmojiSpan span = new TypefaceEmojiSpan(metadata);
@@ -83,12 +89,13 @@ public class EmojiSpanTest {
     @Test
     public void testBackgroundIndicator() {
         // control the size of the emoji span
-        final EmojiMetadata metadata = mock(EmojiMetadata.class);
-        when(metadata.getWidth()).thenReturn((short) 10);
-        when(metadata.getHeight()).thenReturn((short) 10);
+        final TypefaceEmojiRasterizer metadata = mock(TypefaceEmojiRasterizer.class);
+        when(metadata.getWidth()).thenReturn(10);
+        when(metadata.getHeight()).thenReturn(10);
 
         final EmojiSpan span = new TypefaceEmojiSpan(metadata);
-        final int spanWidth = span.getSize(mock(Paint.class), "", 0, 0, null);
+        TextPaint textPaint = new TextPaint();
+        final int spanWidth = span.getSize(textPaint, "", 0, 0, null);
         // prepare parameters for draw() call
         final Canvas canvas = mock(Canvas.class);
         final float x = 10;
@@ -98,7 +105,8 @@ public class EmojiSpanTest {
 
         // verify the case where indicators are disabled
         EmojiCompat.reset(NoFontTestEmojiConfig.emptyConfig().setEmojiSpanIndicatorEnabled(false));
-        span.draw(canvas, "a", 0 /*start*/, 1 /*end*/, x, top, y, bottom, mock(Paint.class));
+        TextPaint paint = new TextPaint();
+        span.draw(canvas, "a", 0 /*start*/, 1 /*end*/, x, top, y, bottom, paint);
 
         verify(canvas, times(0)).drawRect(eq(x), eq((float) top), eq(x + spanWidth),
                 eq((float) bottom), any(Paint.class));
@@ -106,9 +114,111 @@ public class EmojiSpanTest {
         // verify the case where indicators are enabled
         EmojiCompat.reset(NoFontTestEmojiConfig.emptyConfig().setEmojiSpanIndicatorEnabled(true));
         reset(canvas);
-        span.draw(canvas, "a", 0 /*start*/, 1 /*end*/, x, top, y, bottom, mock(Paint.class));
+        span.draw(canvas, "a", 0 /*start*/, 1 /*end*/, x, top, y, bottom, textPaint);
 
         verify(canvas, times(1)).drawRect(eq(x), eq((float) top), eq(x + spanWidth),
                 eq((float) bottom), any(Paint.class));
     }
+    @Test
+    public void testBackgroundColor_doesDrawbackground() {
+        // control the size of the emoji span
+        final TypefaceEmojiRasterizer metadata = mock(TypefaceEmojiRasterizer.class);
+        when(metadata.getWidth()).thenReturn(10);
+        when(metadata.getHeight()).thenReturn(10);
+
+        final EmojiSpan span = new TypefaceEmojiSpan(metadata);
+        TextPaint textPaint = new TextPaint();
+        final int spanWidth = span.getSize(textPaint, "", 0, 0, null);
+        final Spannable spannable = new SpannableString("Hello");
+        spannable.setSpan(new BackgroundColorSpan(Color.parseColor("#FF0000")), 0, 1,
+                Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+        // prepare parameters for draw() call
+        final Canvas canvas = mock(Canvas.class);
+        final float x = 10;
+        final int top = 15;
+        final int y = 20;
+        final int bottom = 30;
+
+        // verify the case where background draw happens (position 0)
+        EmojiCompat.reset(NoFontTestEmojiConfig.emptyConfig().setEmojiSpanIndicatorEnabled(false));
+        TextPaint paint = new TextPaint();
+        span.draw(canvas, spannable, 0 /*start*/, 1 /*end*/, x, top, y, bottom, paint);
+
+        verify(canvas, times(1)).drawRect(eq(x), eq((float) top), eq(x + spanWidth),
+                eq((float) bottom), any(Paint.class));
+    }
+
+    @Test
+    public void testBackgroundColor_inPositionNextToEmoji_doesNotDrawBackground() {
+        // control the size of the emoji span
+        final TypefaceEmojiRasterizer metadata = mock(TypefaceEmojiRasterizer.class);
+        when(metadata.getWidth()).thenReturn(10);
+        when(metadata.getHeight()).thenReturn(10);
+
+        final EmojiSpan span = new TypefaceEmojiSpan(metadata);
+        TextPaint textPaint = new TextPaint();
+        final int spanWidth = span.getSize(textPaint, "", 0, 0, null);
+        final Spannable spannable = new SpannableString("Hello");
+        spannable.setSpan(new BackgroundColorSpan(Color.parseColor("#FF0000")), 0, 1,
+                Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+        // prepare parameters for draw() call
+        final Canvas canvas = mock(Canvas.class);
+        final float x = 10;
+        final int top = 15;
+        final int y = 20;
+        final int bottom = 30;
+
+        // verify the case where background draw happens (position 0)
+        EmojiCompat.reset(NoFontTestEmojiConfig.emptyConfig().setEmojiSpanIndicatorEnabled(false));
+        span.draw(canvas, spannable, 1 /*start*/, 2 /*end*/, x, top, y, bottom, textPaint);
+
+        verify(canvas, never()).drawRect(eq(x), eq((float) top), eq(x + spanWidth),
+                eq((float) bottom), any(Paint.class));
+    }
+
+
+    @Test
+    public void testMetrcisSpan_notInvoked_byBackgroundCode() {
+        // control the size of the emoji span
+        final TypefaceEmojiRasterizer metadata = mock(TypefaceEmojiRasterizer.class);
+        when(metadata.getWidth()).thenReturn(10);
+        when(metadata.getHeight()).thenReturn(10);
+
+        final EmojiSpan span = new TypefaceEmojiSpan(metadata);
+        TextPaint textPaint = new TextPaint();
+        final Spannable spannable = new SpannableString("Hello");
+        MyMetricSpan subject = new MyMetricSpan();
+        spannable.setSpan(subject, 0, 1,
+                Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
+        // prepare parameters for draw() call
+        final Canvas canvas = mock(Canvas.class);
+        final float x = 10;
+        final int top = 15;
+        final int y = 20;
+        final int bottom = 30;
+
+        // verify the case where background draw happens (position 0)
+        EmojiCompat.reset(NoFontTestEmojiConfig.emptyConfig().setEmojiSpanIndicatorEnabled(false));
+        TextPaint paint = new TextPaint();
+        span.draw(canvas, spannable, 0 /*start*/, 1 /*end*/, x, top, y, bottom, paint);
+
+        assertFalse(subject.mDidUpdateDrawState);
+        assertFalse(subject.mDidUpdateMeasureState);
+    }
+
+    class MyMetricSpan extends MetricAffectingSpan {
+        boolean mDidUpdateMeasureState = false;
+        boolean mDidUpdateDrawState = false;
+
+        @Override
+        public void updateMeasureState(@NonNull TextPaint textPaint) {
+            mDidUpdateMeasureState = true;
+        }
+
+        @Override
+        public void updateDrawState(TextPaint textPaint) {
+            mDidUpdateDrawState = true;
+        }
+    }
+
 }

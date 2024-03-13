@@ -1,57 +1,68 @@
 package com.example.appsearch;
 
 import androidx.appsearch.app.AppSearchSchema;
-import androidx.appsearch.app.DataClassFactory;
+import androidx.appsearch.app.DocumentClassFactory;
 import androidx.appsearch.app.GenericDocument;
 import androidx.appsearch.exceptions.AppSearchException;
+import java.lang.Class;
 import java.lang.Override;
 import java.lang.String;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import javax.annotation.processing.Generated;
 
-public class $$__AppSearch__Gift implements DataClassFactory<Gift> {
-  private static final String SCHEMA_TYPE = "Gift";
+@Generated("androidx.appsearch.compiler.AppSearchCompiler")
+public final class $$__AppSearch__Gift implements DocumentClassFactory<Gift> {
+  public static final String SCHEMA_NAME = "Gift";
 
   @Override
-  public String getSchemaType() {
-    return SCHEMA_TYPE;
+  public String getSchemaName() {
+    return SCHEMA_NAME;
   }
 
   @Override
   public AppSearchSchema getSchema() throws AppSearchException {
-    return new AppSearchSchema.Builder(SCHEMA_TYPE)
-          .addProperty(new AppSearchSchema.PropertyConfig.Builder("indexNone")
-            .setDataType(AppSearchSchema.PropertyConfig.DATA_TYPE_STRING)
+    return new AppSearchSchema.Builder(SCHEMA_NAME)
+          .addProperty(new AppSearchSchema.StringPropertyConfig.Builder("indexNone")
             .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
-            .setTokenizerType(AppSearchSchema.PropertyConfig.TOKENIZER_TYPE_NONE)
-            .setIndexingType(AppSearchSchema.PropertyConfig.INDEXING_TYPE_NONE)
+            .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_NONE)
+            .setIndexingType(AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_NONE)
+            .setJoinableValueType(AppSearchSchema.StringPropertyConfig.JOINABLE_VALUE_TYPE_NONE)
             .build())
-          .addProperty(new AppSearchSchema.PropertyConfig.Builder("indexExact")
-            .setDataType(AppSearchSchema.PropertyConfig.DATA_TYPE_STRING)
+          .addProperty(new AppSearchSchema.StringPropertyConfig.Builder("indexExact")
             .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
-            .setTokenizerType(AppSearchSchema.PropertyConfig.TOKENIZER_TYPE_PLAIN)
-            .setIndexingType(AppSearchSchema.PropertyConfig.INDEXING_TYPE_EXACT_TERMS)
+            .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
+            .setIndexingType(AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_EXACT_TERMS)
+            .setJoinableValueType(AppSearchSchema.StringPropertyConfig.JOINABLE_VALUE_TYPE_NONE)
             .build())
-          .addProperty(new AppSearchSchema.PropertyConfig.Builder("indexPrefix")
-            .setDataType(AppSearchSchema.PropertyConfig.DATA_TYPE_STRING)
+          .addProperty(new AppSearchSchema.StringPropertyConfig.Builder("indexPrefix")
             .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
-            .setTokenizerType(AppSearchSchema.PropertyConfig.TOKENIZER_TYPE_PLAIN)
-            .setIndexingType(AppSearchSchema.PropertyConfig.INDEXING_TYPE_PREFIXES)
+            .setTokenizerType(AppSearchSchema.StringPropertyConfig.TOKENIZER_TYPE_PLAIN)
+            .setIndexingType(AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
+            .setJoinableValueType(AppSearchSchema.StringPropertyConfig.JOINABLE_VALUE_TYPE_NONE)
             .build())
           .build();
   }
 
   @Override
-  public GenericDocument toGenericDocument(Gift dataClass) throws AppSearchException {
+  public List<Class<?>> getDependencyDocumentClasses() throws AppSearchException {
+    return Collections.emptyList();
+  }
+
+  @Override
+  public GenericDocument toGenericDocument(Gift document) throws AppSearchException {
     GenericDocument.Builder<?> builder =
-        new GenericDocument.Builder<>(dataClass.uri, SCHEMA_TYPE);
-    String indexNoneCopy = dataClass.indexNone;
+        new GenericDocument.Builder<>(document.namespace, document.id, SCHEMA_NAME);
+    String indexNoneCopy = document.indexNone;
     if (indexNoneCopy != null) {
       builder.setPropertyString("indexNone", indexNoneCopy);
     }
-    String indexExactCopy = dataClass.indexExact;
+    String indexExactCopy = document.indexExact;
     if (indexExactCopy != null) {
       builder.setPropertyString("indexExact", indexExactCopy);
     }
-    String indexPrefixCopy = dataClass.indexPrefix;
+    String indexPrefixCopy = document.indexPrefix;
     if (indexPrefixCopy != null) {
       builder.setPropertyString("indexPrefix", indexPrefixCopy);
     }
@@ -59,8 +70,10 @@ public class $$__AppSearch__Gift implements DataClassFactory<Gift> {
   }
 
   @Override
-  public Gift fromGenericDocument(GenericDocument genericDoc) throws AppSearchException {
-    String uriConv = genericDoc.getUri();
+  public Gift fromGenericDocument(GenericDocument genericDoc,
+      Map<String, List<String>> documentClassMap) throws AppSearchException {
+    String namespaceConv = genericDoc.getNamespace();
+    String idConv = genericDoc.getId();
     String[] indexNoneCopy = genericDoc.getPropertyStringArray("indexNone");
     String indexNoneConv = null;
     if (indexNoneCopy != null && indexNoneCopy.length != 0) {
@@ -76,11 +89,12 @@ public class $$__AppSearch__Gift implements DataClassFactory<Gift> {
     if (indexPrefixCopy != null && indexPrefixCopy.length != 0) {
       indexPrefixConv = indexPrefixCopy[0];
     }
-    Gift dataClass = new Gift();
-    dataClass.uri = uriConv;
-    dataClass.indexNone = indexNoneConv;
-    dataClass.indexExact = indexExactConv;
-    dataClass.indexPrefix = indexPrefixConv;
-    return dataClass;
+    Gift document = new Gift();
+    document.namespace = namespaceConv;
+    document.id = idConv;
+    document.indexNone = indexNoneConv;
+    document.indexExact = indexExactConv;
+    document.indexPrefix = indexPrefixConv;
+    return document;
   }
 }

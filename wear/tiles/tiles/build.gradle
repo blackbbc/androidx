@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+import androidx.build.Publish
 import androidx.build.LibraryType
-import androidx.build.LibraryVersions
 
 plugins {
     id("AndroidXPlugin")
@@ -24,27 +30,27 @@ plugins {
 }
 
 dependencies {
-    api("androidx.annotation:annotation:1.1.0")
+    api("androidx.annotation:annotation:1.2.0")
+    api(project(":wear:protolayout:protolayout"))
+    api(project(":wear:protolayout:protolayout-expression"))
     api(libs.guavaListenableFuture)
 
-    implementation("androidx.annotation:annotation-experimental:1.1.0")
-    implementation(project(path: ":wear:tiles:tiles-proto", configuration: "shadow"))
-
-    compileOnly(libs.kotlinStdlib) // For annotation-experimental
+    implementation("androidx.annotation:annotation-experimental:1.4.0")
+    implementation("androidx.concurrent:concurrent-futures:1.1.0")
+    implementation(project(path: ":wear:tiles:tiles-proto"))
 
     testImplementation(libs.testExtJunit)
     testImplementation(libs.testExtTruth)
     testImplementation(libs.testCore)
     testImplementation(libs.testRunner)
     testImplementation(libs.testRules)
-    testImplementation("androidx.concurrent:concurrent-futures:1.1.0")
     testImplementation(libs.robolectric)
-    testImplementation(libs.mockitoCore)
+    testImplementation(libs.mockitoCore4)
 }
 
 android {
     defaultConfig {
-        minSdkVersion 25
+        minSdkVersion 26
     }
     buildFeatures {
         aidl = true
@@ -55,13 +61,14 @@ android {
 
     // Use Robolectric 4.+
     testOptions.unitTests.includeAndroidResources = true
+    namespace "androidx.wear.tiles"
 }
 
 androidx {
     name = "Android Wear Tiles"
     type = LibraryType.PUBLISHED_LIBRARY
-    mavenGroup = LibraryGroups.WEAR_TILES
-    mavenVersion = LibraryVersions.WEAR_TILES
+    publish = Publish.SNAPSHOT_AND_RELEASE
     inceptionYear = "2020"
     description = "Android Wear Tiles"
+    metalavaK2UastEnabled = true
 }

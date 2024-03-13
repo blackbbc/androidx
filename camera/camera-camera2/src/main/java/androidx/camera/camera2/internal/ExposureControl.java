@@ -23,11 +23,15 @@ import android.util.Range;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.OptIn;
+import androidx.annotation.RequiresApi;
 import androidx.camera.camera2.impl.Camera2ImplConfig;
 import androidx.camera.camera2.internal.annotation.CameraExecutor;
 import androidx.camera.camera2.internal.compat.CameraCharacteristicsCompat;
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.CameraControl;
 import androidx.camera.core.ExposureState;
+import androidx.camera.core.impl.Config;
 import androidx.camera.core.impl.annotation.ExecutedBy;
 import androidx.camera.core.impl.utils.futures.Futures;
 import androidx.concurrent.futures.CallbackToFutureAdapter;
@@ -52,6 +56,7 @@ import java.util.concurrent.Executor;
  * The task will fails with {@link CameraControl.OperationCanceledException} if the camera is
  * closed.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public class ExposureControl {
 
     private static final int DEFAULT_EXPOSURE_COMPENSATION = 0;
@@ -123,9 +128,11 @@ public class ExposureControl {
      * to the shared options. It applies to all repeating requests and single requests.
      */
     @ExecutedBy("mExecutor")
+    @OptIn(markerClass = ExperimentalCamera2Interop.class)
     void setCaptureRequestOption(@NonNull Camera2ImplConfig.Builder configBuilder) {
-        configBuilder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
-                mExposureStateImpl.getExposureCompensationIndex());
+        configBuilder.setCaptureRequestOptionWithPriority(
+                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                mExposureStateImpl.getExposureCompensationIndex(), Config.OptionPriority.REQUIRED);
     }
 
     @NonNull

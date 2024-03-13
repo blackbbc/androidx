@@ -16,16 +16,24 @@
 
 package androidx.room.integration.testapp.dao;
 
+import androidx.collection.ArrayMap;
+import androidx.collection.LongSparseArray;
+import androidx.collection.SparseArrayCompat;
 import androidx.lifecycle.LiveData;
 import androidx.room.Dao;
 import androidx.room.Insert;
+import androidx.room.MapColumn;
+import androidx.room.MapInfo;
 import androidx.room.Query;
 import androidx.room.RawQuery;
+import androidx.room.RewriteQueriesToDropUnusedColumns;
 import androidx.room.Transaction;
 import androidx.room.integration.testapp.vo.Album;
 import androidx.room.integration.testapp.vo.AlbumNameAndBandName;
 import androidx.room.integration.testapp.vo.AlbumWithSongs;
 import androidx.room.integration.testapp.vo.Artist;
+import androidx.room.integration.testapp.vo.Image;
+import androidx.room.integration.testapp.vo.ImageFormat;
 import androidx.room.integration.testapp.vo.MultiSongPlaylistWithSongs;
 import androidx.room.integration.testapp.vo.Playlist;
 import androidx.room.integration.testapp.vo.PlaylistSongXRef;
@@ -39,13 +47,16 @@ import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSetMultimap;
 
+import io.reactivex.Flowable;
+
+import java.nio.ByteBuffer;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import io.reactivex.Flowable;
-
 @Dao
+@SuppressWarnings("ROOM_EXPAND_PROJECTION_WITH_UNUSED_COLUMNS")
 public interface MusicDao {
 
     @Insert
@@ -62,6 +73,9 @@ public interface MusicDao {
 
     @Insert
     void addPlaylistSongRelation(PlaylistSongXRef... relations);
+
+    @Insert
+    void addImages(Image... images);
 
     @Transaction
     @Query("SELECT * FROM Playlist")
@@ -99,6 +113,10 @@ public interface MusicDao {
     /* Map of Object to List */
     @Query("SELECT * FROM Artist JOIN Song ON Artist.mArtistName = Song.mArtist")
     Map<Artist, List<Song>> getAllArtistAndTheirSongsList();
+
+    @Query("SELECT * FROM Artist JOIN Song ON Artist.mArtistName = Song.mArtist "
+            + "ORDER BY mArtistName ASC")
+    Map<Artist, List<Song>> getAllArtistAndTheirSongsListOrdered();
 
     @Transaction
     @Query("SELECT * FROM Artist JOIN Album ON Artist.mArtistName = Album.mAlbumArtist")
@@ -179,4 +197,166 @@ public interface MusicDao {
     @Query("SELECT * FROM Artist JOIN Song ON Artist.mArtistName = Song.mArtist")
     LiveData<ImmutableListMultimap<Artist, Song>>
             getAllArtistAndTheirSongsAsLiveDataGuavaImmutableListMultimap();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation")
+    @MapInfo(keyColumn = "mArtistName")
+    @Query("SELECT * FROM Artist JOIN Song ON Artist.mArtistName = Song.mArtist")
+    Map<String, List<Song>> getArtistNameToSongs();
+
+    @RewriteQueriesToDropUnusedColumns
+    @Query("SELECT * FROM Artist JOIN Song ON Artist.mArtistName = Song.mArtist")
+    Map<@MapColumn(columnName = "mArtistName") String,
+            List<@MapColumn(columnName = "mReleasedYear") Integer>> getArtistNameToSongsMapColumn();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mReleasedYear", valueColumn = "mReleasedYear")
+    @Query("SELECT * FROM Album JOIN Song ON Song.mReleasedYear = Album.mAlbumReleaseYear")
+    Map<Integer, List<Song>> getReleaseYearToAlbums();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mImageYear")
+    @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+    LongSparseArray<Artist> getAllAlbumCoverYearToArtistsWithLongSparseArray();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mImageYear")
+    @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+    SparseArrayCompat<Artist> getAllAlbumCoverYearToArtistsWithIntSparseArray();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mReleasedYear", valueColumn = "mTitle")
+    @Query("SELECT * FROM Album JOIN Song ON Song.mReleasedYear = Album.mAlbumReleaseYear")
+    Map<Integer, List<String>> getReleaseYearToSongNames();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mArtistName", valueColumn = "mArtist")
+    @RawQuery
+    Map<String, List<Song>> getArtistNameToSongsRawQuery(SupportSQLiteQuery query);
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mReleasedYear", valueColumn = "mReleasedYear")
+    @RawQuery
+    Map<Integer, List<Song>> getReleaseYearToAlbumsRawQuery(SupportSQLiteQuery query);
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mReleasedYear", valueColumn = "mTitle")
+    @RawQuery
+    Map<Integer, List<String>> getReleaseYearToSongNamesRawQuery(SupportSQLiteQuery query);
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "songCount")
+    @Query("SELECT *, COUNT(mSongId) as songCount FROM Artist JOIN Song ON Artist.mArtistName = "
+            + "Song.mArtist GROUP BY mArtistName")
+    Map<Artist, Integer> getArtistAndSongCountMap();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "songCount")
+    @RawQuery
+    Map<Artist, Integer> getArtistAndSongCountMapRawQuery(SupportSQLiteQuery query);
+
+    // Other Map Key/Value Types
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "mAlbumCover")
+    @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+    ImmutableMap<Artist, ByteBuffer> getAllArtistsWithAlbumCovers();
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "mAlbumCover")
+    @RawQuery
+    ImmutableMap<Artist, ByteBuffer> getAllArtistsWithAlbumCoversRawQuery(SupportSQLiteQuery query);
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "mImageYear")
+    @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+    ImmutableMap<Artist, Long> getAllArtistsWithAlbumCoverYear();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "mImageYear")
+    @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+    ArrayMap<Artist, Long> getAllArtistsWithAlbumCoverYearArrayMap();
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mImageYear")
+    @RawQuery
+    ImmutableMap<Long, Artist> getAllAlbumCoverYearToArtistsWithRawQuery(SupportSQLiteQuery query);
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mImageYear")
+    @RawQuery
+    ArrayMap<Long, Artist> getAllAlbumCoverYearToArtistsWithRawQueryArrayMap(
+            SupportSQLiteQuery query
+    );
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mAlbumCover", valueColumn = "mIsActive")
+    @Query("SELECT * FROM Image JOIN Artist ON Artist.mArtistName = Image.mArtistInImage")
+    ImmutableMap<ByteBuffer, Boolean> getAlbumCoversWithBandActivity();
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mAlbumCover", valueColumn = "mIsActive")
+    @RawQuery
+    ImmutableMap<ByteBuffer, Boolean> getAlbumCoversWithBandActivityRawQuery(
+            SupportSQLiteQuery query
+    );
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mDateReleased", valueColumn = "mIsActive")
+    @Query("SELECT * FROM Image JOIN Artist ON Artist.mArtistName = Image.mArtistInImage")
+    ImmutableMap<Date, Boolean> getAlbumDateWithBandActivity();
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mDateReleased", valueColumn = "mIsActive")
+    @RawQuery
+    ImmutableMap<Date, Boolean> getAlbumDateWithBandActivityRawQuery(SupportSQLiteQuery query);
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mFormat", valueColumn = "mIsActive")
+    @Query("SELECT * FROM Image JOIN Artist ON Artist.mArtistName = Image.mArtistInImage")
+    ImmutableMap<ImageFormat, Boolean> getImageFormatWithBandActivity();
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "mFormat", valueColumn = "mIsActive")
+    @RawQuery
+    ImmutableMap<ImageFormat, Boolean> getImageFormatWithBandActivityRawQuery(
+            SupportSQLiteQuery query
+    );
+
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(keyColumn = "dog", valueColumn = "cat")
+    @RawQuery
+    Map<Artist, Integer> getMapWithInvalidColumnRawQuery(SupportSQLiteQuery query);
+
+    @Query("SELECT * FROM Artist LEFT JOIN Album ON Artist.mArtistName = Album.mAlbumArtist")
+    Map<Artist, List<Album>> getArtistAndAlbumsLeftJoin();
+
+    @Query("SELECT * FROM Artist LEFT JOIN Album ON Artist.mArtistName = Album.mAlbumArtist")
+    Map<Artist, Album> getArtistAndAlbumsLeftJoinOneToOne();
+
+    @Query("SELECT * FROM Artist LEFT JOIN Album ON Artist.mArtistName = Album.mAlbumArtist")
+    ImmutableListMultimap<Artist, Album> getArtistAndAlbumsLeftJoinGuava();
+
+    @RewriteQueriesToDropUnusedColumns
+    @SuppressWarnings("deprecation") // for MapInfo
+    @MapInfo(valueColumn = "mAlbumName")
+    @Query("SELECT * FROM Artist LEFT JOIN Album ON Artist.mArtistName = Album.mAlbumArtist")
+    Map<Artist, List<String>> getArtistAndAlbumNamesLeftJoin();
+
+    @Query("SELECT * FROM Album LEFT JOIN Artist ON Artist.mArtistName = Album.mAlbumArtist")
+    Map<Album, Artist> getAlbumToArtistLeftJoin();
+
+    @Query("SELECT * FROM Album LEFT JOIN Artist ON Artist.mArtistName = Album.mAlbumArtist")
+    Map<Artist, Album> getArtistToAlbumLeftJoin();
 }

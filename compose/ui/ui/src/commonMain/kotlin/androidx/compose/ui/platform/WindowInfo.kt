@@ -22,7 +22,9 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.collect
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.EmptyPointerKeyboardModifiers
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 
 /**
  * Provides information about the Window that is hosting this compose hierarchy.
@@ -37,6 +39,14 @@ interface WindowInfo {
      * is in focus.
      */
     val isWindowFocused: Boolean
+
+    /**
+     * Indicates the state of keyboard modifiers (pressed or not).
+     */
+    @Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
+    @get:ExperimentalComposeUiApi
+    val keyboardModifiers: PointerKeyboardModifiers
+        get() = WindowInfoImpl.GlobalKeyboardModifiers.value
 }
 
 @Composable
@@ -50,7 +60,20 @@ internal fun WindowFocusObserver(onWindowFocusChanged: (isWindowFocused: Boolean
 
 internal class WindowInfoImpl : WindowInfo {
     private val _isWindowFocused = mutableStateOf(false)
+
     override var isWindowFocused: Boolean
         set(value) { _isWindowFocused.value = value }
         get() = _isWindowFocused.value
+
+    @Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
+    @get:ExperimentalComposeUiApi
+    override var keyboardModifiers: PointerKeyboardModifiers
+        get() = GlobalKeyboardModifiers.value
+        set(value) { GlobalKeyboardModifiers.value = value }
+
+    companion object {
+        // One instance across all windows makes sense, since the state of KeyboardModifiers is
+        // common for all windows.
+        internal val GlobalKeyboardModifiers = mutableStateOf(EmptyPointerKeyboardModifiers())
+    }
 }

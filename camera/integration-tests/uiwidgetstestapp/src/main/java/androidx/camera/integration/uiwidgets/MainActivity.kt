@@ -18,8 +18,11 @@ package androidx.camera.integration.uiwidgets
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.integration.uiwidgets.compose.ComposeCameraActivity
 import androidx.camera.integration.uiwidgets.databinding.ActivityMainBinding
+import androidx.camera.integration.uiwidgets.foldable.FoldableCameraActivity
 import androidx.camera.integration.uiwidgets.rotations.LockedOrientationActivity
 import androidx.camera.integration.uiwidgets.rotations.OrientationConfigChangesOverriddenActivity
 import androidx.camera.integration.uiwidgets.rotations.UnlockedOrientationActivity
@@ -49,9 +52,15 @@ class MainActivity : AppCompatActivity() {
         binding.viewpager2.setOnClickListener {
             launch(ViewPager2Activity::class.java)
         }
+        binding.foldable.setOnClickListener {
+            launch(FoldableCameraActivity::class.java)
+        }
+        binding.compose.setOnClickListener {
+            launch(ComposeCameraActivity::class.java)
+        }
     }
 
-    private fun <A : AppCompatActivity> launch(activityClass: Class<A>) {
+    private fun <A : ComponentActivity> launch(activityClass: Class<A>) {
         val intent = Intent(this, activityClass)
         startActivity(intent)
     }

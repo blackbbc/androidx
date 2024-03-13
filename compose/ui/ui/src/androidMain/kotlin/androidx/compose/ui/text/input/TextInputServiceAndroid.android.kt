@@ -14,32 +14,69 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.ui.text.input
 
+import android.graphics.Rect as AndroidRect
 import android.text.InputType
 import android.util.Log
+import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.View
-import android.view.ViewTreeObserver
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import androidx.compose.runtime.collection.mutableVectorOf
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.input.pointer.PositionCalculator
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextInputServiceAndroid.TextInputCommand.HideKeyboard
+import androidx.compose.ui.text.input.TextInputServiceAndroid.TextInputCommand.ShowKeyboard
+import androidx.compose.ui.text.input.TextInputServiceAndroid.TextInputCommand.StartInput
+import androidx.compose.ui.text.input.TextInputServiceAndroid.TextInputCommand.StopInput
 import androidx.core.view.inputmethod.EditorInfoCompat
-import kotlinx.coroutines.channels.Channel
+import androidx.emoji2.text.EmojiCompat
+import java.lang.ref.WeakReference
+import java.util.concurrent.Executor
 import kotlin.math.roundToInt
 
 private const val DEBUG_CLASS = "TextInputServiceAndroid"
 
 /**
  * Provide Android specific input service with the Operating System.
+ *
+ * @param inputCommandProcessorExecutor [Executor] used to schedule the [processInputCommands]
+ * function when a input command is first requested for a frame.
  */
+@Deprecated(
+    "Only exists to support the legacy TextInputService APIs. It is not used by any Compose " +
+        "code. A copy of this class in foundation is used by the legacy BasicTextField."
+)
 internal class TextInputServiceAndroid(
     val view: View,
-    private val inputMethodManager: InputMethodManager
+    rootPositionCalculator: PositionCalculator,
+    private val inputMethodManager: InputMethodManager,
+    private val inputCommandProcessorExecutor: Executor = Choreographer.getInstance().asExecutor(),
 ) : PlatformTextInputService {
-    /** True if the currently editable composable has connected */
+
+    /**
+     * Commands that can be sent into [textInputCommandQueue] to be processed by
+     * [processInputCommands].
+     */
+    private enum class TextInputCommand {
+        StartInput,
+        StopInput,
+        ShowKeyboard,
+        HideKeyboard;
+    }
+
+    /**
+     * True if the currently editable composable has connected. This is used to tell the platform
+     * when it asks if the compose view is a text editor.
+     */
     private var editorHasFocus = false
 
     /**
@@ -53,44 +90,42 @@ internal class TextInputServiceAndroid(
     internal var state = TextFieldValue(text = "", selection = TextRange.Zero)
         private set
     private var imeOptions = ImeOptions.Default
-    private var ic: RecordingInputConnection? = null
+
+    // RecordingInputConnection has strong reference to the View through TextInputServiceAndroid and
+    // event callback. The connection should be closed when IME has changed and removed from this
+    // list in onConnectionClosed callback, but not clear it is guaranteed the close connection is
+    // called any time. So, keep it in WeakReference just in case.
+    private var ics = mutableListOf<WeakReference<RecordingInputConnection>>()
+
     // used for sendKeyEvent delegation
     private val baseInputConnection by lazy(LazyThreadSafetyMode.NONE) {
         BaseInputConnection(view, false)
     }
 
-    private var focusedRect: android.graphics.Rect? = null
+    private var focusedRect: AndroidRect? = null
+
+    private val cursorAnchorInfoController =
+        CursorAnchorInfoController(rootPositionCalculator, inputMethodManager)
 
     /**
-     * A channel that is used to send ShowKeyboard/HideKeyboard commands. Send 'true' for
-     * show Keyboard and 'false' to hide keyboard.
+     * A channel that is used to debounce rapid operations such as showing/hiding the keyboard and
+     * starting/stopping input, so we can make the minimal number of calls on the
+     * [inputMethodManager]. The [TextInputCommand]s sent to this channel are processed by
+     * [processInputCommands].
      */
-    private val showKeyboardChannel = Channel<Boolean>(Channel.CONFLATED)
+    private val textInputCommandQueue = mutableVectorOf<TextInputCommand>()
+    private var frameCallback: Runnable? = null
 
-    private val layoutListener = ViewTreeObserver.OnGlobalLayoutListener {
-        // focusedRect is null if there is not ongoing text input session. So safe to request
-        // latest focused rectangle whenever global layout has changed.
-        focusedRect?.let {
-            // Notice that view.requestRectangleOnScreen may modify the input Rect, we have to
-            // create another Rect and then pass it.
-            view.requestRectangleOnScreen(android.graphics.Rect(it))
-        }
-    }
-
-    internal constructor(view: View) : this(view, InputMethodManagerImpl(view.context))
+    constructor(view: View, positionCalculator: PositionCalculator) : this(
+        view,
+        positionCalculator,
+        InputMethodManagerImpl(view),
+    )
 
     init {
-        if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.create") }
-
-        view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewDetachedFromWindow(v: View?) {
-                v?.rootView?.viewTreeObserver?.removeOnGlobalLayoutListener(layoutListener)
-            }
-
-            override fun onViewAttachedToWindow(v: View?) {
-                v?.rootView?.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
-            }
-        })
+        if (DEBUG) {
+            Log.d(TAG, "$DEBUG_CLASS.create")
+        }
     }
 
     /**
@@ -102,6 +137,7 @@ internal class TextInputServiceAndroid(
         }
 
         outAttrs.update(imeOptions, state)
+        outAttrs.updateWithEmojiCompat()
 
         return RecordingInputConnection(
             initState = state,
@@ -118,10 +154,39 @@ internal class TextInputServiceAndroid(
                 override fun onKeyEvent(event: KeyEvent) {
                     baseInputConnection.sendKeyEvent(event)
                 }
+
+                override fun onRequestCursorAnchorInfo(
+                    immediate: Boolean,
+                    monitor: Boolean,
+                    includeInsertionMarker: Boolean,
+                    includeCharacterBounds: Boolean,
+                    includeEditorBounds: Boolean,
+                    includeLineBounds: Boolean
+                ) {
+                    cursorAnchorInfoController.requestUpdate(
+                        immediate,
+                        monitor,
+                        includeInsertionMarker,
+                        includeCharacterBounds,
+                        includeEditorBounds,
+                        includeLineBounds
+                    )
+                }
+
+                override fun onConnectionClosed(inputConnection: RecordingInputConnection) {
+                    for (i in 0 until ics.size) {
+                        if (ics[i].get() == inputConnection) {
+                            ics.removeAt(i)
+                            return // No duplicated instances should be in the list.
+                        }
+                    }
+                }
             }
         ).also {
-            ic = it
-            if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.createInputConnection: $ic") }
+            ics.add(WeakReference(it))
+            if (DEBUG) {
+                Log.d(TAG, "$DEBUG_CLASS.createInputConnection: $ics")
+            }
         }
     }
 
@@ -136,7 +201,9 @@ internal class TextInputServiceAndroid(
         onEditCommand: (List<EditCommand>) -> Unit,
         onImeActionPerformed: (ImeAction) -> Unit
     ) {
-        if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.startInput") }
+        if (DEBUG) {
+            Log.d(TAG, "$DEBUG_CLASS.startInput")
+        }
 
         editorHasFocus = true
         state = value
@@ -144,54 +211,143 @@ internal class TextInputServiceAndroid(
         this.onEditCommand = onEditCommand
         this.onImeActionPerformed = onImeActionPerformed
 
-        view.post {
-            restartInput()
-            showSoftwareKeyboard()
+        // Don't actually send the command to the IME yet, it may be overruled by a subsequent call
+        // to stopInput.
+        sendInputCommand(StartInput)
+    }
+
+    override fun startInput() {
+        if (DEBUG) {
+            Log.d(TAG, "$DEBUG_CLASS.startInput")
         }
+
+        // Don't set editorHasFocus or any of the other properties used to support the legacy text
+        // input system.
+
+        // Don't actually send the command to the IME yet, it may be overruled by a subsequent call
+        // to stopInput.
+        sendInputCommand(StartInput)
     }
 
     override fun stopInput() {
-        if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.stopInput") }
+        if (DEBUG) Log.d(TAG, "$DEBUG_CLASS.stopInput")
 
         editorHasFocus = false
         onEditCommand = {}
         onImeActionPerformed = {}
         focusedRect = null
 
-        restartInput()
-        editorHasFocus = false
-    }
-
-    private fun restartInput() {
-        if (DEBUG) Log.d(TAG, "$DEBUG_CLASS.restartInput")
-        inputMethodManager.restartInput(view)
+        // Don't actually send the command to the IME yet, it may be overruled by a subsequent call
+        // to startInput.
+        sendInputCommand(StopInput)
     }
 
     override fun showSoftwareKeyboard() {
-        if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.showSoftwareKeyboard") }
-        showKeyboardChannel.trySend(true)
+        if (DEBUG) {
+            Log.d(TAG, "$DEBUG_CLASS.showSoftwareKeyboard")
+        }
+        sendInputCommand(ShowKeyboard)
     }
 
     override fun hideSoftwareKeyboard() {
-        if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.hideSoftwareKeyboard") }
-        showKeyboardChannel.trySend(false)
+        if (DEBUG) {
+            Log.d(TAG, "$DEBUG_CLASS.hideSoftwareKeyboard")
+        }
+        sendInputCommand(HideKeyboard)
     }
 
-    suspend fun keyboardVisibilityEventLoop() {
-        // TODO(b/180071033): Allow for more IMPLICIT flag to be passed.
-        for (showKeyboard in showKeyboardChannel) {
-            // Even though we are using a conflated channel, and the producers and consumers are
-            // on the same thread, there is a possibility that we have a stale value in the channel
-            // because we start consuming from it before we finish producing all the values. We poll
-            // to make sure that we use the most recent value.
-            if (showKeyboardChannel.tryReceive().getOrNull() ?: showKeyboard) {
-                if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.keyboardVisibilityEventLoop.showSoftInput") }
-                inputMethodManager.showSoftInput(view)
-            } else {
-                if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.keyboardVisibilityEventLoop.hideSoftInput") }
-                inputMethodManager.hideSoftInputFromWindow(view.windowToken)
+    private fun sendInputCommand(command: TextInputCommand) {
+        textInputCommandQueue += command
+        if (frameCallback == null) {
+            frameCallback = Runnable {
+                frameCallback = null
+                processInputCommands()
+            }.also(inputCommandProcessorExecutor::execute)
+        }
+    }
+
+    private fun processInputCommands() {
+        // Multiple commands may have been queued up in the channel while this function was
+        // waiting to be resumed. We don't execute the commands as they come in because making a
+        // bunch of calls to change the actual IME quickly can result in flickers. Instead, we
+        // manually coalesce the commands to figure out the minimum number of IME operations we
+        // need to get to the desired final state.
+        // The queued commands effectively operate on a simple state machine consisting of two
+        // flags:
+        //   1. Whether to start a new input connection (true), tear down the input connection
+        //      (false), or leave the current connection as-is (null).
+        var startInput: Boolean? = null
+        //   2. Whether to show the keyboard (true), hide the keyboard (false), or leave the
+        //      keyboard visibility as-is (null).
+        var showKeyboard: Boolean? = null
+
+        // And a function that performs the appropriate state transition given a command.
+        fun TextInputCommand.applyToState() {
+            when (this) {
+                StartInput -> {
+                    // Any commands before restarting the input are meaningless since they would
+                    // apply to the connection we're going to tear down and recreate.
+                    // Starting a new connection implicitly stops the previous connection.
+                    startInput = true
+                    // It doesn't make sense to start a new connection without the keyboard
+                    // showing.
+                    showKeyboard = true
+                }
+
+                StopInput -> {
+                    startInput = false
+                    // It also doesn't make sense to keep the keyboard visible if it's not
+                    // connected to anything. Note that this is different than the Android
+                    // default behavior for Views, which is to keep the keyboard showing even
+                    // after the view that the IME was shown for loses focus.
+                    // See this doc for some notes and discussion on whether we should auto-hide
+                    // or match Android:
+                    // https://docs.google.com/document/d/1o-y3NkfFPCBhfDekdVEEl41tqtjjqs8jOss6txNgqaw/edit?resourcekey=0-o728aLn51uXXnA4Pkpe88Q#heading=h.ieacosb5rizm
+                    showKeyboard = false
+                }
+
+                ShowKeyboard,
+                HideKeyboard -> {
+                    // Any keyboard visibility commands sent after input is stopped but before
+                    // input is started should be ignored.
+                    // Otherwise, the last visibility command sent either before the last stop
+                    // command, or after the last start command, is the one that should take
+                    // effect.
+                    if (startInput != false) {
+                        showKeyboard = this == ShowKeyboard
+                    }
+                }
             }
         }
+
+        // Feed all the queued commands into the state machine.
+        textInputCommandQueue.forEach { command ->
+            command.applyToState()
+            if (DEBUG) {
+                Log.d(
+                    TAG,
+                    "$DEBUG_CLASS.textInputCommandEventLoop.$command " +
+                        "(startInput=$startInput, showKeyboard=$showKeyboard)"
+                )
+            }
+        }
+        textInputCommandQueue.clear()
+
+        // Now that we've calculated what operations we need to perform on the actual input
+        // manager, perform them.
+        // If the keyboard visibility was changed after starting a new connection, we need to
+        // perform that operation change after starting it.
+        // If the keyboard visibility was changed before closing the connection, we need to
+        // perform that operation before closing the connection so it doesn't no-op.
+        if (startInput == true) {
+            restartInputImmediately()
+        }
+        showKeyboard?.also(::setKeyboardVisibleImmediately)
+        if (startInput == false) {
+            restartInputImmediately()
+        }
+
+        if (DEBUG) Log.d(TAG, "$DEBUG_CLASS.textInputCommandEventLoop.finished")
     }
 
     override fun updateState(oldValue: TextFieldValue?, newValue: TextFieldValue) {
@@ -199,12 +355,31 @@ internal class TextInputServiceAndroid(
             Log.d(TAG, "$DEBUG_CLASS.updateState called: $oldValue -> $newValue")
         }
 
+        // If the selection has changed from the last time, we need to update selection even though
+        // the oldValue in EditBuffer is already in sync with the newValue.
+        // Same holds for composition b/207800945
+        val needUpdateSelection = (this.state.selection != newValue.selection) ||
+            this.state.composition != newValue.composition
         this.state = newValue
         // update the latest TextFieldValue in InputConnection
-        ic?.mTextFieldValue = newValue
+        for (i in 0 until ics.size) {
+            ics[i].get()?.mTextFieldValue = newValue
+        }
+        cursorAnchorInfoController.invalidate()
 
         if (oldValue == newValue) {
-            if (DEBUG) { Log.d(TAG, "$DEBUG_CLASS.updateState early return") }
+            if (DEBUG) {
+                Log.d(TAG, "$DEBUG_CLASS.updateState early return")
+            }
+            if (needUpdateSelection) {
+                // updateSelection API requires -1 if there is no composition
+                inputMethodManager.updateSelection(
+                    selectionStart = newValue.selection.min,
+                    selectionEnd = newValue.selection.max,
+                    compositionStart = state.composition?.min ?: -1,
+                    compositionEnd = state.composition?.max ?: -1
+                )
+            }
             return
         }
 
@@ -219,14 +394,17 @@ internal class TextInputServiceAndroid(
         }
 
         if (restartInput) {
-            restartInput()
+            restartInputImmediately()
         } else {
-            ic?.updateInputState(this.state, inputMethodManager, view)
+            for (i in 0 until ics.size) {
+                ics[i].get()?.updateInputState(this.state, inputMethodManager)
+            }
         }
     }
 
+    @Deprecated("This method should not be called, used BringIntoViewRequester instead.")
     override fun notifyFocusedRect(rect: Rect) {
-        focusedRect = android.graphics.Rect(
+        focusedRect = AndroidRect(
             rect.left.roundToInt(),
             rect.top.roundToInt(),
             rect.right.roundToInt(),
@@ -239,14 +417,57 @@ internal class TextInputServiceAndroid(
         // use, i.e. InputConnection has created.
         // Even if we miss all the timing of requesting rectangle during initial text field focus,
         // focused rectangle will be requested when software keyboard has shown.
-        if (ic == null) {
+        if (ics.isEmpty()) {
             focusedRect?.let {
                 // Notice that view.requestRectangleOnScreen may modify the input Rect, we have to
                 // create another Rect and then pass it.
-                view.requestRectangleOnScreen(android.graphics.Rect(it))
+                view.requestRectangleOnScreen(AndroidRect(it))
             }
         }
     }
+
+    override fun updateTextLayoutResult(
+        textFieldValue: TextFieldValue,
+        offsetMapping: OffsetMapping,
+        textLayoutResult: TextLayoutResult,
+        textFieldToRootTransform: (Matrix) -> Unit,
+        innerTextFieldBounds: Rect,
+        decorationBoxBounds: Rect
+    ) {
+        cursorAnchorInfoController.updateTextLayoutResult(
+            textFieldValue,
+            offsetMapping,
+            textLayoutResult,
+            textFieldToRootTransform,
+            innerTextFieldBounds,
+            decorationBoxBounds
+        )
+    }
+
+    /** Immediately restart the IME connection, bypassing the [textInputCommandQueue]. */
+    private fun restartInputImmediately() {
+        if (DEBUG) Log.d(TAG, "$DEBUG_CLASS.restartInputImmediately")
+        inputMethodManager.restartInput()
+    }
+
+    /** Immediately show or hide the keyboard, bypassing the [textInputCommandQueue]. */
+    private fun setKeyboardVisibleImmediately(visible: Boolean) {
+        if (DEBUG) Log.d(TAG, "$DEBUG_CLASS.setKeyboardVisibleImmediately(visible=$visible)")
+        if (visible) {
+            inputMethodManager.showSoftInput()
+        } else {
+            inputMethodManager.hideSoftInput()
+        }
+    }
+}
+
+/**
+ * Call to update EditorInfo correctly when EmojiCompat is configured.
+ */
+private fun EditorInfo.updateWithEmojiCompat() {
+    if (!EmojiCompat.isConfigured()) { return }
+
+    EmojiCompat.get().updateEditorInfo(this)
 }
 
 /**
@@ -273,6 +494,9 @@ internal fun EditorInfo.update(imeOptions: ImeOptions, textFieldValue: TextField
         ImeAction.Done -> EditorInfo.IME_ACTION_DONE
         else -> error("invalid ImeAction")
     }
+    imeOptions.platformImeOptions?.privateImeOptions?.let {
+        privateImeOptions = it
+    }
     when (imeOptions.keyboardType) {
         KeyboardType.Text -> this.inputType = InputType.TYPE_CLASS_TEXT
         KeyboardType.Ascii -> {
@@ -293,6 +517,10 @@ internal fun EditorInfo.update(imeOptions: ImeOptions, textFieldValue: TextField
         KeyboardType.NumberPassword -> {
             this.inputType =
                 InputType.TYPE_CLASS_NUMBER or EditorInfo.TYPE_NUMBER_VARIATION_PASSWORD
+        }
+        KeyboardType.Decimal -> {
+            this.inputType =
+                InputType.TYPE_CLASS_NUMBER or EditorInfo.TYPE_NUMBER_FLAG_DECIMAL
         }
         else -> error("Invalid Keyboard Type")
     }
@@ -335,6 +563,10 @@ internal fun EditorInfo.update(imeOptions: ImeOptions, textFieldValue: TextField
     EditorInfoCompat.setInitialSurroundingText(this, textFieldValue.text)
 
     this.imeOptions = this.imeOptions or EditorInfo.IME_FLAG_NO_FULLSCREEN
+}
+
+internal fun Choreographer.asExecutor(): Executor = Executor { runnable ->
+    postFrameCallback { runnable.run() }
 }
 
 private fun hasFlag(bits: Int, flag: Int): Boolean = (bits and flag) == flag

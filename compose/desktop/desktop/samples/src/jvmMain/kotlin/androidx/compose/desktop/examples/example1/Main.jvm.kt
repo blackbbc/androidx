@@ -13,20 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package androidx.compose.desktop.examples.example1
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.TweenSpec
-import androidx.compose.desktop.AppWindow
-import androidx.compose.desktop.DesktopMaterialTheme
-import androidx.compose.desktop.LocalAppWindow
-import androidx.compose.desktop.Window
-import androidx.compose.foundation.ExperimentalDesktopApi
+import androidx.compose.foundation.ContextMenuDataProvider
+import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.VerticalScrollbar
-import androidx.compose.foundation.mouseClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +41,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.mouseClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.CircleShape
@@ -51,6 +49,7 @@ import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material.BottomAppBar
 import androidx.compose.material.Button
 import androidx.compose.material.ButtonDefaults
@@ -62,6 +61,7 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Scaffold
 import androidx.compose.material.Slider
+import androidx.compose.material.Switch
 import androidx.compose.material.Text
 import androidx.compose.material.TextField
 import androidx.compose.material.TopAppBar
@@ -76,73 +76,95 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusOrder
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.plus
-import androidx.compose.ui.input.key.shortcuts
-import androidx.compose.ui.input.pointer.pointerMoveFilter
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isBackPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isForwardPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.isTertiaryPressed
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.imageResource
-import androidx.compose.ui.res.svgResource
-import androidx.compose.ui.res.vectorXmlResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.platform.Font
-import androidx.compose.ui.text.platform.FontLoader
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDecoration.Companion.Underline
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.window.launchApplication
+import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.singleWindowApplication
+import kotlin.random.Random
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 
 private const val title = "Desktop Compose Elements"
 
-val italicFont = try {
-    FontFamily(
-        Font("NotoSans-Italic.ttf").also {
-            // Check that font is loadable.
-            FontLoader().load(it)
-        }
-    )
-} catch (e: Exception) {
-    FontFamily.SansSerif
-}
+val italicFont = FontFamily(
+    Font("NotoSans-Italic.ttf")
+)
 
-@OptIn(ExperimentalComposeUiApi::class)
-fun main() {
-    Window(title, IntSize(1024, 850)) {
-        App()
-    }
+val dispatchedFonts = FontFamily(
+    Font("NotoSans-Italic.ttf", style = FontStyle.Italic),
+    Font("NotoSans-Regular.ttf", style = FontStyle.Normal)
+)
+
+fun main() = singleWindowApplication(
+    title = title,
+    state = WindowState(width = 1024.dp, height = 850.dp)
+) {
+    App()
 }
 
 @Composable
-private fun App() {
+private fun FrameWindowScope.App() {
     val uriHandler = LocalUriHandler.current
-    DesktopMaterialTheme {
+    MaterialTheme {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                svgResource("androidx/compose/desktop/example/star.svg"),
-                                contentDescription = "Star"
-                            )
-                            Text(title)
+                WindowDraggableArea {
+                    TopAppBar(
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    painterResource("androidx/compose/desktop/example/star.svg"),
+                                    contentDescription = "Star"
+                                )
+                                Text(title)
+                            }
                         }
-                    }
-                )
+                    )
+                }
             },
             floatingActionButton = {
                 ExtendedFloatingActionButton(
@@ -162,8 +184,8 @@ private fun App() {
                     }
                 }
             },
-            content = {
-                Row(Modifier.padding(bottom = 56.dp)) {
+            content = { innerPadding ->
+                Row(Modifier.padding(innerPadding)) {
                     LeftColumn(Modifier.weight(1f))
                     RightColumn(Modifier.width(200.dp))
                 }
@@ -173,7 +195,7 @@ private fun App() {
 }
 
 @Composable
-private fun LeftColumn(modifier: Modifier) = Box(modifier.fillMaxSize()) {
+private fun FrameWindowScope.LeftColumn(modifier: Modifier) = Box(modifier.fillMaxSize()) {
     val state = rememberScrollState()
     ScrollableContent(state)
 
@@ -183,16 +205,12 @@ private fun LeftColumn(modifier: Modifier) = Box(modifier.fillMaxSize()) {
     )
 }
 
-@OptIn(
-    ExperimentalComposeUiApi::class,
-    ExperimentalDesktopApi::class
-)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun ScrollableContent(scrollState: ScrollState) {
+private fun FrameWindowScope.ScrollableContent(scrollState: ScrollState) {
     val amount = remember { mutableStateOf(0f) }
     val animation = remember { mutableStateOf(true) }
     Column(Modifier.fillMaxSize().verticalScroll(scrollState)) {
-        val window = LocalAppWindow.current.window
         val info = "${window.renderApi} (${window.windowHandle})"
         Text(
             text = "Привет! 你好! Desktop Compose use $info: ${amount.value}",
@@ -333,26 +351,43 @@ private fun ScrollableContent(scrollState: ScrollState) {
                     "   }\n" +
                     "}",
                 fontFamily = italicFont,
-                modifier = Modifier.padding(10.dp).pointerMoveFilter(
-                    onMove = {
-                        overText = "Move position: $it"
-                        false
-                    },
-                    onEnter = {
-                        overText = "Over enter"
-                        false
-                    },
-                    onExit = {
-                        overText = "Over exit"
-                        false
+                modifier = Modifier.padding(10.dp).pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val position = event.changes.first().position
+                            when (event.type) {
+                                PointerEventType.Move -> {
+                                    overText = "Move position: $position"
+                                }
+                                PointerEventType.Enter -> {
+                                    overText = "Over enter"
+                                }
+                                PointerEventType.Exit -> {
+                                    overText = "Over exit"
+                                }
+                            }
+                        }
                     }
-                )
+                }
             )
         }
+        Text(
+            text = buildAnnotatedString {
+                append("resolved: NotoSans-Regular.ttf ")
+                pushStyle(
+                    SpanStyle(
+                        fontStyle = FontStyle.Italic
+                    )
+                )
+                append("NotoSans-italic.ttf.")
+            },
+            fontFamily = dispatchedFonts,
+        )
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(
-                modifier = Modifier.padding(4.dp),
+                modifier = Modifier.padding(4.dp).pointerHoverIcon(PointerIcon.Hand),
                 onClick = {
                     amount.value++
                 }
@@ -361,7 +396,7 @@ private fun ScrollableContent(scrollState: ScrollState) {
             }
 
             var clickableText by remember { mutableStateOf("Click me!") }
-
+            @OptIn(ExperimentalFoundationApi::class)
             Text(
                 modifier = Modifier.mouseClickable(
                     onClick = {
@@ -370,6 +405,9 @@ private fun ScrollableContent(scrollState: ScrollState) {
                             append("primary: ${buttons.isPrimaryPressed}\t")
                             append("secondary: ${buttons.isSecondaryPressed}\t")
                             append("tertiary: ${buttons.isTertiaryPressed}\t")
+                            append("primary: ${buttons.isPrimaryPressed}\t")
+                            append("back: ${buttons.isBackPressed}\t")
+                            append("forward: ${buttons.isForwardPressed}\t")
 
                             append("\n\nKeyboard modifiers pressed:\n")
 
@@ -389,25 +427,46 @@ private fun ScrollableContent(scrollState: ScrollState) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row {
-                Row(modifier = Modifier.padding(4.dp)) {
-                    Checkbox(
+                Column {
+                    Switch(
                         animation.value,
                         onCheckedChange = {
                             animation.value = it
                         }
                     )
-                    Text("Animation")
+                    Row(
+                        modifier = Modifier.padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            animation.value,
+                            onCheckedChange = {
+                                animation.value = it
+                            }
+                        )
+                        Text("Animation")
+                    }
                 }
 
                 Button(
                     modifier = Modifier.padding(4.dp),
                     onClick = {
-                        AppWindow(size = IntSize(400, 200)).also {
-                            it.keyboard.setShortcut(Key.Escape) {
-                                it.close()
+                        @OptIn(DelicateCoroutinesApi::class)
+                        GlobalScope.launchApplication {
+                            Window(
+                                onCloseRequest = ::exitApplication,
+                                state = rememberWindowState(size = DpSize(400.dp, 200.dp)),
+                                onPreviewKeyEvent = {
+                                    if (it.key == Key.Escape) {
+                                        exitApplication()
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                            ) {
+                                Animations(isCircularEnabled = animation.value)
                             }
-                        }.show {
-                            Animations(isCircularEnabled = animation.value)
                         }
                     }
                 ) {
@@ -432,25 +491,37 @@ private fun ScrollableContent(scrollState: ScrollState) {
         val text = remember {
             mutableStateOf("Hello \uD83E\uDDD1\uD83C\uDFFF\u200D\uD83E\uDDB0")
         }
-        TextField(
-            value = text.value,
-            onValueChange = { text.value = it },
-            label = { Text(text = "Input2") },
-            placeholder = {
-                Text(text = "Important input")
-            },
-            maxLines = 1,
-            modifier = Modifier.shortcuts {
-                on(Key.MetaLeft + Key.ShiftLeft + Key.Enter) {
-                    text.value = "Cleared with shift!"
-                }
-                on(Key.MetaLeft + Key.Enter) {
-                    text.value = "Cleared!"
-                }
-            }.focusOrder(focusItem1) {
-                next = focusItem2
+        ContextMenuDataProvider(
+            items = {
+                listOf(ContextMenuItem("Clear") { text.value = ""; focusItem1.requestFocus() })
             }
-        )
+        ) {
+            TextField(
+                value = text.value,
+                onValueChange = { text.value = it },
+                label = { Text(text = "Input2") },
+                placeholder = {
+                    Text(text = "Important input")
+                },
+                maxLines = 1,
+                modifier = Modifier.onPreviewKeyEvent {
+                    when {
+                        (it.isMetaPressed && it.key == Key.Enter) -> {
+                            if (it.isShiftPressed) {
+                                text.value = "Cleared with shift!"
+                            } else {
+                                text.value = "Cleared!"
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                }.focusRequester(focusItem1)
+                .focusProperties {
+                    next = focusItem2
+                }
+            )
+        }
 
         var text2 by remember {
             val initText = buildString {
@@ -462,21 +533,24 @@ private fun ScrollableContent(scrollState: ScrollState) {
         }
         TextField(
             text2,
-            modifier = Modifier.height(200.dp).focusOrder(focusItem2) {
-                previous = focusItem1
-            },
+            modifier = Modifier
+                .height(200.dp)
+                .focusRequester(focusItem2)
+                .focusProperties {
+                    previous = focusItem1
+                },
             onValueChange = { text2 = it }
         )
 
         Row {
             Image(
-                imageResource("androidx/compose/desktop/example/circus.jpg"),
+                painterResource("androidx/compose/desktop/example/circus.jpg"),
                 "Localized description",
                 Modifier.size(200.dp)
             )
 
             Icon(
-                vectorXmlResource("androidx/compose/desktop/example/ic_baseline_deck_24.xml"),
+                painterResource("androidx/compose/desktop/example/ic_baseline_deck_24.xml"),
                 "Localized description",
                 Modifier.size(100.dp).align(Alignment.CenterVertically),
                 tint = Color.Blue.copy(alpha = 0.5f)
@@ -512,11 +586,15 @@ fun Animations(isCircularEnabled: Boolean) = Row {
 private fun RightColumn(modifier: Modifier) = Box {
     val state = rememberLazyListState()
     val itemCount = 100000
+    val heights = remember {
+        val random = Random(24)
+        (0 until itemCount).map { random.nextFloat() }
+    }
 
     LazyColumn(modifier.graphicsLayer(alpha = 0.5f), state = state) {
-        items((1..itemCount).toList()) { x ->
-            val itemHeight = 20.dp + 20.dp * Math.random().toFloat()
-            Text(x.toString(), Modifier.graphicsLayer(alpha = 0.5f).height(itemHeight))
+        items((0 until itemCount).toList()) { i ->
+            val itemHeight = 20.dp + 20.dp * heights[i]
+            Text(i.toString(), Modifier.graphicsLayer(alpha = 0.5f).height(itemHeight))
         }
     }
 

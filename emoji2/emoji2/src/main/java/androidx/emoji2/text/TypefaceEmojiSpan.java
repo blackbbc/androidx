@@ -18,34 +18,36 @@ package androidx.emoji2.text;
 import android.annotation.SuppressLint;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.text.Spanned;
 import android.text.TextPaint;
+import android.text.style.CharacterStyle;
+import android.text.style.MetricAffectingSpan;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 
 /**
  * EmojiSpan subclass used to render emojis using Typeface.
  *
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
-@RequiresApi(19)
 public final class TypefaceEmojiSpan extends EmojiSpan {
 
     /**
      * Paint object used to draw a background in debug mode.
      */
     private static @Nullable Paint sDebugPaint;
+    @Nullable
+    private TextPaint mWorkingPaint;
 
     /**
      * Default constructor.
      *
      * @param metadata metadata representing the emoji that this span will draw
      */
-    public TypefaceEmojiSpan(final @NonNull EmojiMetadata metadata) {
+    public TypefaceEmojiSpan(final @NonNull TypefaceEmojiRasterizer metadata) {
         super(metadata);
     }
 
@@ -54,10 +56,85 @@ public final class TypefaceEmojiSpan extends EmojiSpan {
             @SuppressLint("UnknownNullness") final CharSequence text,
             @IntRange(from = 0) final int start, @IntRange(from = 0) final int end, final float x,
             final int top, final int y, final int bottom, @NonNull final Paint paint) {
+        @Nullable TextPaint textPaint = applyCharacterSpanStyles(text, start, end, paint);
+        if (textPaint != null && textPaint.bgColor != 0) {
+            drawBackground(canvas, textPaint, x, x + getWidth(), top, bottom);
+        }
         if (EmojiCompat.get().isEmojiSpanIndicatorEnabled()) {
             canvas.drawRect(x, top , x + getWidth(), bottom, getDebugPaint());
         }
-        getMetadata().draw(canvas, x, y, paint);
+        getTypefaceRasterizer().draw(canvas, x, y, textPaint != null ? textPaint : paint);
+    }
+
+    // compat behavior with TextLine.java#handleText background drawing
+    void drawBackground(Canvas c, TextPaint textPaint, float leftX, float rightX, float top,
+            float bottom) {
+        int previousColor = textPaint.getColor();
+        Paint.Style previousStyle = textPaint.getStyle();
+
+        textPaint.setColor(textPaint.bgColor);
+        textPaint.setStyle(Paint.Style.FILL);
+        c.drawRect(leftX, top, rightX, bottom, textPaint);
+
+        textPaint.setStyle(previousStyle);
+        textPaint.setColor(previousColor);
+    }
+
+    /**
+     * This applies the CharacterSpanStyles that _would_ have been applied to this character by
+     * StaticLayout.
+     *
+     * StaticLayout applies CharacterSpanStyles _after_ calling ReplacementSpan.draw, which means
+     * BackgroundSpan will not be applied before draw is called.
+     *
+     * If any CharacterSpanStyles would impact _this_ location, apply them to a TextPaint to
+     * determine if a background needs draw prior to the emoji.
+     *
+     * @param text text that this span is part of
+     * @param start start position to replace
+     * @param end end position to replace
+     * @param paint paint (from TextLine)
+     * @return TextPaint configured
+     */
+    @Nullable
+    private TextPaint applyCharacterSpanStyles(@Nullable CharSequence text, int start, int end,
+            Paint paint) {
+        if (text instanceof Spanned) {
+            Spanned spanned = (Spanned) text;
+            CharacterStyle[] spans = spanned.getSpans(start, end, CharacterStyle.class);
+            if (spans.length == 0 || (spans.length == 1 && spans[0] == this)) {
+                if (paint instanceof TextPaint) {
+                    // happy path goes here, retain color and bgColor from caller
+                    return (TextPaint) paint;
+                } else {
+                    return null;
+                }
+            }
+            // there are some non-TypefaceEmojiSpan character styles to apply, update a working
+            // paint to apply each span style, like TextLine would have.
+            TextPaint wp = mWorkingPaint;
+            if (wp == null) {
+                wp = new TextPaint();
+                mWorkingPaint = wp;
+            }
+            wp.set(paint);
+            //noinspection ForLoopReplaceableByForEach
+            for (int pos = 0; pos < spans.length; pos++) {
+                if (!(spans[pos] instanceof MetricAffectingSpan)) {
+                    // we're in draw, so at this point we can't do anything to metrics don't try
+                    spans[pos].updateDrawState(wp);
+                }
+            }
+            return wp;
+        } else {
+            if (paint instanceof TextPaint) {
+                // retain any color and bgColor from caller
+                return (TextPaint) paint;
+            } else {
+                return null;
+            }
+        }
+
     }
 
     @NonNull

@@ -20,7 +20,6 @@ import android.content.Context
 import android.content.res.Resources
 import android.os.Bundle
 import android.util.AttributeSet
-import androidx.annotation.RestrictTo
 import androidx.core.content.withStyledAttributes
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
@@ -45,11 +44,7 @@ public class DynamicIncludeGraphNavigator(
     private val installManager: DynamicInstallManager
 ) : Navigator<DynamicIncludeGraphNavigator.DynamicIncludeNavGraph>() {
 
-    /**
-     * @hide
-     */
-    @RestrictTo(RestrictTo.Scope.LIBRARY)
-    public val packageName: String = context.packageName
+    internal val packageName: String = context.packageName
 
     private val createdDestinations = mutableListOf<DynamicIncludeNavGraph>()
 
@@ -231,6 +226,7 @@ public class DynamicIncludeGraphNavigator(
         }
 
         override fun equals(other: Any?): Boolean {
+            if (this === other) return true
             if (other == null || other !is DynamicIncludeNavGraph) return false
             return super.equals(other) &&
                 graphResourceName == other.graphResourceName &&

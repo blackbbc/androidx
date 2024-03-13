@@ -29,8 +29,14 @@ import android.view.Surface;
 
 import androidx.camera.camera2.internal.compat.params.OutputConfigurationCompat;
 import androidx.camera.camera2.internal.compat.params.SessionConfigurationCompat;
+import androidx.camera.camera2.internal.compat.quirk.CaptureSessionOnClosedNotCalledQuirk;
+import androidx.camera.camera2.internal.compat.quirk.ConfigureSurfaceToSecondarySessionFailQuirk;
+import androidx.camera.camera2.internal.compat.quirk.PreviewOrientationIncorrectQuirk;
+import androidx.camera.camera2.internal.compat.quirk.TextureViewIsClosedQuirk;
 import androidx.camera.core.impl.DeferrableSurface;
 import androidx.camera.core.impl.ImmediateSurface;
+import androidx.camera.core.impl.Quirks;
+import androidx.camera.core.impl.utils.executor.CameraXExecutors;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -41,15 +47,14 @@ import org.robolectric.annotation.internal.DoNotInstrument;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 @RunWith(RobolectricTestRunner.class)
 @DoNotInstrument
-@Config(minSdk = Build.VERSION_CODES.LOLLIPOP)
+@Config(minSdk = Build.VERSION_CODES.LOLLIPOP,
+        instrumentedPackages = {"androidx.camera.camera2.internal.compat.params"})
 public class SynchronizedCaptureSessionTest {
     private static final int NUM_OUTPUTS = 3;
 
@@ -57,8 +62,8 @@ public class SynchronizedCaptureSessionTest {
     private SynchronizedCaptureSession.StateCallback mMockStateCallback;
     private List<OutputConfigurationCompat> mOutputs;
     private CaptureSessionRepository mCaptureSessionRepository;
-    private SynchronizedCaptureSessionOpener mSynchronizedCaptureSessionOpener;
-    private SynchronizedCaptureSessionOpener.Builder mCaptureSessionOpenerBuilder;
+    private SynchronizedCaptureSession.Opener mSynchronizedCaptureSessionOpener;
+    private SynchronizedCaptureSession.OpenerBuilder mCaptureSessionOpenerBuilder;
     private ScheduledExecutorService mScheduledExecutorService =
             Executors.newSingleThreadScheduledExecutor();
 
@@ -79,13 +84,13 @@ public class SynchronizedCaptureSessionTest {
         mFakeDeferrableSurfaces.add(mDeferrableSurface1);
         mFakeDeferrableSurfaces.add(mDeferrableSurface2);
 
-        Set<String> enabledFeature = new HashSet<>();
-        enabledFeature.add(SynchronizedCaptureSessionOpener.FEATURE_FORCE_CLOSE);
-        enabledFeature.add(SynchronizedCaptureSessionOpener.FEATURE_DEFERRABLE_SURFACE_CLOSE);
-
-        mCaptureSessionOpenerBuilder = new SynchronizedCaptureSessionOpener.Builder(
-                android.os.AsyncTask.SERIAL_EXECUTOR, mScheduledExecutorService,
-                mock(Handler.class), mCaptureSessionRepository, -1);
+        mCaptureSessionOpenerBuilder = new SynchronizedCaptureSession.OpenerBuilder(
+                CameraXExecutors.directExecutor(), mScheduledExecutorService,
+                mock(Handler.class), mCaptureSessionRepository,
+                new Quirks(Arrays.asList(new PreviewOrientationIncorrectQuirk(),
+                        new ConfigureSurfaceToSecondarySessionFailQuirk())),
+                new Quirks(Arrays.asList(new CaptureSessionOnClosedNotCalledQuirk(),
+                        new TextureViewIsClosedQuirk())));
         mSynchronizedCaptureSessionOpener = mCaptureSessionOpenerBuilder.build();
 
         mMockCaptureSession = mock(CameraCaptureSession.class);
@@ -118,7 +123,7 @@ public class SynchronizedCaptureSessionTest {
         CameraCaptureSession mockCaptureSession1 = mock(CameraCaptureSession.class);
         SynchronizedCaptureSession.StateCallback mockStateCallback1 = mock(
                 SynchronizedCaptureSession.StateCallback.class);
-        SynchronizedCaptureSessionOpener captureSessionUtil1 =
+        SynchronizedCaptureSession.Opener captureSessionUtil1 =
                 mCaptureSessionOpenerBuilder.build();
         SessionConfigurationCompat sessionConfigurationCompat1 =
                 captureSessionUtil1.createSessionConfigurationCompat(

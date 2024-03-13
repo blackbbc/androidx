@@ -16,9 +16,9 @@
 
 package androidx.compose.ui.window
 
-import android.app.Dialog
 import android.content.Context
 import android.graphics.Outline
+import android.os.Build
 import android.view.ContextThemeWrapper
 import android.view.MotionEvent
 import android.view.View
@@ -26,6 +26,8 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.Window
 import android.view.WindowManager
+import androidx.activity.ComponentDialog
+import androidx.activity.addCallback
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionContext
 import androidx.compose.runtime.DisposableEffect
@@ -55,11 +57,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.fastMap
 import androidx.compose.ui.util.fastMaxBy
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.compose.ui.util.fastRoundToInt
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.findViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import java.util.UUID
-import kotlin.math.roundToInt
 
 /**
  * Properties used to customize the behavior of a [Dialog].
@@ -72,28 +78,45 @@ import kotlin.math.roundToInt
  * dialog's window.
  * @property usePlatformDefaultWidth Whether the width of the dialog's content should be limited to
  * the platform default, which is smaller than the screen width.
+ * @property decorFitsSystemWindows Sets [WindowCompat.setDecorFitsSystemWindows] value. Set to
+ * `false` to use WindowInsets. If `false`, the
+ * [soft input mode][WindowManager.LayoutParams.softInputMode] will be changed to
+ * [WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE] and `android:windowIsFloating` is
+ * set to `false` for Android [R][Build.VERSION_CODES.R] and earlier.
  */
 @Immutable
-class DialogProperties @ExperimentalComposeUiApi constructor(
-    val dismissOnBackPress: Boolean = true,
-    val dismissOnClickOutside: Boolean = true,
+actual class DialogProperties constructor(
+    actual val dismissOnBackPress: Boolean = true,
+    actual val dismissOnClickOutside: Boolean = true,
     val securePolicy: SecureFlagPolicy = SecureFlagPolicy.Inherit,
-    @get:ExperimentalComposeUiApi
-    val usePlatformDefaultWidth: Boolean = true
+    actual val usePlatformDefaultWidth: Boolean = true,
+    val decorFitsSystemWindows: Boolean = true
 ) {
-    @OptIn(ExperimentalComposeUiApi::class)
+    actual constructor(
+        dismissOnBackPress: Boolean,
+        dismissOnClickOutside: Boolean,
+        usePlatformDefaultWidth: Boolean,
+    ) : this(
+        dismissOnBackPress = dismissOnBackPress,
+        dismissOnClickOutside = dismissOnClickOutside,
+        securePolicy = SecureFlagPolicy.Inherit,
+        usePlatformDefaultWidth = usePlatformDefaultWidth,
+        decorFitsSystemWindows = true
+    )
+
+    @Deprecated("Maintained for binary compatibility", level = DeprecationLevel.HIDDEN)
     constructor(
         dismissOnBackPress: Boolean = true,
         dismissOnClickOutside: Boolean = true,
         securePolicy: SecureFlagPolicy = SecureFlagPolicy.Inherit,
-    ) : this (
+    ) : this(
         dismissOnBackPress = dismissOnBackPress,
         dismissOnClickOutside = dismissOnClickOutside,
         securePolicy = securePolicy,
-        usePlatformDefaultWidth = true
+        usePlatformDefaultWidth = true,
+        decorFitsSystemWindows = true
     )
 
-    @OptIn(ExperimentalComposeUiApi::class)
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is DialogProperties) return false
@@ -102,16 +125,17 @@ class DialogProperties @ExperimentalComposeUiApi constructor(
         if (dismissOnClickOutside != other.dismissOnClickOutside) return false
         if (securePolicy != other.securePolicy) return false
         if (usePlatformDefaultWidth != other.usePlatformDefaultWidth) return false
+        if (decorFitsSystemWindows != other.decorFitsSystemWindows) return false
 
         return true
     }
 
-    @OptIn(ExperimentalComposeUiApi::class)
     override fun hashCode(): Int {
         var result = dismissOnBackPress.hashCode()
         result = 31 * result + dismissOnClickOutside.hashCode()
         result = 31 * result + securePolicy.hashCode()
         result = 31 * result + usePlatformDefaultWidth.hashCode()
+        result = 31 * result + decorFitsSystemWindows.hashCode()
         return result
     }
 }
@@ -119,9 +143,13 @@ class DialogProperties @ExperimentalComposeUiApi constructor(
 /**
  * Opens a dialog with the given content.
  *
+ * A dialog is a small window that prompts the user to make a decision or enter
+ * additional information. A dialog does not fill the screen and is normally used
+ * for modal events that require users to take an action before they can proceed.
+ *
  * The dialog is visible as long as it is part of the composition hierarchy.
  * In order to let the user dismiss the Dialog, the implementation of [onDismissRequest] should
- * contain a way to remove to remove the dialog from the composition hierarchy.
+ * contain a way to remove the dialog from the composition hierarchy.
  *
  * Example usage:
  *
@@ -132,9 +160,9 @@ class DialogProperties @ExperimentalComposeUiApi constructor(
  * @param content The content to be displayed inside the dialog.
  */
 @Composable
-fun Dialog(
+actual fun Dialog(
     onDismissRequest: () -> Unit,
-    properties: DialogProperties = DialogProperties(),
+    properties: DialogProperties,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -231,20 +259,22 @@ private class DialogLayout(
         super.internalOnLayout(changed, left, top, right, bottom)
         // Now set the content size as fixed layout params, such that ViewRootImpl knows
         // the exact window size.
-        val child = getChildAt(0) ?: return
-        window.setLayout(child.measuredWidth, child.measuredHeight)
+        if (!usePlatformDefaultWidth) {
+            val child = getChildAt(0) ?: return
+            window.setLayout(child.measuredWidth, child.measuredHeight)
+        }
     }
 
     private val displayWidth: Int
         get() {
             val density = context.resources.displayMetrics.density
-            return (context.resources.configuration.screenWidthDp * density).roundToInt()
+            return (context.resources.configuration.screenWidthDp * density).fastRoundToInt()
         }
 
     private val displayHeight: Int
         get() {
             val density = context.resources.displayMetrics.density
-            return (context.resources.configuration.screenHeightDp * density).roundToInt()
+            return (context.resources.configuration.screenHeightDp * density).fastRoundToInt()
         }
 
     @Composable
@@ -261,25 +291,40 @@ private class DialogWrapper(
     layoutDirection: LayoutDirection,
     density: Density,
     dialogId: UUID
-) : Dialog(
+) : ComponentDialog(
     /**
      * [Window.setClipToOutline] is only available from 22+, but the style attribute exists on 21.
      * So use a wrapped context that sets this attribute for compatibility back to 21.
      */
-    ContextThemeWrapper(composeView.context, R.style.DialogWindowTheme)
+    ContextThemeWrapper(
+        composeView.context,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || properties.decorFitsSystemWindows) {
+            R.style.DialogWindowTheme
+        } else {
+            R.style.FloatingDialogWindowTheme
+        }
+    )
 ),
     ViewRootForInspector {
 
     private val dialogLayout: DialogLayout
 
-    private val maxSupportedElevation = 30.dp
+    // On systems older than Android S, there is a bug in the surface insets matrix math used by
+    // elevation, so high values of maxSupportedElevation break accessibility services: b/232788477.
+    private val maxSupportedElevation = 8.dp
 
     override val subCompositionView: AbstractComposeView get() = dialogLayout
 
+    private val defaultSoftInputMode: Int
+
     init {
         val window = window ?: error("Dialog has no window")
+        defaultSoftInputMode =
+            window.attributes.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
         window.requestFeature(Window.FEATURE_NO_TITLE)
         window.setBackgroundDrawableResource(android.R.color.transparent)
+        @OptIn(ExperimentalComposeUiApi::class)
+        WindowCompat.setDecorFitsSystemWindows(window, properties.decorFitsSystemWindows)
         dialogLayout = DialogLayout(context, window).apply {
             // Set unique id for AbstractComposeView. This allows state restoration for the state
             // defined inside the Dialog via rememberSaveable()
@@ -318,15 +363,25 @@ private class DialogWrapper(
         // Turn of all clipping so shadows can be drawn outside the window
         (window.decorView as? ViewGroup)?.disableClipping()
         setContentView(dialogLayout)
-        ViewTreeLifecycleOwner.set(dialogLayout, ViewTreeLifecycleOwner.get(composeView))
-        ViewTreeViewModelStoreOwner.set(dialogLayout, ViewTreeViewModelStoreOwner.get(composeView))
-        ViewTreeSavedStateRegistryOwner.set(
-            dialogLayout,
-            ViewTreeSavedStateRegistryOwner.get(composeView)
+        dialogLayout.setViewTreeLifecycleOwner(composeView.findViewTreeLifecycleOwner())
+        dialogLayout.setViewTreeViewModelStoreOwner(composeView.findViewTreeViewModelStoreOwner())
+        dialogLayout.setViewTreeSavedStateRegistryOwner(
+            composeView.findViewTreeSavedStateRegistryOwner()
         )
 
         // Initial setup
         updateParameters(onDismissRequest, properties, layoutDirection)
+
+        // Due to how the onDismissRequest callback works
+        // (it enforces a just-in-time decision on whether to update the state to hide the dialog)
+        // we need to unconditionally add a callback here that is always enabled,
+        // meaning we'll never get a system UI controlled predictive back animation
+        // for these dialogs
+        onBackPressedDispatcher.addCallback(this) {
+            if (properties.dismissOnBackPress) {
+                onDismissRequest()
+            }
+        }
     }
 
     private fun setLayoutDirection(layoutDirection: LayoutDirection) {
@@ -364,7 +419,24 @@ private class DialogWrapper(
         this.properties = properties
         setSecurePolicy(properties.securePolicy)
         setLayoutDirection(layoutDirection)
+        if (properties.usePlatformDefaultWidth && !dialogLayout.usePlatformDefaultWidth) {
+            // Undo fixed size in internalOnLayout, which would suppress size changes when
+            // usePlatformDefaultWidth is true.
+            window?.setLayout(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
         dialogLayout.usePlatformDefaultWidth = properties.usePlatformDefaultWidth
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            @OptIn(ExperimentalComposeUiApi::class)
+            if (properties.decorFitsSystemWindows) {
+                window?.setSoftInputMode(defaultSoftInputMode)
+            } else {
+                @Suppress("DEPRECATION")
+                window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            }
+        }
     }
 
     fun disposeComposition() {
@@ -383,12 +455,6 @@ private class DialogWrapper(
     override fun cancel() {
         // Prevents the dialog from dismissing itself
         return
-    }
-
-    override fun onBackPressed() {
-        if (properties.dismissOnBackPress) {
-            onDismissRequest()
-        }
     }
 }
 

@@ -18,30 +18,29 @@ package androidx.core.content;
 
 import static android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS;
 
-import static androidx.annotation.RestrictTo.Scope.LIBRARY;
+import static androidx.core.content.PackageManagerCompat.ACTION_PERMISSION_REVOCATION_SETTINGS;
+import static androidx.core.content.PackageManagerCompat.areUnusedAppRestrictionsAvailable;
+import static androidx.core.content.PackageManagerCompat.getPermissionRevocationVerifierApp;
 import static androidx.core.util.Preconditions.checkNotNull;
 
-import static java.lang.annotation.RetentionPolicy.SOURCE;
-
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Parcelable;
 
-import androidx.annotation.IntDef;
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
-import androidx.annotation.RestrictTo;
 
-import java.lang.annotation.Retention;
-import java.util.List;
+import java.io.Serializable;
+import java.util.ArrayList;
 
 /**
- * Helper for accessing features in {@link android.content.Intent}.
+ * Helper for accessing features in {@link Intent}.
  */
 public final class IntentCompat {
     private IntentCompat() {
@@ -50,9 +49,9 @@ public final class IntentCompat {
 
     /**
      * Activity Action: Creates a reminder.
-     * <p>Input: {@link android.content.Intent#EXTRA_TITLE} The title of the
+     * <p>Input: {@link Intent#EXTRA_TITLE} The title of the
      * reminder that will be shown to the user.
-     * {@link android.content.Intent#EXTRA_TEXT} The reminder text that will be
+     * {@link Intent#EXTRA_TEXT} The reminder text that will be
      * shown to the user. The intent should at least specify a title or a text.
      * {@link #EXTRA_TIME} The time when the reminder will
      * be shown to the user. The time is specified in milliseconds since the
@@ -60,32 +59,24 @@ public final class IntentCompat {
      * </p>
      * <p>Output: Nothing.</p>
      *
-     * @see android.content.Intent#EXTRA_TITLE
-     * @see android.content.Intent#EXTRA_TEXT
+     * @see Intent#EXTRA_TITLE
+     * @see Intent#EXTRA_TEXT
      * @see #EXTRA_TIME
      */
     @SuppressLint("ActionValue")
     public static final String ACTION_CREATE_REMINDER = "android.intent.action.CREATE_REMINDER";
 
     /**
-     * Activity action: creates an intent to redirect the user to UI to turn on/off their
-     * unused app restriction settings.
-     */
-    @SuppressLint("ActionValue")
-    public static final String ACTION_UNUSED_APP_RESTRICTIONS =
-            "android.intent.action.AUTO_REVOKE_PERMISSIONS";
-
-    /**
      * A constant String that is associated with the Intent, used with
-     * {@link android.content.Intent#ACTION_SEND} to supply an alternative to
-     * {@link android.content.Intent#EXTRA_TEXT}
+     * {@link Intent#ACTION_SEND} to supply an alternative to
+     * {@link Intent#EXTRA_TEXT}
      * as HTML formatted text.  Note that you <em>must</em> also supply
-     * {@link android.content.Intent#EXTRA_TEXT}.
+     * {@link Intent#EXTRA_TEXT}.
      */
     public static final String EXTRA_HTML_TEXT = "android.intent.extra.HTML_TEXT";
 
     /**
-     * Used as a boolean extra field in {@link android.content.Intent#ACTION_VIEW} intents to
+     * Used as a boolean extra field in {@link Intent#ACTION_VIEW} intents to
      * indicate that content should immediately be played without any intermediate screens that
      * require additional user input, e.g. a profile selection screen or a details page.
      */
@@ -106,55 +97,6 @@ public final class IntentCompat {
      * be displayed in the Leanback launcher.
      */
     public static final String CATEGORY_LEANBACK_LAUNCHER = "android.intent.category.LEANBACK_LAUNCHER";
-
-    /** The status of Unused App Restrictions features is unknown for this app. */
-    public static final int UNUSED_APP_RESTRICTION_STATUS_UNKNOWN = 0;
-
-    /** There are no available Unused App Restrictions features for this app. */
-    public static final int UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE = 1;
-
-    /**
-     * Permission revocation is enabled for this app (i.e. permissions will be automatically
-     * reset if the app is unused).
-     *
-     * Note: this also means that app hibernation is not available for this app.
-     */
-    public static final int PERMISSION_REVOCATION_ENABLED = 2;
-
-    /**
-     * Permission revocation is disabled for this app (i.e. this app is exempt from having
-     * its permissions automatically removed).
-     *
-     * Note: this also means that app hibernation is not available for this app.
-     */
-    public static final int PERMISSION_REVOCATION_DISABLED = 3;
-
-    /**
-     * App hibernation is enabled for this app (i.e. this app will be hibernated and have its
-     * permissions revoked if the app is unused).
-     *
-     * Note: this also means that permission revocation is enabled for this app.
-     */
-    public static final int APP_HIBERNATION_ENABLED = 4;
-
-    /**
-     * App hibernation is disabled for this app (i.e. this app is exempt from being hibernated).
-     *
-     * Note: this also means that permission revocation is disabled for this app.
-     */
-    public static final int APP_HIBERNATION_DISABLED = 5;
-
-    /**
-     * The status of Unused App Restrictions features for this app.
-     * @hide
-     */
-    @IntDef({UNUSED_APP_RESTRICTION_STATUS_UNKNOWN, UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE,
-            PERMISSION_REVOCATION_ENABLED, PERMISSION_REVOCATION_DISABLED,
-            APP_HIBERNATION_ENABLED, APP_HIBERNATION_DISABLED})
-    @Retention(SOURCE)
-    @RestrictTo(LIBRARY)
-    public @interface UnusedAppRestrictionsStatus {
-    }
 
     /**
      * Make an Intent for the main activity of an application, without
@@ -179,31 +121,30 @@ public final class IntentCompat {
     @NonNull
     public static Intent makeMainSelectorActivity(@NonNull String selectorAction,
             @NonNull String selectorCategory) {
-        if (Build.VERSION.SDK_INT >= 15) {
-            return Intent.makeMainSelectorActivity(selectorAction, selectorCategory);
-        } else {
-            // Before api 15 you couldn't set a selector intent.
-            // Fall back and just return an intent with the requested action/category,
-            // even though it won't be a proper "main" intent.
-            Intent intent = new Intent(selectorAction);
-            intent.addCategory(selectorCategory);
-            return intent;
-        }
+        return Intent.makeMainSelectorActivity(selectorAction, selectorCategory);
     }
 
     /**
      * Make an Intent to redirect the user to UI to manage their unused app restriction settings
      * for a particular app (e.g. permission revocation, app hibernation).
      *
-     * Note: developers must first call {@link #getUnusedAppRestrictionsStatus(Context)} to make
-     * sure that unused app restriction features are available on the device before attempting to
-     * create an intent using this method. Any return value of this method besides
-     * {@link #UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE} indicates that at least one
-     * unused app restriction feature is available on the device. If the return value _is_
-     * {@link #UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE}, this method will throw an
-     * {@link UnsupportedOperationException}.
+     * <p>Note: developers must first call
+     * {@link PackageManagerCompat#getUnusedAppRestrictionsStatus(Context)}
+     * to make sure that unused app restriction features are available on the device before
+     * attempting to create an intent using this method. Likewise, the returned intent must be sent
+     * using {@link Activity#startActivityForResult}, _not_ {@link Activity#startActivity}.
      *
-     * Compatibility behavior:
+     * <p>Any return value of {@link PackageManagerCompat#getUnusedAppRestrictionsStatus(Context)}
+     * besides {@link UnusedAppRestrictionsConstants#FEATURE_NOT_AVAILABLE}
+     * indicates that at least one unused app restriction feature is available on the device. If
+     * the return value _is_ {@link UnusedAppRestrictionsConstants#FEATURE_NOT_AVAILABLE}, this
+     * method will throw an {@link UnsupportedOperationException}.
+     *
+     * <p>If the return value is {@link UnusedAppRestrictionsConstants#ERROR}, then there was an
+     * issue when fetching whether the unused app restriction features on the device are enabled
+     * for this application. However, this method will still return an intent to redirect the user.
+     *
+     * <p>Compatibility behavior:
      * <ul>
      * <li>SDK 31 and above, this method generates an intent with action {@code Intent
      * .ACTION_APPLICATION_DETAILS_SETTINGS} and {@code packageName} as data.
@@ -224,8 +165,7 @@ public final class IntentCompat {
     @NonNull
     public static Intent createManageUnusedAppRestrictionsIntent(@NonNull Context context,
             @NonNull String packageName) {
-        if (getUnusedAppRestrictionsStatus(context)
-                == UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE) {
+        if (!areUnusedAppRestrictionsAvailable(context.getPackageManager())) {
             throw new UnsupportedOperationException(
                     "Unused App Restriction features are not available on this device");
         }
@@ -238,125 +178,181 @@ public final class IntentCompat {
                     .setData(Uri.fromParts("package", packageName, /* fragment= */ null));
         }
 
-        Intent unusedAppRestrictionsIntent =
-                new Intent(ACTION_UNUSED_APP_RESTRICTIONS)
+        Intent permissionRevocationSettingsIntent =
+                new Intent(ACTION_PERMISSION_REVOCATION_SETTINGS)
                         .setData(Uri.fromParts(
                                 "package", packageName, /* fragment= */ null));
 
         // If the OS version is R, then no need to add any other data or flags, since we're
         // relying on the Android R system feature.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return unusedAppRestrictionsIntent;
+            return permissionRevocationSettingsIntent;
         } else {
-            // Only allow apps with the Verifier role to resolve the intent.
-            String verifierPackageName = getVerifierRolePackageName(context.getPackageManager());
+            // Only allow apps with the Verifier role to resolve the permission revocation intent.
+            String verifierPackageName =
+                    getPermissionRevocationVerifierApp(context.getPackageManager());
             // The Verifier package name shouldn't be null since we've already checked that there
             // exists a Verifier on the device, but nonetheless we double-check here.
-            return unusedAppRestrictionsIntent
+            return permissionRevocationSettingsIntent
                     .setPackage(checkNotNull(verifierPackageName));
         }
     }
 
     /**
-     * Returns the package name of the one and only Verifier on the device. If none exist, this
-     * will return {@code null}. Likewise, if multiple Verifiers exist, this method will return
-     * the first Verifier's package name.
-     */
-    @Nullable
-    private static String getVerifierRolePackageName(PackageManager packageManager) {
-        Intent unusedAppRestrictionsIntent =
-                new Intent(ACTION_UNUSED_APP_RESTRICTIONS)
-                        .setData(Uri.fromParts(
-                                "package", "com.example", /* fragment= */ null));
-        List<ResolveInfo> intentResolvers =
-                packageManager.queryIntentActivities(unusedAppRestrictionsIntent, /* flags= */ 0);
-
-        String verifierPackageName = null;
-
-        for (ResolveInfo intentResolver: intentResolvers) {
-            String packageName = intentResolver.activityInfo.packageName;
-            if (packageManager.checkPermission("android.permission.PACKAGE_VERIFICATION_AGENT",
-                    packageName) != PackageManager.PERMISSION_GRANTED) {
-                continue;
-            }
-
-            if (verifierPackageName != null) {
-                // This shouldn't happen, but we fail gracefully nonetheless and avoid throwing an
-                // exception, instead returning the first package name with the Verifier role
-                // that we found.
-                return verifierPackageName;
-            }
-            verifierPackageName = packageName;
-        }
-
-        return verifierPackageName;
-    }
-
-    /**
-     * Returns the status of Unused App Restriction features for the current application, i.e.
-     * whether the features are available and if so, enabled for the application.
-     *
+     * Retrieve extended data from the intent.
+     * <p>
      * Compatibility behavior:
      * <ul>
-     * <li>SDK 31 and above, if {@link PackageManager#isAutoRevokeWhitelisted()} is true, this
-     * will return {@link #APP_HIBERNATION_ENABLED}. Else, it will return
-     * {@link #APP_HIBERNATION_DISABLED}.</li>
-     * <li>SDK 30, if {@link PackageManager#isAutoRevokeWhitelisted()} is true, this will return
-     * {@link #PERMISSION_REVOCATION_ENABLED}. Else, it will return
-     * {@link #PERMISSION_REVOCATION_DISABLED}.</li>
-     * <li>SDK 23 through 29, if there exists an app with the Verifier role that can resolve the
-     * {@code Intent.ACTION_AUTO_REVOKE_PERMISSIONS} action.
-     * <li>SDK 22 and below, this method always returns
-     * {@link #UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE} as runtime permissions did not exist
-     * yet.
+     *     <li>SDK 34 and later, this method matches platform behavior.
+     *     <li>SDK 33 and below, the object type is checked after deserialization.
      * </ul>
+     *
+     * @param in The intent to retrieve from.
+     * @param name The name of the desired item.
+     * @param clazz The type of the object expected.
+     *
+     * @return the value of an item previously added with putExtra(),
+     * or null if no Parcelable value was found.
+     *
+     * @see Intent#putExtra(String, Parcelable)
      */
-    public static @UnusedAppRestrictionsStatus int getUnusedAppRestrictionsStatus(
-            @NonNull Context context) {
-        // Return false if the Android OS version is before M, because Android M introduced runtime
-        // permissions
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE;
+    @Nullable
+    @SuppressWarnings({"deprecation", "unchecked"})
+    public static <T> T getParcelableExtra(@NonNull Intent in, @Nullable String name,
+            @NonNull Class<T> clazz) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Don't call this API on SDK 33 due to b/232589966.
+            return Api33Impl.getParcelableExtra(in, name, clazz);
+        } else {
+            T extra = in.getParcelableExtra(name);
+            return clazz.isInstance(extra) ? extra : null;
         }
-
-        // TODO: replace with VERSION_CODES.S once it's defined
-        if (Build.VERSION.SDK_INT >= 31) {
-            return Api30Impl.areUnusedAppRestrictionsEnabled(context)
-                    ? APP_HIBERNATION_ENABLED
-                    : APP_HIBERNATION_DISABLED;
-        }
-
-        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.R) {
-            return Api30Impl.areUnusedAppRestrictionsEnabled(context)
-                    ? PERMISSION_REVOCATION_ENABLED
-                    : PERMISSION_REVOCATION_DISABLED;
-        }
-
-        // Else, check for an app with the verifier role that can resolve the intent
-        String verifierPackageName = getVerifierRolePackageName(context.getPackageManager());
-        // Check that we were able to get the one Verifier's package name. If no Verifier or
-        // more than one Verifier exists on the device, unused app restrictions are not available
-        // on the device.
-        return (verifierPackageName == null)
-                ? UNUSED_APP_RESTRICTION_FEATURE_NOT_AVAILABLE
-                // TODO(b/177234481): Implement the backport behavior of this API
-                : UNUSED_APP_RESTRICTION_STATUS_UNKNOWN;
     }
 
     /**
-     * We create this static class to avoid Class Verification Failures from referencing a method
-     * only added in Android R.
+     * Retrieve extended data from the intent.
+     * <p>
+     * Compatibility behavior:
+     * <ul>
+     *     <li>SDK 34 and later, this method matches platform behavior.
+     *     <li>SDK 33 and below, this method will not check the array elements' types.
+     * </ul>
      *
-     * <p>Gating references on SDK checks does not address class verification failures, hence the
-     * need for this inner class.
+     * @param in The intent to retrieve from.
+     * @param name The name of the desired item.
+     * @param clazz The type of the items inside the array. This is only verified when unparceling.
+     *
+     * @return the value of an item previously added with putExtra(),
+     * or null if no Parcelable[] value was found.
+     *
+     * @see Intent#putExtra(String, Parcelable[])
      */
-    @RequiresApi(Build.VERSION_CODES.R)
-    private static class Api30Impl {
-        private Api30Impl() {}
-        static boolean areUnusedAppRestrictionsEnabled(@NonNull Context context) {
-            // If the app is allowlisted, that means that it is exempt from unused app restriction
-            // features, and thus the features are _disabled_.
-            return !context.getPackageManager().isAutoRevokeWhitelisted();
+    @Nullable
+    @SuppressWarnings({"deprecation"})
+    @SuppressLint({"ArrayReturn", "NullableCollection"})
+    public static Parcelable[] getParcelableArrayExtra(@NonNull Intent in, @Nullable String name,
+            @NonNull Class<? extends Parcelable> clazz) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Don't call this API on SDK 33 due to b/232589966.
+            return Api33Impl.getParcelableArrayExtra(in, name, clazz);
+        } else {
+            return in.getParcelableArrayExtra(name);
+        }
+    }
+
+    /**
+     * Retrieve extended data from the intent.
+     * <p>
+     * Compatibility behavior:
+     * <ul>
+     *     <li>SDK 34 and later, this method matches platform behavior.
+     *     <li>SDK 33 and below, this method will not check the array elements' types.
+     * </ul>
+     *
+     * @param in The intent to retrieve from.
+     * @param name The name of the desired item.
+     * @param clazz The type of the items inside the array list. This is only verified when
+     *     unparceling.
+     *
+     * @return the value of an item previously added with
+     * putParcelableArrayListExtra(), or null if no
+     * ArrayList<Parcelable> value was found.
+     *
+     * @see Intent#putParcelableArrayListExtra(String, ArrayList)
+     */
+    @Nullable
+    @SuppressWarnings({"deprecation", "unchecked"})
+    @SuppressLint({"ConcreteCollection", "NullableCollection"})
+    public static <T> ArrayList<T> getParcelableArrayListExtra(
+            @NonNull Intent in, @Nullable String name, @NonNull Class<? extends T> clazz) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Don't call this API on SDK 33 due to b/232589966.
+            return Api33Impl.getParcelableArrayListExtra(in, name, clazz);
+        } else {
+            return (ArrayList<T>) in.getParcelableArrayListExtra(name);
+        }
+    }
+
+    /**
+     * Returns the value associated with the given key or {@code null} if:
+     * <ul>
+     *     <li>No mapping of the desired type exists for the given key.
+     *     <li>A {@code null} value is explicitly associated with the key.
+     *     <li>The object is not of type {@code clazz}.
+     * </ul>
+     * Compatibility behavior:
+     * <ul>
+     *     <li>SDK 34 and above, this method matches platform behavior.
+     *     <li>SDK 33 and below, the object type is checked after deserialization.
+     * </ul>
+     *
+     *
+     * @param in The bundle to retrieve from.
+     * @param key a String, or {@code null}
+     * @param clazz The type of the object expected
+     * @return a Serializable value, or {@code null}
+     */
+    @SuppressWarnings({"deprecation", "unchecked"})
+    @Nullable
+    public static <T extends Serializable> T getSerializableExtra(@NonNull Intent in,
+            @Nullable String key, @NonNull Class<T> clazz) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Don't call this API on SDK 33 due to b/232589966.
+            return Api33Impl.getSerializableExtra(in, key, clazz);
+        } else {
+            Serializable serializable = in.getSerializableExtra(key);
+            return clazz.isInstance(serializable) ? (T) serializable : null;
+        }
+    }
+
+    @RequiresApi(33)
+    static class Api33Impl {
+        private Api33Impl() {
+            // This class is non-instantiable.
+        }
+
+        @DoNotInline
+        static <T> T getParcelableExtra(@NonNull Intent in, @Nullable String name,
+                @NonNull Class<T> clazz) {
+            return in.getParcelableExtra(name, clazz);
+        }
+
+        @DoNotInline
+        static <T> T[] getParcelableArrayExtra(@NonNull Intent in, @Nullable String name,
+                @NonNull Class<T> clazz) {
+            return in.getParcelableArrayExtra(name, clazz);
+        }
+
+        @DoNotInline
+        static <T> ArrayList<T> getParcelableArrayListExtra(@NonNull Intent in,
+                @Nullable String name, @NonNull Class<? extends T> clazz) {
+            return in.getParcelableArrayListExtra(name, clazz);
+        }
+
+        @DoNotInline
+        static <T extends Serializable> T getSerializableExtra(@NonNull Intent in,
+                @Nullable String name, @NonNull Class<T> clazz) {
+            return in.getSerializableExtra(name, clazz);
         }
     }
 }

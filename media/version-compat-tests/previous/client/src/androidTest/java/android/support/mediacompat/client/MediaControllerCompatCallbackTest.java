@@ -381,7 +381,8 @@ public class MediaControllerCompatCallbackTest {
             Intent intent = new Intent("MEDIA_SESSION_ACTION");
             final int requestCode = 555;
             final PendingIntent pi =
-                    PendingIntent.getActivity(getApplicationContext(), requestCode, intent, 0);
+                    PendingIntent.getActivity(getApplicationContext(), requestCode, intent,
+                            Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
 
             callMediaSessionMethod(SET_SESSION_ACTIVITY, pi, getApplicationContext());
             new PollingCheck(TIME_OUT_MS) {
@@ -700,6 +701,7 @@ public class MediaControllerCompatCallbackTest {
 
     @Test
     @SmallTest
+    @SuppressWarnings("deprecation")
     public void testReceivingParcelables() throws Exception {
         Bundle arguments = new Bundle();
         arguments.putString("event", TEST_SESSION_EVENT);

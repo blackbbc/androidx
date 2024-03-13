@@ -47,12 +47,14 @@ class DatabaseTest {
                         Index(
                             name = "leIndex",
                             unique = false,
-                            fields = Fields()
+                            fields = Fields(),
+                            orders = emptyList()
                         ),
                         Index(
                             name = "leIndex2",
                             unique = true,
-                            fields = Fields()
+                            fields = Fields(),
+                            orders = emptyList()
                         )
                     ),
                     foreignKeys = emptyList(),
@@ -64,7 +66,8 @@ class DatabaseTest {
             daoMethods = emptyList(),
             version = 1,
             exportSchema = false,
-            enableForeignKeys = false
+            enableForeignKeys = false,
+            overrideClearAllTables = true
         )
 
         val expectedLegacyHash = DigestUtils.md5Hex(

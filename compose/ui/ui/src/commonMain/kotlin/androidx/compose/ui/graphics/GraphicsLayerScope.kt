@@ -16,6 +16,15 @@
 
 package androidx.compose.ui.graphics
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ComposableOpenTarget
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.internal.JvmDefaultWithCompatibility
+import androidx.compose.ui.layout.PlacementScopeMarker
+import androidx.compose.ui.platform.LocalGraphicsContext
 import androidx.compose.ui.unit.Density
 
 /**
@@ -24,10 +33,17 @@ import androidx.compose.ui.unit.Density
 const val DefaultCameraDistance = 8.0f
 
 /**
+ * Default ambient shadow color for all layers.
+ */
+val DefaultShadowColor = Color.Black
+
+/**
  * A scope which can be used to define the effects to apply for the content, such as scaling
  * ([scaleX], [scaleY]), rotation ([rotationX], [rotationY], [rotationZ]), opacity ([alpha]), shadow
  * ([shadowElevation], [shape]), and clipping ([clip], [shape]).
  */
+@JvmDefaultWithCompatibility
+@PlacementScopeMarker
 interface GraphicsLayerScope : Density {
     /**
      * The horizontal scale of the drawn area. Default value is `1`.
@@ -68,6 +84,48 @@ interface GraphicsLayerScope : Density {
      */
     /*@setparam:FloatRange(from = 0.0)*/
     var shadowElevation: Float
+
+    /**
+     * Sets the color of the ambient shadow that is drawn when [shadowElevation] > 0f.
+     *
+     * By default the shadow color is black. Generally, this color will be opaque so the intensity
+     * of the shadow is consistent between different graphics layers with different colors.
+     *
+     * The opacity of the final ambient shadow is a function of the shadow caster height, the
+     * alpha channel of the [ambientShadowColor] (typically opaque), and the
+     * [android.R.attr.ambientShadowAlpha] theme attribute.
+     *
+     * Note that this parameter is only supported on Android 9 (Pie) and above. On older versions,
+     * this property always returns [Color.Black] and setting new values is ignored.
+     */
+    // Add default getter/setter implementation to avoid breaking api changes due to abstract
+    // method additions. ReusableGraphicsLayer is the only implementation anyway.
+    var ambientShadowColor: Color
+        get() = DefaultShadowColor
+        // Keep the parameter name so current.txt maintains it for named parameter usage
+        @Suppress("UNUSED_PARAMETER")
+        set(ambientShadowColor) {}
+
+    /**
+     * Sets the color of the spot shadow that is drawn when [shadowElevation] > 0f.
+     *
+     * By default the shadow color is black. Generally, this color will be opaque so the intensity
+     * of the shadow is consistent between different graphics layers with different colors.
+     *
+     * The opacity of the final spot shadow is a function of the shadow caster height, the
+     * alpha channel of the [spotShadowColor] (typically opaque), and the
+     * [android.R.attr.spotShadowAlpha] theme attribute.
+     *
+     * Note that this parameter is only supported on Android 9 (Pie) and above. On older versions,
+     * this property always returns [Color.Black] and setting new values is ignored.
+     */
+    // Add default getter/setter implementation to avoid breaking api changes due to abstract
+    // method additions. ReusableGraphicsLayer is the only implementation anyway.
+    var spotShadowColor: Color
+        get() = DefaultShadowColor
+        // Keep the parameter name so current.txt maintains it for named parameter usage
+        @Suppress("UNUSED_PARAMETER")
+        set(spotShadowColor) {}
 
     /**
      * The rotation, in degrees, of the contents around the horizontal axis in degrees. Default
@@ -131,7 +189,61 @@ interface GraphicsLayerScope : Density {
      * Set to `true` to clip the content to the [shape].
      * Default value is `false`
      */
+    @Suppress("GetterSetterNames")
+    @get:Suppress("GetterSetterNames")
     var clip: Boolean
+
+    /**
+     * Configure the [RenderEffect] to apply to this [GraphicsLayerScope].
+     * This will apply a visual effect to the results of the [GraphicsLayerScope] before it is
+     * drawn. For example if [BlurEffect] is provided, the contents will be drawn in a separate
+     * layer, then this layer will be blurred when this [GraphicsLayerScope] is drawn.
+     *
+     * Note this parameter is only supported on Android 12
+     * and above. Attempts to use this Modifier on older Android versions will be ignored.
+     */
+    var renderEffect: RenderEffect?
+        get() = null
+        set(_) {}
+
+    /**
+     * Determines the [CompositingStrategy] used to render the contents of this graphicsLayer
+     * into an offscreen buffer first before rendering to the destination
+     */
+    var compositingStrategy: CompositingStrategy
+        get() = CompositingStrategy.Auto
+        // Keep the parameter name so current.txt maintains it for named parameter usage
+        @Suppress("UNUSED_PARAMETER")
+        set(compositingStrategy) {}
+
+    /**
+     * [Size] of the graphicsLayer represented in pixels. Drawing commands can extend beyond
+     * the size specified, however, if the graphicsLayer is promoted to an offscreen rasterization
+     * layer, any content rendered outside of the specified size will be clipped.
+     */
+    val size: Size
+        get() = Size.Unspecified
+}
+
+/**
+ * Create a new [GraphicsLayer] instance that will automatically be released when the Composable
+ * is disposed.
+ *
+ * @return a GraphicsLayer instance
+ */
+@Composable
+@ComposableOpenTarget(-1)
+fun rememberGraphicsLayer(): GraphicsLayer {
+    val graphicsContext = LocalGraphicsContext.current
+    val layer = remember {
+        graphicsContext.createGraphicsLayer()
+    }
+    DisposableEffect(layer) {
+        onDispose {
+            graphicsContext.releaseGraphicsLayer(layer)
+        }
+    }
+    return layer
 }
 
 /**
@@ -139,20 +251,152 @@ interface GraphicsLayerScope : Density {
  */
 fun GraphicsLayerScope(): GraphicsLayerScope = ReusableGraphicsLayerScope()
 
+internal object Fields {
+    const val ScaleX: Int = 0b1 shl 0
+    const val ScaleY: Int = 0b1 shl 1
+    const val Alpha: Int = 0b1 shl 2
+    const val TranslationX: Int = 0b1 shl 3
+    const val TranslationY: Int = 0b1 shl 4
+    const val ShadowElevation: Int = 0b1 shl 5
+    const val AmbientShadowColor: Int = 0b1 shl 6
+    const val SpotShadowColor: Int = 0b1 shl 7
+    const val RotationX: Int = 0b1 shl 8
+    const val RotationY: Int = 0b1 shl 9
+    const val RotationZ: Int = 0b1 shl 10
+    const val CameraDistance: Int = 0b1 shl 11
+    const val TransformOrigin: Int = 0b1 shl 12
+    const val Shape: Int = 0b1 shl 13
+    const val Clip: Int = 0b1 shl 14
+    const val CompositingStrategy: Int = 0b1 shl 15
+    const val RenderEffect: Int = 0b1 shl 17
+
+    const val MatrixAffectingFields = ScaleX or
+        ScaleY or
+        TranslationX or
+        TranslationY or
+        TransformOrigin or
+        RotationX or
+        RotationY or
+        RotationZ or
+        CameraDistance
+}
+
 internal class ReusableGraphicsLayerScope : GraphicsLayerScope {
+    internal var mutatedFields: Int = 0
+
     override var scaleX: Float = 1f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.ScaleX
+                field = value
+            }
+        }
     override var scaleY: Float = 1f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.ScaleY
+                field = value
+            }
+        }
     override var alpha: Float = 1f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.Alpha
+                field = value
+            }
+        }
     override var translationX: Float = 0f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.TranslationX
+                field = value
+            }
+        }
     override var translationY: Float = 0f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.TranslationY
+                field = value
+            }
+        }
     override var shadowElevation: Float = 0f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.ShadowElevation
+                field = value
+            }
+        }
+    override var ambientShadowColor: Color = DefaultShadowColor
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.AmbientShadowColor
+                field = value
+            }
+        }
+    override var spotShadowColor: Color = DefaultShadowColor
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.SpotShadowColor
+                field = value
+            }
+        }
     override var rotationX: Float = 0f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.RotationX
+                field = value
+            }
+        }
     override var rotationY: Float = 0f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.RotationY
+                field = value
+            }
+        }
     override var rotationZ: Float = 0f
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.RotationZ
+                field = value
+            }
+        }
     override var cameraDistance: Float = DefaultCameraDistance
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.CameraDistance
+                field = value
+            }
+        }
     override var transformOrigin: TransformOrigin = TransformOrigin.Center
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.TransformOrigin
+                field = value
+            }
+        }
     override var shape: Shape = RectangleShape
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.Shape
+                field = value
+            }
+        }
     override var clip: Boolean = false
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.Clip
+                field = value
+            }
+        }
+    override var compositingStrategy: CompositingStrategy = CompositingStrategy.Auto
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.CompositingStrategy
+                field = value
+            }
+        }
+    override var size: Size = Size.Unspecified
 
     internal var graphicsDensity: Density = Density(1.0f)
 
@@ -162,6 +406,14 @@ internal class ReusableGraphicsLayerScope : GraphicsLayerScope {
     override val fontScale: Float
         get() = graphicsDensity.fontScale
 
+    override var renderEffect: RenderEffect? = null
+        set(value) {
+            if (field != value) {
+                mutatedFields = mutatedFields or Fields.RenderEffect
+                field = value
+            }
+        }
+
     fun reset() {
         scaleX = 1f
         scaleY = 1f
@@ -169,6 +421,8 @@ internal class ReusableGraphicsLayerScope : GraphicsLayerScope {
         translationX = 0f
         translationY = 0f
         shadowElevation = 0f
+        ambientShadowColor = DefaultShadowColor
+        spotShadowColor = DefaultShadowColor
         rotationX = 0f
         rotationY = 0f
         rotationZ = 0f
@@ -176,5 +430,10 @@ internal class ReusableGraphicsLayerScope : GraphicsLayerScope {
         transformOrigin = TransformOrigin.Center
         shape = RectangleShape
         clip = false
+        renderEffect = null
+        compositingStrategy = CompositingStrategy.Auto
+        size = Size.Unspecified
+        // mutatedFields should be reset last as all the setters above modify it.
+        mutatedFields = 0
     }
 }

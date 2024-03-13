@@ -18,12 +18,15 @@
  */
 package androidx.leanback.app;
 
+import static android.os.Build.VERSION.SDK_INT;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.animation.PropertyValuesHolder;
+import android.app.UiAutomation;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -42,6 +45,7 @@ import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 
+import androidx.annotation.NonNull;
 import android.app.Fragment;
 import androidx.leanback.graphics.FitWidthBitmapDrawable;
 import androidx.leanback.media.MediaPlayerGlue;
@@ -57,10 +61,13 @@ import androidx.leanback.widget.ParallaxTarget;
 import androidx.leanback.widget.RecyclerViewParallax;
 import androidx.leanback.widget.VerticalGridView;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.FlakyTest;
 import androidx.test.filters.LargeTest;
 import androidx.test.filters.SdkSuppress;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -69,6 +76,7 @@ import org.junit.runner.RunWith;
  */
 @RunWith(AndroidJUnit4.class)
 @LargeTest
+@FlakyTest(bugId = 207674174)
 public class DetailsFragmentTest extends SingleFragmentTestBase {
 
     static final int PARALLAX_VERTICAL_OFFSET = -300;
@@ -123,6 +131,29 @@ public class DetailsFragmentTest extends SingleFragmentTestBase {
 
         DetailsParallaxDrawable getParallaxDrawable() {
             return mParallaxDrawable;
+        }
+    }
+
+    @BeforeClass
+    public static void setUp() {
+        if (SDK_INT >= 31) {
+            UiAutomation uiAutomation =
+                    InstrumentationRegistry.getInstrumentation().getUiAutomation();
+            uiAutomation.adoptShellPermissionIdentity("android.permission.WRITE_SECURE_SETTINGS");
+            uiAutomation.executeShellCommand("settings put secure immersive_mode_confirmations "
+                    + "confirmed");
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    @AfterClass
+    public static void tearDown() {
+        if (SDK_INT >= 31) {
+            UiAutomation uiAutomation =
+                    InstrumentationRegistry.getInstrumentation().getUiAutomation();
+            uiAutomation.adoptShellPermissionIdentity("android.permission.WRITE_SECURE_SETTINGS");
+            uiAutomation.executeShellCommand("settings delete secure immersive_mode_confirmations");
+            uiAutomation.dropShellPermissionIdentity();
         }
     }
 
@@ -399,12 +430,23 @@ public class DetailsFragmentTest extends SingleFragmentTestBase {
     }
 
     @Test
+    @SdkSuppress(maxSdkVersion = 33) // b/262909049: Failing on SDK 34
     public void navigateBetweenRowsAndVideoUsingDPAD1() throws Throwable {
+        if (Build.VERSION.SDK_INT == 33 && !"REL".equals(Build.VERSION.CODENAME)) {
+            return; // b/262909049: Do not run this test on pre-release Android U.
+        }
+
         navigateBetweenRowsAndVideoUsingDPADInternal(DetailsFragmentWithVideo1.class);
     }
 
+    @FlakyTest(bugId = 228336699)
     @Test
+    @SdkSuppress(maxSdkVersion = 33) // b/262909049: Failing on SDK 34
     public void navigateBetweenRowsAndVideoUsingDPAD2() throws Throwable {
+        if (Build.VERSION.SDK_INT == 33 && !"REL".equals(Build.VERSION.CODENAME)) {
+            return; // b/262909049: Do not run this test on pre-release Android U.
+        }
+
         navigateBetweenRowsAndVideoUsingDPADInternal(DetailsFragmentWithVideo2.class);
     }
 
@@ -1063,7 +1105,7 @@ public class DetailsFragmentTest extends SingleFragmentTestBase {
         }
 
         @Override
-        public void onViewCreated(View view, Bundle savedInstanceState) {
+        public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
             super.onViewCreated(view, savedInstanceState);
         }
 

@@ -17,16 +17,13 @@
 package androidx.compose.material
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Indication
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -54,6 +51,7 @@ import androidx.compose.ui.unit.dp
  *  the size of the shadow below the card.
  */
 @Composable
+@NonRestartableComposable
 fun Card(
     modifier: Modifier = Modifier,
     shape: Shape = MaterialTheme.shapes.medium,
@@ -84,6 +82,8 @@ fun Card(
  *
  * @param onClick callback to be called when the card is clicked
  * @param modifier Modifier to be applied to the layout of the card.
+ * @param enabled Controls the enabled state of the card. When `false`, this card will not
+ * be clickable
  * @param shape Defines the card's shape as well its shadow. A shadow is only
  *  displayed if the [elevation] is greater than zero.
  * @param backgroundColor The background color.
@@ -93,49 +93,36 @@ fun Card(
  * @param border Optional border to draw on top of the card
  * @param elevation The z-coordinate at which to place this card. This controls
  *  the size of the shadow below the card.
- * @param interactionSource the [MutableInteractionSource] representing the stream of
- * [Interaction]s for this Card. You can create and pass in your own remembered
- * [MutableInteractionSource] if you want to observe [Interaction]s and customize the appearance
- * / behavior of this card in different [Interaction]s.
- * @param indication indication to be shown when card is pressed. By default, indication from
- * [LocalIndication] will be used. Pass `null` to show no indication, or current value from
- * [LocalIndication] to show theme default
- * @param enabled Controls the enabled state of the card. When `false`, this card will not
- * be clickable
- * @param onClickLabel semantic / accessibility label for the [onClick] action
- * @param role the type of user interface element. Accessibility services might use this
- * to describe the element or do customizations
+ * @param interactionSource an optional hoisted [MutableInteractionSource] for observing and
+ * emitting [Interaction]s for this card. You can use this to change the card's
+ * appearance or preview the card in different states. Note that if `null` is provided,
+ * interactions will still happen internally.
  */
 @ExperimentalMaterialApi
 @Composable
+@NonRestartableComposable
 fun Card(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     shape: Shape = MaterialTheme.shapes.medium,
     backgroundColor: Color = MaterialTheme.colors.surface,
     contentColor: Color = contentColorFor(backgroundColor),
     border: BorderStroke? = null,
     elevation: Dp = 1.dp,
-    interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
-    indication: Indication? = LocalIndication.current,
-    enabled: Boolean = true,
-    onClickLabel: String? = null,
-    role: Role? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit
 ) {
     Surface(
         onClick = onClick,
         modifier = modifier,
+        enabled = enabled,
         shape = shape,
         color = backgroundColor,
         contentColor = contentColor,
         border = border,
         elevation = elevation,
         interactionSource = interactionSource,
-        indication = indication,
-        enabled = enabled,
-        onClickLabel = onClickLabel,
-        role = role,
         content = content
     )
 }

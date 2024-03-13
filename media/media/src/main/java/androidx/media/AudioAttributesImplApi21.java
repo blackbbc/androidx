@@ -19,6 +19,7 @@ package androidx.media;
 import static androidx.annotation.RestrictTo.Scope.LIBRARY;
 import static androidx.media.AudioAttributesCompat.INVALID_STREAM_TYPE;
 
+import android.annotation.SuppressLint;
 import android.media.AudioAttributes;
 
 import androidx.annotation.NonNull;
@@ -28,19 +29,16 @@ import androidx.annotation.RestrictTo;
 import androidx.versionedparcelable.ParcelField;
 import androidx.versionedparcelable.VersionedParcelize;
 
-/** @hide */
 @VersionedParcelize(jetifyAs = "android.support.v4.media.AudioAttributesImplApi21")
 @RestrictTo(LIBRARY)
 @RequiresApi(21)
 public class AudioAttributesImplApi21 implements AudioAttributesImpl {
 
-    /** @hide */
     // It should be public to allow Parcelizers which never be de/jetified can access the field.
     @RestrictTo(LIBRARY)
     @ParcelField(1)
     public AudioAttributes mAudioAttributes;
 
-    /** @hide */
     // It should be public to allow Parcelizers which never be de/jetified can access the field.
     @RestrictTo(LIBRARY)
     @ParcelField(2)
@@ -48,7 +46,6 @@ public class AudioAttributesImplApi21 implements AudioAttributesImpl {
 
     // WARNING: Adding a new ParcelField may break old library users (b/152830728)
 
-    /** @hide */
     // It should be public to allow Parcelizers which never be de/jetified can access the
     // constructor.
     @RestrictTo(LIBRARY)
@@ -144,6 +141,7 @@ public class AudioAttributesImplApi21 implements AudioAttributesImpl {
 
         @Override
         @NonNull
+        @SuppressLint("WrongConstant")
         public Builder setUsage(int usage) {
             if (usage == AudioAttributes.USAGE_ASSISTANT) {
                 // TODO: shouldn't we keep the origin usage?

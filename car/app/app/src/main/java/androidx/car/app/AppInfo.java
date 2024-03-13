@@ -24,13 +24,13 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.RestrictTo.Scope;
 import androidx.annotation.VisibleForTesting;
 import androidx.car.app.annotations.CarProtocol;
+import androidx.car.app.annotations.KeepFields;
 import androidx.car.app.versioning.CarAppApiLevel;
 import androidx.car.app.versioning.CarAppApiLevels;
 
@@ -57,10 +57,8 @@ import androidx.car.app.versioning.CarAppApiLevels;
  * @see CarContext#getCarAppApiLevel()
  */
 @CarProtocol
+@KeepFields
 public final class AppInfo {
-    // TODO(b/174803562): Automatically update the this version using Gradle
-    private static final String LIBRARY_VERSION = "1.1.0-alpha01";
-
     /**
      * Application meta-data tag used to define the minimum Car App API level this application is
      * able to handle.
@@ -72,20 +70,16 @@ public final class AppInfo {
      */
     public static final String MIN_API_LEVEL_METADATA_KEY = "androidx.car.app.minCarApiLevel";
 
-    @Keep
     @Nullable
     private final String mLibraryVersion;
-    @Keep
     @CarAppApiLevel
     private final int mMinCarAppApiLevel;
-    @Keep
     @CarAppApiLevel
     private final int mLatestCarAppApiLevel;
 
     /**
      * Creates an instance of {@link AppInfo} based on the input {@link Context}.
      *
-     * @hide
      */
     @RestrictTo(Scope.LIBRARY)
     @NonNull
@@ -98,7 +92,11 @@ public final class AppInfo {
                     + "=" + minApiLevel + ") is out of range (" + CarAppApiLevels.getOldest() + "-"
                     + CarAppApiLevels.getLatest() + ")");
         }
-        return new AppInfo(minApiLevel, CarAppApiLevels.getLatest(), LIBRARY_VERSION);
+
+        return new AppInfo(minApiLevel,
+                CarAppApiLevels.getLatest(),
+                // The library_version resource string is auto-generated via Gradle.
+                context.getResources().getString(R.string.car_app_library_version));
     }
 
     /**
@@ -124,22 +122,22 @@ public final class AppInfo {
         mLatestCarAppApiLevel = UNKNOWN;
     }
 
-    /** @hide */
     @RestrictTo(Scope.LIBRARY)
     @VisibleForTesting
     @CarAppApiLevel
+    @SuppressWarnings("deprecation")
     public static int retrieveMinCarAppApiLevel(@NonNull Context context) {
         try {
             ApplicationInfo applicationInfo = context.getPackageManager().getApplicationInfo(
                     context.getPackageName(),
                     PackageManager.GET_META_DATA);
             int apiLevel = applicationInfo.metaData != null
-                                   ? applicationInfo.metaData.getInt(
+                    ? applicationInfo.metaData.getInt(
                     MIN_API_LEVEL_METADATA_KEY, CarAppApiLevels.UNKNOWN)
-                                   : CarAppApiLevels.UNKNOWN;
+                    : CarAppApiLevels.UNKNOWN;
             if (apiLevel == CarAppApiLevels.UNKNOWN) {
                 throw new IllegalArgumentException("Min API level not declared in manifest ("
-                    + MIN_API_LEVEL_METADATA_KEY + ")");
+                        + MIN_API_LEVEL_METADATA_KEY + ")");
             }
             return apiLevel;
         } catch (PackageManager.NameNotFoundException e) {

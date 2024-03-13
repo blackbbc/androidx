@@ -18,10 +18,11 @@ package androidx.car.app.model;
 
 import static java.util.Objects.requireNonNull;
 
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.car.app.annotations.CarProtocol;
+import androidx.car.app.annotations.RequiresCarApi;
+import androidx.car.app.annotations.KeepFields;
 import androidx.car.app.utils.CollectionUtils;
 
 import java.util.ArrayList;
@@ -34,13 +35,13 @@ import java.util.Objects;
  * that users can perform based on such content.
  */
 @CarProtocol
+@KeepFields
 public final class Pane {
-    @Keep
     private final List<Action> mActionList;
-    @Keep
     private final List<Row> mRows;
-    @Keep
     private final boolean mIsLoading;
+    @Nullable
+    private final CarIcon mImage;
 
     /**
      * Returns whether the pane is in a loading state.
@@ -67,6 +68,15 @@ public final class Pane {
         return CollectionUtils.emptyIfNull(mRows);
     }
 
+    /**
+     * Returns the optional image to display in this pane.
+     */
+    @RequiresCarApi(4)
+    @Nullable
+    public CarIcon getImage() {
+        return mImage;
+    }
+
     @Override
     @NonNull
     public String toString() {
@@ -79,7 +89,7 @@ public final class Pane {
 
     @Override
     public int hashCode() {
-        return Objects.hash(mRows, mActionList, mIsLoading);
+        return Objects.hash(mRows, mActionList, mIsLoading, mImage);
     }
 
     @Override
@@ -94,12 +104,14 @@ public final class Pane {
 
         return mIsLoading == otherPane.mIsLoading
                 && Objects.equals(mActionList, otherPane.mActionList)
-                && Objects.equals(mRows, otherPane.mRows);
+                && Objects.equals(mRows, otherPane.mRows)
+                && Objects.equals(mImage, otherPane.mImage);
     }
 
     Pane(Builder builder) {
         mRows = CollectionUtils.unmodifiableCopy(builder.mRows);
         mActionList = CollectionUtils.unmodifiableCopy(builder.mActionList);
+        mImage = builder.mImage;
         mIsLoading = builder.mIsLoading;
     }
 
@@ -108,6 +120,7 @@ public final class Pane {
         mRows = Collections.emptyList();
         mActionList = Collections.emptyList();
         mIsLoading = false;
+        mImage = null;
     }
 
     /** A builder of {@link Pane}. */
@@ -115,6 +128,8 @@ public final class Pane {
         final List<Row> mRows = new ArrayList<>();
         List<Action> mActionList = new ArrayList<>();
         boolean mIsLoading;
+        @Nullable
+        CarIcon mImage;
 
         /**
          * Sets whether the {@link Pane} is in a loading state.
@@ -149,15 +164,31 @@ public final class Pane {
          *
          * <p>By default, no actions are displayed.
          *
-         * <p>The action's title color can be customized with {@link ForegroundCarColorSpan}
-         * instances, any other spans will be ignored by the host.
-         *
          * @throws NullPointerException if {@code action} is {@code null}
          */
         @NonNull
         public Builder addAction(@NonNull Action action) {
             requireNonNull(action);
             mActionList.add(action);
+            return this;
+        }
+
+        /**
+         * Sets an {@link CarIcon} to display alongside the rows in the pane.
+         *
+         * <h4>Image Sizing Guidance</h4>
+         *
+         * To minimize scaling artifacts across a wide range of car screens, apps should provide
+         * images targeting a 480 x 480 dp bounding box. If the image exceeds this maximum size
+         * in either one of the dimensions, it will be scaled down to be centered inside the
+         * bounding box while preserving its aspect ratio.
+         *
+         * @throws NullPointerException if {@code image} is {@code null}
+         */
+        @RequiresCarApi(4)
+        @NonNull
+        public Builder setImage(@NonNull CarIcon image) {
+            mImage = requireNonNull(image);
             return this;
         }
 

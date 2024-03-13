@@ -16,6 +16,13 @@
 
 package androidx.camera.integration.view;
 
+import static androidx.camera.integration.view.MainActivity.CAMERA_DIRECTION_BACK;
+import static androidx.camera.integration.view.MainActivity.CAMERA_DIRECTION_FRONT;
+import static androidx.camera.integration.view.MainActivity.DEFAULT_SCALE_TYPE_ID;
+import static androidx.camera.integration.view.MainActivity.INTENT_EXTRA_CAMERA_DIRECTION;
+import static androidx.camera.integration.view.MainActivity.INTENT_EXTRA_E2E_TEST_CASE;
+import static androidx.camera.integration.view.MainActivity.INTENT_EXTRA_SCALE_TYPE;
+import static androidx.camera.integration.view.MainActivity.PREVIEW_TEST_CASE;
 import static androidx.camera.view.PreviewView.StreamState.IDLE;
 import static androidx.camera.view.PreviewView.StreamState.STREAMING;
 
@@ -37,12 +44,10 @@ import android.widget.Spinner;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.OptIn;
 import androidx.annotation.VisibleForTesting;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraInfoUnavailableException;
 import androidx.camera.core.CameraSelector;
-import androidx.camera.core.ExperimentalUseCaseGroup;
 import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.FocusMeteringResult;
 import androidx.camera.core.MeteringPoint;
@@ -50,7 +55,6 @@ import androidx.camera.core.MeteringPointFactory;
 import androidx.camera.core.Preview;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.core.ViewPort;
-import androidx.camera.lifecycle.ExperimentalUseCaseGroupLifecycle;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
@@ -77,18 +81,13 @@ public class PreviewViewFragment extends Fragment {
 
     private static final String TAG = "PreviewViewFragment";
 
-    // Possible values for this intent key are the name values of LensFacing encoded as
-    // strings (case-insensitive): "back", "front".
-    private static final String INTENT_EXTRA_CAMERA_DIRECTION = "camera_direction";
-    private static final String CAMERA_DIRECTION_BACK = "back";
-    private static final String CAMERA_DIRECTION_FRONT = "front";
-
     private ListenableFuture<ProcessCameraProvider> mCameraProviderFuture;
     @SuppressWarnings("WeakerAccess")
     PreviewView mPreviewView;
     @SuppressWarnings("WeakerAccess")
     int mCurrentLensFacing = CameraSelector.LENS_FACING_BACK;
     private BlurBitmap mBlurBitmap;
+    private PreviewView.ScaleType mCurrentScaleType = PreviewView.ScaleType.FILL_CENTER;
 
     // Synthetic access
     @SuppressWarnings("WeakerAccess")
@@ -111,7 +110,21 @@ public class PreviewViewFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        Bundle bundle = requireActivity().getIntent().getExtras();
+        if (bundle != null) {
+            // Update the app UI according to the e2e test case.
+            String testCase = bundle.getString(INTENT_EXTRA_E2E_TEST_CASE);
+            if (PREVIEW_TEST_CASE.equals(testCase)) {
+                View controller = view.findViewById(R.id.controller);
+                if (controller != null) {
+                    controller.setVisibility(View.GONE);
+                }
+            }
+            int scaleTypeId = bundle.getInt(INTENT_EXTRA_SCALE_TYPE, DEFAULT_SCALE_TYPE_ID);
+            mCurrentScaleType = PreviewView.ScaleType.values()[scaleTypeId];
+        }
         mPreviewView = view.findViewById(R.id.preview_view);
+        mPreviewView.setScaleType(mCurrentScaleType);
         mPreviewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         mPreviewView.addOnLayoutChangeListener(
                 (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom)
@@ -167,7 +180,6 @@ public class PreviewViewFragment extends Fragment {
         }
     }
 
-    @OptIn(markerClass = ExperimentalUseCaseGroup.class)
     void setUpTargetRotationButton(@NonNull final ProcessCameraProvider cameraProvider,
             @NonNull final View rootView) {
         Button button = rootView.findViewById(R.id.target_rotation);
@@ -301,18 +313,16 @@ public class PreviewViewFragment extends Fragment {
         final Spinner scaleTypeSpinner = rootView.findViewById(R.id.scale_type);
         scaleTypeSpinner.setAdapter(adapter);
 
-        // Default value
-        final PreviewView.ScaleType currentScaleType = mPreviewView.getScaleType();
         final String currentScaleTypeLiteral =
-                PreviewViewScaleTypePresenter.getLiteralForScaleType(currentScaleType);
+                PreviewViewScaleTypePresenter.getLiteralForScaleType(mCurrentScaleType);
         final int defaultSelection = adapter.getPosition(currentScaleTypeLiteral);
         scaleTypeSpinner.setSelection(defaultSelection, false);
 
         scaleTypeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                final PreviewView.ScaleType scaleType = PreviewView.ScaleType.values()[position];
-                mPreviewView.setScaleType(scaleType);
+                mCurrentScaleType = PreviewView.ScaleType.values()[position];
+                mPreviewView.setScaleType(mCurrentScaleType);
 
                 // Update the preview snapshot ImageView to have a scaleType matching that of the
                 // PreviewView.
@@ -329,10 +339,6 @@ public class PreviewViewFragment extends Fragment {
     }
 
     @SuppressWarnings("WeakerAccess")
-    // ExperimentalUseCaseGroupLifecycle is removed and has to be replaced with
-    // ExperimentalUseCaseGroup when the dependency to camera-lifecycle is updated to alpha
-    // versions.
-    @OptIn(markerClass = {ExperimentalUseCaseGroup.class, ExperimentalUseCaseGroupLifecycle.class})
     void bindPreview(@NonNull ProcessCameraProvider cameraProvider) {
         if (mPreview == null) {
             return;

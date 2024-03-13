@@ -16,48 +16,119 @@
 
 package androidx.room.compiler.processing.javac
 
+import androidx.room.compiler.codegen.XTypeName
+import androidx.room.compiler.processing.InternalXAnnotated
+import androidx.room.compiler.processing.XAnnotation
+import androidx.room.compiler.processing.XAnnotationBox
 import androidx.room.compiler.processing.XEquality
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XRawType
 import androidx.room.compiler.processing.XType
-import androidx.room.compiler.processing.javac.kotlin.KmType
-import androidx.room.compiler.processing.ksp.ERROR_TYPE_NAME
+import androidx.room.compiler.processing.javac.kotlin.KmBaseTypeContainer
+import androidx.room.compiler.processing.javac.kotlin.KmClassContainer
+import androidx.room.compiler.processing.javac.kotlin.KmTypeContainer
+import androidx.room.compiler.processing.ksp.ERROR_JTYPE_NAME
 import androidx.room.compiler.processing.safeTypeName
+import androidx.room.compiler.processing.unwrapRepeatedAnnotationsFromContainer
+import com.google.auto.common.MoreElements
 import com.google.auto.common.MoreTypes
 import javax.lang.model.type.TypeKind
 import javax.lang.model.type.TypeMirror
 import kotlin.reflect.KClass
 
 internal abstract class JavacType(
-    protected val env: JavacProcessingEnv,
-    open val typeMirror: TypeMirror
-) : XType, XEquality {
-    // Kotlin type information about the type if this type is driven from kotlin code.
-    abstract val kotlinType: KmType?
+    internal val env: JavacProcessingEnv,
+    open val typeMirror: TypeMirror,
+    internal val maybeNullability: XNullability?,
+) : XType, XEquality, InternalXAnnotated {
+
+    // Kotlin type information about the type if this type is driven from Kotlin code.
+    abstract val kotlinType: KmBaseTypeContainer?
 
     override val rawType: XRawType by lazy {
         JavacRawType(env, this)
     }
 
-    override val typeElement by lazy {
-        val element = try {
-            MoreTypes.asTypeElement(typeMirror)
-        } catch (notAnElement: IllegalArgumentException) {
-            null
+    override val superTypes by lazy {
+        val superTypes = env.typeUtils.directSupertypes(typeMirror)
+        superTypes.map {
+            val element = MoreTypes.asTypeElement(it)
+            env.wrap<JavacType>(
+                typeMirror = it,
+                kotlinType = KmClassContainer.createFor(env, element)?.type,
+                elementNullability = element.nullability
+            )
         }
-        element?.let {
-            env.wrapTypeElement(it)
+    }
+
+    override val typeElement by lazy {
+        env.delegate.typeUtils.asElement(typeMirror)?.let {
+            if (MoreElements.isType(it)) {
+                env.wrapTypeElement(MoreElements.asType(it))
+            } else {
+                null
+            }
         }
     }
 
     override fun isError(): Boolean {
         return typeMirror.kind == TypeKind.ERROR ||
             // https://kotlinlang.org/docs/reference/kapt.html#non-existent-type-correction
-            (kotlinType != null && typeName == ERROR_TYPE_NAME)
+            (kotlinType != null && asTypeName().java == ERROR_JTYPE_NAME)
     }
 
     override val typeName by lazy {
-        typeMirror.safeTypeName()
+        xTypeName.java
+    }
+
+    private val xTypeName: XTypeName by lazy {
+        XTypeName(
+            typeMirror.safeTypeName(),
+            XTypeName.UNAVAILABLE_KTYPE_NAME,
+            maybeNullability ?: XNullability.UNKNOWN
+        )
+    }
+
+    override fun asTypeName() = xTypeName
+
+    override fun <T : Annotation> getAnnotations(
+        annotation: KClass<T>,
+        containerAnnotation: KClass<out Annotation>?
+    ): List<XAnnotationBox<T>> {
+        throw UnsupportedOperationException("No plan to support XAnnotationBox.")
+    }
+
+    override fun hasAnnotation(
+        annotation: KClass<out Annotation>,
+        containerAnnotation: KClass<out Annotation>?
+    ): Boolean {
+        val annotationClassName: String = annotation.java.canonicalName!!
+        return getAllAnnotations().any { it.qualifiedName == annotationClassName }
+    }
+
+    override fun getAllAnnotations(): List<XAnnotation> {
+        return (kotlinType as? KmTypeContainer)?.annotations?.map {
+            JavacKmAnnotation(env, it)
+        } ?: typeMirror.annotationMirrors.map { mirror -> JavacAnnotation(env, mirror) }
+            .flatMap { annotation ->
+                // TODO(b/313473892): Checking if an annotation needs to be unwrapped can be
+                //  expensive with the XProcessing API, especially if we don't really care about
+                //  annotation values, so do a quick check on the AnnotationMirror first to decide
+                //  if its repeatable. Remove this once we've optimized the general solution in
+                //  unwrapRepeatedAnnotationsFromContainer()
+                if (annotation.mirror.isRepeatable()) {
+                    annotation.unwrapRepeatedAnnotationsFromContainer() ?: listOf(annotation)
+                } else {
+                    listOf(annotation)
+                }
+            }
+    }
+
+    override fun hasAnnotationWithPackage(pkg: String): Boolean {
+        return getAllAnnotations().any {
+            val element = (it.typeElement as JavacTypeElement).element
+            MoreElements.getPackage(element).toString() == pkg
+        }
     }
 
     override fun equals(other: Any?): Boolean {
@@ -71,7 +142,8 @@ internal abstract class JavacType(
     override fun defaultValue(): String {
         return when (typeMirror.kind) {
             TypeKind.BOOLEAN -> "false"
-            TypeKind.BYTE, TypeKind.SHORT, TypeKind.INT, TypeKind.LONG, TypeKind.CHAR -> "0"
+            TypeKind.BYTE, TypeKind.SHORT, TypeKind.INT, TypeKind.CHAR -> "0"
+            TypeKind.LONG -> "0L"
             TypeKind.FLOAT -> "0f"
             TypeKind.DOUBLE -> "0.0"
             else -> "null"
@@ -79,26 +151,7 @@ internal abstract class JavacType(
     }
 
     override fun boxed(): JavacType {
-        return when {
-            typeMirror.kind.isPrimitive -> {
-                env.wrap(
-                    typeMirror = env.typeUtils.boxedClass(MoreTypes.asPrimitiveType(typeMirror))
-                        .asType(),
-                    kotlinType = kotlinType,
-                    elementNullability = XNullability.NULLABLE
-                )
-            }
-            typeMirror.kind == TypeKind.VOID -> {
-                env.wrap(
-                    typeMirror = env.elementUtils.getTypeElement("java.lang.Void").asType(),
-                    kotlinType = kotlinType,
-                    elementNullability = XNullability.NULLABLE
-                )
-            }
-            else -> {
-                this
-            }
-        }
+        return this
     }
 
     override fun isNone() = typeMirror.kind == TypeKind.NONE
@@ -111,8 +164,8 @@ internal abstract class JavacType(
         return typeMirror.extendsBound()?.let {
             env.wrap<JavacType>(
                 typeMirror = it,
-                kotlinType = kotlinType?.extendsBound,
-                elementNullability = nullability
+                kotlinType = (kotlinType as? KmTypeContainer)?.extendsBound,
+                elementNullability = maybeNullability
             )
         }
     }
@@ -165,5 +218,13 @@ internal abstract class JavacType(
         // unlike makeNullable, we don't try to degrade to primitives here because it is valid for
         // a boxed primitive to be marked as non-null.
         return copyWithNullability(XNullability.NONNULL)
+    }
+
+    override val nullability: XNullability get() {
+        return maybeNullability ?: error(
+            "XType#nullibility cannot be called from this type because it is missing nullability " +
+                "information. Was this type derived from a type created with " +
+                "TypeMirror#toXProcessing(XProcessingEnv)?"
+        )
     }
 }

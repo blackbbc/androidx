@@ -17,7 +17,7 @@
 package androidx.compose.ui.platform
 
 import android.content.ClipData
-import android.content.ClipDescription.MIMETYPE_TEXT_PLAIN
+import android.content.ClipDescription
 import android.content.Context
 import android.os.Parcel
 import android.text.Annotation
@@ -47,9 +47,13 @@ private const val PLAIN_TEXT_LABEL = "plain text"
 /**
  * Android implementation for [ClipboardManager].
  */
-internal class AndroidClipboardManager(context: Context) : ClipboardManager {
-    private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as
-        android.content.ClipboardManager
+internal class AndroidClipboardManager internal constructor(
+    private val clipboardManager: android.content.ClipboardManager
+) : ClipboardManager {
+
+    internal constructor(context: Context) : this(
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    )
 
     override fun setText(annotatedString: AnnotatedString) {
         clipboardManager.setPrimaryClip(
@@ -61,16 +65,58 @@ internal class AndroidClipboardManager(context: Context) : ClipboardManager {
     }
 
     override fun getText(): AnnotatedString? {
-        return if (clipboardManager.hasPrimaryClip()) {
-            clipboardManager.primaryClip!!.getItemAt(0).text.convertToAnnotatedString()
-        } else {
-            null
+        return clipboardManager.primaryClip?.let { primaryClip ->
+            if (primaryClip.itemCount > 0) {
+                // note: text may be null, ensure this is null-safe
+                primaryClip.getItemAt(0)?.text.convertToAnnotatedString()
+            } else {
+                null
+            }
         }
     }
 
-    fun hasText() =
-        clipboardManager.primaryClipDescription?.hasMimeType(MIMETYPE_TEXT_PLAIN) ?: false
+    override fun hasText() =
+        clipboardManager.primaryClipDescription?.hasMimeType("text/*") ?: false
+
+    override fun getClip(): ClipEntry? {
+        return clipboardManager.primaryClip?.let(::ClipEntry)
+    }
+
+    override fun getClipMetadata(): ClipMetadata? {
+        return clipboardManager.primaryClipDescription?.let(::ClipMetadata)
+    }
+
+    override fun setClip(clipEntry: ClipEntry) {
+        // We ignore the clipDescription parameter on Android because clipEntry comes with one.
+        clipboardManager.setPrimaryClip(clipEntry.clipData)
+    }
+
+    override fun hasClip(): Boolean = clipboardManager.hasPrimaryClip()
+
+    override val nativeClipboard: NativeClipboard
+        get() = clipboardManager
 }
+
+/**
+ * Android specific class that contains the primary clip in [android.content.ClipboardManager].
+ */
+// Defining this class not as a typealias but a wrapper gives us flexibility in the future to
+// add more functionality in it.
+actual class ClipEntry(val clipData: ClipData)
+
+fun ClipData.toClipEntry(): ClipEntry = ClipEntry(this)
+
+/**
+ * Android specific class that contains the metadata of primary clip in
+ * [android.content.ClipboardManager]
+ */
+// Defining this class not as a typealias but a wrapper gives us flexibility in the future to
+// add more functionality in it.
+actual class ClipMetadata(val clipDescription: ClipDescription)
+
+fun ClipDescription.toClipMetadata(): ClipMetadata = ClipMetadata(this)
+
+actual typealias NativeClipboard = android.content.ClipboardManager
 
 internal fun CharSequence?.convertToAnnotatedString(): AnnotatedString? {
     if (this == null) return null
@@ -194,7 +240,6 @@ internal class EncodeHelper {
         }
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     fun encode(color: Color) {
         encode(color.value)
     }
@@ -369,7 +414,6 @@ internal class DecodeHelper(string: String) {
         return mutableSpanStyle.toSpanStyle()
     }
 
-    @OptIn(ExperimentalUnsignedTypes::class)
     fun decodeColor(): Color {
         return Color(decodeULong())
     }

@@ -31,7 +31,6 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.core.provider.FontsContractCompat;
 
@@ -49,7 +48,6 @@ import java.util.Map;
 
 /**
  * Utility methods for TypefaceCompat.
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class TypefaceCompatUtil {
@@ -65,7 +63,7 @@ public class TypefaceCompatUtil {
      * Returns null if failed to create temp file.
      */
     @Nullable
-    public static File getTempFile(Context context) {
+    public static File getTempFile(@NonNull Context context) {
         File cacheDir = context.getCacheDir();
         if (cacheDir == null) {
             return null;
@@ -89,7 +87,6 @@ public class TypefaceCompatUtil {
      * Copy the file contents to the direct byte buffer.
      */
     @Nullable
-    @RequiresApi(19)
     private static ByteBuffer mmap(File file) {
         try (FileInputStream fis = new FileInputStream(file)) {
             FileChannel channel = fis.getChannel();
@@ -104,17 +101,20 @@ public class TypefaceCompatUtil {
      * Copy the file contents to the direct byte buffer.
      */
     @Nullable
-    @RequiresApi(19)
-    public static ByteBuffer mmap(Context context, CancellationSignal cancellationSignal, Uri uri) {
+    public static ByteBuffer mmap(@NonNull Context context,
+            @Nullable CancellationSignal cancellationSignal, @NonNull Uri uri) {
         final ContentResolver resolver = context.getContentResolver();
-        try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(uri, "r", cancellationSignal)) {
-            if (pfd == null) {
-                return null;
-            }
-            try (FileInputStream fis = new FileInputStream(pfd.getFileDescriptor())) {
-                FileChannel channel = fis.getChannel();
-                final long size = channel.size();
-                return channel.map(FileChannel.MapMode.READ_ONLY, 0, size);
+        try {
+            try (ParcelFileDescriptor pfd = resolver.openFileDescriptor(uri, "r",
+                    cancellationSignal)) {
+                if (pfd == null) {
+                    return null;
+                }
+                try (FileInputStream fis = new FileInputStream(pfd.getFileDescriptor())) {
+                    FileChannel channel = fis.getChannel();
+                    final long size = channel.size();
+                    return channel.map(FileChannel.MapMode.READ_ONLY, 0, size);
+                }
             }
         } catch (IOException e) {
             return null;
@@ -124,9 +124,10 @@ public class TypefaceCompatUtil {
     /**
      * Copy the resource contents to the direct byte buffer.
      */
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     @Nullable
-    @RequiresApi(19)
-    public static ByteBuffer copyToDirectBuffer(Context context, Resources res, int id) {
+    public static ByteBuffer copyToDirectBuffer(@NonNull Context context, @NonNull Resources res,
+            int id) {
         File tmpFile = getTempFile(context);
         if (tmpFile == null) {
             return null;
@@ -144,7 +145,7 @@ public class TypefaceCompatUtil {
     /**
      * Copy the input stream contents to file.
      */
-    public static boolean copyToFile(File file, InputStream is) {
+    public static boolean copyToFile(@NonNull File file, @NonNull InputStream is) {
         FileOutputStream os = null;
         StrictMode.ThreadPolicy old = StrictMode.allowThreadDiskWrites();
         try {
@@ -167,7 +168,8 @@ public class TypefaceCompatUtil {
     /**
      * Copy the resource contents to file.
      */
-    public static boolean copyToFile(File file, Resources res, int id) {
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+    public static boolean copyToFile(@NonNull File file, @NonNull Resources res, int id) {
         InputStream is = null;
         try {
             is = res.openRawResource(id);
@@ -177,11 +179,17 @@ public class TypefaceCompatUtil {
         }
     }
 
-    public static void closeQuietly(Closeable c) {
+    /**
+     * Attempts to close a Closeable, swallowing any resulting IOException.
+     *
+     * @param c the closeable to close
+     */
+    public static void closeQuietly(@Nullable Closeable c) {
         if (c != null) {
             try {
                 c.close();
             } catch (IOException e) {
+                // Quietly!
             }
         }
     }
@@ -195,11 +203,9 @@ public class TypefaceCompatUtil {
      *                {@link FontsContractCompat.FontInfo}.
      * @param fonts An array of {@link FontsContractCompat.FontInfo}.
      * @return A map from {@link Uri} to {@link ByteBuffer}.
-     * @hide
      */
     @RestrictTo(LIBRARY)
     @NonNull
-    @RequiresApi(19)
     public static Map<Uri, ByteBuffer> readFontInfoIntoByteBuffer(
             @NonNull Context context,
             @NonNull FontsContractCompat.FontInfo[] fonts,

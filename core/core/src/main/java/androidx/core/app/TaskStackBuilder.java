@@ -22,7 +22,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager.NameNotFoundException;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -60,7 +59,7 @@ import java.util.Iterator;
  * task.</p>
  *
  * <div class="special reference">
- * <h3>About Navigation</h3>
+ * ### About Navigation
  * For more detailed information about tasks, the back stack, and navigation design guidelines,
  * please read
  * <a href="{@docRoot}guide/topics/fundamentals/tasks-and-back-stack.html">Tasks and Back Stack</a>
@@ -76,7 +75,7 @@ public final class TaskStackBuilder implements Iterable<Intent> {
         Intent getSupportParentActivityIntent();
     }
 
-    private final ArrayList<Intent> mIntents = new ArrayList<Intent>();
+    private final ArrayList<Intent> mIntents = new ArrayList<>();
     private final Context mSourceContext;
 
     private TaskStackBuilder(Context a) {
@@ -197,7 +196,8 @@ public final class TaskStackBuilder implements Iterable<Intent> {
      *                           this activity will be added
      * @return This TaskStackBuilder for method chaining
      */
-    public TaskStackBuilder addParentStack(ComponentName sourceActivityName) {
+    @NonNull
+    public TaskStackBuilder addParentStack(@NonNull ComponentName sourceActivityName) {
         final int insertAt = mIntents.size();
         try {
             Intent parent = NavUtils.getParentActivityIntent(mSourceContext, sourceActivityName);
@@ -250,6 +250,7 @@ public final class TaskStackBuilder implements Iterable<Intent> {
     /**
      * @deprecated Use editIntentAt instead
      */
+    @NonNull
     @Override
     @Deprecated
     public Iterator<Intent> iterator() {
@@ -285,7 +286,7 @@ public final class TaskStackBuilder implements Iterable<Intent> {
                     "No intents added to TaskStackBuilder; cannot startActivities");
         }
 
-        Intent[] intents = mIntents.toArray(new Intent[mIntents.size()]);
+        Intent[] intents = mIntents.toArray(new Intent[0]);
         intents[0] = new Intent(intents[0]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_TASK_ON_HOME);
         if (!ContextCompat.startActivities(mSourceContext, intents, options)) {
@@ -333,16 +334,11 @@ public final class TaskStackBuilder implements Iterable<Intent> {
                     "No intents added to TaskStackBuilder; cannot getPendingIntent");
         }
 
-        Intent[] intents = mIntents.toArray(new Intent[mIntents.size()]);
+        Intent[] intents = mIntents.toArray(new Intent[0]);
         intents[0] = new Intent(intents[0]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_TASK_ON_HOME);
 
-        if (Build.VERSION.SDK_INT >= 16) {
-            return PendingIntent.getActivities(mSourceContext, requestCode, intents, flags,
-                    options);
-        } else {
-            return PendingIntent.getActivities(mSourceContext, requestCode, intents, flags);
-        }
+        return PendingIntent.getActivities(mSourceContext, requestCode, intents, flags, options);
     }
 
     /**

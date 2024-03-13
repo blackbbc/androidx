@@ -19,7 +19,6 @@ package androidx.preference.tests
 import android.content.Context
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
-import androidx.core.view.ViewCompat
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
@@ -160,11 +159,9 @@ class SelectableTest {
      * A Drawable that will fail the test when its state changes.
      */
     private class TestDrawable : StateListDrawable() {
-        override fun onStateChange(stateSet: IntArray?): Boolean {
-            stateSet?.let {
-                if (stateSet.contains(android.R.attr.state_pressed)) {
-                    fail("Ripple should not have been activated!")
-                }
+        override fun onStateChange(stateSet: IntArray): Boolean {
+            if (stateSet.contains(android.R.attr.state_pressed)) {
+                fail("Ripple should not have been activated!")
             }
             return super.onStateChange(stateSet)
         }
@@ -175,11 +172,11 @@ class SelectableTest {
      * as its background.
      */
     private class TestPreference(context: Context) : Preference(context) {
-        override fun onBindViewHolder(holder: PreferenceViewHolder?) {
+        override fun onBindViewHolder(holder: PreferenceViewHolder) {
             super.onBindViewHolder(holder)
             // If there's no background, no ripple effect will play regardless.
-            if (holder!!.itemView.background != null) {
-                ViewCompat.setBackground(holder.itemView, TestDrawable())
+            if (holder.itemView.background != null) {
+                holder.itemView.setBackground(TestDrawable())
             }
         }
     }

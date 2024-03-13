@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.material.TextField
@@ -39,15 +40,20 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusOrder
+import androidx.compose.ui.focus.FocusRequester.Companion.Cancel
+import androidx.compose.ui.focus.FocusRequester.Companion.Default
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color.Companion.Black
 import androidx.compose.ui.graphics.Color.Companion.Green
 import androidx.compose.ui.graphics.Color.Companion.Red
 import androidx.compose.ui.graphics.Color.Companion.Transparent
+import androidx.compose.ui.input.InputMode.Companion.Touch
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.unit.dp
 
 @Sampled
@@ -94,6 +100,59 @@ fun CaptureFocusSample() {
             .focusRequester(focusRequester)
             .onFocusChanged { borderColor = if (it.isCaptured) Red else Transparent }
     )
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Sampled
+@Composable
+fun RestoreFocusSample() {
+    val focusRequester = remember { FocusRequester() }
+    LazyRow(
+        Modifier
+            .focusRequester(focusRequester)
+            .focusProperties {
+                exit = { focusRequester.saveFocusedChild(); Default }
+                enter = { if (focusRequester.restoreFocusedChild()) Cancel else Default }
+            }
+    ) {
+        item { Button(onClick = {}) { Text("1") } }
+        item { Button(onClick = {}) { Text("2") } }
+        item { Button(onClick = {}) { Text("3") } }
+        item { Button(onClick = {}) { Text("4") } }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Sampled
+@Composable
+fun FocusRestorerSample() {
+    LazyRow(Modifier.focusRestorer()) {
+        item { Button(onClick = {}) { Text("1") } }
+        item { Button(onClick = {}) { Text("2") } }
+        item { Button(onClick = {}) { Text("3") } }
+        item { Button(onClick = {}) { Text("4") } }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Sampled
+@Composable
+fun FocusRestorerCustomFallbackSample() {
+    val focusRequester = remember { FocusRequester() }
+    LazyRow(
+        // If restoration fails, focus would fallback to the item associated with focusRequester.
+        Modifier.focusRestorer { focusRequester }
+    ) {
+        item {
+            Button(
+                modifier = Modifier.focusRequester(focusRequester),
+                onClick = {}
+            ) { Text("1") }
+        }
+        item { Button(onClick = {}) { Text("2") } }
+        item { Button(onClick = {}) { Text("3") } }
+        item { Button(onClick = {}) { Text("4") } }
+    }
 }
 
 @Sampled
@@ -144,7 +203,6 @@ fun MoveFocusSample() {
     }
 }
 
-@ExperimentalComposeUiApi
 @Sampled
 @Composable
 fun CreateFocusRequesterRefsSample() {
@@ -157,7 +215,6 @@ fun CreateFocusRequesterRefsSample() {
     }
 }
 
-@ExperimentalComposeUiApi
 @Sampled
 @Composable
 fun CustomFocusOrderSample() {
@@ -166,7 +223,8 @@ fun CustomFocusOrderSample() {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
             Box(
                 Modifier
-                    .focusOrder(item1) {
+                    .focusRequester(item1)
+                    .focusProperties {
                         next = item2
                         right = item2
                         down = item3
@@ -176,7 +234,8 @@ fun CustomFocusOrderSample() {
             )
             Box(
                 Modifier
-                    .focusOrder(item2) {
+                    .focusRequester(item2)
+                    .focusProperties {
                         next = item3
                         right = item1
                         down = item4
@@ -187,21 +246,95 @@ fun CustomFocusOrderSample() {
         }
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
             Box(
-                Modifier.focusOrder(item3) {
-                    next = item4
-                    right = item4
-                    up = item1
-                    previous = item2
-                }
+                Modifier
+                    .focusRequester(item3)
+                    .focusProperties {
+                        next = item4
+                        right = item4
+                        up = item1
+                        previous = item2
+                    }
             )
             Box(
-                Modifier.focusOrder(item4) {
-                    next = item1
-                    left = item3
-                    up = item2
-                    previous = item3
-                }
+                Modifier
+                    .focusRequester(item4)
+                    .focusProperties {
+                        next = item1
+                        left = item3
+                        up = item2
+                        previous = item3
+                    }
             )
+        }
+    }
+}
+
+@Sampled
+@Composable
+fun FocusPropertiesSample() {
+    Column {
+        // Always focusable.
+        Box(modifier = Modifier
+            .focusProperties { canFocus = true }
+            .focusTarget()
+        )
+        // Only focusable in non-touch mode.
+        val inputModeManager = LocalInputModeManager.current
+        Box(modifier = Modifier
+            .focusProperties { canFocus = inputModeManager.inputMode != Touch }
+            .focusTarget()
+        )
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Sampled
+@Composable
+fun CancelFocusMoveSample() {
+    // If Box 2 is focused, pressing Up will not take focus to Box 1,
+    // But pressing Down will move focus to Box 3.
+    Column {
+        // Box 1.
+        Box(Modifier.focusTarget())
+        // Box 2.
+        Box(modifier = Modifier
+            .focusProperties { up = Cancel }
+            .focusTarget()
+        )
+        // Box 3.
+        Box(Modifier.focusTarget())
+    }
+}
+
+@ExperimentalComposeUiApi
+@Sampled
+@Composable
+fun CustomFocusEnterSample() {
+    // If the row is focused, performing a moveFocus(Enter) will move focus to item2.
+    val item2 = remember { FocusRequester() }
+    Row(Modifier.focusProperties { enter = { item2 } }.focusable()) {
+        Box(Modifier.focusable())
+        Box(Modifier.focusRequester(item2).focusable())
+        Box(Modifier.focusable())
+    }
+}
+
+@ExperimentalComposeUiApi
+@Sampled
+@Composable
+fun CustomFocusExitSample() {
+    // If one of the boxes in Row1 is focused, performing a moveFocus(Exit)
+    // will move focus to the specified next item instead of moving focus to row1.
+    val nextItem = remember { FocusRequester() }
+    Column {
+        Row(Modifier.focusProperties { exit = { nextItem } }.focusable()) {
+            Box(Modifier.focusable())
+            Box(Modifier.focusable())
+            Box(Modifier.focusable())
+        }
+        Row(Modifier.focusable()) {
+            Box(Modifier.focusable())
+            Box(Modifier.focusRequester(nextItem).focusable())
         }
     }
 }

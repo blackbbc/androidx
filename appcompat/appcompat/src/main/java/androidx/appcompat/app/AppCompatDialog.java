@@ -18,7 +18,6 @@ package androidx.appcompat.app;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 
-import android.app.Dialog;
 import android.content.Context;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -26,34 +25,36 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 
+import androidx.activity.ComponentDialog;
+import androidx.activity.ViewTreeOnBackPressedDispatcherOwner;
 import androidx.annotation.IdRes;
 import androidx.annotation.LayoutRes;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.appcompat.R;
 import androidx.appcompat.view.ActionMode;
 import androidx.core.view.KeyEventDispatcher;
+import androidx.lifecycle.ViewTreeLifecycleOwner;
+import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
 
 /**
  * Base class for AppCompat themed {@link android.app.Dialog}s.
  */
-public class AppCompatDialog extends Dialog implements AppCompatCallback {
+@SuppressWarnings("unused")
+public class AppCompatDialog extends ComponentDialog implements AppCompatCallback {
 
     private AppCompatDelegate mDelegate;
 
     // Until KeyEventDispatcher is un-hidden, it can't be implemented directly,
-    private final KeyEventDispatcher.Component mKeyDispatcher = new KeyEventDispatcher.Component() {
-        @Override
-        public boolean superDispatchKeyEvent(KeyEvent event) {
-            return AppCompatDialog.this.superDispatchKeyEvent(event);
-        }
-    };
+    private final KeyEventDispatcher.Component mKeyDispatcher =
+            AppCompatDialog.this::superDispatchKeyEvent;
 
-    public AppCompatDialog(Context context) {
+    public AppCompatDialog(@NonNull Context context) {
         this(context, 0);
     }
 
-    public AppCompatDialog(Context context, int theme) {
+    public AppCompatDialog(@NonNull Context context, int theme) {
         super(context, getThemeResId(context, theme));
 
         final AppCompatDelegate delegate = getDelegate();
@@ -67,9 +68,11 @@ public class AppCompatDialog extends Dialog implements AppCompatCallback {
         delegate.onCreate(null);
     }
 
-    protected AppCompatDialog(Context context, boolean cancelable,
-            OnCancelListener cancelListener) {
-        super(context, cancelable, cancelListener);
+    protected AppCompatDialog(@NonNull Context context, boolean cancelable,
+            @Nullable OnCancelListener cancelListener) {
+        super(context);
+        setCancelable(cancelable);
+        setOnCancelListener(cancelListener);
     }
 
     @Override
@@ -92,17 +95,28 @@ public class AppCompatDialog extends Dialog implements AppCompatCallback {
 
     @Override
     public void setContentView(@LayoutRes int layoutResID) {
+        initViewTreeOwners();
         getDelegate().setContentView(layoutResID);
     }
 
     @Override
-    public void setContentView(View view) {
+    public void setContentView(@NonNull View view) {
+        initViewTreeOwners();
         getDelegate().setContentView(view);
     }
 
     @Override
-    public void setContentView(View view, ViewGroup.LayoutParams params) {
+    public void setContentView(@NonNull View view, ViewGroup.LayoutParams params) {
+        initViewTreeOwners();
         getDelegate().setContentView(view, params);
+    }
+
+    private void initViewTreeOwners() {
+        // Set the view tree owners before setting the content view so that the inflation process
+        // and attach listeners will see them already present
+        ViewTreeLifecycleOwner.set(getWindow().getDecorView(), this);
+        ViewTreeSavedStateRegistryOwner.set(getWindow().getDecorView(), this);
+        ViewTreeOnBackPressedDispatcherOwner.set(getWindow().getDecorView(), this);
     }
 
     @SuppressWarnings("TypeParameterUnusedInFormals")
@@ -125,7 +139,7 @@ public class AppCompatDialog extends Dialog implements AppCompatCallback {
     }
 
     @Override
-    public void addContentView(View view, ViewGroup.LayoutParams params) {
+    public void addContentView(@NonNull View view, ViewGroup.LayoutParams params) {
         getDelegate().addContentView(view, params);
     }
 
@@ -161,7 +175,6 @@ public class AppCompatDialog extends Dialog implements AppCompatCallback {
     }
 
     /**
-     * @hide
      */
     @Override
     @RestrictTo(LIBRARY_GROUP_PREFIX)
@@ -172,6 +185,7 @@ public class AppCompatDialog extends Dialog implements AppCompatCallback {
     /**
      * @return The {@link AppCompatDelegate} being used by this Dialog.
      */
+    @NonNull
     public AppCompatDelegate getDelegate() {
         if (mDelegate == null) {
             mDelegate = AppCompatDelegate.create(this, this);

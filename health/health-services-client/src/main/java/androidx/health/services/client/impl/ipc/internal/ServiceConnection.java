@@ -47,7 +47,6 @@ import javax.annotation.concurrent.NotThreadSafe;
  *
  * <p>Note: this class is not thread safe and should be called always from the same thread.
  *
- * @hide
  */
 @NotThreadSafe
 @RestrictTo(Scope.LIBRARY)
@@ -164,7 +163,7 @@ public class ServiceConnection implements android.content.ServiceConnection {
         if (mServiceConnectionRetry < MAX_RETRIES) {
             Log.w(
                     TAG,
-                    "WCS SDK Client '"
+                    "HealthServices SDK Client '"
                             + mConnectionConfiguration.getClientName()
                             + "' disconnected, retrying connection. Retry attempt: "
                             + mServiceConnectionRetry,
@@ -180,7 +179,8 @@ public class ServiceConnection implements android.content.ServiceConnection {
         return (200 << retryNumber);
     }
 
-    private void clearConnection(Throwable throwable) {
+    @VisibleForTesting
+    void clearConnection(Throwable throwable) {
         if (mIsServiceBound) {
             try {
                 mContext.unbindService(this);
@@ -336,6 +336,6 @@ public class ServiceConnection implements android.content.ServiceConnection {
                         + mConnectionConfiguration.getClientName()
                         + "', binder is null");
         // This connection will never be usable, don't bother with retries.
-        handleNonRetriableDisconnection(new CancellationException("Null binding"));
+        handleRetriableDisconnection(new CancellationException("Null binding"));
     }
 }

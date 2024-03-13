@@ -27,8 +27,8 @@ import androidx.room.compiler.processing.XFieldElement
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
 import androidx.room.compiler.processing.XVariableElement
-import androidx.room.compiler.processing.isCollection
 import androidx.room.compiler.processing.isVoid
+import androidx.room.ext.isCollection
 import androidx.room.ext.isNotVoid
 import androidx.room.processor.ProcessorErrors.CANNOT_FIND_GETTER_FOR_FIELD
 import androidx.room.processor.ProcessorErrors.CANNOT_FIND_SETTER_FOR_FIELD
@@ -80,11 +80,16 @@ class PojoProcessor private constructor(
         ): PojoProcessor {
             val (pojoElement, delegate) = if (element.hasAnnotation(AutoValue::class)) {
                 val processingEnv = context.processingEnv
-                val autoValueGeneratedElement = element.let {
-                    val typeName = AutoValuePojoProcessorDelegate.getGeneratedClassName(it)
-                    processingEnv.findTypeElement(typeName) ?: throw MissingTypeException(typeName)
+                val autoValueGeneratedTypeName =
+                    AutoValuePojoProcessorDelegate.getGeneratedClassName(element)
+                val autoValueGeneratedElement =
+                    processingEnv.findTypeElement(autoValueGeneratedTypeName)
+                if (autoValueGeneratedElement != null) {
+                    autoValueGeneratedElement to AutoValuePojoProcessorDelegate(context, element)
+                } else {
+                    context.reportMissingType(autoValueGeneratedTypeName)
+                    element to EmptyDelegate
                 }
-                autoValueGeneratedElement to AutoValuePojoProcessorDelegate(context, element)
             } else {
                 element to DefaultDelegate(context)
             }
@@ -112,6 +117,17 @@ class PojoProcessor private constructor(
     }
 
     private fun doProcess(): Pojo {
+        if (!element.validate()) {
+            context.reportMissingTypeReference(element.qualifiedName)
+            return delegate.createPojo(
+                element = element,
+                declaredType = element.type,
+                fields = emptyList(),
+                embeddedFields = emptyList(),
+                relations = emptyList(),
+                constructor = null
+            )
+        }
         delegate.onPreProcess(element)
 
         val declaredType = element.type
@@ -122,7 +138,7 @@ class PojoProcessor private constructor(
                     !it.isStatic() &&
                     (
                         !it.isTransient() ||
-                            it.hasAnyOf(ColumnInfo::class, Embedded::class, Relation::class)
+                            it.hasAnyAnnotation(ColumnInfo::class, Embedded::class, Relation::class)
                         )
             }
             .groupBy { field ->
@@ -429,7 +445,7 @@ class PojoProcessor private constructor(
 
     private fun processRelationField(
         myFields: List<Field>,
-        container: XType?,
+        container: XType,
         relationElement: XFieldElement
     ): androidx.room.vo.Relation? {
         val annotation = relationElement.getAnnotation(Relation::class)!!
@@ -449,11 +465,7 @@ class PojoProcessor private constructor(
             return null
         }
         // parse it as an entity.
-        val asMember = relationElement.asMemberOf(container!!)
-        if (asMember.isError()) {
-            context.logger.e(relationElement, ProcessorErrors.CANNOT_FIND_TYPE)
-            return null
-        }
+        val asMember = relationElement.asMemberOf(container)
         val asType = if (asMember.isCollection()) {
             asMember.typeArguments.first().extendsBoundOrSelf()
         } else {
@@ -465,10 +477,6 @@ class PojoProcessor private constructor(
                 relationElement,
                 ProcessorErrors.RELATION_TYPE_MUST_BE_A_CLASS_OR_INTERFACE
             )
-            return null
-        }
-        if (asType.isError()) {
-            context.logger.e(typeElement, ProcessorErrors.CANNOT_FIND_TYPE)
             return null
         }
 
@@ -503,7 +511,7 @@ class PojoProcessor private constructor(
             context.logger.e(
                 relationElement,
                 ProcessorErrors.relationCannotFindEntityField(
-                    entityName = entity.typeName.toString(),
+                    entityName = entity.typeName.toString(context.codeLanguage),
                     columnName = annotation.value.entityColumn,
                     availableColumns = entity.columnNames
                 )
@@ -549,7 +557,7 @@ class PojoProcessor private constructor(
                         context.logger.w(
                             Warning.MISSING_INDEX_ON_JUNCTION, field.element,
                             ProcessorErrors.junctionColumnWithoutIndex(
-                                entityName = entityOrView.typeName.toString(),
+                                entityName = entityOrView.typeName.toString(context.codeLanguage),
                                 columnName = columnName
                             )
                         )
@@ -569,7 +577,7 @@ class PojoProcessor private constructor(
                     context.logger.e(
                         junctionElement,
                         ProcessorErrors.relationCannotFindJunctionParentField(
-                            entityName = entityOrView.typeName.toString(),
+                            entityName = entityOrView.typeName.toString(context.codeLanguage),
                             columnName = junctionParentColumn,
                             availableColumns = entityOrView.columnNames
                         )
@@ -588,7 +596,7 @@ class PojoProcessor private constructor(
                     context.logger.e(
                         junctionElement,
                         ProcessorErrors.relationCannotFindJunctionEntityField(
-                            entityName = entityOrView.typeName.toString(),
+                            entityName = entityOrView.typeName.toString(context.codeLanguage),
                             columnName = junctionEntityColumn,
                             availableColumns = entityOrView.columnNames
                         )
@@ -645,7 +653,7 @@ class PojoProcessor private constructor(
             context.logger.e(
                 relationElement,
                 ProcessorErrors.relationBadProject(
-                    entity.typeName.toString(),
+                    entity.typeName.toString(context.codeLanguage),
                     missingColumns, entity.columnNames
                 )
             )
@@ -668,7 +676,7 @@ class PojoProcessor private constructor(
         entityField: Field,
         typeArgElement: XTypeElement
     ): List<String> {
-        return if (inferEntity || typeArg.typeName == entity.typeName) {
+        return if (inferEntity || typeArg.asTypeName() == entity.typeName) {
             entity.columnNames
         } else {
             val columnAdapter = context.typeAdapterStore.findCursorValueReader(typeArg, null)
@@ -731,16 +739,23 @@ class PojoProcessor private constructor(
             },
             assignFromField = {
                 field.getter = FieldGetter(
-                    name = field.name,
+                    fieldName = field.name,
+                    jvmName = field.name,
                     type = field.type,
                     callType = CallType.FIELD
                 )
             },
             assignFromMethod = { match ->
                 field.getter = FieldGetter(
-                    name = match.name,
+                    fieldName = field.name,
+                    jvmName = match.element.jvmName,
                     type = match.resolvedType.returnType,
-                    callType = CallType.METHOD
+                    callType =
+                        if (match.element.isKotlinPropertyMethod()) {
+                            CallType.SYNTHETIC_METHOD
+                        } else {
+                            CallType.METHOD
+                        }
                 )
             },
             reportAmbiguity = { matching ->
@@ -762,9 +777,9 @@ class PojoProcessor private constructor(
                 element = field.element,
                 msg = ProcessorErrors.mismatchedGetter(
                     fieldName = field.name,
-                    ownerType = element.type.typeName,
-                    getterType = field.getter.type.typeName,
-                    fieldType = field.typeName
+                    ownerType = element.type.asTypeName().toString(context.codeLanguage),
+                    getterType = field.getter.type.asTypeName().toString(context.codeLanguage),
+                    fieldType = field.typeName.toString(context.codeLanguage)
                 )
             )
             field.statementBinder = context.typeAdapterStore.findStatementValueBinder(
@@ -791,7 +806,8 @@ class PojoProcessor private constructor(
     ) {
         if (constructor != null && constructor.hasField(field)) {
             field.setter = FieldSetter(
-                name = field.name,
+                fieldName = field.name,
+                jvmName = field.name,
                 type = field.type,
                 callType = CallType.CONSTRUCTOR
             )
@@ -806,7 +822,8 @@ class PojoProcessor private constructor(
             },
             assignFromField = {
                 field.setter = FieldSetter(
-                    name = field.name,
+                    fieldName = field.name,
+                    jvmName = field.name,
                     type = field.type,
                     callType = CallType.FIELD
                 )
@@ -814,9 +831,15 @@ class PojoProcessor private constructor(
             assignFromMethod = { match ->
                 val paramType = match.resolvedType.parameterTypes.first()
                 field.setter = FieldSetter(
-                    name = match.name,
+                    fieldName = field.name,
+                    jvmName = match.element.jvmName,
                     type = paramType,
-                    callType = CallType.METHOD
+                    callType =
+                        if (match.element.isKotlinPropertyMethod()) {
+                            CallType.SYNTHETIC_METHOD
+                        } else {
+                            CallType.METHOD
+                        }
                 )
             },
             reportAmbiguity = { matching ->
@@ -838,9 +861,9 @@ class PojoProcessor private constructor(
                 element = field.element,
                 msg = ProcessorErrors.mismatchedSetter(
                     fieldName = field.name,
-                    ownerType = element.type.typeName,
-                    setterType = field.setter.type.typeName,
-                    fieldType = field.typeName
+                    ownerType = element.type.asTypeName().toString(context.codeLanguage),
+                    setterType = field.setter.type.asTypeName().toString(context.codeLanguage),
+                    fieldType = field.typeName.toString(context.codeLanguage)
                 )
             )
             field.cursorValueReader = context.typeAdapterStore.findCursorValueReader(
@@ -873,10 +896,12 @@ class PojoProcessor private constructor(
         val matching = candidates
             .filter {
                 // b/69164099
+                // use names in source (rather than jvmName) for matching since that is what user
+                // sees in code
                 field.type.isAssignableFromWithoutVariance(getType(it)) &&
                     (
-                        field.nameWithVariations.contains(it.name) ||
-                            nameVariations.contains(it.name)
+                        field.nameWithVariations.contains(it.element.name) ||
+                            nameVariations.contains(it.element.name)
                         )
             }
             .groupBy {
@@ -909,7 +934,7 @@ class PojoProcessor private constructor(
             return null
         }
         if (candidates.size > 1) {
-            reportAmbiguity(candidates.map { it.name })
+            reportAmbiguity(candidates.map { it.element.name })
         }
         return candidates.first()
     }
@@ -919,7 +944,7 @@ class PojoProcessor private constructor(
         fun onPreProcess(element: XTypeElement)
 
         /**
-         * Constructors are XExecutableElement rather than XConstrcutorElement to account for
+         * Constructors are XExecutableElement rather than XConstructorElement to account for
          * factory methods.
          */
         fun findConstructors(element: XTypeElement): List<XExecutableElement>
@@ -936,19 +961,25 @@ class PojoProcessor private constructor(
 
     private class DefaultDelegate(private val context: Context) : Delegate {
         override fun onPreProcess(element: XTypeElement) {
-            // Check that certain Room annotations with @Target(METHOD) are not used in the POJO
-            // since it is not annotated with AutoValue.
-            element.getAllMethods()
-                .filter { it.hasAnyOf(*TARGET_METHOD_ANNOTATIONS) }
-                .forEach { method ->
-                    val annotationName = TARGET_METHOD_ANNOTATIONS
-                        .first { method.hasAnnotation(it) }
-                        .java.simpleName
-                    context.logger.e(
-                        method,
-                        ProcessorErrors.invalidAnnotationTarget(annotationName, method.kindName())
-                    )
-                }
+            // If POJO is not a record then check that certain Room annotations with @Target(METHOD)
+            // are not used since the POJO is not annotated with AutoValue where Room column
+            // annotations are allowed in methods.
+            if (!element.isRecordClass()) {
+                element.getAllMethods()
+                    .filter { it.hasAnyAnnotation(*TARGET_METHOD_ANNOTATIONS) }
+                    .forEach { method ->
+                        val annotationName = TARGET_METHOD_ANNOTATIONS
+                            .first { columnAnnotation -> method.hasAnnotation(columnAnnotation) }
+                            .java.simpleName
+                        context.logger.e(
+                            method,
+                            ProcessorErrors.invalidAnnotationTarget(
+                                annotationName,
+                                method.kindName()
+                            )
+                        )
+                    }
+            }
         }
 
         override fun findConstructors(element: XTypeElement) = element.getConstructors().filterNot {
@@ -970,6 +1001,30 @@ class PojoProcessor private constructor(
                 embeddedFields = embeddedFields,
                 relations = relations,
                 constructor = constructor
+            )
+        }
+    }
+
+    private object EmptyDelegate : Delegate {
+        override fun onPreProcess(element: XTypeElement) {}
+
+        override fun findConstructors(element: XTypeElement): List<XExecutableElement> = emptyList()
+
+        override fun createPojo(
+            element: XTypeElement,
+            declaredType: XType,
+            fields: List<Field>,
+            embeddedFields: List<EmbeddedField>,
+            relations: List<androidx.room.vo.Relation>,
+            constructor: Constructor?
+        ): Pojo {
+            return Pojo(
+                element = element,
+                type = declaredType,
+                fields = emptyList(),
+                embeddedFields = emptyList(),
+                relations = emptyList(),
+                constructor = null
             )
         }
     }

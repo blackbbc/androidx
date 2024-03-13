@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastFirst
 import kotlin.math.max
 
 /**
@@ -234,15 +235,16 @@ object SnackbarDefaults {
 
 @Composable
 private fun TextOnlySnackbar(content: @Composable () -> Unit) {
-    Layout(
-        content,
-        modifier = Modifier.padding(
-            start = HorizontalSpacing,
-            end = HorizontalSpacing,
-            top = SnackbarVerticalPadding,
-            bottom = SnackbarVerticalPadding
-        )
-    ) { measurables, constraints ->
+    Layout({
+        Box(
+            modifier = Modifier.padding(
+                horizontal = HorizontalSpacing,
+                vertical = SnackbarVerticalPadding
+            )
+        ) {
+            content()
+        }
+    }) { measurables, constraints ->
         require(measurables.size == 1) {
             "text for Snackbar expected to have exactly only one child"
         }
@@ -296,21 +298,20 @@ private fun OneRowSnackbar(
     val actionTag = "action"
     Layout(
         {
-            Box(Modifier.layoutId(textTag)) { text() }
+            Box(Modifier.layoutId(textTag).padding(vertical = SnackbarVerticalPadding)) { text() }
             Box(Modifier.layoutId(actionTag)) { action() }
         },
         modifier = Modifier.padding(
             start = HorizontalSpacing,
-            end = HorizontalSpacingButtonSide,
-            top = SnackbarVerticalPadding,
-            bottom = SnackbarVerticalPadding
+            end = HorizontalSpacingButtonSide
         )
     ) { measurables, constraints ->
-        val buttonPlaceable = measurables.first { it.layoutId == actionTag }.measure(constraints)
+        val buttonPlaceable = measurables.fastFirst { it.layoutId == actionTag }
+            .measure(constraints)
         val textMaxWidth =
             (constraints.maxWidth - buttonPlaceable.width - TextEndExtraSpacing.roundToPx())
                 .coerceAtLeast(constraints.minWidth)
-        val textPlaceable = measurables.first { it.layoutId == textTag }.measure(
+        val textPlaceable = measurables.fastFirst { it.layoutId == textTag }.measure(
             constraints.copy(minHeight = 0, maxWidth = textMaxWidth)
         )
 
@@ -339,7 +340,7 @@ private fun OneRowSnackbar(
             }
         } else {
             val baselineOffset = HeightToFirstLine.roundToPx()
-            textPlaceY = baselineOffset - firstTextBaseline - SnackbarVerticalPadding.roundToPx()
+            textPlaceY = baselineOffset - firstTextBaseline
             val minContainerHeight = SnackbarMinHeightTwoLines.roundToPx()
             val contentHeight = textPlaceY + textPlaceable.height
             containerHeight = max(minContainerHeight, contentHeight)
@@ -356,9 +357,9 @@ private fun OneRowSnackbar(
 private val HeightToFirstLine = 30.dp
 private val HorizontalSpacing = 16.dp
 private val HorizontalSpacingButtonSide = 8.dp
-private val SeparateButtonExtraY = 8.dp
+private val SeparateButtonExtraY = 2.dp
 private val SnackbarVerticalPadding = 6.dp
 private val TextEndExtraSpacing = 8.dp
-private val LongButtonVerticalOffset = 18.dp
-private val SnackbarMinHeightOneLine = 48.dp - SnackbarVerticalPadding * 2
-private val SnackbarMinHeightTwoLines = 68.dp - SnackbarVerticalPadding * 2
+private val LongButtonVerticalOffset = 12.dp
+private val SnackbarMinHeightOneLine = 48.dp
+private val SnackbarMinHeightTwoLines = 68.dp

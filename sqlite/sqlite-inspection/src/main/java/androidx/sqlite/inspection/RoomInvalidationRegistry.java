@@ -16,6 +16,7 @@
 
 package androidx.sqlite.inspection;
 
+import android.annotation.SuppressLint;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -35,7 +36,7 @@ import java.util.List;
  * The list of instances of InvalidationTrackers are cached to avoid re-finding them after each
  * query. Make sure to call {@link #invalidateCache()} after a new database connection is detected.
  */
-class RoomInvalidationRegistry {
+class RoomInvalidationRegistry implements Invalidation {
     private static final String TAG = "RoomInvalidationRegistry";
     private static final String INVALIDATION_TRACKER_QNAME = "androidx.room.InvalidationTracker";
 
@@ -63,7 +64,8 @@ class RoomInvalidationRegistry {
      * <p>
      * If the list of InvalidationTracker instances are not cached, this will do a lookup.
      */
-    void triggerInvalidations() {
+    @Override
+    public void triggerInvalidations() {
         if (mInvoker == null) {
             return;
         }
@@ -138,6 +140,7 @@ class RoomInvalidationRegistry {
             }
         }
 
+        @SuppressLint("BanUncheckedReflection") // Not a platform method.
         public void trigger(Object instance) {
             if (mRefreshMethod != null) {
                 try {

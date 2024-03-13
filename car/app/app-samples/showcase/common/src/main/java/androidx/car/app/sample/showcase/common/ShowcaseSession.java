@@ -30,12 +30,13 @@ import androidx.car.app.CarContext;
 import androidx.car.app.Screen;
 import androidx.car.app.ScreenManager;
 import androidx.car.app.Session;
-import androidx.car.app.sample.showcase.common.misc.RequestPermissionScreen;
-import androidx.car.app.sample.showcase.common.misc.ResultDemoScreen;
-import androidx.car.app.sample.showcase.common.navigation.NavigationNotificationsDemoScreen;
-import androidx.car.app.sample.showcase.common.navigation.routing.NavigatingDemoScreen;
 import androidx.car.app.sample.showcase.common.renderer.Renderer;
 import androidx.car.app.sample.showcase.common.renderer.SurfaceController;
+import androidx.car.app.sample.showcase.common.screens.ResultDemoScreen;
+import androidx.car.app.sample.showcase.common.screens.navigationdemos.NavigatingDemoScreen;
+import androidx.car.app.sample.showcase.common.screens.navigationdemos.NavigationNotificationService;
+import androidx.car.app.sample.showcase.common.screens.navigationdemos.NavigationNotificationsDemoScreen;
+import androidx.car.app.sample.showcase.common.screens.userinteractions.RequestPermissionScreen;
 import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
@@ -75,6 +76,19 @@ public class ShowcaseSession extends Session implements DefaultLifecycleObserver
             return new ResultDemoScreen(getCarContext());
         }
 
+        boolean shouldLoadScreen =
+                getCarContext()
+                        .getSharedPreferences(ShowcaseService.SHARED_PREF_KEY, Context.MODE_PRIVATE)
+                        .getBoolean(ShowcaseService.LOADING_KEY, false);
+        if (shouldLoadScreen) {
+            // Reset so that we don't require it next time
+            getCarContext()
+                    .getSharedPreferences(ShowcaseService.SHARED_PREF_KEY, Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean(ShowcaseService.LOADING_KEY, false)
+                    .apply();
+        }
+
         // For demo purposes this uses a shared preference setting to store whether we should
         // pre-seed the screen back stack. This allows the app to have a way to go back to the
         // home/start screen making the home/start screen the 0th position.
@@ -104,6 +118,10 @@ public class ShowcaseSession extends Session implements DefaultLifecycleObserver
     @Override
     public void onDestroy(@NonNull LifecycleOwner owner) {
         Log.i("SHOWCASE", "onDestroy");
+
+        // Stop navigation notification service if it is running.
+        CarContext context = getCarContext();
+        context.stopService(new Intent(context, NavigationNotificationService.class));
     }
 
     @Override

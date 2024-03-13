@@ -17,6 +17,7 @@
 package androidx.core.provider;
 
 import android.annotation.SuppressLint;
+import android.content.ContentProviderClient;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
@@ -29,9 +30,12 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.CancellationSignal;
+import android.os.RemoteException;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
 import androidx.core.content.res.FontResourcesParserCompat;
 import androidx.core.provider.FontsContractCompat.FontFamilyResult;
@@ -43,7 +47,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-/* package */ class FontProvider {
+class FontProvider {
     private FontProvider() {}
 
     @NonNull
@@ -63,7 +67,6 @@ import java.util.List;
 
     /**
      * Do not access directly, visible for testing only.
-     * @return
      */
     @VisibleForTesting
     @Nullable
@@ -107,7 +110,6 @@ import java.util.List;
 
     /**
      * Do not access directly, visible for testing only.
-     * @return
      */
     @VisibleForTesting
     @NonNull
@@ -126,6 +128,7 @@ import java.util.List;
                 .appendPath("file")
                 .build();
         Cursor cursor = null;
+        ContentQueryWrapper queryWrapper = ContentQueryWrapper.make(context, uri);
         try {
             String[] projection = {
                     FontsContractCompat.Columns._ID, FontsContractCompat.Columns.FILE_ID,
@@ -134,14 +137,8 @@ import java.util.List;
                     FontsContractCompat.Columns.WEIGHT, FontsContractCompat.Columns.ITALIC,
                     FontsContractCompat.Columns.RESULT_CODE};
 
-            if (Build.VERSION.SDK_INT > 16) {
-                cursor = context.getContentResolver().query(uri, projection, "query = ?",
+            cursor = queryWrapper.query(uri, projection, "query = ?",
                         new String[]{request.getQuery()}, null, cancellationSignal);
-            } else {
-                // No cancellation signal.
-                cursor = context.getContentResolver().query(uri, projection, "query = ?",
-                        new String[]{request.getQuery()}, null);
-            }
 
             if (cursor != null && cursor.getCount() > 0) {
                 final int resultCodeColumnIndex = cursor.getColumnIndex(
@@ -181,6 +178,7 @@ import java.util.List;
             if (cursor != null) {
                 cursor.close();
             }
+            queryWrapper.close();
         }
         return result.toArray(new FontInfo[0]);
     }
@@ -193,19 +191,16 @@ import java.util.List;
         return FontResourcesParserCompat.readCerts(resources, resourceId);
     }
 
-    private static final Comparator<byte[]> sByteArrayComparator = new Comparator<byte[]>() {
-        @Override
-        public int compare(byte[] l, byte[] r) {
-            if (l.length != r.length) {
-                return l.length - r.length;
-            }
-            for (int i = 0; i < l.length; ++i) {
-                if (l[i] != r[i]) {
-                    return l[i] - r[i];
-                }
-            }
-            return 0;
+    private static final Comparator<byte[]> sByteArrayComparator = (l, r) -> {
+        if (l.length != r.length) {
+            return l.length - r.length;
         }
+        for (int i = 0; i < l.length; ++i) {
+            if (l[i] != r[i]) {
+                return l[i] - r[i];
+            }
+        }
+        return 0;
     };
 
     private static boolean equalsByteArrayList(List<byte[]> signatures,
@@ -223,9 +218,90 @@ import java.util.List;
 
     private static List<byte[]> convertToByteArrayList(Signature[] signatures) {
         List<byte[]> shaList = new ArrayList<>();
-        for (int i = 0; i < signatures.length; ++i) {
-            shaList.add(signatures[i].toByteArray());
+        for (Signature signature : signatures) {
+            shaList.add(signature.toByteArray());
         }
         return shaList;
+    }
+
+    /**
+     * Interface for absorbing querying ContentProvider API dependencies.
+     */
+    private interface ContentQueryWrapper {
+        Cursor query(
+                Uri uri,
+                String[] projection,
+                String selection,
+                String[] selectionArgs,
+                String sortOrder,
+                CancellationSignal cancellationSignal);
+        void close();
+
+        static ContentQueryWrapper make(Context context, Uri uri) {
+            if (Build.VERSION.SDK_INT < 24) {
+                return new ContentQueryWrapperApi16Impl(context, uri);
+            } else {
+                return new ContentQueryWrapperApi24Impl(context, uri);
+            }
+        }
+    }
+
+    private static class ContentQueryWrapperApi16Impl implements ContentQueryWrapper {
+        private final ContentProviderClient mClient;
+        ContentQueryWrapperApi16Impl(Context context, Uri uri) {
+            mClient = context.getContentResolver().acquireUnstableContentProviderClient(uri);
+        }
+
+        @Override
+        public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
+                String sortOrder, CancellationSignal cancellationSignal) {
+            if (mClient == null) {
+                return null;
+            }
+            try {
+                return mClient.query(uri, projection, selection, selectionArgs, sortOrder,
+                        cancellationSignal);
+            } catch (RemoteException e) {
+                Log.w("FontsProvider", "Unable to query the content provider", e);
+                return null;
+            }
+        }
+
+        @Override
+        public void close() {
+            if (mClient != null) {
+                mClient.release();
+            }
+        }
+    }
+
+    @RequiresApi(24)
+    private static class ContentQueryWrapperApi24Impl implements ContentQueryWrapper {
+        private final ContentProviderClient mClient;
+        ContentQueryWrapperApi24Impl(Context context, Uri uri) {
+            mClient = context.getContentResolver().acquireUnstableContentProviderClient(uri);
+        }
+
+        @Override
+        public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
+                String sortOrder, CancellationSignal cancellationSignal) {
+            if (mClient == null) {
+                return null;
+            }
+            try {
+                return mClient.query(uri, projection, selection, selectionArgs, sortOrder,
+                        cancellationSignal);
+            } catch (RemoteException e) {
+                Log.w("FontsProvider", "Unable to query the content provider", e);
+                return null;
+            }
+        }
+
+        @Override
+        public void close() {
+            if (mClient != null) {
+                mClient.close();
+            }
+        }
     }
 }

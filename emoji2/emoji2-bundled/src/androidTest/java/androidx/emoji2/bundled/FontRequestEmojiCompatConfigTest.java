@@ -26,7 +26,7 @@ import static androidx.core.provider.FontsContractCompat.FontFamilyResult.STATUS
 import static androidx.core.provider.FontsContractCompat.FontFamilyResult.STATUS_WRONG_CERTIFICATES;
 
 import static org.hamcrest.CoreMatchers.containsString;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,9 +43,8 @@ import static org.mockito.Mockito.verify;
 import android.content.Context;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.database.ContentObserver;
+import android.graphics.Typeface;
 import android.net.Uri;
-import android.os.Handler;
-import android.os.HandlerThread;
 
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
@@ -59,7 +58,6 @@ import androidx.emoji2.text.MetadataRepo;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
-import androidx.test.filters.SdkSuppress;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -72,6 +70,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @LargeTest
@@ -103,7 +103,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_whenGetFontThrowsException() throws NameNotFoundException {
         final Exception exception = new RuntimeException();
         doThrow(exception).when(mFontProviderHelper).fetchFonts(
@@ -118,7 +117,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_providerNotFound() throws NameNotFoundException {
         doThrow(new NameNotFoundException()).when(mFontProviderHelper).fetchFonts(
                 any(Context.class), any(FontRequest.class));
@@ -136,14 +134,12 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_wrongCertificate() throws NameNotFoundException {
         verifyLoaderOnFailedCalled(STATUS_WRONG_CERTIFICATES, null /* fonts */,
                 "fetchFonts failed (" + STATUS_WRONG_CERTIFICATES + ")");
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_fontNotFound() throws NameNotFoundException {
         verifyLoaderOnFailedCalled(STATUS_OK,
                 getTestFontInfoWithInvalidPath(RESULT_CODE_FONT_NOT_FOUND),
@@ -151,7 +147,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_fontUnavailable() throws NameNotFoundException {
         verifyLoaderOnFailedCalled(STATUS_OK,
                 getTestFontInfoWithInvalidPath(RESULT_CODE_FONT_UNAVAILABLE),
@@ -159,7 +154,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_malformedQuery() throws NameNotFoundException {
         verifyLoaderOnFailedCalled(STATUS_OK,
                 getTestFontInfoWithInvalidPath(RESULT_CODE_MALFORMED_QUERY),
@@ -167,21 +161,18 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_resultNotFound() throws NameNotFoundException {
         verifyLoaderOnFailedCalled(STATUS_OK, new FontInfo[] {},
                 "fetchFonts failed (empty result)");
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_nullFontInfo() throws NameNotFoundException {
         verifyLoaderOnFailedCalled(STATUS_OK, null /* fonts */,
                 "fetchFonts failed (empty result)");
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_cannotLoadTypeface() throws NameNotFoundException {
         // getTestFontInfoWithInvalidPath returns FontInfo with invalid path to file.
         verifyLoaderOnFailedCalled(STATUS_OK,
@@ -190,7 +181,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_success() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final FontInfo[] fonts =  new FontInfo[] {
@@ -199,6 +189,7 @@ public class FontRequestEmojiCompatConfigTest {
         };
         doReturn(new FontFamilyResult(STATUS_OK, fonts)).when(mFontProviderHelper).fetchFonts(
                 any(Context.class), any(FontRequest.class));
+        doReturn(mock(Typeface.class)).when(mFontProviderHelper).buildTypeface(any(), any());
         final WaitingLoaderCallback callback = spy(new WaitingLoaderCallback());
         final TestFontRequestEmojiCompatConfig config =
                 new TestFontRequestEmojiCompatConfig(mContext, mFontRequest, mFontProviderHelper);
@@ -209,7 +200,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_retryPolicy() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final FontInfo[] fonts =  new FontInfo[] {
@@ -232,7 +222,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_keepRetryingAndGiveUp() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final FontInfo[] fonts =  new FontInfo[] {
@@ -259,7 +248,6 @@ public class FontRequestEmojiCompatConfigTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_keepRetryingAndFail() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final Uri uri = Uri.fromFile(file);
@@ -273,14 +261,11 @@ public class FontRequestEmojiCompatConfigTest {
         final WaitingLoaderCallback callback = spy(new WaitingLoaderCallback());
         final WaitingRetryPolicy retryPolicy = spy(new WaitingRetryPolicy(500, 1));
 
-        HandlerThread thread = new HandlerThread("testThread");
-        thread.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Handler handler = new Handler(thread.getLooper());
-
             final TestFontRequestEmojiCompatConfig config = new TestFontRequestEmojiCompatConfig(
                     mContext, mFontRequest, mFontProviderHelper);
-            config.setHandler(handler).setRetryPolicy(retryPolicy);
+            config.setLoadingExecutor(executor).setRetryPolicy(retryPolicy);
 
             config.loadForTests(callback);
             retryPolicy.await(DEFAULT_TIMEOUT_MILLIS);
@@ -289,7 +274,7 @@ public class FontRequestEmojiCompatConfigTest {
             verify(retryPolicy, atLeastOnce()).getRetryDelay();
 
             // To avoid race condition, change the fetchFonts result on the handler thread.
-            handler.post(new Runnable() {
+            executor.submit(new Runnable() {
                 @Override
                 public void run() {
                     try {
@@ -311,12 +296,11 @@ public class FontRequestEmojiCompatConfigTest {
             verify(callback, never()).onLoaded(any(MetadataRepo.class));
             verify(callback, times(1)).onFailed(any(Throwable.class));
         } finally {
-            thread.quit();
+            executor.shutdown();
         }
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_keepRetryingAndSuccess() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final Uri uri = Uri.fromFile(file);
@@ -327,17 +311,15 @@ public class FontRequestEmojiCompatConfigTest {
         };
         doReturn(new FontFamilyResult(STATUS_OK, fonts)).when(mFontProviderHelper).fetchFonts(
                 any(Context.class), any(FontRequest.class));
+        doReturn(mock(Typeface.class)).when(mFontProviderHelper).buildTypeface(any(), any());
         final WaitingLoaderCallback callback = spy(new WaitingLoaderCallback());
         final WaitingRetryPolicy retryPolicy = spy(new WaitingRetryPolicy(500, 1));
 
-        HandlerThread thread = new HandlerThread("testThread");
-        thread.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Handler handler = new Handler(thread.getLooper());
-
             final TestFontRequestEmojiCompatConfig config = new TestFontRequestEmojiCompatConfig(
                     mContext, mFontRequest, mFontProviderHelper);
-            config.setHandler(handler).setRetryPolicy(retryPolicy);
+            config.setLoadingExecutor(executor).setRetryPolicy(retryPolicy);
 
             config.loadForTests(callback);
             retryPolicy.await(DEFAULT_TIMEOUT_MILLIS);
@@ -351,7 +333,7 @@ public class FontRequestEmojiCompatConfigTest {
             };
 
             // To avoid race condition, change the fetchFonts result on the handler thread.
-            handler.post(new Runnable() {
+            executor.submit(new Runnable() {
                 @Override
                 public void run() {
                     try {
@@ -368,12 +350,11 @@ public class FontRequestEmojiCompatConfigTest {
             verify(callback, times(1)).onLoaded(any(MetadataRepo.class));
             verify(callback, never()).onFailed(any(Throwable.class));
         } finally {
-            thread.quit();
+            executor.shutdown();
         }
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_ObserverNotifyAndSuccess() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final Uri uri = Uri.fromFile(file);
@@ -383,16 +364,15 @@ public class FontRequestEmojiCompatConfigTest {
         };
         doReturn(new FontFamilyResult(STATUS_OK, fonts)).when(mFontProviderHelper).fetchFonts(
                 any(Context.class), any(FontRequest.class));
+        doReturn(mock(Typeface.class)).when(mFontProviderHelper).buildTypeface(any(), any());
         final WaitingLoaderCallback callback = spy(new WaitingLoaderCallback());
         final WaitingRetryPolicy retryPolicy = spy(new WaitingRetryPolicy(500, 2));
 
-        HandlerThread thread = new HandlerThread("testThread");
-        thread.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Handler handler = new Handler(thread.getLooper());
             final TestFontRequestEmojiCompatConfig config = new TestFontRequestEmojiCompatConfig(
                     mContext, mFontRequest, mFontProviderHelper);
-            config.setHandler(handler).setRetryPolicy(retryPolicy);
+            config.setLoadingExecutor(executor).setRetryPolicy(retryPolicy);
 
             ArgumentCaptor<ContentObserver> observerCaptor =
                     ArgumentCaptor.forClass(ContentObserver.class);
@@ -413,7 +393,7 @@ public class FontRequestEmojiCompatConfigTest {
                     mFontProviderHelper).fetchFonts(any(Context.class), any(FontRequest.class));
 
             final ContentObserver observer = observerCaptor.getValue();
-            handler.post(new Runnable() {
+            executor.submit(new Runnable() {
                 @Override
                 public void run() {
                     observer.onChange(false /* self change */, uri);
@@ -424,12 +404,11 @@ public class FontRequestEmojiCompatConfigTest {
             verify(callback, times(1)).onLoaded(any(MetadataRepo.class));
             verify(callback, never()).onFailed(any(Throwable.class));
         } finally {
-            thread.quit();
+            executor.shutdown();
         }
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 19)
     public void testLoad_ObserverNotifyAndFail() throws IOException, NameNotFoundException {
         final File file = loadFont(mContext, "NotoColorEmojiCompat.ttf");
         final Uri uri = Uri.fromFile(file);
@@ -439,16 +418,15 @@ public class FontRequestEmojiCompatConfigTest {
         };
         doReturn(new FontFamilyResult(STATUS_OK, fonts)).when(mFontProviderHelper).fetchFonts(
                 any(Context.class), any(FontRequest.class));
+        doReturn(mock(Typeface.class)).when(mFontProviderHelper).buildTypeface(any(), any());
         final WaitingLoaderCallback callback = spy(new WaitingLoaderCallback());
         final WaitingRetryPolicy retryPolicy = spy(new WaitingRetryPolicy(500, 2));
 
-        HandlerThread thread = new HandlerThread("testThread");
-        thread.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            Handler handler = new Handler(thread.getLooper());
             final TestFontRequestEmojiCompatConfig config = new TestFontRequestEmojiCompatConfig(
                     mContext, mFontRequest, mFontProviderHelper);
-            config.setRetryPolicy(retryPolicy).setHandler(handler);
+            config.setRetryPolicy(retryPolicy).setLoadingExecutor(executor);
 
             ArgumentCaptor<ContentObserver> observerCaptor =
                     ArgumentCaptor.forClass(ContentObserver.class);
@@ -469,7 +447,7 @@ public class FontRequestEmojiCompatConfigTest {
                     mFontProviderHelper).fetchFonts(any(Context.class), any(FontRequest.class));
 
             final ContentObserver observer = observerCaptor.getValue();
-            handler.post(new Runnable() {
+            executor.submit(new Runnable() {
                 @Override
                 public void run() {
                     observer.onChange(false /* self change */, uri);
@@ -480,7 +458,7 @@ public class FontRequestEmojiCompatConfigTest {
             verify(callback, never()).onLoaded(any(MetadataRepo.class));
             verify(callback, times(1)).onFailed(any(Throwable.class));
         } finally {
-            thread.quit();
+            executor.shutdown();
         }
     }
 

@@ -21,4 +21,7 @@
     <string name="rotation_config_changes_overridden">Rotation - ConfigChanges overridden</string>
     <string name="viewpager">ViewPager</string>
     <string name="viewpager2">ViewPager2</string>
+    <string name="foldable">Foldable</string>
+    <string name="compose">Compose</string>
+
 </resources>

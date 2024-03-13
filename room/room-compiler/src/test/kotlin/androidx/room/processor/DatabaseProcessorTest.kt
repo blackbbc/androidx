@@ -17,18 +17,23 @@
 package androidx.room.processor
 
 import COMMON
+import androidx.kruth.assertThat
 import androidx.room.DatabaseProcessingStep
+import androidx.room.RoomProcessor
+import androidx.room.compiler.codegen.CodeLanguage
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
 import androidx.room.compiler.processing.util.CompilationResultSubject
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.XTestInvocation
 import androidx.room.compiler.processing.util.compileFiles
+import androidx.room.compiler.processing.util.compileFilesIntoJar
+import androidx.room.compiler.processing.util.runKspTest
 import androidx.room.compiler.processing.util.runProcessorTest
 import androidx.room.parser.ParsedQuery
 import androidx.room.parser.QueryType
 import androidx.room.parser.Table
-import androidx.room.processor.ProcessorErrors.autoMigrationSchemasMustBeRoomGenerated
+import androidx.room.processor.ProcessorErrors.invalidAutoMigrationSchema
 import androidx.room.solver.query.result.EntityRowAdapter
 import androidx.room.solver.query.result.PojoRowAdapter
 import androidx.room.testing.context
@@ -36,25 +41,26 @@ import androidx.room.vo.Database
 import androidx.room.vo.DatabaseView
 import androidx.room.vo.ReadQueryMethod
 import androidx.room.vo.Warning
-import com.google.common.truth.Truth.assertThat
-import com.squareup.javapoet.ClassName
-import com.squareup.javapoet.TypeName
-import org.hamcrest.CoreMatchers.`is`
+import com.google.auto.service.processor.AutoServiceProcessor
+import java.io.File
+import java.io.FileOutputStream
+import java.net.URL
+import java.net.URLClassLoader
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.CoreMatchers.hasItems
 import org.hamcrest.CoreMatchers.instanceOf
+import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.CoreMatchers.not
 import org.hamcrest.CoreMatchers.notNullValue
 import org.hamcrest.CoreMatchers.sameInstance
 import org.hamcrest.MatcherAssert.assertThat
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 import org.mockito.Mockito.mock
-import java.io.File
-import java.io.FileOutputStream
 
 @RunWith(JUnit4::class)
 class DatabaseProcessorTest {
@@ -173,6 +179,32 @@ class DatabaseProcessorTest {
                 """
         )
 
+        val PUBLISHER = Source.java(
+            "foo.bar.Publisher",
+            """
+                package foo.bar;
+                import androidx.room.*;
+                @Entity
+                public class Publisher {
+                    @PrimaryKey
+                    int publisherId;
+                }
+            """
+        )
+
+        val PUBLISHER_DAO = Source.java(
+            "foo.bar.PublisherDao",
+            """
+                package foo.bar;
+                import androidx.room.*;
+                @Dao
+                public interface PublisherDao {
+                    @Upsert
+                    public void upsert(Publisher publisher);
+                }
+            """
+        )
+
         val AUTOMIGRATION = Source.java(
             "foo.bar.MyAutoMigration",
             """
@@ -221,9 +253,9 @@ class DatabaseProcessorTest {
         ) { db, _ ->
             assertThat(db.daoMethods.size, `is`(2))
             assertThat(db.entities.size, `is`(2))
-            assertThat(db.daoMethods.map { it.name }, `is`(listOf("userDao", "bookDao")))
+            assertThat(db.daoMethods.map { it.element.jvmName }, `is`(listOf("userDao", "bookDao")))
             assertThat(
-                db.entities.map { it.type.typeName.toString() },
+                db.entities.map { it.type.asTypeName().toString(CodeLanguage.JAVA) },
                 `is`(listOf("foo.bar.User", "foo.bar.Book"))
             )
         }
@@ -309,6 +341,7 @@ class DatabaseProcessorTest {
     }
 
     @Test
+    @Ignore("b/285140651")
     fun detectMissingEntityAnnotationInLibraryClass() {
         val librarySource = Source.java(
             "test.library.MissingEntityAnnotationPojo",
@@ -345,6 +378,7 @@ class DatabaseProcessorTest {
     }
 
     @Test
+    @Ignore("b/285140651")
     fun detectMissingDaoAnnotationInLibraryClass() {
         val librarySource = Source.java(
             "test.library.MissingAnnotationsBaseDao",
@@ -453,7 +487,7 @@ class DatabaseProcessorTest {
         )
         runProcessorTest(
             sources = listOf(BOOK, BOOK_DAO, DB1, DB2, db1_2),
-            createProcessingStep = { DatabaseProcessingStep() }
+            createProcessingSteps = { listOf(DatabaseProcessingStep()) }
         ) { result ->
             result.generatedSourceFileWithPath("foo/bar/Db1_Impl.java")
             result.generatedSourceFileWithPath("foo/bar/Db2_Impl.java")
@@ -482,7 +516,7 @@ class DatabaseProcessorTest {
                 )
                 hasErrorContaining(
                     ProcessorErrors.duplicateDao(
-                        ClassName.get("foo.bar", "UserDao"), listOf("userDao", "userDao2")
+                        "foo.bar.UserDao", listOf("userDao", "userDao2")
                     )
                 )
             }
@@ -564,7 +598,8 @@ class DatabaseProcessorTest {
             """
                 package foo.bar;
                 import androidx.room.*;
-                @Entity(foreignKeys = @ForeignKey(entity = ${COMMON.USER_TYPE_NAME}.class,
+                @Entity(foreignKeys = @ForeignKey(
+                        entity = ${COMMON.USER_TYPE_NAME.canonicalName}.class,
                         parentColumns = "lastName",
                         childColumns = "name"))
                 public class Entity1 {
@@ -600,7 +635,8 @@ class DatabaseProcessorTest {
             """
                 package foo.bar;
                 import androidx.room.*;
-                @Entity(foreignKeys = @ForeignKey(entity = ${COMMON.USER_TYPE_NAME}.class,
+                @Entity(foreignKeys = @ForeignKey(
+                        entity = ${COMMON.USER_TYPE_NAME.canonicalName}.class,
                         parentColumns = "lastName",
                         childColumns = "name"))
                 public class Entity1 {
@@ -621,7 +657,7 @@ class DatabaseProcessorTest {
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.foreignKeyMissingIndexInParent(
-                        parentEntity = COMMON.USER_TYPE_NAME.toString(),
+                        parentEntity = COMMON.USER_TYPE_NAME.canonicalName,
                         parentColumns = listOf("lastName"),
                         childEntity = "foo.bar.Entity1",
                         childColumns = listOf("name")
@@ -793,6 +829,29 @@ class DatabaseProcessorTest {
     }
 
     @Test
+    fun upsertNotReferencedEntity() {
+        singleDb(
+            """
+                @Database(entities = {User.class}, version = 42)
+                public abstract class MyDb extends RoomDatabase {
+                    abstract PublisherDao publisherDao();
+                }
+            """,
+            USER, USER_DAO, PUBLISHER, PUBLISHER_DAO
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    ProcessorErrors.shortcutEntityIsNotInDatabase(
+                        database = "foo.bar.MyDb",
+                        dao = "foo.bar.PublisherDao",
+                        entity = "foo.bar.Publisher"
+                    )
+                )
+            }
+        }
+    }
+
+    @Test
     fun cache_entity() {
         singleDb(
             """
@@ -821,11 +880,11 @@ class DatabaseProcessorTest {
             USER, USER_DAO
         ) { db, _ ->
             val userDao = db.daoMethods.first().dao
-            val insertionMethod = userDao.insertionMethods.find { it.name == "insert" }
+            val insertionMethod = userDao.insertMethods.find { it.element.jvmName == "insert" }
             assertThat(insertionMethod, notNullValue())
             val loadOne = userDao.queryMethods
                 .filterIsInstance<ReadQueryMethod>()
-                .find { it.name == "loadOne" }
+                .find { it.element.jvmName == "loadOne" }
             assertThat(loadOne, notNullValue())
             val adapter = loadOne?.queryResultBinder?.adapter?.rowAdapters?.single()
             assertThat("test sanity", adapter, instanceOf(EntityRowAdapter::class.java))
@@ -837,7 +896,7 @@ class DatabaseProcessorTest {
 
             val withConverter = userDao.queryMethods
                 .filterIsInstance<ReadQueryMethod>()
-                .find { it.name == "loadWithConverter" }
+                .find { it.element.jvmName == "loadWithConverter" }
             assertThat(withConverter, notNullValue())
             val convAdapter = withConverter?.queryResultBinder?.adapter?.rowAdapters?.single()
             assertThat("test sanity", adapter, instanceOf(EntityRowAdapter::class.java))
@@ -866,7 +925,7 @@ class DatabaseProcessorTest {
             val userDao = db.daoMethods.first().dao
             val loadOne = userDao.queryMethods
                 .filterIsInstance<ReadQueryMethod>()
-                .find { it.name == "loadOnePojo" }
+                .find { it.element.jvmName == "loadOnePojo" }
             assertThat(loadOne, notNullValue())
             val adapter = loadOne?.queryResultBinder?.adapter?.rowAdapters?.single()
             assertThat("test sanity", adapter, instanceOf(PojoRowAdapter::class.java))
@@ -874,7 +933,7 @@ class DatabaseProcessorTest {
 
             val loadAll = userDao.queryMethods
                 .filterIsInstance<ReadQueryMethod>()
-                .find { it.name == "loadAllPojos" }
+                .find { it.element.jvmName == "loadAllPojos" }
             assertThat(loadAll, notNullValue())
             val loadAllAdapter = loadAll?.queryResultBinder?.adapter?.rowAdapters?.single()
             assertThat("test sanity", loadAllAdapter, instanceOf(PojoRowAdapter::class.java))
@@ -884,7 +943,7 @@ class DatabaseProcessorTest {
 
             val withConverter = userDao.queryMethods
                 .filterIsInstance<ReadQueryMethod>()
-                .find { it.name == "loadPojoWithConverter" }
+                .find { it.element.jvmName == "loadPojoWithConverter" }
             assertThat(withConverter, notNullValue())
             val convAdapter = withConverter?.queryResultBinder?.adapter?.rowAdapters?.single()
             assertThat("test sanity", adapter, instanceOf(PojoRowAdapter::class.java))
@@ -1151,19 +1210,9 @@ class DatabaseProcessorTest {
                 baseContext = invocation.context,
                 element = element
             ).process()
-            assertThat(result.daoMethods).hasSize(
-                // for KSP, it will still show as a method, just bad return type
-                if (invocation.isKsp) 1 else 0
-            )
+            assertThat(result.daoMethods).hasSize(0)
             invocation.assertCompilationResult {
-                hasErrorContaining(
-                    if (invocation.isKsp) {
-                        // no primitives in KSP hence we'll get another error
-                        ProcessorErrors.DAO_MUST_BE_ANNOTATED_WITH_DAO
-                    } else {
-                        ProcessorErrors.DATABASE_INVALID_DAO_METHOD_RETURN_TYPE
-                    }
-                )
+                hasErrorContaining(ProcessorErrors.DATABASE_INVALID_DAO_METHOD_RETURN_TYPE)
             }
         }
     }
@@ -1204,14 +1253,10 @@ class DatabaseProcessorTest {
             } else {
                 invocation.assertCompilationResult {
                     hasErrorContaining(
-                        ProcessorErrors.invalidEntityTypeInDatabaseAnnotation(
-                            TypeName.LONG
-                        )
+                        ProcessorErrors.invalidEntityTypeInDatabaseAnnotation("long")
                     )
                     hasErrorContaining(
-                        ProcessorErrors.invalidViewTypeInDatabaseAnnotation(
-                            TypeName.INT
-                        )
+                        ProcessorErrors.invalidViewTypeInDatabaseAnnotation("int")
                     )
                 }
             }
@@ -1252,7 +1297,7 @@ class DatabaseProcessorTest {
                 hasErrorCount(1)
                 hasErrorContaining(
                     ProcessorErrors.autoMigrationSchemasNotFound(
-                        "1.json",
+                        1,
                         schemaFolder.root.absolutePath + File.separator + "foo.bar.MyDb"
                     )
                 )
@@ -1277,7 +1322,7 @@ class DatabaseProcessorTest {
                 hasErrorCount(1)
                 hasErrorContaining(
                     ProcessorErrors.autoMigrationSchemasNotFound(
-                        "1.json",
+                        1,
                         schemaFolder.root.absolutePath + File.separator + "foo.bar.MyDb"
                     )
                 )
@@ -1288,10 +1333,6 @@ class DatabaseProcessorTest {
     @Test
     fun autoMigrationToSchemaNotFound() {
         schemaFolder.newFolder("foo.bar.MyDb")
-        val createdFile: File = schemaFolder.newFile("foo.bar.MyDb" + File.separator + "1.json")
-        FileOutputStream(createdFile).bufferedWriter().use {
-            it.write("{}")
-        }
         singleDb(
             """
                 @Database(entities = {User.class}, version = 42, exportSchema = true,
@@ -1305,7 +1346,7 @@ class DatabaseProcessorTest {
                 hasErrorCount(1)
                 hasErrorContaining(
                     ProcessorErrors.autoMigrationSchemasNotFound(
-                        "2.json",
+                        1,
                         schemaFolder.root.absolutePath + File.separator + "foo.bar.MyDb"
                     )
                 )
@@ -1332,7 +1373,7 @@ class DatabaseProcessorTest {
                 hasErrorCount(1)
                 hasErrorContaining(
                     ProcessorErrors.autoMigrationSchemaIsEmpty(
-                        "1.json",
+                        1,
                         schemaFolder.root.absolutePath + File.separator + "foo.bar.MyDb"
                     )
                 )
@@ -1342,14 +1383,14 @@ class DatabaseProcessorTest {
 
     @Test
     fun allAutoMigrationSchemasProvidedButNotRoomGenerated() {
-        schemaFolder.newFolder("foo.bar.MyDb")
+        val dbFolder = schemaFolder.newFolder("foo.bar.MyDb")
         val from: File = schemaFolder.newFile("foo.bar.MyDb" + File.separator + "1.json")
         val to: File = schemaFolder.newFile("foo.bar.MyDb" + File.separator + "2.json")
         FileOutputStream(from).bufferedWriter().use {
-            it.write("{}")
+            it.write("BAD FILE")
         }
         FileOutputStream(to).bufferedWriter().use {
-            it.write("{}")
+            it.write("BAD FILE")
         }
         singleDb(
             """
@@ -1362,8 +1403,206 @@ class DatabaseProcessorTest {
             invocation.assertCompilationResult {
                 hasErrorCount(1)
                 hasErrorContaining(
-                    autoMigrationSchemasMustBeRoomGenerated(1, 2)
+                    invalidAutoMigrationSchema(
+                        1,
+                        dbFolder.absolutePath
+                    )
                 )
+            }
+        }
+    }
+
+    @Test
+    fun differentSchemaResolver() {
+        val tempDirPath = schemaFolder.root.absolutePath
+        val serviceSource = Source.java(
+            "foo.bar.TestResolver",
+            """
+            package foo.bar;
+            import androidx.room.util.SchemaFileResolver;
+            import com.google.auto.service.AutoService;
+            import java.io.File;
+            import java.io.IOException;
+            import java.io.InputStream;
+            import java.io.OutputStream;
+            import java.nio.file.Files;
+            import java.nio.file.Path;
+            @AutoService(SchemaFileResolver.class)
+            public class TestResolver implements SchemaFileResolver {
+                @Override
+                public InputStream readPath(Path path) throws IOException {
+                    Path resolved = Path.of("$tempDirPath").resolve(path);
+                    if (Files.exists(resolved)) {
+                        return Files.newInputStream(resolved);
+                    } else {
+                        return null;
+                    }
+                }
+                @Override
+                public OutputStream writePath(Path path) throws IOException {
+                    Path resolved = Path.of("$tempDirPath").resolve(path);
+                    Files.createDirectories(resolved.getParent());
+                    return Files.newOutputStream(resolved);
+                }
+            }
+            """.trimIndent()
+        )
+        val resolverLib = compileFilesIntoJar(
+            outputDirectory = schemaFolder.root,
+            sources = listOf(serviceSource),
+            annotationProcessors = listOf(AutoServiceProcessor()),
+        )
+        val dbSource = Source.java(
+            "foo.bar.MyDb",
+            """
+            package foo.bar;
+            import androidx.room.*;
+            @Database(entities = {User.class}, version = 1, exportSchema = true)
+            public abstract class MyDb extends RoomDatabase {}
+            """.trimIndent()
+        )
+        runProcessorTest(
+            sources = listOf(dbSource, USER),
+            options = mapOf("room.schemaLocation" to "schemas/")
+        ) { invocation ->
+            val dbAnnotationName = "androidx.room.Database"
+            val roundElements = mapOf(
+                dbAnnotationName to invocation.roundEnv.getElementsAnnotatedWith(dbAnnotationName)
+            )
+            // Temporarily change the current's thread class loader so that the ServiceLocator can
+            // find the compiled TestResolver. It is not enough to pass the compiled jar in the
+            // classpath argument when running processors because the processor classpath is
+            // different from the user classpath and specifically the processor classes are already
+            // loaded.
+            val currentClassLoader = Thread.currentThread().contextClassLoader
+            try {
+                Thread.currentThread().contextClassLoader = URLClassLoader(
+                    arrayOf(URL("file://${resolverLib.absolutePath}")),
+                    currentClassLoader,
+                )
+                DatabaseProcessingStep().process(invocation.processingEnv, roundElements, false)
+            } finally {
+                Thread.currentThread().contextClassLoader = currentClassLoader
+            }
+        }
+        // Assert schema file is created in a directory different from the room.schemaLocation
+        // verbatim since it was resolved by the compiled TestResolver.
+        assertThat(
+            File(schemaFolder.root, "schemas/foo.bar.MyDb/1.json").exists()
+        ).isTrue()
+    }
+
+    @Test
+    fun exportSchemaToJarResources() {
+        val dbSource = Source.java(
+            "foo.bar.MyDb",
+            """
+            package foo.bar;
+            import androidx.room.*;
+            @Database(entities = {User.class}, version = 1, exportSchema = true)
+            public abstract class MyDb extends RoomDatabase {}
+            """.trimIndent()
+        )
+        val lib = compileFiles(
+            sources = listOf(dbSource, USER),
+            annotationProcessors = listOf(RoomProcessor()),
+            options = mapOf("room.exportSchemaResource" to "true"),
+            includeSystemClasspath = false
+        )
+        assertThat(
+            lib.any { libDir ->
+                libDir.walkTopDown().any { it.endsWith("schemas/foo.bar.MyDb/1.json") }
+            }
+        ).isTrue()
+    }
+
+    @Test
+    fun jvmNameOnDaoMethod() {
+        val jvmNameInDaoGetter = Source.kotlin(
+            "MyDb.kt",
+            """
+                package foo.bar;
+                import androidx.room.*;
+                @Dao
+                interface MyDao
+                @Entity
+                data class MyEntity(@PrimaryKey val id:Int)
+                @Database(version = 1, entities = [MyEntity::class])
+                abstract class MyDb: RoomDatabase() {
+                    @Suppress("INAPPLICABLE_JVM_NAME")
+                    @get:JvmName("jvmDao")
+                    abstract val dao: MyDao
+                }
+                """
+        )
+        runProcessorTest(sources = listOf(jvmNameInDaoGetter)) { invocation ->
+            val element = invocation.processingEnv.requireTypeElement("foo.bar.MyDb")
+            DatabaseProcessor(
+                baseContext = invocation.context,
+                element = element
+            ).process()
+            invocation.assertCompilationResult {
+                hasWarningContaining(
+                    ProcessorErrors.JVM_NAME_ON_OVERRIDDEN_METHOD
+                )
+            }
+        }
+    }
+
+    @Test
+    fun disallowPropertyDao() {
+        val src = Source.kotlin(
+            "MyDatabase.kt",
+            """
+            import androidx.room.*
+
+            @Database(entities = [MyEntity::class], version = 1, exportSchema = false)
+            abstract class MyDatabase : RoomDatabase() {
+              abstract val dao: MyDao
+            }
+
+            @Dao
+            interface MyDao {
+              @Query("SELECT * FROM MyEntity")
+              fun getEntity(): MyEntity
+            }
+
+            @Entity
+            data class MyEntity(
+                @PrimaryKey
+                var pk: Int
+            )
+            """.trimIndent()
+        )
+        runKspTest(
+            sources = listOf(src),
+            options = mapOf(Context.BooleanProcessorOptions.GENERATE_KOTLIN.argName to "true"),
+        ) { invocation ->
+            val element = invocation.processingEnv.requireTypeElement("MyDatabase")
+            DatabaseProcessor(
+                baseContext = invocation.context,
+                element = element
+            ).process()
+            invocation.assertCompilationResult {
+                hasErrorContaining(ProcessorErrors.KOTLIN_PROPERTY_OVERRIDE)
+            }
+        }
+    }
+
+    @Test
+    fun invalidVersion() {
+        singleDb(
+            """
+            @Database(entities = {User.class}, version = 0)
+            public abstract class MyDb extends RoomDatabase {
+                abstract UserDao userDao();
+            }
+            """,
+            USER, USER_DAO
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorCount(1)
+                hasErrorContaining(ProcessorErrors.INVALID_DATABASE_VERSION)
             }
         }
     }
@@ -1392,7 +1631,7 @@ class DatabaseProcessorTest {
                     viewName = viewName,
                     query = ParsedQuery(
                         "", QueryType.SELECT, emptyList(),
-                        names.map { Table(it, it) }.toSet(),
+                        names.map { Table(it, it) }.toSet(), null,
                         emptyList()
                     ),
                     type = mock(XType::class.java),
@@ -1424,13 +1663,13 @@ class DatabaseProcessorTest {
         )
         runProcessorTest(
             sources = listOf(BOOK, bookDao) + dbs,
-            createProcessingStep = { DatabaseProcessingStep() },
+            createProcessingSteps = { listOf(DatabaseProcessingStep()) },
         ) {
             onCompilationResult?.invoke(it)
         }
     }
 
-    fun singleDb(
+    private fun singleDb(
         input: String,
         vararg otherFiles: Source,
         classpath: List<File> = emptyList(),

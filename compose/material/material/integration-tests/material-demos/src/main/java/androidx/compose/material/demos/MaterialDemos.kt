@@ -19,14 +19,19 @@ package androidx.compose.material.demos
 import androidx.compose.integration.demos.common.ActivityDemo
 import androidx.compose.integration.demos.common.ComposableDemo
 import androidx.compose.integration.demos.common.DemoCategory
+import androidx.compose.material.navigation.samples.BottomSheetNavDemo
 import androidx.compose.material.samples.AlertDialogSample
 import androidx.compose.material.samples.BackdropScaffoldSample
 import androidx.compose.material.samples.BottomDrawerSample
+import androidx.compose.material.samples.BottomSheetScaffoldSample
+import androidx.compose.material.samples.BottomSheetScaffoldWithDrawerSample
+import androidx.compose.material.samples.ContentAlphaSample
 import androidx.compose.material.samples.CustomAlertDialogSample
+import androidx.compose.material.samples.CustomPullRefreshSample
 import androidx.compose.material.samples.ModalBottomSheetSample
 import androidx.compose.material.samples.ModalDrawerSample
-import androidx.compose.material.samples.BottomSheetScaffoldSample
-import androidx.compose.material.samples.ContentAlphaSample
+import androidx.compose.material.samples.PullRefreshIndicatorTransformSample
+import androidx.compose.material.samples.PullRefreshSample
 import androidx.compose.material.samples.ScaffoldWithBottomBarAndCutout
 import androidx.compose.material.samples.ScaffoldWithCoroutinesSnackbar
 import androidx.compose.material.samples.ScaffoldWithSimpleSnackbar
@@ -49,11 +54,16 @@ val MaterialDemos = DemoCategory(
         DemoCategory(
             "Bottom Sheets",
             listOf(
-                ComposableDemo("Bottom Sheet") { BottomSheetScaffoldSample() },
+                ComposableDemo("Standard Bottom Sheet") { BottomSheetScaffoldSample() },
+                ComposableDemo("Standard Bottom Sheet with Drawer") {
+                    BottomSheetScaffoldWithDrawerSample()
+                },
                 ComposableDemo("Modal Bottom Sheet") { ModalBottomSheetSample() },
+                ComposableDemo("Modal Bottom Sheet In Navigation") { BottomSheetNavDemo() },
             )
         ),
         ComposableDemo("Buttons & FABs") { ButtonDemo() },
+        ComposableDemo("Chips") { ChipDemo() },
         DemoCategory(
             "Navigation drawer",
             listOf(
@@ -71,7 +81,13 @@ val MaterialDemos = DemoCategory(
             )
         ),
         ComposableDemo("Material Theme") { MaterialThemeDemo() },
-        ComposableDemo("Menus") { MenuDemo() },
+        DemoCategory(
+            "Menus",
+            listOf(
+                ComposableDemo("Dropdown Menu positioning") { MenuDemo() },
+                ComposableDemo("ExposedDropdownMenu") { ExposedDropdownMenuDemo() }
+            )
+        ),
         ComposableDemo("Navigation Rail") { NavigationRailDemo() },
         DemoCategory(
             "Playground",
@@ -99,7 +115,16 @@ val MaterialDemos = DemoCategory(
             listOf(
                 ComposableDemo("FilledTextField/OutlinedTextField") { MaterialTextFieldDemo() },
                 ComposableDemo("Multiple text fields") { TextFieldsDemo() },
+                ComposableDemo("Textfield decoration box") { DecorationBoxDemos() },
                 ComposableDemo("Alignment inside text fields") { VerticalAlignmentsInTextField() }
+            )
+        ),
+        DemoCategory(
+            "PullRefresh",
+            listOf(
+                ComposableDemo("PullRefresh") { PullRefreshSample() },
+                ComposableDemo("Custom PullRefresh") { CustomPullRefreshSample() },
+                ComposableDemo("Custom Indicator") { PullRefreshIndicatorTransformSample() }
             )
         )
     )

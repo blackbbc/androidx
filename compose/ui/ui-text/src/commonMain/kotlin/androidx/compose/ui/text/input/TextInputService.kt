@@ -14,10 +14,16 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package androidx.compose.ui.text.input
 
+import androidx.annotation.RestrictTo
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.text.AtomicReference
+import androidx.compose.ui.text.InternalTextApi
+import androidx.compose.ui.text.TextLayoutResult
 
 /**
  * Handles communication with the IME. Informs about the IME changes via [EditCommand]s and
@@ -28,6 +34,7 @@ import androidx.compose.ui.text.AtomicReference
  * close it with [stopInput].
  */
 // Open for testing purposes.
+@Deprecated("Use PlatformTextInputModifierNode instead.")
 open class TextInputService(private val platformTextInputService: PlatformTextInputService) {
     private val _currentInputSession: AtomicReference<TextInputSession?> =
         AtomicReference(null)
@@ -65,6 +72,18 @@ open class TextInputService(private val platformTextInputService: PlatformTextIn
     }
 
     /**
+    * Restart input and show the keyboard. This should only be called when starting a new
+    * `PlatformTextInputModifierNode.textInputSession`.
+    */
+    @InternalTextApi
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    fun startInput() {
+        platformTextInputService.startInput()
+        val nextSession = TextInputSession(this, platformTextInputService)
+        _currentInputSession.set(nextSession)
+    }
+
+    /**
      * Stop text input session.
      *
      * If the [session] is not the currently open session, no action will occur.
@@ -77,6 +96,12 @@ open class TextInputService(private val platformTextInputService: PlatformTextIn
         }
     }
 
+    @InternalTextApi
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    fun stopInput() {
+        platformTextInputService.stopInput()
+    }
+
     /**
      * Request showing onscreen keyboard.
      *
@@ -87,9 +112,14 @@ open class TextInputService(private val platformTextInputService: PlatformTextIn
      * There is no guarantee that the keyboard will be shown. The software keyboard or
      * system service may silently ignore this request.
      */
+    @Deprecated(
+        message = "Use SoftwareKeyboardController.show or " +
+            "TextInputSession.showSoftwareKeyboard instead.",
+        replaceWith = ReplaceWith("textInputSession.showSoftwareKeyboard()")
+    )
     // TODO(b/183448615) @InternalTextApi
     fun showSoftwareKeyboard() {
-        if (_currentInputSession.get() != null) {
+        if (currentInputSession != null) {
             platformTextInputService.showSoftwareKeyboard()
         }
     }
@@ -97,15 +127,22 @@ open class TextInputService(private val platformTextInputService: PlatformTextIn
     /**
      * Hide onscreen keyboard.
      */
+    @Deprecated(
+        message = "Use SoftwareKeyboardController.hide or " +
+            "TextInputSession.hideSoftwareKeyboard instead.",
+        replaceWith = ReplaceWith("textInputSession.hideSoftwareKeyboard()")
+    )
     // TODO(b/183448615) @InternalTextApi
     fun hideSoftwareKeyboard(): Unit = platformTextInputService.hideSoftwareKeyboard()
 }
+
 /**
  * Represents a input session for interactions between a soft keyboard and editable text.
  *
  * This session may be closed at any time by [TextInputService] or by calling [dispose], after
  * which [isOpen] will return false and all further calls will have no effect.
  */
+@Deprecated("Use PlatformTextInputModifierNode instead.")
 class TextInputSession(
     private val textInputService: TextInputService,
     private val platformTextInputService: PlatformTextInputService
@@ -150,6 +187,10 @@ class TextInputSession(
     /**
      * Notify the focused rectangle to the system.
      *
+     * The system can ignore this information or use it to for additional functionality.
+     *
+     * For example, desktop systems show a popup near the focused input area (for some languages).
+     *
      * If the session is not open, no action will be performed.
      *
      * @param rect the rectangle that describes the boundaries on the screen that requires focus
@@ -157,6 +198,37 @@ class TextInputSession(
      */
     fun notifyFocusedRect(rect: Rect): Boolean = ensureOpenSession {
         platformTextInputService.notifyFocusedRect(rect)
+    }
+
+    /**
+     * Notify the input service of layout and position changes.
+     *
+     * @param textFieldValue the text field's [TextFieldValue]
+     * @param offsetMapping the offset mapping for the visual transformation
+     * @param textLayoutResult the text field's [TextLayoutResult]
+     * @param textFieldToRootTransform function that modifies a matrix to be a transformation matrix
+     *   from local coordinates to the root composable coordinates
+     * @param innerTextFieldBounds visible bounds of the text field in local coordinates, or an
+     *   empty rectangle if the text field is not visible
+     * @param decorationBoxBounds visible bounds of the decoration box in local coordinates, or an
+     *   empty rectangle if the decoration box is not visible
+     */
+    fun updateTextLayoutResult(
+        textFieldValue: TextFieldValue,
+        offsetMapping: OffsetMapping,
+        textLayoutResult: TextLayoutResult,
+        textFieldToRootTransform: (Matrix) -> Unit,
+        innerTextFieldBounds: Rect,
+        decorationBoxBounds: Rect
+    ) = ensureOpenSession {
+        platformTextInputService.updateTextLayoutResult(
+            textFieldValue,
+            offsetMapping,
+            textLayoutResult,
+            textFieldToRootTransform,
+            innerTextFieldBounds,
+            decorationBoxBounds
+        )
     }
 
     /**
@@ -195,6 +267,8 @@ class TextInputSession(
      *
      * @return false if this session expired and no action was performed
      */
+    // TODO(b/241399013) Deprecate when out of API freeze.
+    // @Deprecated("Use SoftwareKeyboardController.show() instead.")
     fun showSoftwareKeyboard(): Boolean = ensureOpenSession {
         platformTextInputService.showSoftwareKeyboard()
     }
@@ -210,6 +284,8 @@ class TextInputSession(
      *
      * @return false if this session expired and no action was performed
      */
+    // TODO(b/241399013) Deprecate when out of API freeze.
+    // @Deprecated("Use SoftwareKeyboardController.hide() instead.")
     fun hideSoftwareKeyboard(): Boolean = ensureOpenSession {
         platformTextInputService.hideSoftwareKeyboard()
     }
@@ -218,6 +294,7 @@ class TextInputSession(
 /**
  * Platform specific text input service.
  */
+@Deprecated("Use PlatformTextInputModifierNode instead.")
 interface PlatformTextInputService {
     /**
      * Start text input session for given client.
@@ -230,6 +307,14 @@ interface PlatformTextInputService {
         onEditCommand: (List<EditCommand>) -> Unit,
         onImeActionPerformed: (ImeAction) -> Unit
     )
+
+    /**
+     * Restart input and show the keyboard. This should only be called when starting a new
+     * `PlatformTextInputModifierNode.textInputSession`.
+     *
+     * @see TextInputService.startInput
+     */
+    fun startInput() {}
 
     /**
      * Stop text input session.
@@ -254,17 +339,36 @@ interface PlatformTextInputService {
      */
     fun hideSoftwareKeyboard()
 
-    /*
+    /**
      * Notify the new editor model to IME.
      *
-     * @see TextInputService.updateState
+     * @see TextInputSession.updateState
      */
     fun updateState(oldValue: TextFieldValue?, newValue: TextFieldValue)
 
     /**
      * Notify the focused rectangle to the system.
      *
-     * @see TextInputSession.notifyFocusedRect
+     * The system can ignore this information or use it to for additional functionality.
+     *
+     * For example, desktop systems show a popup near the focused input area (for some languages).
      */
-    fun notifyFocusedRect(rect: Rect)
+    // TODO(b/262648050) Try to find a better API.
+    fun notifyFocusedRect(rect: Rect) {
+    }
+
+    /**
+     * Notify the input service of layout and position changes.
+     *
+     * @see TextInputSession.updateTextLayoutResult
+     */
+    fun updateTextLayoutResult(
+        textFieldValue: TextFieldValue,
+        offsetMapping: OffsetMapping,
+        textLayoutResult: TextLayoutResult,
+        textFieldToRootTransform: (Matrix) -> Unit,
+        innerTextFieldBounds: Rect,
+        decorationBoxBounds: Rect
+    ) {
+    }
 }

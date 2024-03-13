@@ -16,29 +16,41 @@
 
 package androidx.health.services.client.data
 
+import android.annotation.SuppressLint
 import android.os.Parcel
 import android.os.Parcelable
+import androidx.health.services.client.proto.DataProto
 import java.util.Objects
 
-// TODO(yeabkal): as we support more types of goals, we may want to rename the class.
 /** Defines a goal for an exercise. */
-@Suppress("DataClassPrivateConstructor")
-public data class ExerciseGoal
-protected constructor(
+@SuppressLint("BanParcelableUsage") // Uses proto in implementation for compat
+class ExerciseGoal<T : Number>
+internal constructor(
+    /**
+     * The type of this exercise goal ([ExerciseGoalType.ONE_TIME_GOAL] or
+     * [ExerciseGoalType.MILESTONE].)
+     */
     val exerciseGoalType: ExerciseGoalType,
-    val dataTypeCondition: DataTypeCondition,
-    // TODO(yeabkal): shall we rename to "getMilestonePeriod"? Currently "getPeriod" is used to be
-    // flexible in case we support other kinds of goals. Recheck when design is fully locked.
-    val period: Value? = null,
+    val dataTypeCondition: DataTypeCondition<T, AggregateDataType<T, *>>,
+    val period: T? = null,
 ) : Parcelable {
 
-    override fun describeContents(): Int = 0
+    public override fun describeContents(): Int = 0
 
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeInt(exerciseGoalType.id)
-        dest.writeParcelable(dataTypeCondition, flags)
-        dest.writeParcelable(period, flags)
+    public override fun writeToParcel(dest: Parcel, flags: Int) {
+        dest.writeByteArray(proto.toByteArray())
     }
+
+    internal val proto: DataProto.ExerciseGoal
+        get() {
+            val builder =
+                DataProto.ExerciseGoal.newBuilder().setExerciseGoalType(exerciseGoalType.toProto())
+                    .setDataTypeCondition(dataTypeCondition.proto)
+            if (period != null) {
+                builder.period = dataTypeCondition.dataType.toProtoFromValue(period)
+            }
+            return builder.build()
+        }
 
     // TODO(yeabkal): try to unify equality logic across goal types.
     // TODO(b/186899729): We need a better way to match on achieved goals.
@@ -46,7 +58,7 @@ protected constructor(
         if (other === this) {
             return true
         }
-        if (other !is ExerciseGoal) {
+        if (other !is ExerciseGoal<*>) {
             return false
         }
 
@@ -54,15 +66,7 @@ protected constructor(
             return false
         }
 
-        return when (exerciseGoalType) {
-            ExerciseGoalType.ONE_TIME_GOAL -> dataTypeCondition == other.dataTypeCondition
-            // The threshold of a milestone is not included in the equality calculation to let apps
-            // easily map back an achieved milestone to the milestone they requested for tracking.
-            ExerciseGoalType.MILESTONE ->
-                dataTypeCondition.dataType == other.dataTypeCondition.dataType &&
-                    dataTypeCondition.comparisonType == other.dataTypeCondition.comparisonType &&
-                    period == other.period
-        }
+        return dataTypeCondition == other.dataTypeCondition && period == other.period
     }
 
     override fun hashCode(): Int {
@@ -78,31 +82,45 @@ protected constructor(
         }
     }
 
-    public companion object {
+    override fun toString(): String = "ExerciseGoal(" +
+        "exerciseGoalType=$exerciseGoalType, " +
+        "dataTypeCondition=$dataTypeCondition, " +
+        "period=$period" +
+        ")"
+
+    companion object {
         @JvmField
-        public val CREATOR: Parcelable.Creator<ExerciseGoal> =
-            object : Parcelable.Creator<ExerciseGoal> {
-                override fun createFromParcel(source: Parcel): ExerciseGoal? {
-                    val exerciseGoalType = ExerciseGoalType.fromId(source.readInt()) ?: return null
-                    val dataTypeCondition: DataTypeCondition =
-                        source.readParcelable(DataTypeCondition::class.java.classLoader)
-                            ?: return null
-                    val period: Value? = source.readParcelable(Value::class.java.classLoader)
-
-                    return ExerciseGoal(exerciseGoalType, dataTypeCondition, period)
+        val CREATOR: Parcelable.Creator<ExerciseGoal<*>> =
+            object : Parcelable.Creator<ExerciseGoal<*>> {
+                override fun createFromParcel(source: Parcel): ExerciseGoal<*>? {
+                    val bytes: ByteArray = source.createByteArray() ?: return null
+                    val proto = DataProto.ExerciseGoal.parseFrom(bytes)
+                    return fromProto(proto)
                 }
 
-                override fun newArray(size: Int): Array<ExerciseGoal?> {
-                    return arrayOfNulls(size)
-                }
+                override fun newArray(size: Int) = arrayOfNulls<ExerciseGoal<*>>(size)
             }
+
+        @Suppress("UNCHECKED_CAST")
+        internal fun fromProto(proto: DataProto.ExerciseGoal): ExerciseGoal<Number> {
+            val condition = DataTypeCondition.aggregateFromProto(proto.dataTypeCondition)
+                as DataTypeCondition<Number, AggregateDataType<Number, *>>
+            return ExerciseGoal(
+                ExerciseGoalType.fromProto(proto.exerciseGoalType)
+                    ?: throw IllegalStateException("${proto.exerciseGoalType} not found"),
+                condition,
+                if (proto.hasPeriod()) condition.dataType.toValueFromProto(proto.period) else null
+            )
+        }
 
         /**
          * Creates an [ExerciseGoal] that is achieved once when the given [DataTypeCondition] is
          * satisfied.
          */
         @JvmStatic
-        public fun createOneTimeGoal(condition: DataTypeCondition): ExerciseGoal {
+        fun <T : Number> createOneTimeGoal(
+            condition: DataTypeCondition<T, AggregateDataType<T, *>>
+        ): ExerciseGoal<T> {
             return ExerciseGoal(ExerciseGoalType.ONE_TIME_GOAL, condition)
         }
 
@@ -112,27 +130,23 @@ protected constructor(
          * one for every 2km. This goal will there be triggered at distances = 2km, 4km, 6km, ...
          */
         @JvmStatic
-        public fun createMilestone(condition: DataTypeCondition, period: Value): ExerciseGoal {
-            require(period.format == condition.threshold.format) {
-                "The condition's threshold and the period should have the same types of values."
-            }
-            return ExerciseGoal(ExerciseGoalType.MILESTONE, condition, period)
-        }
+        fun <T : Number> createMilestone(
+            condition: DataTypeCondition<T, AggregateDataType<T, *>>,
+            period: T
+        ): ExerciseGoal<T> = ExerciseGoal(ExerciseGoalType.MILESTONE, condition, period)
 
         /** Creates a new goal that is the same as a given goal but with a new threshold value. */
         @JvmStatic
-        public fun createMilestoneGoalWithUpdatedThreshold(
-            goal: ExerciseGoal,
-            newThreshold: Value
-        ): ExerciseGoal {
+        fun <T : Number> createMilestoneGoalWithUpdatedThreshold(
+            goal: ExerciseGoal<T>,
+            newThreshold: T
+        ): ExerciseGoal<T> {
             require(ExerciseGoalType.MILESTONE == goal.exerciseGoalType) {
                 "The goal to update should be of MILESTONE type."
             }
             require(goal.period != null) { "The milestone goal's period should not be null." }
-            val (dataType, oldThreshold, comparisonType) = goal.dataTypeCondition
-            require(oldThreshold.format == newThreshold.format) {
-                "The old and new thresholds should have the same types of values."
-            }
+            val dataType = goal.dataTypeCondition.dataType
+            val comparisonType = goal.dataTypeCondition.comparisonType
             return ExerciseGoal(
                 ExerciseGoalType.MILESTONE,
                 DataTypeCondition(dataType, newThreshold, comparisonType),

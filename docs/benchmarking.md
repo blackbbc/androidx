@@ -9,12 +9,12 @@ AndroidX repo, and our continuous testing / triage process.
 
 This page is for MICRO benchmarks measuring CPU performance of small sections of
 code. If you're looking for measuring startup or jank, see the guide for
-MACRObenchmarks [here](macrobenchmarking).
+MACRObenchmarks [here](/docs/macrobenchmarking.md).
 
 ### Writing the benchmark
 
 Benchmarks are just regular instrumentation tests! Just use the
-[`BenchmarkRule`](https://android.googlesource.com/platform/frameworks/support/+/androidx-main/benchmark/junit4/src/main/java/androidx/benchmark/junit4/BenchmarkRule.kt)
+[`BenchmarkRule`](https://developer.android.com/reference/kotlin/androidx/benchmark/junit4/BenchmarkRule)
 provided by the library:
 
 <section class="tabs">
@@ -76,32 +76,53 @@ library modules. Differences for AndroidX repo:
 
 ### I'm lazy and want to start quickly
 
-Start by copying one of the following projects:
+Start by copying one of the following non-Compose projects:
 
-*   [navigation-benchmark](https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/navigation/benchmark/)
-*   [recyclerview-benchmark](https://android.googlesource.com/platform/frameworks/support/+/refs/heads/androidx-main/recyclerview/recyclerview-benchmark/)
+*   [navigation-benchmark](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:navigation/navigation-benchmark/)
+*   [recyclerview-benchmark](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:recyclerview/recyclerview-benchmark/)
 
-### Compose
+Many Compose libraries already have benchmark modules:
 
-Compose builds the benchmark from source, so usage matches the rest of the
-AndroidX project. See existing Compose benchmark projects:
-
-*   [Compose UI benchmarks](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/integration-tests/benchmark/)
-*   [Compose Runtime benchmarks](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/runtime/runtime/compose-runtime-benchmark/)
+*   [Compose UI Benchmarks](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/ui/ui/benchmark/)
+*   [Compose Runtime Benchmarks](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/runtime/runtime/compose-runtime-benchmark/)
+*   [Compose Material Benchmarks](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/material/material/benchmark/)
+*   [Wear Compose Material Benchmarks](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:wear/compose/compose-material/benchmark/)
 
 ## Profiling
 
-### Command Line
+See the
+[public profiling guide](https://developer.android.com/studio/profile/benchmark#profiling)
+for more details.
 
-The benchmark library supports capturing profiling information - sampled and
-method - from the command line. Here's an example which runs the
-`androidx.ui.benchmark.test.CheckboxesInRowsBenchmark#draw` method with
-`MethodSampling` profiling:
+Jetpack benchmark supports capturing profiling information by setting
+instrumentation arguments. Stack sampling and method tracing can be performed
+either from CLI or Studio invocation.
+
+### Set Arguments in Gradle
+
+Args can be set in your benchmark's `build.gradle`, which will affect both
+Studio / command-line gradlew runs. Runs from Studio will link result traces
+that can be opened directly from the IDE.
 
 ```
-./gradlew compose:integ:bench:cC \
-    -P android.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=MethodSampling \
-    -P android.testInstrumentationRunnerArguments.class=androidx.ui.benchmark.test.CheckboxesInRowsBenchmark#draw
+android {
+    defaultConfig {
+        // must be one of: 'None', 'StackSampling', or 'MethodTracing'
+        testInstrumentationRunnerArgument 'androidx.benchmark.profiling.mode', 'StackSampling'
+    }
+}
+```
+
+### Set Arguments on Command Line
+
+Args can also be passed from CLI. Here's an example which runs the
+`androidx.compose.material.benchmark.CheckboxesInRowsBenchmark#draw` method with
+`StackSampling` profiling:
+
+```
+./gradlew compose:material:material-benchmark:cC \
+    -P android.testInstrumentationRunnerArguments.androidx.benchmark.profiling.mode=StackSampling \
+    -P android.testInstrumentationRunnerArguments.class=androidx.compose.material.benchmark.CheckboxesInRowsBenchmark#draw
 ```
 
 The command output will tell you where to look for the file on your host
@@ -115,145 +136,45 @@ machine:
 To inspect the captured trace, open the appropriate `*.trace` file in that
 directory with Android Studio, using `File > Open`.
 
-For more information on the `MethodSampling` and `MethodTracing` profiling
-modes, see the
-[Studio Profiler configuration docs](https://developer.android.com/studio/profile/cpu-profiler#configurations),
-specifically Java Sampled Profiling, and Java Method Tracing.
+NOTE For stack sampling, it's recommended to profile on Android Q(API 29) or
+higher, as this enables the benchmark library to use
+[Simpleperf](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/)
+when capturing samples.
+
+For more information on the `StackSampling` and `MethodTracing` profiling modes,
+see the
+[Studio Profiler recording configuration docs](https://developer.android.com/studio/profile/record-traces#configurations),
+specifically "Sample C/C++ Functions" (called "Callstack sample" in recent
+versions), and Java Method Tracing.
 
 ![Sample flame chart](benchmarking_images/profiling_flame_chart.png "Sample flame chart")
 
-### Advanced: Simpleperf Method Sampling
+### Advanced: Connected Studio Profiler
 
-[Simpleperf](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/)
-offers more accurate profiling for apps than standard method sampling, due to
-lower overhead (as well as C++ profiling support). Simpleperf support will be
-simplified and improved over time.
+Profiling for allocations requires Studio to capture, and a debuggable build. Do
+not commit the following changes.
 
-[Simpleperf app profiling docs](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/android_application_profiling.md).
-
-#### Device
-
-Get an API 29+ device. The rest of this section is about *why* those constraints
-exist, skip if not interested.
-
-Simpleperf has restrictions about where it can be used - Jetpack Benchmark will
-only support API 29+ for now, due to
-[platform/simpleperf constraints](https://android.googlesource.com/platform/system/extras/+/master/simpleperf/doc/android_application_profiling.md#prepare-an-android-application)
-(see last subsection titled "If you want to profile Java code"). Summary is:
-
--   <=23 (M): Unsupported for Java code.
-
--   24-25 (N): Requires compiled Java code. We haven't investigated support.
-
--   26 (O): Requires compiled Java code, and wrapper script. We haven't
-    investigated support.
-
--   27 (O.1): Can profile all Java code, but requires `userdebug`/rooted device
-
--   28 (P): Can profile all Java code, requires debuggable (or
-    `userdebug`/rooted device, but this appears to not be supported by scripts
-    currently)
-
--   \>=29 (Q): Can profile all Java code, requires profileable or debuggable (or
-    `userdebug`/rooted device)
-
-We aren't planning to support profiling debuggable APK builds, since they're
-misleading for profiling.
-
-#### Initial setup
-
-Currently, we rely on Python scripts built by the simpleperf team. We can
-eventually build this into the benchmark library / gradle plugin. Download the
-scripts from AOSP:
+First, set your benchmark to be debuggable in your benchmark module's
+`androidTest/AndroidManifest.xml`:
 
 ```
-# copying to somewhere outside of the androidx repo
-git clone https://android.googlesource.com/platform/system/extras ~/simpleperf
+  <application
+    ...
+    android:debuggable="false"
+    tools:ignore="HardcodedDebugMode"/>
 ```
 
-Next configure your path to ensure the ADB that the scripts will use matches the
-androidx tools:
+Note that switching to the debug variant will likely not work, as Studio will
+fail to find the benchmark as a test source.
 
-```
-export PATH=$PATH:<path/to/androidx>/prebuilts/fullsdk-<linux or darwin>/platform-tools
-```
-
-Now, setup your device for simpleperf:
-
-```
-~/simpleperf/simpleperf/scripts/api_profiler.py prepare --max-sample-rate 10000000
-```
-
-#### Build and Run, Option 1: Studio (slightly recommended)
-
-Running from Studio is simpler, since you don't have to manually install and run
-the APKs, avoiding Gradle.
-
-Add the following to the benchmark module's build.gradle:
+Next select `ConnectedAllocation` in your benchmark module's `build.gradle`:
 
 ```
 android {
     defaultConfig {
-        // DO NOT COMMIT!!
-        testInstrumentationRunnerArgument 'androidx.benchmark.profiling.mode', 'MethodSamplingSimpleperf'
-        // Optional: Control freq / duration.
-        testInstrumentationRunnerArgument 'androidx.benchmark.profiler.sampleFrequency', '1000000'
-        testInstrumentationRunnerArgument 'androidx.benchmark.profiler.sampleDurationSeconds', '5'
-    }
-}
-```
-
-And run the test or tests you'd like to measure from within Studio.
-
-#### Build and Run, Option 2: Command Line
-
-**Note - this will be significantly simplified in the future**
-
-Since we're not using AGP to pull the files yet, we can't invoke the benchmark
-through Gradle, because Gradle uninstalls after each test run. Instead, let's
-just build and run manually:
-
-```
-./gradlew compose:integration-tests:benchmark:assembleReleaseAndroidTest
-
-adb install -r ../../../out/ui/compose/integration-tests/benchmark/build/outputs/apk/androidTest/release/benchmark-release-androidTest.apk
-
-# run the test (can copy this line from Studio console, when running a benchmark)
-adb shell am instrument -w -m --no-window-animation -e androidx.benchmark.profiling.mode MethodSamplingSimpleperf -e debug false -e class 'androidx.ui.benchmark.test.CheckboxesInRowsBenchmark#toggleCheckbox_draw' androidx.ui.benchmark.test/androidx.benchmark.junit4.AndroidBenchmarkRunner
-```
-
-#### Pull and open the trace
-
-```
-# move the files to host
-# (Note: removes files from device)
-~/simpleperf/simpleperf/scripts/api_profiler.py collect -p androidx.ui.benchmark.test -o ~/simpleperf/results
-
-# create/open the HTML report
-~/simpleperf/simpleperf/scripts/report_html.py -i ~/simpleperf/results/CheckboxesInRowsBenchmark_toggleCheckbox_draw\[1\].data
-```
-
-### Advanced: Studio Profiling
-
-Profiling for allocations and simpleperf profiling requires Studio to capture.
-
-Studio profiling tools require `debuggable=true`. First, temporarily override it
-in your benchmark's `androidTest/AndroidManifest.xml`.
-
-Next choose which profiling you want to do: Allocation, or Sampled (SimplePerf)
-
-`ConnectedAllocation` will help you measure the allocations in a single run of a
-benchmark loop, after warmup.
-
-`ConnectedSampled` will help you capture sampled profiling, but with the more
-detailed / accurate Simpleperf sampling.
-
-Set the profiling type in your benchmark module's `build.gradle`:
-
-```
-android {
-    defaultConfig {
-        // Local only, don't commit this!
+        // --- Local only, don't commit this! ---
+        // pause for manual profiler connection before/after a single run of
+        // the benchmark loop, after warmup
         testInstrumentationRunnerArgument 'androidx.benchmark.profiling.mode', 'ConnectedAllocation'
     }
 }
@@ -271,10 +192,29 @@ profiler:
 
 1.  Click the profiler tab at the bottom
 1.  Click the plus button in the top left, `<device name>`, `<process name>`
-1.  Next step depends on which you intend to capture
+1.  Click the memory section, and right click the window, and select `Record
+    allocations`.
+1.  Approximately 20 seconds later, right click again and select `Stop
+    recording`.
 
-#### Allocations
+If timed correctly, you'll have started and stopped collection around the single
+run of your benchmark loop, and see all allocations in detail with call stacks
+in Studio.
 
-Click the memory section, and right click the window, and select `Record
-allocations`. Approximately 20 seconds later, right click again and select `Stop
-recording`.
+## Minification / R8
+
+As many Android apps don't yet enable R8, the default for microbenchmarks in
+AndroidX is to run with R8 disabled to measure worst-case performance. It may
+still be useful to run your microbenchmarks with R8 enabled locally however, and
+that is supported experimentally. To enable, in your microbench module:
+
+```
+android {
+    buildTypes.release.androidTest.enableMinification = true
+}
+```
+
+Then, if you see any errors from classes not found at runtime, you can add
+proguard rules
+[here](https://cs.android.com/androidx/platform/frameworks/support/+/androidx-main:compose/benchmark-utils/proguard-rules.pro),
+or in a similar place for your module.

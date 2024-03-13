@@ -17,13 +17,25 @@
 package androidx.compose.foundation.text.selection
 
 import androidx.compose.foundation.AtomicLong
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 
-internal class SelectionRegistrarImpl : SelectionRegistrar {
+internal class SelectionRegistrarImpl private constructor(
+    initialIncrementId: Long
+) : SelectionRegistrar {
+    companion object {
+        val Saver = Saver<SelectionRegistrarImpl, Long>(
+            save = { it.incrementId.get() },
+            restore = { SelectionRegistrarImpl(it) }
+        )
+    }
+
+    constructor() : this(initialIncrementId = 1L)
+
     /**
      * A flag to check if the [Selectable]s have already been sorted.
      */
@@ -54,7 +66,7 @@ internal class SelectionRegistrarImpl : SelectionRegistrar {
      * denote an invalid id.
      * @see SelectionRegistrar.InvalidSelectableId
      */
-    private var incrementId = AtomicLong(1)
+    private var incrementId = AtomicLong(initialIncrementId)
 
     /**
      * The callback to be invoked when the position change was triggered.
@@ -64,24 +76,23 @@ internal class SelectionRegistrarImpl : SelectionRegistrar {
     /**
      * The callback to be invoked when the selection is initiated.
      */
-    internal var onSelectionUpdateStartCallback: (
-        (LayoutCoordinates, Offset, SelectionAdjustment) -> Unit
-    )? = null
+    internal var onSelectionUpdateStartCallback:
+        ((Boolean, LayoutCoordinates, Offset, SelectionAdjustment) -> Unit)? = null
 
     /**
      * The callback to be invoked when the selection is initiated with selectAll [Selection].
      */
     internal var onSelectionUpdateSelectAll: (
-        (Long) -> Unit
+        (Boolean, Long) -> Unit
     )? = null
 
     /**
      * The callback to be invoked when the selection is updated.
      * If the first offset is null it means that the start of selection is unknown for the caller.
      */
-    internal var onSelectionUpdateCallback: (
-        (LayoutCoordinates, Offset?, Offset, SelectionAdjustment) -> Unit
-    )? = null
+    internal var onSelectionUpdateCallback:
+        ((Boolean, LayoutCoordinates, Offset, Offset, Boolean, SelectionAdjustment) -> Boolean)? =
+        null
 
     /**
      * The callback to be invoked when selection update finished.
@@ -172,40 +183,37 @@ internal class SelectionRegistrarImpl : SelectionRegistrar {
     override fun notifySelectionUpdateStart(
         layoutCoordinates: LayoutCoordinates,
         startPosition: Offset,
-        adjustment: SelectionAdjustment
+        adjustment: SelectionAdjustment,
+        isInTouchMode: Boolean
     ) {
-        onSelectionUpdateStartCallback?.invoke(layoutCoordinates, startPosition, adjustment)
-    }
-
-    override fun notifySelectionUpdateSelectAll(selectableId: Long) {
-        onSelectionUpdateSelectAll?.invoke(selectableId)
-    }
-
-    override fun notifySelectionUpdate(
-        layoutCoordinates: LayoutCoordinates,
-        endPosition: Offset,
-        adjustment: SelectionAdjustment
-    ) {
-        onSelectionUpdateCallback?.invoke(
-            layoutCoordinates,
-            null,
-            endPosition,
-            adjustment
-        )
-    }
-
-    override fun notifySelectionUpdate(
-        layoutCoordinates: LayoutCoordinates,
-        startPosition: Offset,
-        endPosition: Offset,
-        adjustment: SelectionAdjustment
-    ) {
-        onSelectionUpdateCallback?.invoke(
+        onSelectionUpdateStartCallback?.invoke(
+            isInTouchMode,
             layoutCoordinates,
             startPosition,
-            endPosition,
             adjustment
         )
+    }
+
+    override fun notifySelectionUpdateSelectAll(selectableId: Long, isInTouchMode: Boolean) {
+        onSelectionUpdateSelectAll?.invoke(isInTouchMode, selectableId)
+    }
+
+    override fun notifySelectionUpdate(
+        layoutCoordinates: LayoutCoordinates,
+        newPosition: Offset,
+        previousPosition: Offset,
+        isStartHandle: Boolean,
+        adjustment: SelectionAdjustment,
+        isInTouchMode: Boolean
+    ): Boolean {
+        return onSelectionUpdateCallback?.invoke(
+            isInTouchMode,
+            layoutCoordinates,
+            newPosition,
+            previousPosition,
+            isStartHandle,
+            adjustment
+        ) ?: true
     }
 
     override fun notifySelectionUpdateEnd() {

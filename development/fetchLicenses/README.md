@@ -5,7 +5,7 @@ A service that makes license files readable using headless Chrome.
 ### Setup
 
 * This project uses TypeScript and Node.
-* Download `nvm` and run `nvm install` to install a suitable version of Node.
+* Download `fnm` and run `fnm install` to install a suitable version of Node.
 * Run `npm install` to setup dependencies.
 * Use Visual Studio code to debug and test.
 
@@ -27,3 +27,9 @@ curl -d '{"url": "https://opensource.org/licenses/bsd-license.php"}' -H 'Content
 * Install the `gcloud` CLI.
 * Run `npm run-script setupGcpProject` to setup credentials.
 * Run `npm run-script deploy` to deploy the project to App Engine.
+
+
+### Notes
+
+Using Puppeteer v18.2.1 only because `npm post install` scripts for Puppeteer 19.x.x have been broken for App Engine standard.
+More context is [here](https://github.com/puppeteer/puppeteer/issues/9128).

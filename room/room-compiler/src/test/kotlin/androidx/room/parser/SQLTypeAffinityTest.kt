@@ -16,10 +16,11 @@
 
 package androidx.room.parser
 
+import androidx.kruth.assertThat
+import androidx.room.compiler.codegen.CodeLanguage
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.util.runProcessorTest
-import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class SQLTypeAffinityTest {
@@ -45,11 +46,11 @@ class SQLTypeAffinityTest {
             }
 
             fun XType.toSignature(): String {
-                return "${typeName}${nullability.toSignature()}"
+                return "${asTypeName().toString(CodeLanguage.JAVA)}${nullability.toSignature()}"
             }
 
             val result = SQLTypeAffinity.values().associate {
-                it to it.getTypeMirrors(invocation.processingEnv).map(XType::toSignature)
+                it to it.getTypeMirrors(invocation.processingEnv)?.map(XType::toSignature)
             }
             assertThat(result).containsExactlyEntriesIn(
                 if (invocation.isKsp) KSP_MAPPING
@@ -60,7 +61,7 @@ class SQLTypeAffinityTest {
 
     companion object {
         private val KSP_MAPPING = mapOf(
-            SQLTypeAffinity.NULL to listOf(),
+            SQLTypeAffinity.NULL to null,
             SQLTypeAffinity.TEXT to listOf(
                 "java.lang.String!!",
                 "java.lang.String?"
@@ -71,32 +72,25 @@ class SQLTypeAffinityTest {
             ),
             SQLTypeAffinity.INTEGER to listOf(
                 "int!!",
-                "java.lang.Integer!!",
                 "java.lang.Integer?",
                 "byte!!",
-                "java.lang.Byte!!",
                 "java.lang.Byte?",
                 "char!!",
-                "java.lang.Character!!",
                 "java.lang.Character?",
                 "long!!",
-                "java.lang.Long!!",
                 "java.lang.Long?",
                 "short!!",
-                "java.lang.Short!!",
                 "java.lang.Short?"
             ),
             SQLTypeAffinity.REAL to listOf(
                 "double!!",
-                "java.lang.Double!!",
                 "java.lang.Double?",
                 "float!!",
-                "java.lang.Float!!",
                 "java.lang.Float?",
             )
         )
         private val JAVAC_MAPPING = mapOf(
-            SQLTypeAffinity.NULL to listOf(),
+            SQLTypeAffinity.NULL to null,
             SQLTypeAffinity.TEXT to listOf(
                 "java.lang.String"
             ),

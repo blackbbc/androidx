@@ -16,27 +16,39 @@
 
 package androidx.room.compiler.processing.javac
 
+import androidx.room.compiler.codegen.JArrayTypeName
+import androidx.room.compiler.codegen.XTypeName
 import androidx.room.compiler.processing.XArrayType
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XType
-import androidx.room.compiler.processing.javac.kotlin.KmType
+import androidx.room.compiler.processing.javac.kotlin.KmTypeContainer
 import javax.lang.model.type.ArrayType
 
 internal class JavacArrayType private constructor(
     env: JavacProcessingEnv,
     override val typeMirror: ArrayType,
-    override val nullability: XNullability,
+    nullability: XNullability?,
     private val knownComponentNullability: XNullability?,
-    override val kotlinType: KmType?
+    override val kotlinType: KmTypeContainer?
 ) : JavacType(
-    env,
-    typeMirror
-),
-    XArrayType {
+    env, typeMirror, nullability
+), XArrayType {
+
+    constructor(
+        env: JavacProcessingEnv,
+        typeMirror: ArrayType
+    ) : this(
+        env = env,
+        typeMirror = typeMirror,
+        kotlinType = null,
+        nullability = null,
+        knownComponentNullability = null
+    )
+
     constructor(
         env: JavacProcessingEnv,
         typeMirror: ArrayType,
-        kotlinType: KmType
+        kotlinType: KmTypeContainer
     ) : this(
         env = env,
         typeMirror = typeMirror,
@@ -61,6 +73,16 @@ internal class JavacArrayType private constructor(
     override val equalityItems: Array<out Any?> by lazy {
         arrayOf(typeMirror)
     }
+
+    private val xTypeName: XTypeName by lazy {
+        XTypeName(
+            java = JArrayTypeName.get(typeMirror),
+            kotlin = XTypeName.UNAVAILABLE_KTYPE_NAME,
+            nullability = knownComponentNullability ?: XNullability.UNKNOWN,
+        )
+    }
+
+    override fun asTypeName() = xTypeName
 
     override val typeArguments: List<XType>
         get() = emptyList()

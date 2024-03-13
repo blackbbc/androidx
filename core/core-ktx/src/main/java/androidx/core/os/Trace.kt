@@ -25,16 +25,15 @@ import android.os.Trace
 @Deprecated(
     "Use androidx.tracing.Trace instead",
     replaceWith = ReplaceWith(
-        "trace(sectionName)",
+        "trace(sectionName, block)",
         imports = arrayOf("androidx.tracing.trace")
     )
 )
-@Suppress("DEPRECATION")
 public inline fun <T> trace(sectionName: String, block: () -> T): T {
-    TraceCompat.beginSection(sectionName)
+    Trace.beginSection(sectionName)
     try {
         return block()
     } finally {
-        TraceCompat.endSection()
+        Trace.endSection()
     }
 }

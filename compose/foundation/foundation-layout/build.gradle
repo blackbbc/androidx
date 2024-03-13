@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
-import androidx.build.AndroidXComposePlugin
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
+import androidx.build.PlatformIdentifier
 
 plugins {
     id("AndroidXPlugin")
@@ -24,76 +30,65 @@ plugins {
     id("AndroidXComposePlugin")
 }
 
-AndroidXComposePlugin.applyAndConfigureKotlinPlugin(project)
+androidXMultiplatform {
+    android()
+    desktop()
 
-dependencies {
-    kotlinPlugin(project(":compose:compiler:compiler"))
+    defaultPlatform(PlatformIdentifier.ANDROID)
 
-    if(!AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-        /*
-         * When updating dependencies, make sure to make the an an analogous update in the
-         * corresponding block below
-         */
-
-        api("androidx.annotation:annotation:1.1.0")
-        api(project(":compose:ui:ui"))
-
-        implementation(project(":compose:runtime:runtime"))
-        implementation(project(":compose:ui:ui-util"))
-        implementation(libs.kotlinStdlibCommon)
-
-        testImplementation(libs.testRules)
-        testImplementation(libs.testRunner)
-        testImplementation(libs.junit)
-
-        androidTestImplementation(project(":compose:foundation:foundation"))
-        androidTestImplementation(project(":compose:ui:ui-test-junit4"))
-        androidTestImplementation(project(":compose:test-utils"))
-        androidTestImplementation(project(":activity:activity-compose"))
-        androidTestImplementation(libs.testRules)
-        androidTestImplementation(libs.testRunner)
-        androidTestImplementation(libs.junit)
-        androidTestImplementation(libs.truth)
-    }
-}
-
-if(AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-    kotlin {
-        android()
-        jvm("desktop")
-
-        /*
-         * When updating dependencies, make sure to make the an an analogous update in the
-         * corresponding block above
-         */
-        sourceSets {
-            commonMain.dependencies {
+    sourceSets {
+        commonMain {
+            dependencies {
                 implementation(libs.kotlinStdlibCommon)
 
-                api(project(":compose:ui:ui"))
+                api("androidx.compose.ui:ui:1.6.0")
                 implementation(project(":compose:runtime:runtime"))
                 implementation(project(":compose:ui:ui-util"))
+                implementation("androidx.collection:collection:1.4.0")
+                implementation(project(":compose:ui:ui-unit"))
             }
+        }
 
-            androidMain.dependencies {
+        commonTest {
+            dependencies {
+            }
+        }
+
+        jvmMain {
+            dependsOn(commonMain)
+            dependencies {
+            }
+        }
+
+        androidMain {
+            dependsOn(jvmMain)
+            dependencies {
                 api("androidx.annotation:annotation:1.1.0")
+                api("androidx.annotation:annotation-experimental:1.4.0")
+                implementation("androidx.core:core:1.7.0")
+                implementation("androidx.compose.animation:animation-core:1.2.1")
             }
+        }
 
-            desktopMain.dependencies {
+        desktopMain {
+            dependsOn(jvmMain)
+            dependencies {
                 implementation(libs.kotlinStdlib)
             }
+        }
 
-            androidTest.dependencies {
-                implementation(libs.testRules)
-                implementation(libs.testRunner)
-                implementation(libs.junit)
+        jvmTest {
+            dependencies {
             }
+        }
 
-            androidAndroidTest.dependencies {
+        androidInstrumentedTest {
+            dependsOn(jvmTest)
+            dependencies {
                 implementation(project(":compose:foundation:foundation"))
-                implementation(project(":compose:ui:ui-test-junit4"))
+                implementation("androidx.compose.ui:ui-test-junit4:1.2.1")
                 implementation(project(":compose:test-utils"))
-                implementation(project(":activity:activity-compose"))
+                implementation("androidx.activity:activity-compose:1.3.1")
 
                 implementation(libs.testRules)
                 implementation(libs.testRunner)
@@ -101,14 +96,31 @@ if(AndroidXComposePlugin.isMultiplatformEnabled(project)) {
                 implementation(libs.truth)
             }
         }
+
+        androidUnitTest {
+            dependsOn(jvmTest)
+            dependencies {
+                implementation(libs.testRules)
+                implementation(libs.testRunner)
+                implementation(libs.junit)
+                implementation(libs.truth)
+            }
+        }
+
+        desktopTest {
+            dependsOn(jvmTest)
+        }
     }
 }
 
 androidx {
     name = "Compose Layouts"
-    type = LibraryType.PUBLISHED_LIBRARY
-    mavenGroup = LibraryGroups.Compose.FOUNDATION
+    type = LibraryType.PUBLISHED_KOTLIN_ONLY_LIBRARY
     inceptionYear = "2019"
     description = "Compose layout implementations"
     legacyDisableKotlinStrictApiMode = true
+}
+
+android {
+    namespace "androidx.compose.foundation.layout"
 }

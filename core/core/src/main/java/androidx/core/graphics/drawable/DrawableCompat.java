@@ -26,10 +26,13 @@ import android.graphics.drawable.InsetDrawable;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.View;
 
 import androidx.annotation.ColorInt;
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.core.view.ViewCompat;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -75,9 +78,7 @@ public final class DrawableCompat {
      *            not.
      */
     public static void setAutoMirrored(@NonNull Drawable drawable, boolean mirrored) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            drawable.setAutoMirrored(mirrored);
-        }
+        drawable.setAutoMirrored(mirrored);
     }
 
     /**
@@ -92,11 +93,7 @@ public final class DrawableCompat {
      *         mirrored.
      */
     public static boolean isAutoMirrored(@NonNull Drawable drawable) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            return drawable.isAutoMirrored();
-        } else {
-            return false;
-        }
+        return drawable.isAutoMirrored();
     }
 
     /**
@@ -108,7 +105,7 @@ public final class DrawableCompat {
      */
     public static void setHotspot(@NonNull Drawable drawable, float x, float y) {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.setHotspot(x, y);
+            Api21Impl.setHotspot(drawable, x, y);
         }
     }
 
@@ -117,11 +114,15 @@ public final class DrawableCompat {
      * different from the drawable bounds.
      *
      * @param drawable The Drawable against which to invoke the method.
+     * @param left position in pixels of the left bound
+     * @param top position in pixels of the top bound
+     * @param right position in pixels of the right bound
+     * @param bottom position in pixels of the bottom bound
      */
     public static void setHotspotBounds(@NonNull Drawable drawable, int left, int top,
             int right, int bottom) {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.setHotspotBounds(left, top, right, bottom);
+            Api21Impl.setHotspotBounds(drawable, left, top, right, bottom);
         }
     }
 
@@ -133,7 +134,7 @@ public final class DrawableCompat {
      */
     public static void setTint(@NonNull Drawable drawable, @ColorInt int tint) {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.setTint(tint);
+            Api21Impl.setTint(drawable, tint);
         } else if (drawable instanceof TintAwareDrawable) {
             ((TintAwareDrawable) drawable).setTint(tint);
         }
@@ -147,7 +148,7 @@ public final class DrawableCompat {
      */
     public static void setTintList(@NonNull Drawable drawable, @Nullable ColorStateList tint) {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.setTintList(tint);
+            Api21Impl.setTintList(drawable, tint);
         } else if (drawable instanceof TintAwareDrawable) {
             ((TintAwareDrawable) drawable).setTintList(tint);
         }
@@ -159,9 +160,9 @@ public final class DrawableCompat {
      * @param drawable The Drawable against which to invoke the method.
      * @param tintMode A Porter-Duff blending mode
      */
-    public static void setTintMode(@NonNull Drawable drawable, @NonNull PorterDuff.Mode tintMode) {
+    public static void setTintMode(@NonNull Drawable drawable, @Nullable PorterDuff.Mode tintMode) {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.setTintMode(tintMode);
+            Api21Impl.setTintMode(drawable, tintMode);
         } else if (drawable instanceof TintAwareDrawable) {
             ((TintAwareDrawable) drawable).setTintMode(tintMode);
         }
@@ -173,29 +174,28 @@ public final class DrawableCompat {
      *
      * @param drawable The Drawable against which to invoke the method.
      */
+    @SuppressWarnings("unused")
     public static int getAlpha(@NonNull Drawable drawable) {
-        if (Build.VERSION.SDK_INT >= 19) {
-            return drawable.getAlpha();
-        } else {
-            return 0;
-        }
+        return drawable.getAlpha();
     }
 
     /**
      * Applies the specified theme to this Drawable and its children.
      */
+    @SuppressWarnings("unused")
     public static void applyTheme(@NonNull Drawable drawable, @NonNull Resources.Theme theme) {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.applyTheme(theme);
+            Api21Impl.applyTheme(drawable, theme);
         }
     }
 
     /**
      * Whether a theme can be applied to this Drawable and its children.
      */
+    @SuppressWarnings("unused")
     public static boolean canApplyTheme(@NonNull Drawable drawable) {
         if (Build.VERSION.SDK_INT >= 21) {
-            return drawable.canApplyTheme();
+            return Api21Impl.canApplyTheme(drawable);
         } else {
             return false;
         }
@@ -206,9 +206,11 @@ public final class DrawableCompat {
      *
      * @return the current color filter, or {@code null} if none set
      */
+    @SuppressWarnings("unused")
+    @Nullable
     public static ColorFilter getColorFilter(@NonNull Drawable drawable) {
         if (Build.VERSION.SDK_INT >= 21) {
-            return drawable.getColorFilter();
+            return Api21Impl.getColorFilter(drawable);
         } else {
             return null;
         }
@@ -217,6 +219,7 @@ public final class DrawableCompat {
     /**
      * Removes the color filter from the given drawable.
      */
+    @SuppressWarnings("unused")
     public static void clearColorFilter(@NonNull Drawable drawable) {
         if (Build.VERSION.SDK_INT >= 23) {
             // We can use clearColorFilter() safely on M+
@@ -254,6 +257,7 @@ public final class DrawableCompat {
     /**
      * Inflate this Drawable from an XML resource optionally styled by a theme.
      *
+     * @param drawable drawable to inflate.
      * @param res Resources used to resolve attribute values
      * @param parser XML parser from which to inflate this Drawable
      * @param attrs Base set of attribute values
@@ -266,7 +270,7 @@ public final class DrawableCompat {
             @Nullable Resources.Theme theme)
             throws XmlPullParserException, IOException {
         if (Build.VERSION.SDK_INT >= 21) {
-            drawable.inflate(res, parser, attrs, theme);
+            Api21Impl.inflate(drawable, res, parser, attrs, theme);
         } else {
             drawable.inflate(res, parser, attrs);
         }
@@ -303,6 +307,7 @@ public final class DrawableCompat {
      * @see #setTintMode(Drawable, PorterDuff.Mode)
      * @see #unwrap(Drawable)
      */
+    @NonNull
     public static Drawable wrap(@NonNull Drawable drawable) {
         if (Build.VERSION.SDK_INT >= 23) {
             return drawable;
@@ -342,6 +347,7 @@ public final class DrawableCompat {
      * layout direction, as the Drawable has no capacity to do the resolution on
      * its own.
      *
+     * @param drawable drawable for which to set the layout direction.
      * @param layoutDirection the resolved layout direction for the drawable,
      *                        either {@link ViewCompat#LAYOUT_DIRECTION_LTR}
      *                        or {@link ViewCompat#LAYOUT_DIRECTION_RTL}
@@ -352,8 +358,8 @@ public final class DrawableCompat {
      */
     public static boolean setLayoutDirection(@NonNull Drawable drawable, int layoutDirection) {
         if (Build.VERSION.SDK_INT >= 23) {
-            return drawable.setLayoutDirection(layoutDirection);
-        } else if (Build.VERSION.SDK_INT >= 17) {
+            return Api23Impl.setLayoutDirection(drawable, layoutDirection);
+        } else {
             if (!sSetLayoutDirectionMethodFetched) {
                 try {
                     sSetLayoutDirectionMethod =
@@ -375,8 +381,6 @@ public final class DrawableCompat {
                 }
             }
             return false;
-        } else {
-            return false;
         }
     }
 
@@ -387,10 +391,11 @@ public final class DrawableCompat {
      *         {@link ViewCompat#LAYOUT_DIRECTION_RTL}
      * @see #setLayoutDirection(Drawable, int)
      */
+    @SuppressWarnings("ConstantConditions")
     public static int getLayoutDirection(@NonNull Drawable drawable) {
         if (Build.VERSION.SDK_INT >= 23) {
-            return drawable.getLayoutDirection();
-        } else if (Build.VERSION.SDK_INT >= 17) {
+            return Api23Impl.getLayoutDirection(drawable);
+        } else {
             if (!sGetLayoutDirectionMethodFetched) {
                 try {
                     sGetLayoutDirectionMethod =
@@ -410,11 +415,81 @@ public final class DrawableCompat {
                     sGetLayoutDirectionMethod = null;
                 }
             }
-            return ViewCompat.LAYOUT_DIRECTION_LTR;
-        } else {
-            return ViewCompat.LAYOUT_DIRECTION_LTR;
+            return View.LAYOUT_DIRECTION_LTR;
         }
     }
 
-    private DrawableCompat() {}
+    private DrawableCompat() {
+    }
+
+    @RequiresApi(21)
+    static class Api21Impl {
+        private Api21Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void setHotspot(Drawable drawable, float x, float y) {
+            drawable.setHotspot(x, y);
+        }
+
+        @DoNotInline
+        static void setTint(Drawable drawable, int tintColor) {
+            drawable.setTint(tintColor);
+        }
+
+        @DoNotInline
+        static void setTintList(Drawable drawable, ColorStateList tint) {
+            drawable.setTintList(tint);
+        }
+
+        @DoNotInline
+        static void setTintMode(Drawable drawable, PorterDuff.Mode tintMode) {
+            drawable.setTintMode(tintMode);
+        }
+
+        @DoNotInline
+        static void applyTheme(Drawable drawable, Resources.Theme t) {
+            drawable.applyTheme(t);
+        }
+
+        @DoNotInline
+        static boolean canApplyTheme(Drawable drawable) {
+            return drawable.canApplyTheme();
+        }
+
+        @DoNotInline
+        static ColorFilter getColorFilter(Drawable drawable) {
+            return drawable.getColorFilter();
+        }
+
+        @DoNotInline
+        static void inflate(Drawable drawable, Resources r, XmlPullParser parser,
+                AttributeSet attrs, Resources.Theme theme)
+                throws XmlPullParserException, IOException {
+            drawable.inflate(r, parser, attrs, theme);
+        }
+
+        @DoNotInline
+        static void setHotspotBounds(Drawable drawable, int left, int top, int right, int bottom) {
+            drawable.setHotspotBounds(left, top, right, bottom);
+        }
+    }
+
+    @RequiresApi(23)
+    static class Api23Impl {
+        private Api23Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static boolean setLayoutDirection(Drawable drawable, int layoutDirection) {
+            return drawable.setLayoutDirection(layoutDirection);
+        }
+
+        @DoNotInline
+        static int getLayoutDirection(Drawable drawable) {
+            return drawable.getLayoutDirection();
+        }
+    }
 }

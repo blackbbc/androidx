@@ -20,9 +20,11 @@ import androidx.room.compiler.processing.XElement
 import androidx.room.compiler.processing.XMessager
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XProcessingEnv
+import androidx.room.compiler.processing.XProcessingEnvConfig
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
-import androidx.room.compiler.processing.javac.kotlin.KmType
+import androidx.room.compiler.processing.javac.kotlin.KmTypeContainer
+import androidx.room.compiler.processing.javac.kotlin.KmTypeParameterContainer
 import com.google.auto.common.GeneratedAnnotations
 import com.google.auto.common.MoreTypes
 import java.util.Locale
@@ -35,11 +37,13 @@ import javax.lang.model.element.TypeElement
 import javax.lang.model.element.VariableElement
 import javax.lang.model.type.TypeKind
 import javax.lang.model.type.TypeMirror
+import javax.lang.model.type.TypeVariable
 import javax.lang.model.util.Elements
 import javax.lang.model.util.Types
 
 internal class JavacProcessingEnv(
-    val delegate: ProcessingEnvironment
+    val delegate: ProcessingEnvironment,
+    override val config: XProcessingEnvConfig,
 ) : XProcessingEnv {
     override val backend: XProcessingEnv.Backend = XProcessingEnv.Backend.JAVAC
 
@@ -61,13 +65,19 @@ internal class JavacProcessingEnv(
         )
 
     override val messager: XMessager by lazy {
-        JavacProcessingEnvMessager(delegate)
+        JavacProcessingEnvMessager(delegate.messager)
     }
 
-    override val filer = JavacFiler(delegate)
+    override val filer = JavacFiler(this, delegate.filer)
 
     override val options: Map<String, String>
         get() = delegate.options
+
+    // SourceVersion enum constants are named 'RELEASE_x' and since they are public APIs, its safe
+    // to assume they won't change and we can extract the version from them.
+    override val jvmVersion =
+        delegate.sourceVersion.name.substringAfter("RELEASE_").toIntOrNull()
+            ?: error("Invalid source version: ${delegate.sourceVersion}")
 
     override fun findTypeElement(qName: String): JavacTypeElement? {
         return typeElementStore[qName]
@@ -77,10 +87,15 @@ internal class JavacProcessingEnv(
         // Note, to support Java Modules we would need to use "getAllPackageElements",
         // but that is only available in Java 9+.
         val packageElement = delegate.elementUtils.getPackageElement(packageName)
+            ?: return emptyList()
 
         return packageElement.enclosedElements
             .filterIsInstance<TypeElement>()
             .map { wrapTypeElement(it) }
+    }
+
+    override fun getElementsFromPackage(packageName: String): List<XElement> {
+        return getTypeElementsFromPackage(packageName)
     }
 
     override fun findType(qName: String): XType? {
@@ -88,6 +103,14 @@ internal class JavacProcessingEnv(
         PRIMITIVE_TYPES[qName]?.let {
             return wrap(
                 typeMirror = typeUtils.getPrimitiveType(it),
+                kotlinType = null,
+                elementNullability = XNullability.NONNULL
+            )
+        }
+        // check no types, such as 'void'
+        NO_TYPES[qName]?.let {
+            return wrap(
+                typeMirror = typeUtils.getNoType(it),
                 kotlinType = null,
                 elementNullability = XNullability.NONNULL
             )
@@ -122,11 +145,6 @@ internal class JavacProcessingEnv(
             check(it is JavacType)
             it.typeMirror
         }.toTypedArray()
-        check(
-            types.all {
-                it is JavacType
-            }
-        )
         return wrap<JavacDeclaredType>(
             typeMirror = typeUtils.getDeclaredType(type.element, *args),
             // type elements cannot have nullability hence we don't synthesize anything here
@@ -135,7 +153,42 @@ internal class JavacProcessingEnv(
         )
     }
 
+    override fun getWildcardType(consumerSuper: XType?, producerExtends: XType?): XType {
+        check(consumerSuper == null || producerExtends == null) {
+            "Cannot supply both super and extends bounds."
+        }
+        return wrap(
+            typeMirror = typeUtils.getWildcardType(
+                (producerExtends as? JavacType)?.typeMirror,
+                (consumerSuper as? JavacType)?.typeMirror,
+            ),
+            kotlinType = null,
+            elementNullability = null
+        )
+    }
+
     fun wrapTypeElement(element: TypeElement) = typeElementStore[element]
+
+    fun wrap(
+        typeMirror: TypeVariable,
+        kotlinType: KmTypeParameterContainer?,
+    ): JavacTypeVariableType {
+        return when {
+            kotlinType != null -> {
+                JavacTypeVariableType(
+                    env = this,
+                    typeMirror = MoreTypes.asTypeVariable(typeMirror),
+                    kotlinType = kotlinType
+                )
+            }
+            else -> {
+                JavacTypeVariableType(
+                    env = this,
+                    typeMirror = MoreTypes.asTypeVariable(typeMirror)
+                )
+            }
+        }
+    }
 
     /**
      * Wraps the given java processing type into an XType.
@@ -148,52 +201,102 @@ internal class JavacProcessingEnv(
      */
     inline fun <reified T : JavacType> wrap(
         typeMirror: TypeMirror,
-        kotlinType: KmType?,
-        elementNullability: XNullability
+        kotlinType: KmTypeContainer?,
+        elementNullability: XNullability?
     ): T {
         return when (typeMirror.kind) {
             TypeKind.ARRAY ->
-                if (kotlinType == null) {
-                    JavacArrayType(
-                        env = this,
-                        typeMirror = MoreTypes.asArray(typeMirror),
-                        nullability = elementNullability,
-                        knownComponentNullability = null
-                    )
-                } else {
-                    JavacArrayType(
-                        env = this,
-                        typeMirror = MoreTypes.asArray(typeMirror),
-                        kotlinType = kotlinType
-                    )
+                when {
+                    kotlinType != null -> {
+                        JavacArrayType(
+                            env = this,
+                            typeMirror = MoreTypes.asArray(typeMirror),
+                            kotlinType = kotlinType
+                        )
+                    }
+                    elementNullability != null -> {
+                        JavacArrayType(
+                            env = this,
+                            typeMirror = MoreTypes.asArray(typeMirror),
+                            nullability = elementNullability,
+                            knownComponentNullability = null
+                        )
+                    }
+                    else -> {
+                        JavacArrayType(
+                            env = this,
+                            typeMirror = MoreTypes.asArray(typeMirror),
+                        )
+                    }
                 }
             TypeKind.DECLARED ->
-                if (kotlinType == null) {
-                    JavacDeclaredType(
-                        env = this,
-                        typeMirror = MoreTypes.asDeclared(typeMirror),
-                        nullability = elementNullability
-                    )
-                } else {
-                    JavacDeclaredType(
-                        env = this,
-                        typeMirror = MoreTypes.asDeclared(typeMirror),
-                        kotlinType = kotlinType
-                    )
+                when {
+                    kotlinType != null -> {
+                        JavacDeclaredType(
+                            env = this,
+                            typeMirror = MoreTypes.asDeclared(typeMirror),
+                            kotlinType = kotlinType
+                        )
+                    }
+                    elementNullability != null -> {
+                        JavacDeclaredType(
+                            env = this,
+                            typeMirror = MoreTypes.asDeclared(typeMirror),
+                            nullability = elementNullability
+                        )
+                    }
+                    else -> {
+                        JavacDeclaredType(
+                            env = this,
+                            typeMirror = MoreTypes.asDeclared(typeMirror)
+                        )
+                    }
+                }
+            TypeKind.TYPEVAR ->
+                when {
+                    kotlinType != null -> {
+                        JavacTypeVariableType(
+                            env = this,
+                            typeMirror = MoreTypes.asTypeVariable(typeMirror),
+                            kotlinType = kotlinType
+                        )
+                    }
+                    elementNullability != null -> {
+                        JavacTypeVariableType(
+                            env = this,
+                            typeMirror = MoreTypes.asTypeVariable(typeMirror),
+                            nullability = elementNullability
+                        )
+                    }
+                    else -> {
+                        JavacTypeVariableType(
+                            env = this,
+                            typeMirror = MoreTypes.asTypeVariable(typeMirror)
+                        )
+                    }
                 }
             else ->
-                if (kotlinType == null) {
-                    DefaultJavacType(
-                        env = this,
-                        typeMirror = typeMirror,
-                        nullability = elementNullability
-                    )
-                } else {
-                    DefaultJavacType(
-                        env = this,
-                        typeMirror = typeMirror,
-                        kotlinType = kotlinType
-                    )
+                when {
+                    kotlinType != null -> {
+                        DefaultJavacType(
+                            env = this,
+                            typeMirror = typeMirror,
+                            kotlinType = kotlinType
+                        )
+                    }
+                    elementNullability != null -> {
+                        DefaultJavacType(
+                            env = this,
+                            typeMirror = typeMirror,
+                            nullability = elementNullability
+                        )
+                    }
+                    else -> {
+                        DefaultJavacType(
+                            env = this,
+                            typeMirror = typeMirror
+                        )
+                    }
                 }
         } as T
     }
@@ -213,30 +316,23 @@ internal class JavacProcessingEnv(
                 wrapExecutableElement(element)
             }
             is PackageElement -> {
-                error(
-                    "Cannot get elements with annotation $annotationName. Package " +
-                        "elements are not supported by XProcessing."
-                )
+                JavacPackageElement(this, element)
             }
             else -> error("Unsupported element $element with annotation $annotationName")
         }
     }
 
     fun wrapExecutableElement(element: ExecutableElement): JavacExecutableElement {
-        val enclosingType = element.requireEnclosingType(this)
-
         return when (element.kind) {
             ElementKind.CONSTRUCTOR -> {
                 JavacConstructorElement(
                     env = this,
-                    containing = enclosingType,
                     element = element
                 )
             }
             ElementKind.METHOD -> {
                 JavacMethodElement(
                     env = this,
-                    containing = enclosingType,
                     element = element
                 )
             }
@@ -248,22 +344,29 @@ internal class JavacProcessingEnv(
         return when (val enclosingElement = element.enclosingElement) {
             is ExecutableElement -> {
                 val executableElement = wrapExecutableElement(enclosingElement)
-
                 executableElement.parameters.find { param ->
-                    param.element === element
+                    param.element.simpleName == element.simpleName
                 } ?: error("Unable to create variable element for $element")
             }
-            is TypeElement -> {
-                JavacFieldElement(this, wrapTypeElement(enclosingElement), element)
-            }
+            is TypeElement -> JavacFieldElement(this, element)
             else -> error("Unsupported enclosing type $enclosingElement for $element")
         }
+    }
+
+    internal fun clearCache() {
+        typeElementStore.clear()
     }
 
     companion object {
         val PRIMITIVE_TYPES = TypeKind.values().filter {
             it.isPrimitive
         }.associateBy {
+            it.name.lowercase(Locale.US)
+        }
+        val NO_TYPES = listOf(
+            TypeKind.VOID,
+            TypeKind.NONE
+        ).associateBy {
             it.name.lowercase(Locale.US)
         }
     }

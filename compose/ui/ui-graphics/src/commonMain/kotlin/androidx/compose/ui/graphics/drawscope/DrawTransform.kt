@@ -19,9 +19,10 @@ package androidx.compose.ui.graphics.drawscope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ClipOp
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.degrees
+import androidx.compose.ui.graphics.internal.JvmDefaultWithCompatibility
 
 /**
  * Convenience method modifies the [DrawTransform] bounds to inset both left and right bounds by
@@ -78,6 +79,7 @@ inline fun DrawTransform.scale(scale: Float, pivot: Offset = center) =
  * Defines transformations that can be applied to a drawing environment
  */
 @DrawScopeMarker
+@JvmDefaultWithCompatibility
 interface DrawTransform {
 
     /**

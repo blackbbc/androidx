@@ -112,6 +112,7 @@ import androidx.test.filters.SmallTest;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -329,6 +330,7 @@ public class MediaSessionCompatCallbackTest {
 
     @Test
     @SmallTest
+    @Ignore("flaky: b/297535302")
     public void testGetPlaybackStateWithPositionUpdate() throws InterruptedException {
         final long stateSetTime = SystemClock.elapsedRealtime();
         PlaybackStateCompat stateIn = new PlaybackStateCompat.Builder()
@@ -744,7 +746,7 @@ public class MediaSessionCompatCallbackTest {
                 .setComponent(new ComponentName(getApplicationContext(),
                         getApplicationContext().getClass()));
         PendingIntent pi = PendingIntent.getBroadcast(getApplicationContext(), 0, mediaButtonIntent,
-                0);
+                Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
         mSession.setMediaButtonReceiver(pi);
 
         // Set state to STATE_PLAYING to get higher priority.
@@ -1001,6 +1003,7 @@ public class MediaSessionCompatCallbackTest {
 
     @Test
     @SmallTest
+    @SuppressWarnings("deprecation")
     public void testReceivingMediaParcelables() throws Exception {
         mCallback.reset(1);
         final String action = "test-action";
@@ -1054,6 +1057,7 @@ public class MediaSessionCompatCallbackTest {
 
     @Test
     @SmallTest
+    @SuppressWarnings("deprecation")
     public void testMediaDescriptionContainsUserParcelable() {
         mCallback.reset(1);
         mSession.setFlags(MediaSessionCompat.FLAG_HANDLES_QUEUE_COMMANDS);

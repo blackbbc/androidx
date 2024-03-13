@@ -14,8 +14,15 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("AndroidXPlugin")
@@ -25,13 +32,16 @@ plugins {
 
 dependencies {
     api(project(":navigation:navigation-common"))
-    api("androidx.activity:activity-ktx:1.2.3")
-    api("androidx.lifecycle:lifecycle-runtime-ktx:2.3.1")
-    api("androidx.lifecycle:lifecycle-viewmodel-ktx:2.3.1")
+    api("androidx.activity:activity-ktx:1.7.1")
+    api("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+    api("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
+    api("androidx.annotation:annotation-experimental:1.4.0")
+    implementation('androidx.collection:collection:1.1.0')
 
     api(libs.kotlinStdlib)
-    androidTestImplementation("androidx.lifecycle:lifecycle-runtime-testing:2.3.1")
+    androidTestImplementation(projectOrArtifact(":lifecycle:lifecycle-runtime-testing"))
     androidTestImplementation(project(":internal-testutils-navigation"))
+    androidTestImplementation(project(":internal-testutils-runtime"))
     androidTestImplementation(libs.testExtJunit)
     androidTestImplementation(libs.testExtTruth)
     androidTestImplementation(libs.testCore)
@@ -43,12 +53,23 @@ dependencies {
     androidTestImplementation(libs.mockitoCore, excludes.bytebuddy)
     androidTestImplementation(libs.dexmakerMockito, excludes.bytebuddy)
     androidTestImplementation(libs.kotlinStdlib)
+    androidTestImplementation(libs.kotlinTest)
+    androidTestImplementation(libs.multidex)
+
+    lintPublish(project(':navigation:navigation-runtime-lint'))
+}
+
+android {
+    defaultConfig {
+        multiDexEnabled = true
+    }
+    namespace "androidx.navigation"
 }
 
 androidx {
-    name = "Android Navigation Runtime"
+    name = "Navigation Runtime"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.NAVIGATION
     inceptionYear = "2017"
     description = "Android Navigation-Runtime"
+    metalavaK2UastEnabled = true
 }

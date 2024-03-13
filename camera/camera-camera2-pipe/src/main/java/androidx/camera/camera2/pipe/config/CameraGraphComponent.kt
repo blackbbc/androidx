@@ -14,31 +14,40 @@
  * limitations under the License.
  */
 
+@file:RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
+
 package androidx.camera.camera2.pipe.config
 
+import android.content.Context
+import androidx.annotation.RequiresApi
+import androidx.camera.camera2.pipe.CameraBackend
+import androidx.camera.camera2.pipe.CameraBackends
+import androidx.camera.camera2.pipe.CameraContext
+import androidx.camera.camera2.pipe.CameraController
 import androidx.camera.camera2.pipe.CameraGraph
 import androidx.camera.camera2.pipe.CameraMetadata
+import androidx.camera.camera2.pipe.CameraSurfaceManager
 import androidx.camera.camera2.pipe.Request
-import androidx.camera.camera2.pipe.compat.Camera2CameraController
-import androidx.camera.camera2.pipe.compat.Camera2MetadataCache
-import androidx.camera.camera2.pipe.compat.Camera2RequestProcessorFactory
-import androidx.camera.camera2.pipe.compat.CameraController
-import androidx.camera.camera2.pipe.compat.SessionFactoryModule
-import androidx.camera.camera2.pipe.compat.StandardCamera2RequestProcessorFactory
+import androidx.camera.camera2.pipe.StreamGraph
 import androidx.camera.camera2.pipe.core.Threads
 import androidx.camera.camera2.pipe.graph.CameraGraphImpl
 import androidx.camera.camera2.pipe.graph.GraphListener
 import androidx.camera.camera2.pipe.graph.GraphProcessor
 import androidx.camera.camera2.pipe.graph.GraphProcessorImpl
 import androidx.camera.camera2.pipe.graph.Listener3A
+import androidx.camera.camera2.pipe.graph.StreamGraphImpl
+import androidx.camera.camera2.pipe.graph.SurfaceGraph
+import androidx.camera.camera2.pipe.internal.FrameCaptureQueue
+import androidx.camera.camera2.pipe.internal.FrameDistributor
+import androidx.camera.camera2.pipe.internal.ImageSourceMap
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.Subcomponent
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
 import javax.inject.Qualifier
 import javax.inject.Scope
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 
 @Scope
 internal annotation class CameraGraphScope
@@ -46,12 +55,16 @@ internal annotation class CameraGraphScope
 @Qualifier
 internal annotation class ForCameraGraph
 
+@Qualifier
+internal annotation class CameraGraphContext
+
 @CameraGraphScope
 @Subcomponent(
-    modules = [
-        CameraGraphModules::class,
+    modules =
+    [
+        SharedCameraGraphModules::class,
+        InternalCameraGraphModules::class,
         CameraGraphConfigModule::class,
-        Camera2CameraGraphModules::class,
     ]
 )
 internal interface CameraGraphComponent {
@@ -71,7 +84,7 @@ internal class CameraGraphConfigModule(private val config: CameraGraph.Config) {
 }
 
 @Module
-internal abstract class CameraGraphModules {
+internal abstract class SharedCameraGraphModules {
     @Binds
     abstract fun bindCameraGraph(cameraGraph: CameraGraphImpl): CameraGraph
 
@@ -81,12 +94,19 @@ internal abstract class CameraGraphModules {
     @Binds
     abstract fun bindGraphListener(graphProcessor: GraphProcessorImpl): GraphListener
 
+    @Binds
+    @CameraGraphContext
+    abstract fun bindCameraGraphContext(@CameraPipeContext cameraPipeContext: Context): Context
+
+    @Binds
+    abstract fun bindStreamGraph(streamGraph: StreamGraphImpl): StreamGraph
+
     companion object {
         @CameraGraphScope
         @Provides
         @ForCameraGraph
         fun provideCameraGraphCoroutineScope(threads: Threads): CoroutineScope {
-            return CoroutineScope(threads.defaultDispatcher.plus(CoroutineName("CXCP-Graph")))
+            return CoroutineScope(threads.lightweightDispatcher.plus(CoroutineName("CXCP-Graph")))
         }
 
         @CameraGraphScope
@@ -94,12 +114,16 @@ internal abstract class CameraGraphModules {
         @ForCameraGraph
         fun provideRequestListeners(
             graphConfig: CameraGraph.Config,
-            listener3A: Listener3A
+            listener3A: Listener3A,
+            frameDistributor: FrameDistributor
         ): List<@JvmSuppressWildcards Request.Listener> {
             val listeners = mutableListOf<Request.Listener>(listener3A)
 
             // Order slightly matters, add internal listeners first, and external listeners second.
             listeners.add(listener3A)
+
+            // FrameDistributor is responsible for all image grouping and distribution.
+            listeners.add(frameDistributor)
 
             // Listeners in CameraGraph.Config can de defined outside of the CameraPipe library,
             // and since we iterate thought the listeners in order and invoke them, it appears
@@ -107,30 +131,86 @@ internal abstract class CameraGraphModules {
             listeners.addAll(graphConfig.defaultListeners)
             return listeners
         }
+
+        @CameraGraphScope
+        @Provides
+        fun provideSurfaceGraph(
+            streamGraphImpl: StreamGraphImpl,
+            cameraController: CameraController,
+            cameraSurfaceManager: CameraSurfaceManager,
+            imageSourceMap: ImageSourceMap
+        ): SurfaceGraph {
+            return SurfaceGraph(
+                streamGraphImpl,
+                cameraController,
+                cameraSurfaceManager,
+                imageSourceMap.imageSources
+            )
+        }
+
+        @CameraGraphScope
+        @Provides
+        fun provideFrameDistributor(
+            imageSourceMap: ImageSourceMap,
+            frameCaptureQueue: FrameCaptureQueue
+        ): FrameDistributor {
+            return FrameDistributor(
+                imageSourceMap.imageSources,
+                frameCaptureQueue
+            ) { }
+        }
     }
 }
 
-@Module(
-    includes = [
-        SessionFactoryModule::class
-    ]
-)
-internal abstract class Camera2CameraGraphModules {
-    @Binds
-    abstract fun bindRequestProcessorFactory(
-        factoryStandard: StandardCamera2RequestProcessorFactory
-    ): Camera2RequestProcessorFactory
-
-    @Binds
-    abstract fun bindGraphState(camera2CameraState: Camera2CameraController): CameraController
-
+@Module
+internal abstract class InternalCameraGraphModules {
     companion object {
+        @CameraGraphScope
         @Provides
-        fun provideCamera2Metadata(
+        fun provideCameraBackend(
+            cameraBackends: CameraBackends,
             graphConfig: CameraGraph.Config,
-            metadataCache: Camera2MetadataCache
+            cameraContext: CameraContext
+        ): CameraBackend {
+            val customCameraBackend = graphConfig.customCameraBackend
+            if (customCameraBackend != null) {
+                return customCameraBackend.create(cameraContext)
+            }
+
+            val cameraBackendId = graphConfig.cameraBackendId
+            if (cameraBackendId != null) {
+                return checkNotNull(cameraBackends[cameraBackendId]) {
+                    "Failed to initialize $cameraBackendId from $graphConfig"
+                }
+            }
+            return cameraBackends.default
+        }
+
+        @CameraGraphScope
+        @Provides
+        fun provideCameraMetadata(
+            graphConfig: CameraGraph.Config,
+            cameraBackend: CameraBackend
         ): CameraMetadata {
-            return metadataCache.awaitMetadata(graphConfig.camera)
+            // TODO: It might be a good idea to cache and go through caches for some of these calls
+            //   instead of reading it directly from the backend.
+            return checkNotNull(cameraBackend.awaitCameraMetadata(graphConfig.camera)) {
+                "Failed to load metadata for ${graphConfig.camera}!"
+            }
+        }
+
+        @CameraGraphScope
+        @Provides
+        fun provideCameraController(
+            graphConfig: CameraGraph.Config,
+            cameraBackend: CameraBackend,
+            cameraContext: CameraContext,
+            graphProcessor: GraphProcessorImpl,
+            streamGraph: StreamGraph,
+        ): CameraController {
+            return cameraBackend.createCameraController(
+                cameraContext, graphConfig, graphProcessor, streamGraph
+            )
         }
     }
 }

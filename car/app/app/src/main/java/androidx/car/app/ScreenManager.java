@@ -39,6 +39,7 @@ import androidx.lifecycle.LifecycleOwner;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
@@ -73,12 +74,22 @@ public class ScreenManager implements Manager {
      * <p>If the {@code screen} pushed is already in the stack it will be moved to the top of the
      * stack.
      *
+     * <p>If the app's lifecycle is already in the {@link State#DESTROYED} state, this operation
+     * is a no-op.
+     *
      * @throws NullPointerException  if {@code screen} is {@code null}
      * @throws IllegalStateException if the current thread is not the main thread
      */
     public void push(@NonNull Screen screen) {
         checkMainThread();
+        if (mAppLifecycle.getCurrentState().equals(State.DESTROYED)) {
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                Log.d(TAG, "Pushing screens after the DESTROYED state is a no-op");
+            }
+            return;
+        }
         pushInternal(requireNonNull(screen));
+
     }
 
     /**
@@ -87,6 +98,9 @@ public class ScreenManager implements Manager {
      * <p>When the given {@code screen} finishes, the {@code onScreenResultCallback} will receive a
      * callback to {@link OnScreenResultListener#onScreenResult} with the result that the pushed
      * {@code screen} set via {@link Screen#setResult}.
+     *
+     * <p>If the app's lifecycle is already in the {@link State#DESTROYED} state, this operation
+     * is a no-op.
      *
      * @param screen                 the {@link Screen} to push on top of the stack
      * @param onScreenResultListener the listener that will be executed with the result pushed by
@@ -100,6 +114,13 @@ public class ScreenManager implements Manager {
     public void pushForResult(
             @NonNull Screen screen, @NonNull OnScreenResultListener onScreenResultListener) {
         checkMainThread();
+        if (mAppLifecycle.getCurrentState().equals(State.DESTROYED)) {
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                Log.d(TAG, "Pushing screens after the DESTROYED state is a no-op");
+            }
+            return;
+        }
+
         requireNonNull(screen).setOnScreenResultListener(requireNonNull(onScreenResultListener));
         pushInternal(screen);
     }
@@ -109,10 +130,20 @@ public class ScreenManager implements Manager {
      *
      * <p>If the top {@link Screen} is the only {@link Screen} in the stack, it will not be removed.
      *
+     * <p>If the app's lifecycle is already in the {@link State#DESTROYED} state, this operation
+     * is a no-op.
+     *
      * @throws IllegalStateException if the current thread is not the main thread
      */
     public void pop() {
         checkMainThread();
+        if (mAppLifecycle.getCurrentState().equals(State.DESTROYED)) {
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                Log.d(TAG, "Popping screens after the DESTROYED state is a no-op");
+            }
+            return;
+        }
+
         if (mScreenStack.size() > 1) {
             popInternal(Collections.singletonList(mScreenStack.pop()));
         }
@@ -124,6 +155,9 @@ public class ScreenManager implements Manager {
      *
      * <p>The root {@link Screen} will not be popped.
      *
+     * <p>If the app's lifecycle is already in the {@link State#DESTROYED} state, this operation
+     * is a no-op.
+     *
      * @throws NullPointerException  if {@code marker} is {@code null}
      * @throws IllegalStateException if the current thread is not the main thread
      * @see Screen#setMarker
@@ -131,6 +165,12 @@ public class ScreenManager implements Manager {
     public void popTo(@NonNull String marker) {
         checkMainThread();
         requireNonNull(marker);
+        if (mAppLifecycle.getCurrentState().equals(State.DESTROYED)) {
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                Log.d(TAG, "Popping screens after the DESTROYED state is a no-op");
+            }
+            return;
+        }
 
         // Pop all screens, except until found root or the provided screen.
         List<Screen> screensToPop = new ArrayList<>();
@@ -149,10 +189,19 @@ public class ScreenManager implements Manager {
     /**
      * Removes all screens from the stack until the root has been reached.
      *
+     * <p>If the app's lifecycle is already in the {@link State#DESTROYED} state, this operation
+     * is a no-op.
+     *
      * @throws IllegalStateException if the current thread is not the main thread
      */
     public void popToRoot() {
         checkMainThread();
+        if (mAppLifecycle.getCurrentState().equals(State.DESTROYED)) {
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                Log.d(TAG, "Popping screens after the DESTROYED state is a no-op");
+            }
+            return;
+        }
 
         if (mScreenStack.size() <= 1) {
             return;
@@ -172,12 +221,21 @@ public class ScreenManager implements Manager {
      *
      * <p>If the {@code screen} is the only {@link Screen} in the stack, it will not be removed.
      *
+     * <p>If the app's lifecycle is already in the {@link State#DESTROYED} state, this operation
+     * is a no-op.
+     *
      * @throws NullPointerException  if {@code screen} is {@code null}
      * @throws IllegalStateException if the current thread is not the main thread
      */
     public void remove(@NonNull Screen screen) {
         checkMainThread();
         requireNonNull(screen);
+        if (mAppLifecycle.getCurrentState().equals(State.DESTROYED)) {
+            if (Log.isLoggable(TAG, Log.DEBUG)) {
+                Log.d(TAG, "Popping screens after the DESTROYED state is a no-op");
+            }
+            return;
+        }
 
         if (mScreenStack.size() <= 1) {
             // Don't pop the final Screen.
@@ -195,6 +253,13 @@ public class ScreenManager implements Manager {
         }
 
         // Not in stack;
+    }
+
+    /**
+     * Returns the current stack size.
+     */
+    public int getStackSize() {
+        return mScreenStack.size();
     }
 
     /** Creates an instance of {@link ScreenManager}. */
@@ -224,17 +289,23 @@ public class ScreenManager implements Manager {
     }
 
     void destroyAndClearScreenStack() {
-        for (Screen screen : mScreenStack) {
+        Deque<Screen> screenStack = new ArrayDeque<>(mScreenStack);
+        for (Screen screen : screenStack) {
             stop(screen, true);
         }
         mScreenStack.clear();
     }
 
-    /** @hide */
     @NonNull
     @RestrictTo(LIBRARY_GROUP) // Restrict to testing library
-    protected Deque<Screen> getScreenStack() {
+    protected Deque<Screen> getScreenStackInternal() {
         return mScreenStack;
+    }
+
+    /** Returns the copy of the current screen stack as a type {@link Collection} */
+    @NonNull
+    public Collection<Screen> getScreenStack() {
+        return new ArrayList<>(mScreenStack);
     }
 
     private boolean foundMarker(String marker) {
@@ -247,13 +318,18 @@ public class ScreenManager implements Manager {
         }
 
         if (mScreenStack.contains(screen)) {
-            moveToTop(screen, false);
+            moveToTop(screen);
             return;
         }
 
         Screen top = mScreenStack.peek();
 
         pushAndStart(screen, true);
+
+        if (!mScreenStack.contains(screen)) {
+            // The screen being pushed was finished during it's set up
+            return;
+        }
 
         if (top != null) {
             stop(top, false);
@@ -307,6 +383,11 @@ public class ScreenManager implements Manager {
             screen.dispatchLifecycleEvent(Event.ON_CREATE);
         }
 
+        if (!screen.getLifecycle().getCurrentState().isAtLeast(State.CREATED)) {
+            // The screen was finished in it's onCreate
+            return;
+        }
+
         if (mAppLifecycle.getCurrentState().isAtLeast(State.STARTED)) {
             mCarContext.getCarService(AppManager.class).invalidate();
             screen.dispatchLifecycleEvent(Event.ON_START);
@@ -329,28 +410,23 @@ public class ScreenManager implements Manager {
         }
     }
 
-    private void moveToTop(Screen screen, boolean removeCurrentTop) {
+    private void moveToTop(Screen screen) {
         Screen top = mScreenStack.peek();
         if (top == null || top == screen) {
             return;
-        }
-
-        if (removeCurrentTop) {
-            mScreenStack.pop();
         }
 
         // Moving screen to top of stack, remove from where it's currently at.
         mScreenStack.remove(screen);
 
         pushAndStart(screen, false);
-        stop(top, removeCurrentTop);
+        stop(top, false);
 
         if (mAppLifecycle.getCurrentState().isAtLeast(State.RESUMED)) {
             screen.dispatchLifecycleEvent(Event.ON_RESUME);
         }
     }
 
-    /** @hide */
     @RestrictTo(LIBRARY_GROUP) // Restrict to testing library
     protected ScreenManager(@NonNull CarContext carContext, @NonNull Lifecycle lifecycle) {
         mCarContext = carContext;
@@ -366,7 +442,7 @@ public class ScreenManager implements Manager {
 
         @Override
         public void onStart(@NonNull LifecycleOwner lifecycleOwner) {
-            Screen top = getScreenStack().peek();
+            Screen top = getScreenStackInternal().peek();
             if (top == null) {
                 Log.e(TAG, "Screen stack was empty during lifecycle onStart");
                 return;
@@ -376,7 +452,7 @@ public class ScreenManager implements Manager {
 
         @Override
         public void onResume(@NonNull LifecycleOwner lifecycleOwner) {
-            Screen top = getScreenStack().peek();
+            Screen top = getScreenStackInternal().peek();
             if (top == null) {
                 Log.e(TAG, "Screen stack was empty during lifecycle onResume");
                 return;
@@ -386,7 +462,7 @@ public class ScreenManager implements Manager {
 
         @Override
         public void onPause(@NonNull LifecycleOwner lifecycleOwner) {
-            Screen top = getScreenStack().peek();
+            Screen top = getScreenStackInternal().peek();
             if (top == null) {
                 Log.e(TAG, "Screen stack was empty during lifecycle onPause");
                 return;
@@ -396,7 +472,7 @@ public class ScreenManager implements Manager {
 
         @Override
         public void onStop(@NonNull LifecycleOwner lifecycleOwner) {
-            Screen top = getScreenStack().peek();
+            Screen top = getScreenStackInternal().peek();
             if (top == null) {
                 Log.e(TAG, "Screen stack was empty during lifecycle onStop");
                 return;

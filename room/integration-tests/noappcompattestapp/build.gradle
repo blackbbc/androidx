@@ -30,5 +30,16 @@ dependencies {
     androidTestImplementation(libs.testCore)
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.espressoCore)
+    androidTestImplementation(project(":annotation:annotation"))
     testImplementation(libs.junit)
+}
+
+android {
+    namespace "androidx.room.integration.noappcompat"
+}
+
+// Enable parameter names to support Room incremental when its a project() dep.
+// See b/198431380
+tasks.withType(JavaCompile) {
+    options.compilerArgs << "-parameters"
 }

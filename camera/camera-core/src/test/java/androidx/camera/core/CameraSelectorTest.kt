@@ -20,9 +20,10 @@ import android.os.Build
 import androidx.camera.core.impl.CameraControlInternal
 import androidx.camera.core.impl.CameraInternal
 import androidx.camera.testing.fakes.FakeCamera
-import androidx.camera.testing.fakes.FakeCameraFactory
 import androidx.camera.testing.fakes.FakeCameraInfoInternal
+import androidx.camera.testing.impl.fakes.FakeCameraFactory
 import com.google.common.truth.Truth.assertThat
+import java.util.concurrent.ExecutionException
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,8 +31,6 @@ import org.mockito.Mockito
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.internal.DoNotInstrument
-import java.util.LinkedHashSet
-import java.util.concurrent.ExecutionException
 
 @RunWith(RobolectricTestRunner::class)
 @DoNotInstrument
@@ -169,5 +168,23 @@ public class CameraSelectorTest {
         }
         // Should throw an exception if the input is modified.
         cameraSelectorBuilder.build().select(mCameras)
+    }
+
+    @Test
+    public fun canFilterCameraInfos() {
+        val cameraInfos = mCameras.map { camera -> camera.cameraInfo }
+        val backCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+        val filteredCameraInfos = backCameraSelector.filter(cameraInfos)
+        assertThat(filteredCameraInfos).isEqualTo(listOf(mRearCamera.cameraInfo))
+    }
+
+    @Test
+    public fun canFilterCameraInfosWithEmptyResult() {
+        val cameraInfos = listOf(mFrontCamera.cameraInfo)
+        val backCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+        val filteredCameraInfos = backCameraSelector.filter(cameraInfos)
+        assertThat(filteredCameraInfos).isEmpty()
     }
 }

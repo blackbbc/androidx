@@ -16,16 +16,25 @@
 
 package androidx.room.compiler.processing.javac
 
+import androidx.room.compiler.processing.XElement
 import androidx.room.compiler.processing.XFiler
+import androidx.room.compiler.processing.XProcessingEnv
 import com.squareup.javapoet.JavaFile
 import com.squareup.kotlinpoet.FileSpec
-import javax.annotation.processing.ProcessingEnvironment
+import java.io.OutputStream
+import java.nio.file.Path
+import javax.annotation.processing.Filer
+import javax.tools.StandardLocation
+import kotlin.io.path.extension
 
-internal class JavacFiler(val processingEnv: ProcessingEnvironment) : XFiler {
+internal class JavacFiler(
+    private val processingEnv: XProcessingEnv,
+    val delegate: Filer
+) : XFiler {
 
     // "mode" is ignored in javac, and only applicable in KSP
     override fun write(javaFile: JavaFile, mode: XFiler.Mode) {
-        javaFile.writeTo(processingEnv.filer)
+        javaFile.writeTo(delegate)
     }
 
     override fun write(fileSpec: FileSpec, mode: XFiler.Mode) {
@@ -34,6 +43,62 @@ internal class JavacFiler(val processingEnv: ProcessingEnvironment) : XFiler {
             "Could not generate kotlin file $filePath/${fileSpec.name}.kt. The " +
                 "annotation processing environment is not set to generate Kotlin files."
         }
-        fileSpec.writeTo(processingEnv.filer)
+        fileSpec.writeTo(delegate)
+    }
+
+    override fun writeSource(
+        packageName: String,
+        fileNameWithoutExtension: String,
+        extension: String,
+        originatingElements: List<XElement>,
+        mode: XFiler.Mode
+    ): OutputStream {
+        require(extension == "java" || extension == "kt") {
+            "Source file extension must be either 'java' or 'kt', but was: $extension"
+        }
+        val javaOriginatingElements =
+            originatingElements.filterIsInstance<JavacElement>().map { it.element }.toTypedArray()
+        return when (extension) {
+            "java" -> {
+                val name = if (packageName.isEmpty()) {
+                    fileNameWithoutExtension
+                } else {
+                    "$packageName.$fileNameWithoutExtension"
+                }
+                delegate.createSourceFile(
+                    name,
+                    *javaOriginatingElements
+                ).openOutputStream()
+            }
+            "kt" -> {
+                delegate.createResource(
+                    StandardLocation.SOURCE_OUTPUT,
+                    packageName,
+                    "$fileNameWithoutExtension.$extension",
+                    *javaOriginatingElements
+                ).openOutputStream()
+            }
+            else -> error("file type not supported: $extension")
+        }
+    }
+
+    override fun writeResource(
+        filePath: Path,
+        originatingElements: List<XElement>,
+        mode: XFiler.Mode
+    ): OutputStream {
+        require(filePath.extension != "java" && filePath.extension != "kt") {
+            "Could not create resource file with a source type extension. File must not be " +
+                "neither '.java' nor '.kt', but was: $filePath"
+        }
+        val javaOriginatingElements =
+            originatingElements.filterIsInstance<JavacElement>().map { it.element }.toTypedArray()
+        val fileObject = delegate.createResource(
+            StandardLocation.CLASS_OUTPUT,
+            "",
+            filePath.toString(),
+            *javaOriginatingElements
+        )
+        return fileObject.openOutputStream()
     }
 }

@@ -38,7 +38,6 @@ import java.util.ArrayList;
 /**
  * MenuPresenter for list-style menus.
  *
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class ListMenuPresenter implements MenuPresenter, AdapterView.OnItemClickListener {
@@ -196,6 +195,7 @@ public class ListMenuPresenter implements MenuPresenter, AdapterView.OnItemClick
         outState.putSparseParcelableArray(VIEWS_TAG, viewStates);
     }
 
+    @SuppressWarnings("deprecation")
     public void restoreHierarchyState(Bundle inState) {
         SparseArray<Parcelable> viewStates = inState.getSparseParcelableArray(VIEWS_TAG);
         if (viewStates != null) {

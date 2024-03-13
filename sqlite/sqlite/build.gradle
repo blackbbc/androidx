@@ -14,35 +14,82 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+
+import androidx.build.PlatformIdentifier
 import androidx.build.Publish
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 plugins {
     id("AndroidXPlugin")
     id("com.android.library")
 }
 
-dependencies {
-    api("androidx.annotation:annotation:1.0.0")
-    testImplementation(libs.junit)
-    testImplementation(libs.mockitoCore)
-}
 
-// Used by testImplementation in room-compiler
-android.libraryVariants.all { variant ->
-    def name = variant.name
-    def suffix = name.capitalize()
-    def jarTask = project.tasks.create(name: "jar${suffix}", type: Jar){
-        dependsOn(variant.javaCompileProvider.get())
-        from(variant.javaCompileProvider.get().destinationDir)
-        destinationDirectory.fileValue(new File(project.buildDir, "libJar"))
+androidXMultiplatform {
+    android()
+    androidNative()
+    ios()
+    jvm()
+    linux()
+    mac()
+
+    defaultPlatform(PlatformIdentifier.ANDROID)
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                implementation(libs.kotlinStdlib)
+                api(project(":annotation:annotation"))
+            }
+        }
+        commonTest {
+            dependencies {
+                implementation(libs.kotlinTest)
+            }
+        }
+        androidMain {
+            dependsOn(commonMain)
+        }
+        androidUnitTest {
+            dependsOn(commonTest)
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.mockitoCore4)
+                implementation(libs.truth)
+            }
+        }
+        jvmMain {
+            dependsOn(commonMain)
+        }
+        nativeMain {
+            dependsOn(commonMain)
+        }
+        targets.all { target ->
+            if (target.platformType == KotlinPlatformType.native) {
+                def main = target.compilations["main"]
+                main.defaultSourceSet {
+                    dependsOn(nativeMain)
+                }
+            }
+        }
     }
 }
 
+android {
+    namespace "androidx.sqlite.db"
+}
+
 androidx {
-    name = "Android DB"
+    name = "SQLite"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.SQLITE
     inceptionYear = "2017"
-    description = "Android DB"
+    description = "SQLite API"
+    metalavaK2UastEnabled = true
 }

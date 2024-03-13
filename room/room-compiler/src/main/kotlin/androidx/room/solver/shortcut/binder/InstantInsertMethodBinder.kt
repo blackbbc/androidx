@@ -16,33 +16,120 @@
 
 package androidx.room.solver.shortcut.binder
 
-import androidx.room.ext.N
+import androidx.room.compiler.codegen.CodeLanguage
+import androidx.room.compiler.codegen.XMemberName.Companion.packageMember
+import androidx.room.compiler.codegen.XPropertySpec
+import androidx.room.compiler.codegen.box
+import androidx.room.ext.Function1TypeSpec
+import androidx.room.ext.RoomTypeNames
+import androidx.room.ext.SQLiteDriverTypeNames
+import androidx.room.ext.isNotVoid
 import androidx.room.solver.CodeGenScope
-import androidx.room.solver.shortcut.result.InsertMethodAdapter
+import androidx.room.solver.shortcut.result.InsertOrUpsertMethodAdapter
 import androidx.room.vo.ShortcutQueryParameter
-import androidx.room.writer.DaoWriter
-import com.squareup.javapoet.FieldSpec
-import com.squareup.javapoet.TypeSpec
 
 /**
  * Binder that knows how to write instant (blocking) insert methods.
  */
-class InstantInsertMethodBinder(adapter: InsertMethodAdapter?) : InsertMethodBinder(adapter) {
+class InstantInsertMethodBinder(adapter: InsertOrUpsertMethodAdapter?) :
+    InsertOrUpsertMethodBinder(adapter) {
 
     override fun convertAndReturn(
         parameters: List<ShortcutQueryParameter>,
-        insertionAdapters: Map<String, Pair<FieldSpec, TypeSpec>>,
-        dbField: FieldSpec,
+        adapters: Map<String, Pair<XPropertySpec, Any>>,
+        dbProperty: XPropertySpec,
         scope: CodeGenScope
     ) {
-        scope.builder().apply {
-            addStatement("$N.assertNotSuspendingTransaction()", DaoWriter.dbField)
+        when (scope.language) {
+            CodeLanguage.JAVA -> convertAndReturnJava(
+                parameters, adapters, dbProperty, scope
+            )
+            CodeLanguage.KOTLIN -> convertAndReturnKotlin(
+                parameters, adapters, dbProperty, scope
+            )
         }
-        adapter?.createInsertionMethodBody(
+    }
+
+    private fun convertAndReturnJava(
+        parameters: List<ShortcutQueryParameter>,
+        adapters: Map<String, Pair<XPropertySpec, Any>>,
+        dbProperty: XPropertySpec,
+        scope: CodeGenScope
+    ) {
+        if (adapter == null) {
+            return
+        }
+        val returnPrefix = if (adapter.returnType.isNotVoid()) { "return " } else { "" }
+
+        val connectionVar = scope.getTmpVar("_connection")
+        scope.builder.addStatement(
+            "$returnPrefix%M(%N, %L, %L, %L)",
+            RoomTypeNames.DB_UTIL.packageMember("performBlocking"),
+            dbProperty,
+            false, // isReadOnly
+            true, // inTransaction
+            Function1TypeSpec(
+                language = scope.language,
+                parameterTypeName = SQLiteDriverTypeNames.CONNECTION,
+                parameterName = connectionVar,
+                returnTypeName = adapter.returnType.asTypeName().box()
+            ) {
+                val functionScope = scope.fork()
+                val functionCode = functionScope.builder.apply {
+                    adapter.generateMethodBody(
+                        scope = functionScope,
+                        connectionVar = connectionVar,
+                        parameters = parameters,
+                        adapters = adapters
+                    )
+                }.build()
+                this.addCode(functionCode)
+            }
+        )
+    }
+
+    private fun convertAndReturnKotlin(
+        parameters: List<ShortcutQueryParameter>,
+        adapters: Map<String, Pair<XPropertySpec, Any>>,
+        dbProperty: XPropertySpec,
+        scope: CodeGenScope
+    ) {
+        if (adapter == null) {
+            return
+        }
+        val connectionVar = scope.getTmpVar("_connection")
+        scope.builder.apply {
+            beginControlFlow(
+                "return %M(%N, %L, %L) { %L ->",
+                RoomTypeNames.DB_UTIL.packageMember("performBlocking"),
+                dbProperty,
+                false, // isReadOnly
+                true, // inTransaction
+                connectionVar
+            ).apply {
+                adapter.generateMethodBody(
+                    scope = scope,
+                    connectionVar = connectionVar,
+                    parameters = parameters,
+                    adapters = adapters
+                )
+            }.endControlFlow()
+        }
+    }
+
+    override fun convertAndReturnCompat(
+        parameters: List<ShortcutQueryParameter>,
+        adapters: Map<String, Pair<XPropertySpec, Any>>,
+        dbProperty: XPropertySpec,
+        scope: CodeGenScope
+    ) {
+        adapter?.generateMethodBodyCompat(
             parameters = parameters,
-            insertionAdapters = insertionAdapters,
-            dbField = dbField,
+            adapters = adapters,
+            dbProperty = dbProperty,
             scope = scope
         )
     }
+
+    override fun isMigratedToDriver() = true
 }

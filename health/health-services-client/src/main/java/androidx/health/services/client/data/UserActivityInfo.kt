@@ -16,88 +16,83 @@
 
 package androidx.health.services.client.data
 
-import android.os.Parcel
-import android.os.Parcelable
-import androidx.health.services.client.data.UserActivityState.USER_ACTIVITY_ASLEEP
-import androidx.health.services.client.data.UserActivityState.USER_ACTIVITY_EXERCISE
-import androidx.health.services.client.data.UserActivityState.USER_ACTIVITY_INACTIVE
-import androidx.health.services.client.data.UserActivityState.USER_ACTIVITY_PASSIVE
-import androidx.health.services.client.data.UserActivityState.USER_ACTIVITY_UNKNOWN
+import androidx.health.services.client.data.UserActivityState.Companion.USER_ACTIVITY_ASLEEP
+import androidx.health.services.client.data.UserActivityState.Companion.USER_ACTIVITY_EXERCISE
+import androidx.health.services.client.data.UserActivityState.Companion.USER_ACTIVITY_PASSIVE
+import androidx.health.services.client.data.UserActivityState.Companion.USER_ACTIVITY_UNKNOWN
+import androidx.health.services.client.proto.DataProto
+import androidx.health.services.client.proto.DataProto.UserActivityInfo as UserActivityInfoProto
 import java.time.Instant
 
 /**
  * Represents an update from Passive tracking.
  *
- * Provides [DataPoint] s associated with the Passive tracking, in addition to data related to the
+ * Provides [DataPoint]s associated with the Passive tracking, in addition to data related to the
  * user's [UserActivityState].
  */
-public data class UserActivityInfo(
+@Suppress("ParcelCreator")
+public class UserActivityInfo(
     /** The [UserActivityState] of the user from Passive tracking. */
-    val userActivityState: UserActivityState,
+    public val userActivityState: UserActivityState,
 
     /**
-     * The [ExerciseType] of the user for a [UserActivityState.USER_ACTIVITY_EXERCISE] state, and
-     * `null` for other [UserActivityState] s.
+     * The [ExerciseInfo] of the user for a [UserActivityState.USER_ACTIVITY_EXERCISE] state, and
+     * `null` for other [UserActivityState]s.
      */
-    val exerciseType: ExerciseType?,
+    public val exerciseInfo: ExerciseInfo?,
 
     /** The time at which the current state took effect. */
-    val stateChangeTime: Instant,
-) : Parcelable {
+    public val stateChangeTime: Instant,
+) {
 
-    override fun describeContents(): Int = 0
+    internal constructor(
+        proto: DataProto.UserActivityInfo
+    ) : this(
+        UserActivityState.fromProto(proto.state),
+        if (proto.hasExerciseInfo()) ExerciseInfo(proto.exerciseInfo) else null,
+        Instant.ofEpochMilli(proto.stateChangeTimeEpochMs)
+    )
 
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeInt(userActivityState.id)
-        dest.writeInt(exerciseType?.id ?: -1)
-        dest.writeLong(stateChangeTime.toEpochMilli())
+    internal val proto: UserActivityInfoProto = getUserActivityInfoProto()
+
+    private fun getUserActivityInfoProto(): UserActivityInfoProto {
+        val builder =
+            UserActivityInfoProto.newBuilder()
+                .setState(userActivityState.toProto())
+                .setStateChangeTimeEpochMs(stateChangeTime.toEpochMilli())
+
+        exerciseInfo?.let { builder.exerciseInfo = it.proto }
+        return builder.build()
     }
 
+    override fun toString(): String =
+        "UserActivityInfo(" +
+            "userActivityState=$userActivityState, " +
+            "stateChangeTime=$stateChangeTime, " +
+            "exerciseInfo=$exerciseInfo)"
+
     public companion object {
-        @JvmField
-        public val CREATOR: Parcelable.Creator<UserActivityInfo> =
-            object : Parcelable.Creator<UserActivityInfo> {
-                override fun createFromParcel(source: Parcel): UserActivityInfo? {
-                    val activityState = UserActivityState.fromId(source.readInt()) ?: return null
-                    val exerciseTypeId = source.readInt()
-                    val exerciseType =
-                        if (exerciseTypeId == -1) null else ExerciseType.fromId(exerciseTypeId)
-                    val time = Instant.ofEpochMilli(source.readLong())
-
-                    return UserActivityInfo(activityState, exerciseType, time)
-                }
-
-                override fun newArray(size: Int): Array<UserActivityInfo?> {
-                    return arrayOfNulls(size)
-                }
-            }
-
         /** Creates a [UserActivityInfo] for [USER_ACTIVITY_UNKNOWN]. */
         @JvmStatic
         public fun createUnknownTypeState(stateChangeTime: Instant): UserActivityInfo =
-            UserActivityInfo(USER_ACTIVITY_UNKNOWN, exerciseType = null, stateChangeTime)
+            UserActivityInfo(USER_ACTIVITY_UNKNOWN, exerciseInfo = null, stateChangeTime)
 
         /** Creates a [UserActivityInfo] for [USER_ACTIVITY_EXERCISE]. */
         @JvmStatic
         public fun createActiveExerciseState(
-            exerciseType: ExerciseType,
+            exerciseInfo: ExerciseInfo,
             stateChangeTime: Instant
         ): UserActivityInfo =
-            UserActivityInfo(USER_ACTIVITY_EXERCISE, exerciseType, stateChangeTime)
+            UserActivityInfo(USER_ACTIVITY_EXERCISE, exerciseInfo, stateChangeTime)
 
         /** Creates a [UserActivityInfo] for [USER_ACTIVITY_PASSIVE]. */
         @JvmStatic
         public fun createPassiveActivityState(stateChangeTime: Instant): UserActivityInfo =
-            UserActivityInfo(USER_ACTIVITY_PASSIVE, exerciseType = null, stateChangeTime)
-
-        /** Creates a [UserActivityInfo] for [USER_ACTIVITY_INACTIVE]. */
-        @JvmStatic
-        public fun createInactiveState(stateChangeTime: Instant): UserActivityInfo =
-            UserActivityInfo(USER_ACTIVITY_INACTIVE, exerciseType = null, stateChangeTime)
+            UserActivityInfo(USER_ACTIVITY_PASSIVE, exerciseInfo = null, stateChangeTime)
 
         /** Creates a [UserActivityInfo] for [USER_ACTIVITY_ASLEEP]. */
         @JvmStatic
         public fun createAsleepState(stateChangeTime: Instant): UserActivityInfo =
-            UserActivityInfo(USER_ACTIVITY_ASLEEP, exerciseType = null, stateChangeTime)
+            UserActivityInfo(USER_ACTIVITY_ASLEEP, exerciseInfo = null, stateChangeTime)
     }
 }

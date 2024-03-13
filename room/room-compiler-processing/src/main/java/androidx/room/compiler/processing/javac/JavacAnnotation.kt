@@ -18,9 +18,9 @@ package androidx.room.compiler.processing.javac
 
 import androidx.room.compiler.processing.InternalXAnnotation
 import androidx.room.compiler.processing.XAnnotationBox
+import androidx.room.compiler.processing.XAnnotationValue
 import androidx.room.compiler.processing.XNullability
 import androidx.room.compiler.processing.XType
-import androidx.room.compiler.processing.XAnnotationValue
 import com.google.auto.common.AnnotationMirrors
 import com.google.auto.common.MoreTypes
 import javax.lang.model.element.AnnotationMirror
@@ -28,7 +28,7 @@ import javax.lang.model.element.AnnotationMirror
 internal class JavacAnnotation(
     val env: JavacProcessingEnv,
     val mirror: AnnotationMirror
-) : InternalXAnnotation {
+) : InternalXAnnotation() {
 
     override val name: String
         get() = mirror.annotationType.asElement().simpleName.toString()
@@ -40,13 +40,33 @@ internal class JavacAnnotation(
         JavacDeclaredType(env, mirror.annotationType, XNullability.NONNULL)
     }
 
-    override val annotationValues: List<XAnnotationValue>
-        get() {
-            return AnnotationMirrors.getAnnotationValuesWithDefaults(mirror)
-                .map { (executableElement, annotationValue) ->
-                    JavacAnnotationValue(env, executableElement, annotationValue)
-                }
+    override val declaredAnnotationValues: List<XAnnotationValue> by lazy {
+        // getElementValues returns values of this annotation's element, only those elements with
+        // values explicitly present in the annotation are included, not those that are implicitly
+        // assuming their default values.
+        val explicitValues = mirror.getElementValues().keys.map { it.simpleName.toString() }
+        annotationValues.filter { explicitValues.contains(it.name) }
+    }
+
+    override val defaultValues: List<XAnnotationValue> by lazy {
+        annotationValues.mapNotNull {
+            val method = (it as JavacAnnotationValue).method
+            method.element.getDefaultValue()?.let { value ->
+                JavacAnnotationValue(env, method, value)
+            }
         }
+    }
+
+    override val annotationValues: List<XAnnotationValue> by lazy {
+        AnnotationMirrors.getAnnotationValuesWithDefaults(mirror)
+            .map { (executableElement, annotationValue) ->
+                JavacAnnotationValue(
+                    env,
+                    env.wrapExecutableElement(executableElement) as JavacMethodElement,
+                    annotationValue
+                )
+            }
+    }
 
     override fun <T : Annotation> asAnnotationBox(annotationClass: Class<T>): XAnnotationBox<T> {
         return mirror.box(env, annotationClass)

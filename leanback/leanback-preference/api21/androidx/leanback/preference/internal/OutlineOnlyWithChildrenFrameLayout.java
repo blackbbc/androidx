@@ -25,16 +25,13 @@ import android.view.View;
 import android.view.ViewOutlineProvider;
 import android.widget.FrameLayout;
 
-import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 
 /**
  * {@link FrameLayout} subclass that provides an outline only when it has children, so that it does
  * not cast a shadow when empty.
  *
- * @hide
  */
-@RequiresApi(21)
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 public class OutlineOnlyWithChildrenFrameLayout extends FrameLayout {
 

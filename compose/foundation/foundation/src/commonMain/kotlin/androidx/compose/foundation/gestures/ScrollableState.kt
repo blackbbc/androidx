@@ -18,6 +18,7 @@ package androidx.compose.foundation.gestures
 
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.MutatorMutex
+import androidx.compose.foundation.internal.JvmDefaultWithCompatibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,7 @@ import kotlinx.coroutines.coroutineScope
  * @see androidx.compose.foundation.gestures.animateScrollBy
  * @see androidx.compose.foundation.gestures.scrollable
  */
+@JvmDefaultWithCompatibility
 interface ScrollableState {
     /**
      * Call this function to take control of scrolling and gain the ability to send scroll events
@@ -76,6 +78,50 @@ interface ScrollableState {
      * not.
      */
     val isScrollInProgress: Boolean
+
+    /**
+     * Whether this [ScrollableState] can scroll forward (consume a positive delta). This is
+     * typically false if the scroll position is equal to its maximum value, and true otherwise.
+     *
+     * Note that `true` here does not imply that delta *will* be consumed - the ScrollableState may
+     * decide not to handle the incoming delta (such as if it is already being scrolled separately).
+     * Additionally, for backwards compatibility with previous versions of ScrollableState this
+     * value defaults to `true`.
+     *
+     * @sample androidx.compose.foundation.samples.CanScrollSample
+     */
+    val canScrollForward: Boolean
+        get() = true
+
+    /**
+     * Whether this [ScrollableState] can scroll backward (consume a negative delta). This is
+     * typically false if the scroll position is equal to its minimum value, and true otherwise.
+     *
+     * Note that `true` here does not imply that delta *will* be consumed - the ScrollableState may
+     * decide not to handle the incoming delta (such as if it is already being scrolled separately).
+     * Additionally, for backwards compatibility with previous versions of ScrollableState this
+     * value defaults to `true`.
+     *
+     * @sample androidx.compose.foundation.samples.CanScrollSample
+     */
+    val canScrollBackward: Boolean
+        get() = true
+
+    /**
+     * The value of this property is true under the following scenarios, otherwise it's false.
+     * - This [ScrollableState] is currently scrolling forward.
+     * - This [ScrollableState] was scrolling forward in its last scroll action.
+     */
+    val isLastScrollForward: Boolean
+        get() = false
+
+    /**
+     * The value of this property is true under the following scenarios, otherwise it's false.
+     * - This [ScrollableState] is currently scrolling backward.
+     * - This [ScrollableState] was scrolling backward in its last scroll action.
+     */
+    val isLastScrollBackward: Boolean
+        get() = false
 }
 
 /**
@@ -131,12 +177,20 @@ interface ScrollScope {
 private class DefaultScrollableState(val onDelta: (Float) -> Float) : ScrollableState {
 
     private val scrollScope: ScrollScope = object : ScrollScope {
-        override fun scrollBy(pixels: Float): Float = onDelta(pixels)
+        override fun scrollBy(pixels: Float): Float {
+            if (pixels.isNaN()) return 0f
+            val delta = onDelta(pixels)
+            isLastScrollForwardState.value = delta > 0
+            isLastScrollBackwardState.value = delta < 0
+            return delta
+        }
     }
 
     private val scrollMutex = MutatorMutex()
 
     private val isScrollingState = mutableStateOf(false)
+    private val isLastScrollForwardState = mutableStateOf(false)
+    private val isLastScrollBackwardState = mutableStateOf(false)
 
     override suspend fun scroll(
         scrollPriority: MutatePriority,
@@ -144,8 +198,11 @@ private class DefaultScrollableState(val onDelta: (Float) -> Float) : Scrollable
     ): Unit = coroutineScope {
         scrollMutex.mutateWith(scrollScope, scrollPriority) {
             isScrollingState.value = true
-            block()
-            isScrollingState.value = false
+            try {
+                block()
+            } finally {
+                isScrollingState.value = false
+            }
         }
     }
 
@@ -155,4 +212,10 @@ private class DefaultScrollableState(val onDelta: (Float) -> Float) : Scrollable
 
     override val isScrollInProgress: Boolean
         get() = isScrollingState.value
+
+    override val isLastScrollForward: Boolean
+        get() = isLastScrollForwardState.value
+
+    override val isLastScrollBackward: Boolean
+        get() = isLastScrollBackwardState.value
 }

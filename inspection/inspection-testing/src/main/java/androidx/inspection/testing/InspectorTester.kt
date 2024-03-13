@@ -18,10 +18,16 @@ package androidx.inspection.testing
 
 import androidx.inspection.ArtTooling
 import androidx.inspection.Connection
+import androidx.inspection.DefaultArtTooling
 import androidx.inspection.Inspector
 import androidx.inspection.InspectorEnvironment
 import androidx.inspection.InspectorExecutors
 import androidx.inspection.InspectorFactory
+import java.util.ServiceLoader
+import java.util.concurrent.CancellationException
+import java.util.concurrent.Executor
+import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -34,12 +40,6 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.lang.UnsupportedOperationException
-import java.util.ServiceLoader
-import java.util.concurrent.CancellationException
-import java.util.concurrent.Executor
-import kotlin.coroutines.coroutineContext
-import kotlin.coroutines.resume
 
 // TODO: should be non suspend function with CoroutineScope receiver, that would automatically
 // dispose inspector;
@@ -60,8 +60,12 @@ suspend fun InspectorTester(
     factoryOverride: InspectorFactory<*>? = null
 ): InspectorTester {
     val inspectorTesterJob = Job()
-    val resolved =
-        environment ?: DefaultTestInspectorEnvironment(TestInspectorExecutors(inspectorTesterJob))
+    val resolved = environment ?: DefaultTestInspectorEnvironment(
+        TestInspectorExecutors(inspectorTesterJob),
+        DefaultArtTooling(inspectorId).apply {
+            inspectorTesterJob.invokeOnCompletion { unregisterHooks() }
+        }
+    )
     val dispatcher = resolved.executors().primary().asCoroutineDispatcher()
     return withContext(dispatcher) {
         val loader = ServiceLoader.load(InspectorFactory::class.java)
@@ -139,14 +143,14 @@ internal class CommandCallbackImpl(
  */
 class DefaultTestInspectorEnvironment(
     private val testInspectorExecutors: InspectorExecutors,
-    private val artTooling: ArtTooling = DefaultArtTooling()
+    private val artTooling: ArtTooling = FakeArtTooling()
 ) : InspectorEnvironment {
     override fun artTooling() = artTooling
 
     override fun executors() = testInspectorExecutors
 }
 
-class DefaultArtTooling : ArtTooling {
+class FakeArtTooling : ArtTooling {
     override fun registerEntryHook(
         originClass: Class<*>,
         originMethod: String,

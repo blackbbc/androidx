@@ -22,13 +22,13 @@ import static java.util.Objects.requireNonNull;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.IntRange;
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
 import androidx.car.app.annotations.CarProtocol;
 import androidx.car.app.model.CarIcon;
 import androidx.car.app.model.constraints.CarIconConstraints;
+import androidx.car.app.annotations.KeepFields;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -37,11 +37,11 @@ import java.util.Objects;
 /** Information about a maneuver that the driver will be required to perform. */
 // TODO(b/154671667): Update when host(s) updates or a scheme for auto sync is established.
 @CarProtocol
+@KeepFields
 public final class Maneuver {
     /**
      * Possible maneuver types.
      *
-     * @hide
      */
     @IntDef({
             TYPE_UNKNOWN,
@@ -305,9 +305,9 @@ public final class Maneuver {
     /**
      * Enter a clockwise roundabout and take the Nth exit after angle A degrees.
      *
-     * <p>The exit number and angle must be passed when creating the maneuver.
+     * <p>The exit angle must be passed when creating the maneuver.
      *
-     * <p>For example, this is used to indicate "At the roundabout, take the Nth exit".
+     * <p>For example, this is used to indicate "At the roundabout, take the exit at 135 degrees".
      */
     @Type
     public static final int TYPE_ROUNDABOUT_ENTER_AND_EXIT_CW_WITH_ANGLE = 33;
@@ -325,10 +325,10 @@ public final class Maneuver {
     /**
      * Enter a counter-clockwise roundabout and take the Nth exit after angle A degrees.
      *
-     * <p>The exit number and angle must be passed when creating the maneuver.
+     * <p>The exit angle must be passed when creating the maneuver.
      *
-     * <p>For example, this is used to indicate "At the roundabout, take a sharp right at the Nth
-     * exit".
+     * <p>For example, this is used to indicate "At the roundabout, take a sharp right at 35
+     * degrees".
      */
     @Type
     public static final int TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE = 35;
@@ -433,14 +433,10 @@ public final class Maneuver {
     @Type
     public static final int TYPE_FERRY_TRAIN_RIGHT = 50;
 
-    @Keep
     @Type
     private final int mType;
-    @Keep
     private final int mRoundaboutExitNumber;
-    @Keep
     private final int mRoundaboutExitAngle;
-    @Keep
     @Nullable
     private final CarIcon mIcon;
 
@@ -477,8 +473,8 @@ public final class Maneuver {
      * #TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE}.
      *
      * <p>For example, if the drive is joining a counter-clockwise roundabout with equally spaced
-     * exits then the exit to the right would be at 45 degrees, the one straight ahead would be
-     * at 90 degrees, the one to the left would at 270 degrees and the one used by the driver to
+     * exits then the exit to the right would be at 90 degrees, the one straight ahead would be
+     * at 180 degrees, the one to the left would at 270 degrees and the one used by the driver to
      * join the roundabout would be at 360 degrees.
      *
      * <p>The angle can also be set for irregular roundabouts. For example a roundabout with three
@@ -567,6 +563,11 @@ public final class Maneuver {
     static boolean isValidTypeWithExitAngle(@Type int type) {
         return (type == TYPE_ROUNDABOUT_ENTER_AND_EXIT_CW_WITH_ANGLE
                 || type == TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE);
+    }
+
+    static boolean isExitNumberRequired(@Type int type) {
+        return (type == TYPE_ROUNDABOUT_ENTER_AND_EXIT_CW
+                || type == TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW);
     }
 
     /** A builder of {@link Maneuver}. */
@@ -690,7 +691,7 @@ public final class Maneuver {
          */
         @NonNull
         public Maneuver build() {
-            if (isValidTypeWithExitNumber(mType) && !mIsRoundaboutExitNumberSet) {
+            if (isExitNumberRequired(mType) && !mIsRoundaboutExitNumberSet) {
                 throw new IllegalArgumentException("Maneuver missing roundaboutExitNumber");
             }
             if (isValidTypeWithExitAngle(mType) && !mIsRoundaboutExitAngleSet) {

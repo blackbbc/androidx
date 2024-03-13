@@ -37,7 +37,6 @@ import java.lang.annotation.RetentionPolicy;
 public class RemoteCallback {
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     public static final String EXTRA_METHOD = "remotecallback.method";
@@ -53,7 +52,6 @@ public class RemoteCallback {
     public static final int TYPE_PROVIDER = 1;
 
     /**
-     * @hide
      */
     @Retention(RetentionPolicy.SOURCE)
     @RestrictTo(RestrictTo.Scope.LIBRARY)
@@ -68,7 +66,6 @@ public class RemoteCallback {
     private final String mReceiverClass;
 
     /**
-     * @hide
      */
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
     public RemoteCallback(@NonNull Context context,
@@ -120,10 +117,11 @@ public class RemoteCallback {
         mIntent.setData(generateUri(mIntent));
         mIntent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         PendingIntent intent = PendingIntent.getBroadcast(mContext, 0, mIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
+                PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return intent;
     }
 
+    @SuppressWarnings("deprecation")
     private static Uri generateUri(Intent intent) {
         if (intent.getData() != null) {
             return intent.getData();

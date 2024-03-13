@@ -16,465 +16,264 @@
 
 package androidx.camera.extensions.util;
 
-import static junit.framework.TestCase.assertNotNull;
-
-import static org.junit.Assert.assertTrue;
+import static androidx.camera.extensions.ExtensionMode.AUTO;
+import static androidx.camera.extensions.ExtensionMode.BOKEH;
+import static androidx.camera.extensions.ExtensionMode.FACE_RETOUCH;
+import static androidx.camera.extensions.ExtensionMode.HDR;
+import static androidx.camera.extensions.ExtensionMode.NIGHT;
+import static androidx.camera.extensions.impl.ExtensionsTestlibControl.ImplementationType.OEM_IMPL;
+import static androidx.camera.extensions.impl.ExtensionsTestlibControl.ImplementationType.TESTLIB_ADVANCED;
+import static androidx.camera.extensions.impl.ExtensionsTestlibControl.ImplementationType.TESTLIB_BASIC;
 
 import android.content.Context;
-import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
+import android.os.Build;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
+import androidx.camera.camera2.Camera2Config;
+import androidx.camera.camera2.pipe.integration.CameraPipeConfig;
 import androidx.camera.core.CameraSelector;
-import androidx.camera.core.CameraX;
-import androidx.camera.core.ImageCapture;
-import androidx.camera.core.Preview;
-import androidx.camera.core.impl.ImageCaptureConfig;
-import androidx.camera.core.impl.PreviewConfig;
+import androidx.camera.core.CameraXConfig;
+import androidx.camera.core.ExtendableBuilder;
+import androidx.camera.core.impl.Config;
 import androidx.camera.extensions.ExtensionMode;
 import androidx.camera.extensions.ExtensionsManager;
-import androidx.camera.extensions.ExtensionsManager.ExtensionsAvailability;
-import androidx.camera.extensions.impl.AutoImageCaptureExtenderImpl;
-import androidx.camera.extensions.impl.AutoPreviewExtenderImpl;
-import androidx.camera.extensions.impl.BeautyImageCaptureExtenderImpl;
-import androidx.camera.extensions.impl.BeautyPreviewExtenderImpl;
-import androidx.camera.extensions.impl.BokehImageCaptureExtenderImpl;
-import androidx.camera.extensions.impl.BokehPreviewExtenderImpl;
-import androidx.camera.extensions.impl.HdrImageCaptureExtenderImpl;
-import androidx.camera.extensions.impl.HdrPreviewExtenderImpl;
-import androidx.camera.extensions.impl.ImageCaptureExtenderImpl;
-import androidx.camera.extensions.impl.NightImageCaptureExtenderImpl;
-import androidx.camera.extensions.impl.NightPreviewExtenderImpl;
-import androidx.camera.extensions.impl.PreviewExtenderImpl;
-import androidx.camera.testing.CameraUtil;
+import androidx.camera.extensions.impl.ExtensionsTestlibControl;
+import androidx.camera.extensions.internal.AdvancedVendorExtender;
+import androidx.camera.extensions.internal.BasicVendorExtender;
+import androidx.camera.extensions.internal.ExtensionVersion;
+import androidx.camera.extensions.internal.VendorExtender;
+import androidx.camera.extensions.internal.Version;
+import androidx.camera.extensions.internal.compat.workaround.ExtensionDisabledValidator;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.testing.impl.CameraUtil;
 
-import com.google.common.util.concurrent.ListenableFuture;
-
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.concurrent.ExecutionException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
  * Extension test util functions.
  */
-@SuppressWarnings("deprecation")
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public class ExtensionsTestUtil {
+    public static final Config.Option<CameraCaptureSession.CaptureCallback>
+            SESSION_CAPTURE_CALLBACK_OPTION =
+            Config.Option.create("camera2.cameraCaptureSession.captureCallback",
+                    CameraCaptureSession.CaptureCallback.class);
+    public static final String CAMERA2_IMPLEMENTATION_OPTION = "camera2";
+    public static final String CAMERA_PIPE_IMPLEMENTATION_OPTION = "camera_pipe";
+
+    /**
+     * Returns the parameters which contains the combination of CameraXConfig
+     * name, CameraXConfig, implementationType, extensions mode and lens facing.
+     */
     @NonNull
-    public static Collection<Object[]> getAllEffectLensFacingCombinations() {
-        return Arrays.asList(new Object[][]{
-                {ExtensionsManager.EffectMode.BOKEH, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionsManager.EffectMode.BOKEH, CameraSelector.LENS_FACING_BACK},
-                {ExtensionsManager.EffectMode.HDR, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionsManager.EffectMode.HDR, CameraSelector.LENS_FACING_BACK},
-                {ExtensionsManager.EffectMode.BEAUTY, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionsManager.EffectMode.BEAUTY, CameraSelector.LENS_FACING_BACK},
-                {ExtensionsManager.EffectMode.NIGHT, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionsManager.EffectMode.NIGHT, CameraSelector.LENS_FACING_BACK},
-                {ExtensionsManager.EffectMode.AUTO, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionsManager.EffectMode.AUTO, CameraSelector.LENS_FACING_BACK}
+    public static Collection<Object[]> getAllImplExtensionsLensFacingCombinations(
+            @NonNull Context context,
+            boolean excludeUnavailableModes
+    ) {
+        ExtensionsTestlibControl.ImplementationType implType =
+                ExtensionsTestlibControl.getInstance().getImplementationType();
+
+        if (implType == TESTLIB_ADVANCED) {
+            ExtensionsTestlibControl.getInstance().setImplementationType(TESTLIB_BASIC);
+            implType = TESTLIB_BASIC;
+        }
+
+        List<Object[]> basicOrOemImplList = Arrays.asList(new Object[][]{
+                {implType, BOKEH, CameraSelector.LENS_FACING_FRONT},
+                {implType, BOKEH, CameraSelector.LENS_FACING_BACK},
+                {implType, HDR, CameraSelector.LENS_FACING_FRONT},
+                {implType, HDR, CameraSelector.LENS_FACING_BACK},
+                {implType, FACE_RETOUCH, CameraSelector.LENS_FACING_FRONT},
+                {implType, FACE_RETOUCH, CameraSelector.LENS_FACING_BACK},
+                {implType, NIGHT, CameraSelector.LENS_FACING_FRONT},
+                {implType, NIGHT, CameraSelector.LENS_FACING_BACK},
+                {implType, AUTO, CameraSelector.LENS_FACING_FRONT},
+                {implType, AUTO, CameraSelector.LENS_FACING_BACK}
         });
+
+        if (implType == OEM_IMPL) {
+            List<Object[]> allList = excludeUnavailableModes ? filterOutUnavailableMode(context,
+                    basicOrOemImplList) : basicOrOemImplList;
+            return getConfigPrependedCombinations(allList);
+        }
+
+        List<Object[]> advancedList = Arrays.asList(new Object[][]{
+                {TESTLIB_ADVANCED, BOKEH, CameraSelector.LENS_FACING_FRONT},
+                {TESTLIB_ADVANCED, BOKEH, CameraSelector.LENS_FACING_BACK},
+                {TESTLIB_ADVANCED, HDR, CameraSelector.LENS_FACING_FRONT},
+                {TESTLIB_ADVANCED, HDR, CameraSelector.LENS_FACING_BACK},
+                {TESTLIB_ADVANCED, FACE_RETOUCH, CameraSelector.LENS_FACING_FRONT},
+                {TESTLIB_ADVANCED, FACE_RETOUCH, CameraSelector.LENS_FACING_BACK},
+                {TESTLIB_ADVANCED, NIGHT, CameraSelector.LENS_FACING_FRONT},
+                {TESTLIB_ADVANCED, NIGHT, CameraSelector.LENS_FACING_BACK},
+                {TESTLIB_ADVANCED, AUTO, CameraSelector.LENS_FACING_FRONT},
+                {TESTLIB_ADVANCED, AUTO, CameraSelector.LENS_FACING_BACK}
+        });
+
+        List<Object[]> allList = new ArrayList<>();
+        allList.addAll(excludeUnavailableModes
+                ? filterOutUnavailableMode(context, basicOrOemImplList) : basicOrOemImplList);
+        ExtensionsTestlibControl.getInstance().setImplementationType(TESTLIB_ADVANCED);
+
+        allList.addAll(excludeUnavailableModes
+                ? filterOutUnavailableMode(context, advancedList) : advancedList);
+
+        // Reset to basic in case advanced is used accidentally.
+        ExtensionsTestlibControl.getInstance().setImplementationType(TESTLIB_BASIC);
+
+        return getConfigPrependedCombinations(allList);
     }
 
-    @NonNull
-    public static Collection<Object[]> getAllExtensionsLensFacingCombinations() {
-        return Arrays.asList(new Object[][]{
-                {ExtensionMode.BOKEH, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionMode.BOKEH, CameraSelector.LENS_FACING_BACK},
-                {ExtensionMode.HDR, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionMode.HDR, CameraSelector.LENS_FACING_BACK},
-                {ExtensionMode.BEAUTY, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionMode.BEAUTY, CameraSelector.LENS_FACING_BACK},
-                {ExtensionMode.NIGHT, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionMode.NIGHT, CameraSelector.LENS_FACING_BACK},
-                {ExtensionMode.AUTO, CameraSelector.LENS_FACING_FRONT},
-                {ExtensionMode.AUTO, CameraSelector.LENS_FACING_BACK}
-        });
+    private static List<Object[]> filterOutUnavailableMode(Context context,
+            List<Object[]> list) {
+        ExtensionsManager extensionsManager = null;
+        ProcessCameraProvider cameraProvider = null;
+        try {
+            cameraProvider = ProcessCameraProvider.getInstance(context).get(2, TimeUnit.SECONDS);
+            extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider)
+                            .get(2, TimeUnit.SECONDS);
+
+            List<Object[]> result = new ArrayList<>();
+            for (Object[] item : list) {
+                int mode = (int) item[1];
+                int lensFacing = (int) item[2];
+                CameraSelector cameraSelector = new CameraSelector.Builder()
+                        .requireLensFacing(lensFacing)
+                        .build();
+                if (extensionsManager.isExtensionAvailable(cameraSelector, mode)) {
+                    result.add(item);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            return list;
+        } finally {
+            try {
+                if (cameraProvider != null) {
+                    cameraProvider.shutdownAsync().get();
+                }
+                if (extensionsManager != null) {
+                    extensionsManager.shutdown().get();
+                }
+            } catch (Exception e) {
+            }
+        }
+    }
+
+    private static List<Object[]> getConfigPrependedCombinations(List<Object[]> combinations) {
+        CameraXConfig camera2Config = Camera2Config.defaultConfig();
+        CameraXConfig cameraPipeConfig = CameraPipeConfig.defaultConfig();
+        List<Object[]> combinationsWithConfig = new ArrayList<Object[]>();
+        for (Object[] combination: combinations) {
+            List<Object> combinationCamera2 = new ArrayList<Object>(
+                    Arrays.asList(CAMERA2_IMPLEMENTATION_OPTION, camera2Config));
+            combinationCamera2.addAll(Arrays.asList(combination));
+            combinationsWithConfig.add(combinationCamera2.toArray());
+
+            List<Object> combinationCameraPipe = new ArrayList<Object>(
+                    Arrays.asList(CAMERA_PIPE_IMPLEMENTATION_OPTION, cameraPipeConfig));
+            combinationCameraPipe.addAll(Arrays.asList(combination));
+            combinationsWithConfig.add(combinationCameraPipe.toArray());
+        }
+        return combinationsWithConfig;
     }
 
     /**
-     * Initializes the extensions for running the following tests.
-     *
-     * @return True if initializing successfully.
+     * Returns whether the target camera device can support the test for a specific extension mode.
      */
-    public static boolean initExtensions(@NonNull Context context)
-            throws InterruptedException, ExecutionException, TimeoutException {
-        ListenableFuture<ExtensionsAvailability> availability = ExtensionsManager.init(context);
-        ExtensionsAvailability extensionsAvailability = availability.get(1, TimeUnit.SECONDS);
+    public static boolean isTargetDeviceAvailableForExtensions(
+            @CameraSelector.LensFacing int lensFacing, @ExtensionMode.Mode int mode) {
+        return CameraUtil.hasCameraWithLensFacing(lensFacing) && isLimitedAboveDevice(lensFacing)
+                && !isSpecificSkippedDevice() && !isSpecificSkippedDeviceWithExtensionMode(mode);
+    }
 
-        // Checks that there is vendor library on device for test.
-        if (extensionsAvailability == ExtensionsAvailability.NONE) {
+    private static boolean isAdvancedExtenderSupported() {
+        if (ExtensionVersion.getRuntimeVersion().compareTo(Version.VERSION_1_2) < 0) {
             return false;
         }
-
-        // Checks that vendor library is loaded successfully.
-        assertTrue(extensionsAvailability == ExtensionsAvailability.LIBRARY_AVAILABLE);
-
-        return true;
+        return ExtensionVersion.isAdvancedExtenderSupported();
     }
 
-    @ExtensionMode.Mode
-    public static int effectModeToExtensionMode(@NonNull ExtensionsManager.EffectMode effectMode) {
-        switch (effectMode) {
-            case NORMAL:
-                return ExtensionMode.NONE;
-            case BOKEH:
-                return ExtensionMode.BOKEH;
-            case HDR:
-                return ExtensionMode.HDR;
-            case NIGHT:
-                return ExtensionMode.NIGHT;
-            case BEAUTY:
-                return ExtensionMode.BEAUTY;
-            case AUTO:
-                return ExtensionMode.AUTO;
+    public static VendorExtender createVendorExtender(@ExtensionMode.Mode int mode) {
+        if (isAdvancedExtenderSupported()) {
+            return new AdvancedVendorExtender(mode);
         }
-        throw new IllegalArgumentException("Effect mode not found: " + effectMode);
-    }
-
-    public static ExtensionsManager.EffectMode extensionModeToEffectMode(
-            @ExtensionMode.Mode int mode) {
-        switch (mode) {
-            case ExtensionMode.NONE:
-                return ExtensionsManager.EffectMode.NORMAL;
-            case ExtensionMode.BOKEH:
-                return ExtensionsManager.EffectMode.BOKEH;
-            case ExtensionMode.HDR:
-                return ExtensionsManager.EffectMode.HDR;
-            case ExtensionMode.NIGHT:
-                return ExtensionsManager.EffectMode.NIGHT;
-            case ExtensionMode.BEAUTY:
-                return ExtensionsManager.EffectMode.BEAUTY;
-            case ExtensionMode.AUTO:
-                return ExtensionsManager.EffectMode.AUTO;
-        }
-        throw new IllegalArgumentException("Extension mode not found: " + mode);
+        return new BasicVendorExtender(mode);
     }
 
     /**
-     * Creates an {@link ImageCapture.Builder} object for specific
-     * {@link ExtensionsManager.EffectMode} and {@link CameraSelector.LensFacing}.
+     * Returns whether the device is LIMITED hardware level above.
      *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return An {@link ImageCapture.Builder} object.
+     * <p>The test cases bind both ImageCapture and Preview. In the test lib implementation for
+     * HDR mode, both use cases will occupy YUV_420_888 format of stream. Therefore, the testing
+     * target devices need to be LIMITED hardware level at least to support two YUV_420_888
+     * streams at the same time.
+     *
+     * @return true if the testing target camera device is LIMITED hardware level at least.
+     * @throws IllegalArgumentException if unable to retrieve {@link CameraCharacteristics} for
+     * given lens facing.
      */
-    @NonNull
-    public static ImageCapture.Builder createImageCaptureConfigBuilderWithEffect(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) {
-        ImageCapture.Builder builder = new ImageCapture.Builder();
-        CameraSelector selector =
-                new CameraSelector.Builder().requireLensFacing(lensFacing).build();
-        androidx.camera.extensions.ImageCaptureExtender extender = null;
+    private static boolean isLimitedAboveDevice(@CameraSelector.LensFacing int lensFacing) {
+        CameraCharacteristics cameraCharacteristics = CameraUtil.getCameraCharacteristics(
+                lensFacing);
 
-        switch (effectMode) {
-            case HDR:
-                extender = androidx.camera.extensions.HdrImageCaptureExtender.create(builder);
-                break;
-            case BOKEH:
-                extender = androidx.camera.extensions.BokehImageCaptureExtender.create(builder);
-                break;
-            case BEAUTY:
-                extender = androidx.camera.extensions.BeautyImageCaptureExtender.create(builder);
-                break;
-            case NIGHT:
-                extender = androidx.camera.extensions.NightImageCaptureExtender.create(builder);
-                break;
-            case AUTO:
-                extender = androidx.camera.extensions.AutoImageCaptureExtender.create(builder);
-                break;
+        if (cameraCharacteristics != null) {
+            Integer keyValue = cameraCharacteristics.get(
+                    CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+
+            if (keyValue != null) {
+                return keyValue != CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY;
+            }
+        } else {
+            throw new IllegalArgumentException(
+                    "Unable to retrieve info for " + lensFacing + " camera.");
         }
 
-        // Applies effect configs if it is not normal mode.
-        if (effectMode != ExtensionsManager.EffectMode.NORMAL) {
-            assertNotNull(extender);
-            assertTrue(extender.isExtensionAvailable(selector));
-            extender.enableExtension(selector);
-        }
-
-        return builder;
+        return false;
     }
 
     /**
-     * Creates a {@link Preview.Builder} object for specific {@link ExtensionsManager.EffectMode}
-     * and {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return A {@link Preview.Builder} object.
+     * Returns that whether the device should be skipped for the test.
      */
-    @NonNull
-    public static Preview.Builder createPreviewBuilderWithEffect(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) {
-        Preview.Builder builder = new Preview.Builder();
-        CameraSelector selector =
-                new CameraSelector.Builder().requireLensFacing(lensFacing).build();
-        androidx.camera.extensions.PreviewExtender extender = null;
-
-        switch (effectMode) {
-            case HDR:
-                extender = androidx.camera.extensions.HdrPreviewExtender.create(builder);
-                break;
-            case BOKEH:
-                extender = androidx.camera.extensions.BokehPreviewExtender.create(builder);
-                break;
-            case BEAUTY:
-                extender = androidx.camera.extensions.BeautyPreviewExtender.create(builder);
-                break;
-            case NIGHT:
-                extender = androidx.camera.extensions.NightPreviewExtender.create(builder);
-                break;
-            case AUTO:
-                extender = androidx.camera.extensions.AutoPreviewExtender.create(builder);
-                break;
-        }
-
-        // Applies effect configs if it is not normal mode.
-        if (effectMode != ExtensionsManager.EffectMode.NORMAL) {
-            assertNotNull(extender);
-            assertTrue(extender.isExtensionAvailable(selector));
-            extender.enableExtension(selector);
-        }
-
-        return builder;
+    private static boolean isSpecificSkippedDevice() {
+        return (Build.BRAND.equalsIgnoreCase("SONY") && (Build.MODEL.equalsIgnoreCase("G8142")
+                || Build.MODEL.equalsIgnoreCase("G8342")))
+                || Build.MODEL.contains("Cuttlefish")
+                || Build.MODEL.equalsIgnoreCase("Pixel XL")
+                || Build.MODEL.equalsIgnoreCase("Pixel");
     }
 
     /**
-     * Creates an {@link ImageCaptureConfig} object for specific
-     * {@link ExtensionsManager.EffectMode} and {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return An {@link ImageCaptureConfig} object.
+     * Returns that whether the device with specific extension mode should be skipped for the test.
      */
-    @NonNull
-    public static ImageCaptureConfig createImageCaptureConfigWithEffect(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) {
-        ImageCapture.Builder imageCaptureConfigBuilder =
-                createImageCaptureConfigBuilderWithEffect(effectMode, lensFacing);
-        return imageCaptureConfigBuilder.getUseCaseConfig();
+    private static boolean isSpecificSkippedDeviceWithExtensionMode(@ExtensionMode.Mode int mode) {
+        return "tecno".equalsIgnoreCase(Build.BRAND) && "tecno-ke5".equalsIgnoreCase(Build.DEVICE)
+                && (mode == ExtensionMode.HDR || mode == ExtensionMode.NIGHT);
     }
 
     /**
-     * Creates a {@link PreviewConfig} object for specific {@link ExtensionsManager.EffectMode} and
-     * {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return A {@link PreviewConfig} object.
+     * Returns whether extensions is disabled by quirk.
      */
-    @NonNull
-    public static PreviewConfig createPreviewConfigWithEffect(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) {
-        Preview.Builder previewBuilder =
-                createPreviewBuilderWithEffect(effectMode, lensFacing);
-        return previewBuilder.getUseCaseConfig();
+    public static boolean extensionsDisabledByQuirk() {
+        return new ExtensionDisabledValidator().shouldDisableExtension();
     }
 
     /**
-     * Creates an {@link ImageCapture} object for specific {@link ExtensionsManager.EffectMode} and
-     * {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return An {@link ImageCapture} object.
+     * Sets the camera2 repeating request capture callback to the use case builder.
      */
-    @NonNull
-    public static ImageCapture createImageCaptureWithEffect(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) {
-        return createImageCaptureConfigBuilderWithEffect(effectMode, lensFacing).build();
-    }
-
-    /**
-     * Creates a {@link Preview} object for specific {@link ExtensionsManager.EffectMode} and
-     * {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return A {@link Preview} object.
-     */
-    @NonNull
-    public static Preview createPreviewWithEffect(@NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) {
-        return createPreviewBuilderWithEffect(effectMode, lensFacing).build();
-    }
-
-    /**
-     * Creates an {@link ImageCaptureExtenderImpl} object for specific
-     * {@link ExtensionsManager.EffectMode} and {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return An {@link ImageCaptureExtenderImpl} object.
-     */
-    @NonNull
-    public static ImageCaptureExtenderImpl createImageCaptureExtenderImpl(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) throws CameraAccessException {
-        ImageCaptureExtenderImpl impl = null;
-
-        switch (effectMode) {
-            case HDR:
-                impl = new HdrImageCaptureExtenderImpl();
-                break;
-            case BOKEH:
-                impl = new BokehImageCaptureExtenderImpl();
-                break;
-            case BEAUTY:
-                impl = new BeautyImageCaptureExtenderImpl();
-                break;
-            case NIGHT:
-                impl = new NightImageCaptureExtenderImpl();
-                break;
-            case AUTO:
-                impl = new AutoImageCaptureExtenderImpl();
-                break;
-        }
-        assertNotNull(impl);
-
-        CameraSelector cameraSelector =
-                new CameraSelector.Builder().requireLensFacing(lensFacing).build();
-
-        String cameraId = getCameraIdUnchecked(cameraSelector);
-        CameraCharacteristics cameraCharacteristics =
-                CameraUtil.getCameraManager().getCameraCharacteristics(cameraId);
-
-        impl.init(cameraId, cameraCharacteristics);
-
-        return impl;
-    }
-
-    /**
-     * Creates a {@link PreviewExtenderImpl} object for specific
-     * {@link ExtensionsManager.EffectMode} and {@link CameraSelector.LensFacing}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param lensFacing The lens facing for the created object.
-     * @return A {@link PreviewExtenderImpl} object.
-     */
-    @NonNull
-    public static PreviewExtenderImpl createPreviewExtenderImpl(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @CameraSelector.LensFacing int lensFacing) throws CameraAccessException {
-        PreviewExtenderImpl impl = null;
-
-        switch (effectMode) {
-            case HDR:
-                impl = new HdrPreviewExtenderImpl();
-                break;
-            case BOKEH:
-                impl = new BokehPreviewExtenderImpl();
-                break;
-            case BEAUTY:
-                impl = new BeautyPreviewExtenderImpl();
-                break;
-            case NIGHT:
-                impl = new NightPreviewExtenderImpl();
-                break;
-            case AUTO:
-                impl = new AutoPreviewExtenderImpl();
-                break;
-        }
-        assertNotNull(impl);
-
-        CameraSelector cameraSelector =
-                new CameraSelector.Builder().requireLensFacing(lensFacing).build();
-
-        String cameraId = getCameraIdUnchecked(cameraSelector);
-        CameraCharacteristics cameraCharacteristics =
-                CameraUtil.getCameraManager().getCameraCharacteristics(cameraId);
-
-        impl.init(cameraId, cameraCharacteristics);
-
-        return impl;
-    }
-
-    /**
-     * Creates an {@link androidx.camera.extensions.ImageCaptureExtender} object for specific
-     * {@link ExtensionsManager.EffectMode} and {@link ImageCapture.Builder}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param builder    The {@link ImageCapture.Builder} for the created object.
-     * @return An {@link androidx.camera.extensions.ImageCaptureExtender} object.
-     */
-    @NonNull
-    public static androidx.camera.extensions.ImageCaptureExtender createImageCaptureExtender(
-            @NonNull ExtensionsManager.EffectMode effectMode,
-            @NonNull ImageCapture.Builder builder) {
-        androidx.camera.extensions.ImageCaptureExtender extender = null;
-
-        switch (effectMode) {
-            case HDR:
-                extender = androidx.camera.extensions.HdrImageCaptureExtender.create(builder);
-                break;
-            case BOKEH:
-                extender = androidx.camera.extensions.BokehImageCaptureExtender.create(builder);
-                break;
-            case BEAUTY:
-                extender = androidx.camera.extensions.BeautyImageCaptureExtender.create(builder);
-                break;
-            case NIGHT:
-                extender = androidx.camera.extensions.NightImageCaptureExtender.create(builder);
-                break;
-            case AUTO:
-                extender = androidx.camera.extensions.AutoImageCaptureExtender.create(builder);
-                break;
-        }
-        assertNotNull(extender);
-
-        return extender;
-    }
-
-    /**
-     * Creates a {@link androidx.camera.extensions.PreviewExtender} object for specific
-     * {@link ExtensionsManager.EffectMode} and {@link Preview.Builder}.
-     *
-     * @param effectMode The effect mode for the created object.
-     * @param builder    The {@link Preview.Builder} for the created object.
-     * @return A {@link androidx.camera.extensions.PreviewExtender} object.
-     */
-    @NonNull
-    public static androidx.camera.extensions.PreviewExtender createPreviewExtender(
-            @NonNull ExtensionsManager.EffectMode effectMode, @NonNull Preview.Builder builder) {
-        androidx.camera.extensions.PreviewExtender extender = null;
-
-        switch (effectMode) {
-            case HDR:
-                extender = androidx.camera.extensions.HdrPreviewExtender.create(builder);
-                break;
-            case BOKEH:
-                extender = androidx.camera.extensions.BokehPreviewExtender.create(builder);
-                break;
-            case BEAUTY:
-                extender = androidx.camera.extensions.BeautyPreviewExtender.create(builder);
-                break;
-            case NIGHT:
-                extender = androidx.camera.extensions.NightPreviewExtender.create(builder);
-                break;
-            case AUTO:
-                extender = androidx.camera.extensions.AutoPreviewExtender.create(builder);
-                break;
-        }
-        assertNotNull(extender);
-
-        return extender;
-    }
-
-    @Nullable
-    private static String getCameraIdUnchecked(@NonNull CameraSelector cameraSelector) {
-        try {
-            return CameraX.getCameraWithCameraSelector(
-                    cameraSelector).getCameraInfoInternal().getCameraId();
-        } catch (IllegalArgumentException e) {
-            // Returns null if there's no camera id can be found.
-            return null;
-        }
+    public static <T> void setCamera2SessionCaptureCallback(
+            ExtendableBuilder<T> usecaseBuilder,
+            @NonNull CameraCaptureSession.CaptureCallback captureCallback) {
+        usecaseBuilder.getMutableConfig().insertOption(
+                SESSION_CAPTURE_CALLBACK_OPTION,
+                captureCallback
+        );
     }
 }

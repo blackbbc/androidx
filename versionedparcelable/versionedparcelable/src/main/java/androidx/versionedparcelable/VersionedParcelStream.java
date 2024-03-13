@@ -38,7 +38,6 @@ import java.nio.charset.Charset;
 import java.util.Set;
 
 /**
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
 class VersionedParcelStream extends VersionedParcel {
@@ -422,6 +421,7 @@ class VersionedParcelStream extends VersionedParcel {
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public void writeBundle(Bundle val) {
         try {
             if (val != null) {

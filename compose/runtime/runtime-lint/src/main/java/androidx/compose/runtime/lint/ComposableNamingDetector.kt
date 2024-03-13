@@ -30,9 +30,9 @@ import com.android.tools.lint.detector.api.LintFix
 import com.android.tools.lint.detector.api.Scope
 import com.android.tools.lint.detector.api.Severity
 import com.android.tools.lint.detector.api.SourceCodeScanner
-import org.jetbrains.uast.UMethod
 import java.util.EnumSet
 import java.util.Locale
+import org.jetbrains.uast.UMethod
 
 /**
  * [Detector] that checks the naming of @Composable functions for consistency with guidelines.
@@ -47,6 +47,13 @@ class ComposableNamingDetector : Detector(), SourceCodeScanner {
         override fun visitMethod(node: UMethod) {
             // Ignore non-composable functions
             if (!node.isComposable) return
+
+            // Ignore operator functions as their name is case sensitive and cannot be changed
+            if (context.evaluator.isOperator(node)) return
+
+            // Ignore overrides as the check will flag the base function. This also ignores a
+            // special case where a generic return type and a Unit type parameter is used.
+            if (node.findSuperMethods().isNotEmpty()) return
 
             val name = node.name
 

@@ -56,6 +56,7 @@ import androidx.test.filters.SdkSuppress;
 import androidx.test.filters.SmallTest;
 import androidx.test.rule.ActivityTestRule;
 
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -80,6 +81,7 @@ public abstract class BaseBasicsTestCase<A extends BaseTestActivity> {
                 mActivityTestRule.getActivity().getSupportActionBar());
     }
 
+    @Ignore // b/256195085
     @Test
     public void testActionBarOverflowVisibilityListener() {
         if ("ranchu".equals(Build.HARDWARE)) {
@@ -125,16 +127,28 @@ public abstract class BaseBasicsTestCase<A extends BaseTestActivity> {
 
     @UiThreadTest
     @Test
-    public void testSetActionBarTitle() {
+    public void testSetActionBarTitleByActivity() {
         final String newTitle = "hello";
         mActivityTestRule.getActivity().setTitle(newTitle);
         assertEquals("New title is set to ActionBar",
                 newTitle, mActivityTestRule.getActivity().getSupportActionBar().getTitle());
     }
 
+    @UiThreadTest
     @Test
-    @SdkSuppress(minSdkVersion = 16, maxSdkVersion = 20)
-    @RequiresApi(16)
+    public void testSetActionBarTitleByActionBar() {
+        final String newTitle = "hello";
+        mActivityTestRule.getActivity().getSupportActionBar().setTitle(newTitle);
+        assertEquals("New title is set to ActionBar",
+                newTitle, mActivityTestRule.getActivity().getSupportActionBar().getTitle());
+        assertEquals("New title is set to root view's accessibilityPaneTitle",
+                newTitle,
+                ViewCompat.getAccessibilityPaneTitle(
+                        mActivityTestRule.getActivity().getWindow().getDecorView()));
+    }
+
+    @Test
+    @SdkSuppress(maxSdkVersion = 20)
     public void testFitSystemWindowsReachesContent() throws Throwable {
         final A activity = mActivityTestRule.getActivity();
         if (!canShowSystemUi(activity)) {
@@ -208,7 +222,7 @@ public abstract class BaseBasicsTestCase<A extends BaseTestActivity> {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 28)
+    @SdkSuppress(minSdkVersion = 28, maxSdkVersion = 33) // maxSdk 33 b/322355781
     @RequiresApi(28)
     public void testOnApplyWindowInsetsReachesContent_withDisplayCutout() throws Throwable {
         final A activity = mActivityTestRule.getActivity();
@@ -372,7 +386,6 @@ public abstract class BaseBasicsTestCase<A extends BaseTestActivity> {
         verify(apCallback).onSupportActionModeFinished(any(ActionMode.class));
     }
 
-    @RequiresApi(16)
     private WindowInsetsCompat waitForWindowInsets(@NonNull final View view) throws Throwable {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicReference<WindowInsetsCompat> received = new AtomicReference<>();

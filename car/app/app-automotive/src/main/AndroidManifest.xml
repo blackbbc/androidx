@@ -15,7 +15,7 @@
   limitations under the License.
   -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="androidx.car.app.automotive">
+    xmlns:tools="http://schemas.android.com/tools">
     <queries>
         <intent>
             <action android:name="android.car.template.host.RendererService" />
@@ -24,4 +24,23 @@
     <uses-feature
         android:name="android.hardware.type.automotive"
         android:required="false" />
+
+    <application>
+        <service
+            android:name="androidx.car.app.CarAppMetadataHolderService"
+            android:exported="false"
+            android:enabled="false"
+            android:process=""
+            tools:ignore="Instantiatable,MissingServiceExportedEqualsTrue"
+            tools:node="merge">
+            <meta-data
+                android:name=
+                    "androidx.car.app.CarAppMetadataHolderService.CAR_HARDWARE_MANAGER"
+                android:value="androidx.car.app.hardware.AutomotiveCarHardwareManager" />
+            <meta-data
+                android:name=
+                    "androidx.car.app.CarAppMetadataHolderService.RESULT_MANAGER"
+                android:value="androidx.car.app.activity.ResultManagerAutomotive" />
+        </service>
+    </application>
 </manifest>

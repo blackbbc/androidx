@@ -19,8 +19,6 @@ package androidx.compose.ui.test
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getAllSemanticsNodes
-import androidx.compose.ui.text.input.EditCommand
-import androidx.compose.ui.text.input.ImeAction
 
 /**
  * Provides necessary services to facilitate testing.
@@ -33,16 +31,6 @@ interface TestOwner {
      * Clock that drives frames and recompositions in compose tests.
      */
     val mainClock: MainTestClock
-
-    /**
-     * Sends the given list of text commands to the given semantics node.
-     */
-    fun sendTextInputCommand(node: SemanticsNode, command: List<EditCommand>)
-
-    /**
-     * Sends the given IME action to the given semantics node.
-     */
-    fun sendImeAction(node: SemanticsNode, actionSpecified: ImeAction)
 
     /**
      * Runs the given [action] on the ui thread.
@@ -76,9 +64,11 @@ class TestContext internal constructor(internal val testOwner: TestOwner) {
 
     /**
      * Stores the [InputDispatcherState] of each [RootForTest]. The state will be restored in an
-     * [InputDispatcher] when it is created for an owner that has a state stored.
+     * [InputDispatcher] when it is created for an owner that has a state stored. To avoid leaking
+     * the [RootForTest], the [identityHashCode] of the root is used as the key instead of the
+     * actual object.
      */
-    internal val states = mutableMapOf<RootForTest, InputDispatcherState>()
+    internal val states = mutableMapOf<Int, InputDispatcherState>()
 
     /**
      * Collects all [SemanticsNode]s from all compose hierarchies.
@@ -90,16 +80,27 @@ class TestContext internal constructor(internal val testOwner: TestOwner) {
      */
     internal fun getAllSemanticsNodes(
         atLeastOneRootRequired: Boolean,
-        useUnmergedTree: Boolean
+        useUnmergedTree: Boolean,
+        skipDeactivatedNodes: Boolean = true
     ): Iterable<SemanticsNode> {
         val roots = testOwner.getRoots(atLeastOneRootRequired).also {
             check(!atLeastOneRootRequired || it.isNotEmpty()) {
-                "No compose views found in the app. Is your Activity resumed?"
+                "No compose hierarchies found in the app. Possible reasons include: " +
+                    "(1) the Activity that calls setContent did not launch; " +
+                    "(2) setContent was not called; " +
+                    "(3) setContent was called before the ComposeTestRule ran. " +
+                    "If setContent is called by the Activity, make sure the Activity is " +
+                    "launched after the ComposeTestRule runs"
             }
         }
 
-        return roots.flatMap {
-            it.semanticsOwner.getAllSemanticsNodes(mergingEnabled = !useUnmergedTree)
+        return testOwner.runOnUiThread {
+            roots.flatMap {
+                it.semanticsOwner.getAllSemanticsNodes(
+                    mergingEnabled = !useUnmergedTree,
+                    skipDeactivatedNodes = skipDeactivatedNodes
+                )
+            }
         }
     }
 }

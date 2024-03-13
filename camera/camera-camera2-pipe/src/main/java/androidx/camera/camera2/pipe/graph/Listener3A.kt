@@ -16,6 +16,7 @@
 
 package androidx.camera.camera2.pipe.graph
 
+import androidx.annotation.RequiresApi
 import androidx.camera.camera2.pipe.FrameInfo
 import androidx.camera.camera2.pipe.FrameMetadata
 import androidx.camera.camera2.pipe.FrameNumber
@@ -29,9 +30,10 @@ import javax.inject.Inject
 /**
  * A [Request.Listener] to receive partial and final metadata for each request sent to the camera
  * device. It maintains a list of [Result3AStateListener] to which it broadcasts the updates and
- * removes them as they are completed. This listener is useful for implementing 3A methods to
- * look for desired 3A state changes.
+ * removes them as they are completed. This listener is useful for implementing 3A methods to look
+ * for desired 3A state changes.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 @CameraGraphScope
 internal class Listener3A @Inject constructor() : Request.Listener {
     private val listeners: CopyOnWriteArrayList<Result3AStateListener> = CopyOnWriteArrayList()
@@ -64,6 +66,12 @@ internal class Listener3A @Inject constructor() : Request.Listener {
 
     fun removeListener(listener: Result3AStateListener) {
         listeners.remove(listener)
+    }
+
+    internal fun onStopRepeating() {
+        for (listener in listeners) {
+            listener.onRequestSequenceStopped()
+        }
     }
 
     private fun updateListeners(requestNumber: RequestNumber, metadata: FrameMetadata) {

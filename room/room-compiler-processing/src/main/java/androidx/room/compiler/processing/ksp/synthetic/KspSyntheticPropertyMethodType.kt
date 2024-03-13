@@ -16,8 +16,13 @@
 
 package androidx.room.compiler.processing.ksp.synthetic
 
+import androidx.room.compiler.processing.XExecutableType
 import androidx.room.compiler.processing.XMethodType
 import androidx.room.compiler.processing.XType
+import androidx.room.compiler.processing.XTypeVariableType
+import androidx.room.compiler.processing.ksp.KSTypeVarianceResolverScope
+import androidx.room.compiler.processing.ksp.KspProcessingEnv
+import androidx.room.compiler.processing.ksp.KspType
 import com.google.devtools.ksp.symbol.KSPropertyGetter
 import com.google.devtools.ksp.symbol.KSPropertySetter
 import com.squareup.javapoet.TypeVariableName
@@ -26,6 +31,7 @@ import com.squareup.javapoet.TypeVariableName
  * @see KspSyntheticPropertyMethodElement
  */
 internal sealed class KspSyntheticPropertyMethodType(
+    val env: KspProcessingEnv,
     val origin: KspSyntheticPropertyMethodElement,
     val containing: XType?
 ) : XMethodType {
@@ -42,22 +48,43 @@ internal sealed class KspSyntheticPropertyMethodType(
         }
     }
 
+    override val typeVariables: List<XTypeVariableType>
+        get() = emptyList()
+
+    @Deprecated(
+        "Use typeVariables property and convert to JavaPoet names.",
+        replaceWith = ReplaceWith(
+            "typeVariables.map { it.asTypeName().toJavaPoet() }",
+            "androidx.room.compiler.codegen.toJavaPoet"
+        )
+    )
     override val typeVariableNames: List<TypeVariableName>
         get() = emptyList()
 
+    override val thrownTypes: List<XType>
+        // The thrown types are the same as on the origin since those can't change
+        get() = origin.thrownTypes
+
+    override fun isSameType(other: XExecutableType): Boolean {
+        return env.isSameType(this, other)
+    }
+
     companion object {
         fun create(
+            env: KspProcessingEnv,
             element: KspSyntheticPropertyMethodElement,
-            container: XType?
+            container: KspType?
         ): XMethodType {
             return when (element.accessor) {
                 is KSPropertyGetter ->
                     Getter(
+                        env = env,
                         origin = element,
                         containingType = container
                     )
                 is KSPropertySetter ->
                     Setter(
+                        env = env,
                         origin = element,
                         containingType = container
                     )
@@ -67,9 +94,11 @@ internal sealed class KspSyntheticPropertyMethodType(
     }
 
     private class Getter(
+        env: KspProcessingEnv,
         origin: KspSyntheticPropertyMethodElement,
-        containingType: XType?
+        containingType: KspType?
     ) : KspSyntheticPropertyMethodType(
+        env = env,
         origin = origin,
         containing = containingType
     ) {
@@ -78,14 +107,21 @@ internal sealed class KspSyntheticPropertyMethodType(
                 origin.field.type
             } else {
                 origin.field.asMemberOf(containingType)
-            }
+            }.copyWithScope(
+                KSTypeVarianceResolverScope.PropertyGetterMethodReturnType(
+                    getterMethod = origin as KspSyntheticPropertyMethodElement.Getter,
+                    asMemberOf = containingType
+                )
+            )
         }
     }
 
     private class Setter(
+        env: KspProcessingEnv,
         origin: KspSyntheticPropertyMethodElement,
         containingType: XType?
     ) : KspSyntheticPropertyMethodType(
+        env = env,
         origin = origin,
         containing = containingType
     ) {

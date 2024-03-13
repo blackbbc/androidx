@@ -18,6 +18,8 @@ package androidx.camera.core.impl;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -27,17 +29,21 @@ import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
 import android.view.Surface;
 
-import androidx.camera.testing.DeferrableSurfacesUtil;
+import androidx.camera.core.UseCase;
+import androidx.camera.testing.impl.DeferrableSurfacesUtil;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.MediumTest;
+import androidx.test.filters.SdkSuppress;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @MediumTest
 @RunWith(AndroidJUnit4.class)
+@SdkSuppress(minSdkVersion = 21)
 public class UseCaseAttachStateTest {
     private final CameraDevice mMockCameraDevice = mock(CameraDevice.class);
     private final CameraCaptureSession mMockCameraCaptureSession =
@@ -50,8 +56,8 @@ public class UseCaseAttachStateTest {
         UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
         TestUseCaseDataProvider fakeUseCase = new TestUseCaseDataProvider();
 
-        useCaseAttachState.setUseCaseAttached(fakeUseCase.getName(),
-                fakeUseCase.getSessionConfig());
+        useCaseAttachState.setUseCaseAttached(fakeUseCase.getName(), fakeUseCase.getSessionConfig(),
+                fakeUseCase.getUseCaseConfig(), null, null);
 
         SessionConfig.ValidatingBuilder builder = useCaseAttachState.getAttachedBuilder();
         SessionConfig sessionConfig = builder.build();
@@ -70,9 +76,10 @@ public class UseCaseAttachStateTest {
         verify(fakeUseCase.mSessionStateCallback, times(1)).onConfigured(mMockCameraCaptureSession);
 
         for (CameraCaptureCallback callback : sessionConfig.getRepeatingCameraCaptureCallbacks()) {
-            callback.onCaptureCompleted(null);
+            callback.onCaptureCompleted(CaptureConfig.DEFAULT_ID, null);
         }
-        verify(fakeUseCase.mCameraCaptureCallback, times(1)).onCaptureCompleted(null);
+        verify(fakeUseCase.mCameraCaptureCallback, times(1))
+                .onCaptureCompleted(anyInt(), eq(null));
     }
 
     @Test
@@ -82,9 +89,9 @@ public class UseCaseAttachStateTest {
         TestUseCaseDataProvider fakeUseCase1 = new TestUseCaseDataProvider();
 
         useCaseAttachState.setUseCaseAttached(fakeUseCase0.getName(),
-                fakeUseCase0.getSessionConfig());
+                fakeUseCase0.getSessionConfig(), fakeUseCase0.getUseCaseConfig(), null, null);
         useCaseAttachState.setUseCaseAttached(fakeUseCase1.getName(),
-                fakeUseCase1.getSessionConfig());
+                fakeUseCase1.getSessionConfig(), fakeUseCase1.getUseCaseConfig(), null, null);
 
         SessionConfig.ValidatingBuilder builder = useCaseAttachState.getAttachedBuilder();
         SessionConfig sessionConfig = builder.build();
@@ -107,10 +114,12 @@ public class UseCaseAttachStateTest {
                 mMockCameraCaptureSession);
 
         for (CameraCaptureCallback callback : sessionConfig.getRepeatingCameraCaptureCallbacks()) {
-            callback.onCaptureCompleted(null);
+            callback.onCaptureCompleted(CaptureConfig.DEFAULT_ID, null);
         }
-        verify(fakeUseCase0.mCameraCaptureCallback, times(1)).onCaptureCompleted(null);
-        verify(fakeUseCase1.mCameraCaptureCallback, times(1)).onCaptureCompleted(null);
+        verify(fakeUseCase0.mCameraCaptureCallback, times(1))
+                .onCaptureCompleted(anyInt(), eq(null));
+        verify(fakeUseCase1.mCameraCaptureCallback, times(1))
+                .onCaptureCompleted(anyInt(), eq(null));
     }
 
     @Test
@@ -118,7 +127,11 @@ public class UseCaseAttachStateTest {
         UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
         TestUseCaseDataProvider fakeUseCase = new TestUseCaseDataProvider();
 
-        useCaseAttachState.setUseCaseActive(fakeUseCase.getName(), fakeUseCase.getSessionConfig());
+        useCaseAttachState.setUseCaseActive(
+                fakeUseCase.getName(),
+                fakeUseCase.getSessionConfig(),
+                fakeUseCase.getUseCaseConfig(),
+                null, null);
 
         SessionConfig.ValidatingBuilder builder = useCaseAttachState.getActiveAndAttachedBuilder();
         SessionConfig sessionConfig = builder.build();
@@ -136,9 +149,10 @@ public class UseCaseAttachStateTest {
         verify(fakeUseCase.mSessionStateCallback, never()).onConfigured(mMockCameraCaptureSession);
 
         for (CameraCaptureCallback callback : sessionConfig.getRepeatingCameraCaptureCallbacks()) {
-            callback.onCaptureCompleted(null);
+            callback.onCaptureCompleted(CaptureConfig.DEFAULT_ID, null);
         }
-        verify(fakeUseCase.mCameraCaptureCallback, never()).onCaptureCompleted(null);
+        verify(fakeUseCase.mCameraCaptureCallback, never()).onCaptureCompleted(anyInt(),
+                eq(null));
     }
 
     @Test
@@ -146,9 +160,16 @@ public class UseCaseAttachStateTest {
         UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
         TestUseCaseDataProvider fakeUseCase = new TestUseCaseDataProvider();
 
-        useCaseAttachState.setUseCaseAttached(fakeUseCase.getName(),
-                fakeUseCase.getSessionConfig());
-        useCaseAttachState.setUseCaseActive(fakeUseCase.getName(), fakeUseCase.getSessionConfig());
+        useCaseAttachState.setUseCaseAttached(
+                fakeUseCase.getName(),
+                fakeUseCase.getSessionConfig(),
+                fakeUseCase.getUseCaseConfig(),
+                null, null);
+        useCaseAttachState.setUseCaseActive(
+                fakeUseCase.getName(),
+                fakeUseCase.getSessionConfig(),
+                fakeUseCase.getUseCaseConfig(),
+                null, null);
 
         SessionConfig.ValidatingBuilder builder = useCaseAttachState.getActiveAndAttachedBuilder();
         SessionConfig sessionConfig = builder.build();
@@ -167,9 +188,10 @@ public class UseCaseAttachStateTest {
         verify(fakeUseCase.mSessionStateCallback, times(1)).onConfigured(mMockCameraCaptureSession);
 
         for (CameraCaptureCallback callback : sessionConfig.getRepeatingCameraCaptureCallbacks()) {
-            callback.onCaptureCompleted(null);
+            callback.onCaptureCompleted(CaptureConfig.DEFAULT_ID, null);
         }
-        verify(fakeUseCase.mCameraCaptureCallback, times(1)).onCaptureCompleted(null);
+        verify(fakeUseCase.mCameraCaptureCallback, times(1))
+                .onCaptureCompleted(anyInt(), eq(null));
     }
 
     @Test
@@ -177,8 +199,11 @@ public class UseCaseAttachStateTest {
         UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
         TestUseCaseDataProvider testUseCaseDataProvider = new TestUseCaseDataProvider();
 
-        useCaseAttachState.setUseCaseAttached(testUseCaseDataProvider.getName(),
-                testUseCaseDataProvider.getSessionConfig());
+        useCaseAttachState.setUseCaseAttached(
+                testUseCaseDataProvider.getName(),
+                testUseCaseDataProvider.getSessionConfig(),
+                testUseCaseDataProvider.getUseCaseConfig(),
+                null, null);
         useCaseAttachState.setUseCaseDetached(testUseCaseDataProvider.getName());
 
         SessionConfig.ValidatingBuilder builder = useCaseAttachState.getAttachedBuilder();
@@ -198,9 +223,10 @@ public class UseCaseAttachStateTest {
                 mMockCameraCaptureSession);
 
         for (CameraCaptureCallback callback : sessionConfig.getRepeatingCameraCaptureCallbacks()) {
-            callback.onCaptureCompleted(null);
+            callback.onCaptureCompleted(CaptureConfig.DEFAULT_ID, null);
         }
-        verify(testUseCaseDataProvider.mCameraCaptureCallback, never()).onCaptureCompleted(null);
+        verify(testUseCaseDataProvider.mCameraCaptureCallback, never()).onCaptureCompleted(anyInt(),
+                eq(null));
     }
 
     @Test
@@ -208,10 +234,16 @@ public class UseCaseAttachStateTest {
         UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
         TestUseCaseDataProvider testUseCaseDataProvider = new TestUseCaseDataProvider();
 
-        useCaseAttachState.setUseCaseAttached(testUseCaseDataProvider.getName(),
-                testUseCaseDataProvider.getSessionConfig());
-        useCaseAttachState.setUseCaseActive(testUseCaseDataProvider.getName(),
-                testUseCaseDataProvider.getSessionConfig());
+        useCaseAttachState.setUseCaseAttached(
+                testUseCaseDataProvider.getName(),
+                testUseCaseDataProvider.getSessionConfig(),
+                testUseCaseDataProvider.getUseCaseConfig(),
+                null, null);
+        useCaseAttachState.setUseCaseActive(
+                testUseCaseDataProvider.getName(),
+                testUseCaseDataProvider.getSessionConfig(),
+                testUseCaseDataProvider.getUseCaseConfig(),
+                null, null);
         useCaseAttachState.setUseCaseInactive(testUseCaseDataProvider.getName());
 
         SessionConfig.ValidatingBuilder builder = useCaseAttachState.getActiveAndAttachedBuilder();
@@ -231,9 +263,31 @@ public class UseCaseAttachStateTest {
                 mMockCameraCaptureSession);
 
         for (CameraCaptureCallback callback : sessionConfig.getRepeatingCameraCaptureCallbacks()) {
-            callback.onCaptureCompleted(null);
+            callback.onCaptureCompleted(CaptureConfig.DEFAULT_ID, null);
         }
-        verify(testUseCaseDataProvider.mCameraCaptureCallback, never()).onCaptureCompleted(null);
+        verify(testUseCaseDataProvider.mCameraCaptureCallback, never()).onCaptureCompleted(anyInt(),
+                eq(null));
+    }
+
+    @Test
+    public void retainUseCaseAttachedOrder() {
+        UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
+
+        List<SessionConfig> sessionConfigs = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            TestUseCaseDataProvider fakeUseCase = new TestUseCaseDataProvider();
+            useCaseAttachState.setUseCaseAttached(
+                    fakeUseCase.getName(),
+                    fakeUseCase.getSessionConfig(),
+                    fakeUseCase.getUseCaseConfig(),
+                    null, null);
+            sessionConfigs.add(fakeUseCase.getSessionConfig());
+        }
+
+        List<SessionConfig> attachedSessionConfigs =
+                new ArrayList<>(useCaseAttachState.getAttachedSessionConfigs());
+
+        assertThat(attachedSessionConfigs).isEqualTo(sessionConfigs);
     }
 
     @Test
@@ -241,10 +295,16 @@ public class UseCaseAttachStateTest {
         UseCaseAttachState useCaseAttachState = new UseCaseAttachState(mCameraId);
         TestUseCaseDataProvider testUseCaseDataProvider = new TestUseCaseDataProvider();
 
-        useCaseAttachState.setUseCaseAttached(testUseCaseDataProvider.getName(),
-                testUseCaseDataProvider.getSessionConfig());
-        useCaseAttachState.setUseCaseActive(testUseCaseDataProvider.getName(),
-                testUseCaseDataProvider.getSessionConfig());
+        useCaseAttachState.setUseCaseAttached(
+                testUseCaseDataProvider.getName(),
+                testUseCaseDataProvider.getSessionConfig(),
+                testUseCaseDataProvider.getUseCaseConfig(),
+                null, null);
+        useCaseAttachState.setUseCaseActive(
+                testUseCaseDataProvider.getName(),
+                testUseCaseDataProvider.getSessionConfig(),
+                testUseCaseDataProvider.getUseCaseConfig(),
+                null, null);
 
         // The original template should be PREVIEW.
         SessionConfig firstSessionConfig = useCaseAttachState.getActiveAndAttachedBuilder().build();
@@ -253,8 +313,11 @@ public class UseCaseAttachStateTest {
         // Change the template to STILL_CAPTURE.
         testUseCaseDataProvider.setTemplateType(CameraDevice.TEMPLATE_STILL_CAPTURE);
 
-        useCaseAttachState.updateUseCase(testUseCaseDataProvider.getName(),
-                testUseCaseDataProvider.getSessionConfig());
+        useCaseAttachState.updateUseCase(
+                testUseCaseDataProvider.getName(),
+                testUseCaseDataProvider.getSessionConfig(),
+                testUseCaseDataProvider.getUseCaseConfig(),
+                null, null);
 
         // The new template should be STILL_CAPTURE.
         SessionConfig secondSessionConfig =
@@ -275,14 +338,20 @@ public class UseCaseAttachStateTest {
         private int mTemplateType = CameraDevice.TEMPLATE_PREVIEW;
 
         private SessionConfig mSessionConfig;
+        private UseCaseConfig<UseCase> mUseCaseConfig;
 
         TestUseCaseDataProvider() {
             buildSessionConfig();
+            buildUseCaseConfig();
         }
 
         void setTemplateType(int templateType) {
             mTemplateType = templateType;
             buildSessionConfig();
+        }
+
+        UseCaseConfig<?> getUseCaseConfig() {
+            return mUseCaseConfig;
         }
 
         SessionConfig getSessionConfig() {
@@ -306,6 +375,13 @@ public class UseCaseAttachStateTest {
             builder.addRepeatingCameraCaptureCallback(mCameraCaptureCallback);
 
             mSessionConfig = builder.build();
+        }
+
+        private void buildUseCaseConfig() {
+            mUseCaseConfig = () -> {
+                MutableOptionsBundle mutableOptionsBundle = MutableOptionsBundle.create();
+                return mutableOptionsBundle;
+            };
         }
     }
 }

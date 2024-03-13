@@ -16,7 +16,11 @@
 
 package androidx.compose.ui.input.pointer
 
+import androidx.collection.LongSparseArray
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.node.HitTestResult
 import androidx.compose.ui.node.InternalCoreApi
 import androidx.compose.ui.node.LayoutNode
 import androidx.compose.ui.util.fastForEach
@@ -24,17 +28,28 @@ import androidx.compose.ui.util.fastForEach
 internal interface PositionCalculator {
     fun screenToLocal(positionOnScreen: Offset): Offset
     fun localToScreen(localPosition: Offset): Offset
+
+    /**
+     * Takes a matrix which transforms some coordinate system to local coordinates, and updates the
+     * matrix to transform to screen coordinates instead.
+     */
+    fun localToScreen(localTransform: Matrix)
 }
 
 /**
  * The core element that receives [PointerInputEvent]s and process them in Compose UI.
  */
-@OptIn(InternalCoreApi::class)
 internal class PointerInputEventProcessor(val root: LayoutNode) {
 
     private val hitPathTracker = HitPathTracker(root.coordinates)
     private val pointerInputChangeEventProducer = PointerInputChangeEventProducer()
-    private val hitResult: MutableList<PointerInputFilter> = mutableListOf()
+    private val hitResult = HitTestResult()
+
+    /**
+     * [process] doesn't currently support reentrancy. This prevents reentrant calls
+     * from causing a crash with an early exit.
+     */
+    private var isProcessing = false
 
     /**
      * Receives [PointerInputEvent]s and process them through the tree rooted on [root].
@@ -47,49 +62,74 @@ internal class PointerInputEventProcessor(val root: LayoutNode) {
      * @see PointerInputEvent
      */
     fun process(
+        @OptIn(InternalCoreApi::class)
         pointerEvent: PointerInputEvent,
-        positionCalculator: PositionCalculator
+        positionCalculator: PositionCalculator,
+        isInBounds: Boolean = true
     ): ProcessResult {
+        if (isProcessing) {
+            // Processing currently does not support reentrancy.
+            return ProcessResult(
+                dispatchedToAPointerInputModifier = false,
+                anyMovementConsumed = false
+            )
+        }
+        try {
+            isProcessing = true
 
-        // Gets a new PointerInputChangeEvent with the PointerInputEvent.
-        val internalPointerEvent =
-            pointerInputChangeEventProducer.produce(pointerEvent, positionCalculator)
+            // Gets a new PointerInputChangeEvent with the PointerInputEvent.
+            @OptIn(InternalCoreApi::class)
+            val internalPointerEvent =
+                pointerInputChangeEventProducer.produce(pointerEvent, positionCalculator)
 
-        // Add new hit paths to the tracker due to down events.
-        internalPointerEvent.changes.values.forEach { pointerInputChange ->
-            if (pointerInputChange.changedToDownIgnoreConsumed()) {
-                root.hitTest(
-                    pointerInputChange.position,
-                    hitResult
-                )
-                if (hitResult.isNotEmpty()) {
-                    hitPathTracker.addHitPath(pointerInputChange.id, hitResult)
-                    hitResult.clear()
+            var isHover = true
+            for (i in 0 until internalPointerEvent.changes.size()) {
+                val pointerInputChange = internalPointerEvent.changes.valueAt(i)
+                if (pointerInputChange.pressed || pointerInputChange.previousPressed) {
+                    isHover = false
+                    break
                 }
             }
-        }
 
-        // Remove [PointerInputFilter]s that are no longer valid and refresh the offset information
-        // for those that are.
-        hitPathTracker.removeDetachedPointerInputFilters()
-
-        // Dispatch to PointerInputFilters
-        val dispatchedToSomething = hitPathTracker.dispatchChanges(internalPointerEvent)
-
-        var anyMovementConsumed = false
-
-        // Remove hit paths from the tracker due to up events, and calculate if we have consumed
-        // any movement
-        internalPointerEvent.changes.values.forEach { pointerInputChange ->
-            if (pointerInputChange.changedToUpIgnoreConsumed()) {
-                hitPathTracker.removeHitPath(pointerInputChange.id)
+            // Add new hit paths to the tracker due to down events.
+            for (i in 0 until internalPointerEvent.changes.size()) {
+                val pointerInputChange = internalPointerEvent.changes.valueAt(i)
+                if (isHover || pointerInputChange.changedToDownIgnoreConsumed()) {
+                    val isTouchEvent = pointerInputChange.type == PointerType.Touch
+                    root.hitTest(pointerInputChange.position, hitResult, isTouchEvent)
+                    if (hitResult.isNotEmpty()) {
+                        hitPathTracker.addHitPath(pointerInputChange.id, hitResult)
+                        hitResult.clear()
+                    }
+                }
             }
-            if (pointerInputChange.positionChangeConsumed()) {
-                anyMovementConsumed = true
-            }
-        }
 
-        return ProcessResult(dispatchedToSomething, anyMovementConsumed)
+            // Remove [PointerInputFilter]s that are no longer valid and refresh the offset information
+            // for those that are.
+            hitPathTracker.removeDetachedPointerInputFilters()
+
+            // Dispatch to PointerInputFilters
+            val dispatchedToSomething =
+                hitPathTracker.dispatchChanges(internalPointerEvent, isInBounds)
+
+            val anyMovementConsumed = if (internalPointerEvent.suppressMovementConsumption) {
+                false
+            } else {
+                var result = false
+                for (i in 0 until internalPointerEvent.changes.size()) {
+                    val event = internalPointerEvent.changes.valueAt(i)
+                    if (event.positionChangedIgnoreConsumed() && event.isConsumed) {
+                        result = true
+                        break
+                    }
+                }
+                result
+            }
+
+            return ProcessResult(dispatchedToSomething, anyMovementConsumed)
+        } finally {
+            isProcessing = false
+        }
     }
 
     /**
@@ -101,67 +141,79 @@ internal class PointerInputEventProcessor(val root: LayoutNode) {
      * new pointers.
      */
     fun processCancel() {
-        pointerInputChangeEventProducer.clear()
-        hitPathTracker.processCancel()
+        if (!isProcessing) {
+            // Processing currently does not support reentrancy.
+            pointerInputChangeEventProducer.clear()
+            hitPathTracker.processCancel()
+        }
     }
 }
 
 /**
  * Produces [InternalPointerEvent]s by tracking changes between [PointerInputEvent]s
  */
-@OptIn(InternalCoreApi::class)
+@OptIn(InternalCoreApi::class, ExperimentalComposeUiApi::class)
 private class PointerInputChangeEventProducer {
-    private val previousPointerInputData: MutableMap<PointerId, PointerInputData> = mutableMapOf()
+    private val previousPointerInputData: LongSparseArray<PointerInputData> = LongSparseArray()
 
     /**
      * Produces [InternalPointerEvent]s by tracking changes between [PointerInputEvent]s
      */
-    fun produce(pointerInputEvent: PointerInputEvent, positionCalculator: PositionCalculator):
-        InternalPointerEvent {
-            val changes: MutableMap<PointerId, PointerInputChange> =
-                // Set initial capacity to avoid resizing - we know the size the map will be.
-                LinkedHashMap(pointerInputEvent.pointers.size)
-            pointerInputEvent.pointers.fastForEach {
-                val previousTime: Long
-                val previousPosition: Offset
-                val previousDown: Boolean
+    fun produce(
+        pointerInputEvent: PointerInputEvent,
+        positionCalculator: PositionCalculator
+    ): InternalPointerEvent {
+        // Set initial capacity to avoid resizing - we know the size the map will be.
+        val changes: LongSparseArray<PointerInputChange> =
+            LongSparseArray(pointerInputEvent.pointers.size)
+        pointerInputEvent.pointers.fastForEach {
+            val previousTime: Long
+            val previousPosition: Offset
+            val previousDown: Boolean
 
-                val previousData = previousPointerInputData[it.id]
-                if (previousData == null) {
-                    previousTime = it.uptime
-                    previousPosition = it.position
-                    previousDown = false
-                } else {
-                    previousTime = previousData.uptime
-                    previousDown = previousData.down
-                    previousPosition =
-                        positionCalculator.screenToLocal(previousData.positionOnScreen)
-                }
-
-                changes[it.id] =
-                    PointerInputChange(
-                        it.id,
-                        it.uptime,
-                        it.position,
-                        it.down,
-                        previousTime,
-                        previousPosition,
-                        previousDown,
-                        ConsumedData(),
-                        it.type
-                    )
-                if (it.down) {
-                    previousPointerInputData[it.id] = PointerInputData(
-                        it.uptime,
-                        it.positionOnScreen,
-                        it.down
-                    )
-                } else {
-                    previousPointerInputData.remove(it.id)
-                }
+            val previousData = previousPointerInputData[it.id.value]
+            if (previousData == null) {
+                previousTime = it.uptime
+                previousPosition = it.position
+                previousDown = false
+            } else {
+                previousTime = previousData.uptime
+                previousDown = previousData.down
+                previousPosition =
+                    positionCalculator.screenToLocal(previousData.positionOnScreen)
             }
-            return InternalPointerEvent(changes, pointerInputEvent)
+
+            changes.put(it.id.value,
+                PointerInputChange(
+                    it.id,
+                    it.uptime,
+                    it.position,
+                    it.down,
+                    it.pressure,
+                    previousTime,
+                    previousPosition,
+                    previousDown,
+                    false,
+                    it.type,
+                    it.historical,
+                    it.scrollDelta,
+                    it.originalEventPosition
+                )
+            )
+            if (it.down) {
+                previousPointerInputData.put(it.id.value, PointerInputData(
+                    it.uptime,
+                    it.positionOnScreen,
+                    it.down,
+                    it.type
+                ))
+            } else {
+                previousPointerInputData.remove(it.id.value)
+            }
         }
+
+        return InternalPointerEvent(changes, pointerInputEvent)
+    }
 
     /**
      * Clears all tracked information.
@@ -173,7 +225,8 @@ private class PointerInputChangeEventProducer {
     private class PointerInputData(
         val uptime: Long,
         val positionOnScreen: Offset,
-        val down: Boolean
+        val down: Boolean,
+        val type: PointerType
     )
 }
 
@@ -181,8 +234,8 @@ private class PointerInputChangeEventProducer {
  * The result of a call to [PointerInputEventProcessor.process].
  */
 // TODO(shepshpard): Not sure if storing these values in a int is most efficient overall.
-@Suppress("INLINE_CLASS_DEPRECATED", "EXPERIMENTAL_FEATURE_WARNING")
-internal inline class ProcessResult(private val value: Int) {
+@kotlin.jvm.JvmInline
+internal value class ProcessResult(private val value: Int) {
     val dispatchedToAPointerInputModifier
         get() = (value and 1) != 0
 

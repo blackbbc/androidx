@@ -32,6 +32,7 @@ import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.collection.SimpleArrayMap;
+import androidx.core.view.MenuHost;
 import androidx.lifecycle.ViewModelStoreOwner;
 import androidx.loader.app.LoaderManager;
 
@@ -66,7 +67,7 @@ public class FragmentController {
      */
     @NonNull
     public FragmentManager getSupportFragmentManager() {
-        return mHost.mFragmentManager;
+        return mHost.getFragmentManager();
     }
 
     /**
@@ -89,14 +90,14 @@ public class FragmentController {
      */
     @Nullable
     public Fragment findFragmentByWho(@NonNull String who) {
-        return mHost.mFragmentManager.findFragmentByWho(who);
+        return mHost.getFragmentManager().findFragmentByWho(who);
     }
 
     /**
      * Returns the number of active fragments.
      */
     public int getActiveFragmentsCount() {
-        return mHost.mFragmentManager.getActiveFragmentCount();
+        return mHost.getFragmentManager().getActiveFragmentCount();
     }
 
     /**
@@ -105,7 +106,7 @@ public class FragmentController {
     @NonNull
     public List<Fragment> getActiveFragments(@SuppressLint("UnknownNullness")
             List<Fragment> actives) {
-        return mHost.mFragmentManager.getActiveFragments();
+        return mHost.getFragmentManager().getActiveFragments();
     }
 
     /**
@@ -113,7 +114,7 @@ public class FragmentController {
      * attached before the FragmentManager can be used to manage Fragments.
      */
     public void attachHost(@Nullable Fragment parent) {
-        mHost.mFragmentManager.attachController(
+        mHost.getFragmentManager().attachController(
                 mHost, mHost /*container*/, parent);
     }
 
@@ -131,7 +132,7 @@ public class FragmentController {
     @Nullable
     public View onCreateView(@Nullable View parent, @NonNull String name, @NonNull Context context,
             @NonNull AttributeSet attrs) {
-        return mHost.mFragmentManager.getLayoutInflaterFactory()
+        return mHost.getFragmentManager().getLayoutInflaterFactory()
                 .onCreateView(parent, name, context, attrs);
     }
 
@@ -139,7 +140,7 @@ public class FragmentController {
      * Marks the fragment state as unsaved. This allows for "state loss" detection.
      */
     public void noteStateNotSaved() {
-        mHost.mFragmentManager.noteStateNotSaved();
+        mHost.getFragmentManager().noteStateNotSaved();
     }
 
     /**
@@ -155,7 +156,7 @@ public class FragmentController {
     @Deprecated
     @Nullable
     public Parcelable saveAllState() {
-        return mHost.mFragmentManager.saveAllState();
+        return mHost.getFragmentManager().saveAllState();
     }
 
     /**
@@ -170,7 +171,7 @@ public class FragmentController {
     @Deprecated
     public void restoreAllState(@Nullable Parcelable state,
             @Nullable List<Fragment> nonConfigList) {
-        mHost.mFragmentManager.restoreAllState(state,
+        mHost.getFragmentManager().restoreAllState(state,
                 new FragmentManagerNonConfig(nonConfigList, null, null));
     }
 
@@ -186,7 +187,7 @@ public class FragmentController {
     @Deprecated
     public void restoreAllState(@Nullable Parcelable state,
             @Nullable FragmentManagerNonConfig nonConfig) {
-        mHost.mFragmentManager.restoreAllState(state, nonConfig);
+        mHost.getFragmentManager().restoreAllState(state, nonConfig);
     }
 
     /**
@@ -206,7 +207,7 @@ public class FragmentController {
                     + "ViewModelStoreOwner to call restoreSaveState(). Call restoreAllState() "
                     + " if you're still using retainNestedNonConfig().");
         }
-        mHost.mFragmentManager.restoreSaveState(state);
+        mHost.getFragmentManager().restoreSaveState(state);
     }
 
     /**
@@ -220,7 +221,7 @@ public class FragmentController {
     @Deprecated
     @Nullable
     public List<Fragment> retainNonConfig() {
-        FragmentManagerNonConfig nonconf = mHost.mFragmentManager.retainNonConfig();
+        FragmentManagerNonConfig nonconf = mHost.getFragmentManager().retainNonConfig();
         return nonconf != null && nonconf.getFragments() != null
                 ? new ArrayList<>(nonconf.getFragments())
                 : null;
@@ -237,7 +238,7 @@ public class FragmentController {
     @Deprecated
     @Nullable
     public FragmentManagerNonConfig retainNestedNonConfig() {
-        return mHost.mFragmentManager.retainNonConfig();
+        return mHost.getFragmentManager().retainNonConfig();
     }
 
     /**
@@ -248,7 +249,7 @@ public class FragmentController {
      * @see Fragment#onCreate(Bundle)
      */
     public void dispatchCreate() {
-        mHost.mFragmentManager.dispatchCreate();
+        mHost.getFragmentManager().dispatchCreate();
     }
 
     /**
@@ -259,7 +260,7 @@ public class FragmentController {
      * @see Fragment#onActivityCreated(Bundle)
      */
     public void dispatchActivityCreated() {
-        mHost.mFragmentManager.dispatchActivityCreated();
+        mHost.getFragmentManager().dispatchActivityCreated();
     }
 
     /**
@@ -270,7 +271,7 @@ public class FragmentController {
      * @see Fragment#onStart()
      */
     public void dispatchStart() {
-        mHost.mFragmentManager.dispatchStart();
+        mHost.getFragmentManager().dispatchStart();
     }
 
     /**
@@ -281,7 +282,7 @@ public class FragmentController {
      * @see Fragment#onResume()
      */
     public void dispatchResume() {
-        mHost.mFragmentManager.dispatchResume();
+        mHost.getFragmentManager().dispatchResume();
     }
 
     /**
@@ -292,7 +293,7 @@ public class FragmentController {
      * @see Fragment#onPause()
      */
     public void dispatchPause() {
-        mHost.mFragmentManager.dispatchPause();
+        mHost.getFragmentManager().dispatchPause();
     }
 
     /**
@@ -303,7 +304,7 @@ public class FragmentController {
      * @see Fragment#onStop()
      */
     public void dispatchStop() {
-        mHost.mFragmentManager.dispatchStop();
+        mHost.getFragmentManager().dispatchStop();
     }
 
     /**
@@ -321,7 +322,7 @@ public class FragmentController {
      * @see Fragment#onDestroyView()
      */
     public void dispatchDestroyView() {
-        mHost.mFragmentManager.dispatchDestroyView();
+        mHost.getFragmentManager().dispatchDestroyView();
     }
 
     /**
@@ -342,7 +343,7 @@ public class FragmentController {
      * @see Fragment#onDestroy()
      */
     public void dispatchDestroy() {
-        mHost.mFragmentManager.dispatchDestroy();
+        mHost.getFragmentManager().dispatchDestroy();
     }
 
     /**
@@ -351,9 +352,13 @@ public class FragmentController {
      * <p>Call when the multi-window mode of the activity changed.
      *
      * @see Fragment#onMultiWindowModeChanged
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link androidx.core.app.OnMultiWindowModeChangedProvider}
+     * to automatically dispatch multi-window mode changes to fragments.
      */
+    @Deprecated
     public void dispatchMultiWindowModeChanged(boolean isInMultiWindowMode) {
-        mHost.mFragmentManager.dispatchMultiWindowModeChanged(isInMultiWindowMode);
+        mHost.getFragmentManager().dispatchMultiWindowModeChanged(isInMultiWindowMode, true);
     }
 
     /**
@@ -362,9 +367,14 @@ public class FragmentController {
      * <p>Call when the picture-in-picture mode of the activity changed.
      *
      * @see Fragment#onPictureInPictureModeChanged
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link androidx.core.app.OnPictureInPictureModeChangedProvider}
+     * to automatically dispatch picture-in-picture mode changes to fragments.
      */
+    @Deprecated
     public void dispatchPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
-        mHost.mFragmentManager.dispatchPictureInPictureModeChanged(isInPictureInPictureMode);
+        mHost.getFragmentManager().dispatchPictureInPictureModeChanged(
+                isInPictureInPictureMode, true);
     }
 
     /**
@@ -373,9 +383,13 @@ public class FragmentController {
      * <p>Call when there is a configuration change.
      *
      * @see Fragment#onConfigurationChanged(Configuration)
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link androidx.core.content.OnConfigurationChangedProvider}
+     * to automatically dispatch configuration changes to fragments.
      */
+    @Deprecated
     public void dispatchConfigurationChanged(@NonNull Configuration newConfig) {
-        mHost.mFragmentManager.dispatchConfigurationChanged(newConfig);
+        mHost.getFragmentManager().dispatchConfigurationChanged(newConfig, true);
     }
 
     /**
@@ -385,9 +399,13 @@ public class FragmentController {
      * their memory usage.
      *
      * @see Fragment#onLowMemory()
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link androidx.core.content.OnTrimMemoryProvider}
+     * to automatically dispatch low memory callbacks to fragments.
      */
+    @Deprecated
     public void dispatchLowMemory() {
-        mHost.mFragmentManager.dispatchLowMemory();
+        mHost.getFragmentManager().dispatchLowMemory(true);
     }
 
     /**
@@ -397,9 +415,13 @@ public class FragmentController {
      *
      * @return {@code true} if the options menu contains items to display
      * @see Fragment#onCreateOptionsMenu(Menu, MenuInflater)
+     *
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link MenuHost} to automatically dispatch menu changes to fragments.
      */
+    @Deprecated
     public boolean dispatchCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
-        return mHost.mFragmentManager.dispatchCreateOptionsMenu(menu, inflater);
+        return mHost.getFragmentManager().dispatchCreateOptionsMenu(menu, inflater);
     }
 
     /**
@@ -409,9 +431,13 @@ public class FragmentController {
      *
      * @return {@code true} if the options menu contains items to display
      * @see Fragment#onPrepareOptionsMenu(Menu)
+     *
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link MenuHost} to automatically dispatch menu changes to fragments.
      */
+    @Deprecated
     public boolean dispatchPrepareOptionsMenu(@NonNull Menu menu) {
-        return mHost.mFragmentManager.dispatchPrepareOptionsMenu(menu);
+        return mHost.getFragmentManager().dispatchPrepareOptionsMenu(menu);
     }
 
     /**
@@ -422,9 +448,13 @@ public class FragmentController {
      *
      * @return {@code true} if the options menu selection event was consumed
      * @see Fragment#onOptionsItemSelected(MenuItem)
+     *
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link MenuHost} to automatically dispatch menu changes to fragments.
      */
+    @Deprecated
     public boolean dispatchOptionsItemSelected(@NonNull MenuItem item) {
-        return mHost.mFragmentManager.dispatchOptionsItemSelected(item);
+        return mHost.getFragmentManager().dispatchOptionsItemSelected(item);
     }
 
     /**
@@ -437,7 +467,7 @@ public class FragmentController {
      * @see Fragment#onContextItemSelected(MenuItem)
      */
     public boolean dispatchContextItemSelected(@NonNull MenuItem item) {
-        return mHost.mFragmentManager.dispatchContextItemSelected(item);
+        return mHost.getFragmentManager().dispatchContextItemSelected(item);
     }
 
     /**
@@ -446,9 +476,13 @@ public class FragmentController {
      * <p>Call immediately after closing the Fragment's options menu.
      *
      * @see Fragment#onOptionsMenuClosed(Menu)
+     *
+     * @deprecated Have your {@link FragmentHostCallback} implement
+     * {@link MenuHost} to automatically dispatch menu changes to fragments.
      */
+    @Deprecated
     public void dispatchOptionsMenuClosed(@NonNull Menu menu) {
-        mHost.mFragmentManager.dispatchOptionsMenuClosed(menu);
+        mHost.getFragmentManager().dispatchOptionsMenuClosed(menu);
     }
 
     /**
@@ -459,7 +493,7 @@ public class FragmentController {
      * @return {@code true} if queued actions were performed
      */
     public boolean execPendingActions() {
-        return mHost.mFragmentManager.execPendingActions(true);
+        return mHost.getFragmentManager().execPendingActions(true);
     }
 
     /**

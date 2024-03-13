@@ -16,87 +16,107 @@
 
 package androidx.health.services.client.data
 
-import android.os.Parcel
-import android.os.Parcelable
+import androidx.health.services.client.proto.DataProto
+import androidx.health.services.client.proto.DataProto.ExerciseTypeCapabilities.SupportedGoalEntry
+import androidx.health.services.client.proto.DataProto.ExerciseTypeCapabilities.SupportedMilestoneEntry
 
 /** Provides exercise specific capabilities data. */
-public data class ExerciseTypeCapabilities(
-    val supportedDataTypes: Set<DataType>,
-    val supportedGoals: Map<DataType, Set<ComparisonType>>,
-    val supportedMilestones: Map<DataType, Set<ComparisonType>>,
-    val supportsAutoPauseAndResume: Boolean,
-    val supportsLaps: Boolean,
-) : Parcelable {
-    override fun describeContents(): Int = 0
+@Suppress("ParcelCreator")
+public class ExerciseTypeCapabilities
+@JvmOverloads
+constructor(
+    /** Supported [DataType]s for a given exercise. */
+    public val supportedDataTypes: Set<DataType<*, *>>,
+    /** Map from supported goals [DataType]s to a set of compatible [ComparisonType]s. */
+    public val supportedGoals: Map<AggregateDataType<*, *>, Set<ComparisonType>>,
+    /** Map from supported milestone [DataType]s to a set of compatible [ComparisonType]s. */
+    public val supportedMilestones: Map<AggregateDataType<*, *>, Set<ComparisonType>>,
+    /** Returns `true` if the given exercise supports auto pause and resume. */
+    public val supportsAutoPauseAndResume: Boolean,
+    /** Map from [ExerciseEventType]s to their [ExerciseEventCapabilities]. */
+    internal val exerciseEventCapabilities: Map<ExerciseEventType<*>, ExerciseEventCapabilities> =
+    emptyMap(),
+) {
 
-    override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeInt(supportedDataTypes.size)
-        dest.writeTypedArray(supportedDataTypes.toTypedArray(), flags)
+    internal constructor(
+        proto: DataProto.ExerciseTypeCapabilities
+    ) : this(
+        proto.supportedDataTypesList.map { DataType.deltaAndAggregateFromProto(it) }
+            .flatten()
+            .toSet(),
+        proto
+            .supportedGoalsList
+            .map { entry ->
+                DataType.aggregateFromProto(entry.dataType) to
+                    entry
+                        .comparisonTypesList
+                        .map { ComparisonType.fromProto(it) }
+                        .filter { it != ComparisonType.UNKNOWN }
+                        .toSet()
+            }
+            .toMap(),
+        proto
+            .supportedMilestonesList
+            .map { entry ->
+                DataType.aggregateFromProto(entry.dataType) to
+                    entry
+                        .comparisonTypesList
+                        .map { ComparisonType.fromProto(it) }
+                        .filter { it != ComparisonType.UNKNOWN }
+                        .toSet()
+            }
+            .toMap(),
+        supportsAutoPauseAndResume = proto.isAutoPauseAndResumeSupported,
+        exerciseEventCapabilities = proto.supportedExerciseEventsList
+            .filter { ExerciseEventCapabilities.fromProto(it) != null }.associate { entry ->
+                ExerciseEventType.fromProto(entry.exerciseEventType) to
+                    ExerciseEventCapabilities.fromProto(entry)!!
+            },
+    )
 
-        writeSupportedDataTypes(supportedGoals, dest, flags)
-        writeSupportedDataTypes(supportedMilestones, dest, flags)
+    internal val proto: DataProto.ExerciseTypeCapabilities =
+        DataProto.ExerciseTypeCapabilities.newBuilder()
+            .addAllSupportedDataTypes(supportedDataTypes.map { it.proto })
+            .addAllSupportedGoals(
+                supportedGoals
+                    .map { entry ->
+                        SupportedGoalEntry.newBuilder()
+                            .setDataType(entry.key.proto)
+                            .addAllComparisonTypes(entry.value.map { it.toProto() })
+                            .build()
+                    }
+                    .sortedBy { it.dataType.name } // Sorting to ensure equals() works
+            )
+            .addAllSupportedMilestones(
+                supportedMilestones
+                    .map { entry ->
+                        SupportedMilestoneEntry.newBuilder()
+                            .setDataType(entry.key.proto)
+                            .addAllComparisonTypes(entry.value.map { it.toProto() })
+                            .build()
+                    }
+                    .sortedBy { it.dataType.name } // Sorting to ensure equals() works
+            )
+            .setIsAutoPauseAndResumeSupported(supportsAutoPauseAndResume)
+            .addAllSupportedExerciseEvents(exerciseEventCapabilities.map { it.value.toProto() })
+            .build()
 
-        dest.writeInt(if (supportsAutoPauseAndResume) 1 else 0)
-        dest.writeInt(if (supportsLaps) 1 else 0)
+    /** Returns the set of supported [ExerciseEventType]s on this device. */
+    public val supportedExerciseEvents: Set<ExerciseEventType<*>>
+        get() = this.exerciseEventCapabilities.keys
+
+    /** Returns the [ExerciseEventCapabilities] for a requested [ExerciseEventType]. */
+    public fun <C : ExerciseEventCapabilities> getExerciseEventCapabilityDetails(
+        exerciseEventType: ExerciseEventType<C>
+    ): C? {
+        @Suppress("UNCHECKED_CAST") // Map's keys' and values' types will match
+        return exerciseEventCapabilities[exerciseEventType] as C?
     }
 
-    public companion object {
-        @JvmField
-        public val CREATOR: Parcelable.Creator<ExerciseTypeCapabilities> =
-            object : Parcelable.Creator<ExerciseTypeCapabilities> {
-                override fun createFromParcel(source: Parcel): ExerciseTypeCapabilities? {
-                    val supportedDataTypesArray = Array<DataType?>(source.readInt()) { null }
-                    source.readTypedArray(supportedDataTypesArray, DataType.CREATOR)
-
-                    val supportedGoals = readSupportedDataTypes(source) ?: return null
-                    val supportedMilestones = readSupportedDataTypes(source) ?: return null
-                    val supportsAutoPauseAndResume = source.readInt() == 1
-                    val supportsLaps = source.readInt() == 1
-
-                    return ExerciseTypeCapabilities(
-                        supportedDataTypesArray.filterNotNull().toSet(),
-                        supportedGoals,
-                        supportedMilestones,
-                        supportsAutoPauseAndResume,
-                        supportsLaps
-                    )
-                }
-
-                override fun newArray(size: Int): Array<ExerciseTypeCapabilities?> {
-                    return arrayOfNulls(size)
-                }
-            }
-
-        private fun writeSupportedDataTypes(
-            supportedDataTypes: Map<DataType, Set<ComparisonType>>,
-            dest: Parcel,
-            flags: Int
-        ) {
-            dest.writeInt(supportedDataTypes.size)
-            for ((dataType, comparisonTypeSet) in supportedDataTypes) {
-                dest.writeParcelable(dataType, flags)
-                dest.writeInt(comparisonTypeSet.size)
-                dest.writeIntArray(comparisonTypeSet.map { it.id }.toIntArray())
-            }
-        }
-
-        private fun readSupportedDataTypes(source: Parcel): Map<DataType, Set<ComparisonType>>? {
-            val supportedDataTypes = HashMap<DataType, Set<ComparisonType>>()
-
-            val numSupportedDataTypes = source.readInt()
-            repeat(numSupportedDataTypes) {
-                val dataType: DataType =
-                    source.readParcelable(DataType::class.java.classLoader) ?: return null
-
-                val comparisonTypeIntArray = IntArray(source.readInt())
-                source.readIntArray(comparisonTypeIntArray)
-                val comparisonTypeSet =
-                    comparisonTypeIntArray.map { ComparisonType.fromId(it) }.filterNotNull().toSet()
-
-                supportedDataTypes[dataType] = comparisonTypeSet
-            }
-
-            return supportedDataTypes
-        }
-    }
+    override fun toString(): String =
+        "ExerciseTypeCapabilities(" +
+            "supportedDataTypes=$supportedDataTypes, " +
+            "supportedGoals=$supportedGoals, " +
+            "supportedMilestones=$supportedMilestones, " +
+            "supportsAutoPauseAndResume=$supportsAutoPauseAndResume, "
 }

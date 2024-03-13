@@ -33,7 +33,6 @@ import androidx.collection.SimpleArrayMap;
 import java.lang.reflect.Method;
 
 /**
- * @hide
  */
 @RestrictTo(RestrictTo.Scope.LIBRARY)
 class VersionedParcelParcel extends VersionedParcel {
@@ -257,7 +256,7 @@ class VersionedParcelParcel extends VersionedParcel {
     }
 
     @Override
-    @SuppressWarnings("TypeParameterUnusedInFormals")
+    @SuppressWarnings({"TypeParameterUnusedInFormals", "deprecation"})
     @Nullable
     public <T extends Parcelable> T readParcelable() {
         return mParcel.readParcelable(getClass().getClassLoader());

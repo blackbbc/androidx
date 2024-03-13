@@ -25,16 +25,13 @@ buildscript {
     ext.supportRootFolder = playgroundCommonFolder.parentFile
 
     def metalavaBuildId = rootProject.properties["androidx.playground.metalavaBuildId"]
-    def dokkaBuildId = rootProject.properties["androidx.playground.dokkaBuildId"]
-    if (metalavaBuildId == null || dokkaBuildId == null) {
-        throw new GradleException("metalava and or dokka build ids must be defined.")
+    if (metalavaBuildId == null) {
+        throw new GradleException("metalava build id must be defined.")
     }
     def metalavaRepo = "https://androidx.dev/metalava/builds/${metalavaBuildId}/artifacts/repo/m2repository"
-    def dokkaRepo = "https://androidx.dev/dokka/builds/${dokkaBuildId}/artifacts/repository"
     repositories {
         google()
         mavenCentral()
-        jcenter()
         maven {
             url metalavaRepo
             metadataSources {
@@ -42,30 +39,16 @@ buildscript {
                 artifact()
             }
         }
-        maven {
-            url dokkaRepo
-            metadataSources {
-                mavenPom()
-                artifact()
-            }
+        gradlePluginPortal().content {
+            it.includeModule("gradle.plugin.com.github.johnrengelman", "shadow")
+            it.includeModule("me.champeau.gradle", "japicmp-gradle-plugin")
         }
-        gradlePluginPortal()
     }
-
     ext.repos = [:]
-    dependencies {
-        classpath(libs.androidGradlePlugin)
-        classpath(libs.kotlinGradlePlugin)
-        classpath(libs.kspGradlePlugin)
-        classpath(libs.gson)
-        classpath "androidx.build:gradle-plugin:0.1.0"
-        classpath(libs.shadow)
-        classpath(libs.japicmpPlugin)
-    }
 }
 
 apply from: "$supportRootFolder/buildSrc/dependencies.gradle"
-apply from: "$supportRootFolder/playground-common/out.gradle"
+apply from: "$supportRootFolder/buildSrc/out.gradle"
 init.chooseOutDir("/${rootProject.name}")
 
 apply plugin: AndroidXRootPlugin

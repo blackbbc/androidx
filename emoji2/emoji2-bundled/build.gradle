@@ -1,5 +1,10 @@
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -27,6 +32,7 @@ android {
             }
         }
     }
+    namespace "androidx.emoji2.bundled"
 
 }
 
@@ -47,13 +53,12 @@ dependencies {
 }
 
 androidx {
-    name = "Android Emoji2 Compat"
+    name = "Emoji2 Bundled"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenVersion = LibraryVersions.EMOJI2
-    mavenGroup = LibraryGroups.EMOJI2
     inceptionYear = "2017"
     description = "Library bundled with assets to enable emoji compatibility in Kitkat and newer " +
             "devices to avoid the empty emoji characters."
+    metalavaK2UastEnabled = true
 
     license {
         name = "SIL Open Font License, Version 1.1"

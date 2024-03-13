@@ -20,9 +20,10 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.util.packFloats
+import androidx.compose.ui.util.unpackAbsFloat1
+import androidx.compose.ui.util.unpackAbsFloat2
 import androidx.compose.ui.util.unpackFloat1
 import androidx.compose.ui.util.unpackFloat2
-import kotlin.math.absoluteValue
 import kotlin.math.max
 import kotlin.math.min
 
@@ -37,16 +38,15 @@ fun Size(width: Float, height: Float) = Size(packFloats(width, height))
  *
  * You can think of this as an [Offset] from the origin.
  */
-@Suppress("INLINE_CLASS_DEPRECATED", "EXPERIMENTAL_FEATURE_WARNING")
 @Immutable
-inline class Size internal constructor(@PublishedApi internal val packedValue: Long) {
-
+@kotlin.jvm.JvmInline
+value class Size internal constructor(@PublishedApi internal val packedValue: Long) {
     @Stable
     val width: Float
         get() {
             // Explicitly compare against packed values to avoid auto-boxing of Size.Unspecified
-            check(this.packedValue != Unspecified.packedValue) {
-                "Size is unspecified"
+            if (packedValue == UnspecifiedPackedFloats) {
+                throwIllegalStateException("Size is unspecified")
             }
             return unpackFloat1(packedValue)
         }
@@ -55,8 +55,8 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
     val height: Float
         get() {
             // Explicitly compare against packed values to avoid auto-boxing of Size.Unspecified
-            check(this.packedValue != Unspecified.packedValue) {
-                "Size is unspecified"
+            if (packedValue == UnspecifiedPackedFloats) {
+                throwIllegalStateException("Size is unspecified")
             }
             return unpackFloat2(packedValue)
         }
@@ -73,7 +73,8 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
      * Returns a copy of this Size instance optionally overriding the
      * width or height parameter
      */
-    fun copy(width: Float = this.width, height: Float = this.height) = Size(width, height)
+    fun copy(width: Float = unpackFloat1(packedValue), height: Float = unpackFloat2(packedValue)) =
+        Size(width, height)
 
     companion object {
 
@@ -86,7 +87,7 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
         /**
          * A size whose [width] and [height] are unspecified. This is a sentinel
          * value used to initialize a non-null parameter.
-         * Access to width or height on an unspecified size is not allowed
+         * Access to width or height on an unspecified size is not allowed.
          */
         @Stable
         val Unspecified = Size(Float.NaN, Float.NaN)
@@ -98,7 +99,12 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
      * Negative areas are considered empty.
      */
     @Stable
-    fun isEmpty() = width <= 0.0f || height <= 0.0f
+    fun isEmpty(): Boolean {
+        if (packedValue == UnspecifiedPackedFloats) {
+            throwIllegalStateException("Size is unspecified")
+        }
+        return unpackFloat1(packedValue) <= 0.0f || unpackFloat2(packedValue) <= 0.0f
+    }
 
     /**
      * Multiplication operator.
@@ -108,7 +114,15 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
      * [Float]).
      */
     @Stable
-    operator fun times(operand: Float) = Size(width * operand, height * operand)
+    operator fun times(operand: Float): Size {
+        if (packedValue == UnspecifiedPackedFloats) {
+            throwIllegalStateException("Size is unspecified")
+        }
+        return Size(
+            unpackFloat1(packedValue) * operand,
+            unpackFloat2(packedValue) * operand,
+        )
+    }
 
     /**
      * Division operator.
@@ -118,27 +132,47 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
      * [Float]).
      */
     @Stable
-    operator fun div(operand: Float) = Size(width / operand, height / operand)
+    operator fun div(operand: Float): Size {
+        if (packedValue == UnspecifiedPackedFloats) {
+            throwIllegalStateException("Size is unspecified")
+        }
+        return Size(
+            unpackFloat1(packedValue) / operand,
+            unpackFloat2(packedValue) / operand,
+        )
+    }
 
     /**
      * The lesser of the magnitudes of the [width] and the [height].
      */
     @Stable
     val minDimension: Float
-        get() = min(width.absoluteValue, height.absoluteValue)
+        get() {
+            if (packedValue == UnspecifiedPackedFloats) {
+                throwIllegalStateException("Size is unspecified")
+            }
+            return min(unpackAbsFloat1(packedValue), unpackAbsFloat2(packedValue))
+        }
 
     /**
      * The greater of the magnitudes of the [width] and the [height].
      */
     @Stable
     val maxDimension: Float
-        get() = max(width.absoluteValue, height.absoluteValue)
+        get() {
+            if (packedValue == UnspecifiedPackedFloats) {
+                throwIllegalStateException("Size is unspecified")
+            }
+            return max(unpackAbsFloat1(packedValue), unpackAbsFloat2(packedValue))
+        }
 
     override fun toString() =
         if (isSpecified) {
             "Size(${width.toStringAsFixed(1)}, ${height.toStringAsFixed(1)})"
         } else {
-            "Size(UNSPECIFIED)"
+            // In this case reading the width or height properties will throw, and they don't
+            // contain meaningful values as strings anyway.
+            "Size.Unspecified"
         }
 }
 
@@ -147,17 +181,17 @@ inline class Size internal constructor(@PublishedApi internal val packedValue: L
  */
 @Stable
 inline val Size.isSpecified: Boolean
-    get() = packedValue != Size.Unspecified.packedValue
+    get() = packedValue != 0x7fc00000_7fc00000L // NaN_NaN, see UnspecifiedPackedFloats
 
 /**
  * `true` when this is [Size.Unspecified].
  */
 @Stable
 inline val Size.isUnspecified: Boolean
-    get() = packedValue == Size.Unspecified.packedValue
+    get() = packedValue == 0x7fc00000_7fc00000L // NaN_NaN, see UnspecifiedPackedFloats
 
 /**
- * If this [Size] [isSpecified] then this is returned, otherwise [block] is executed
+ * If this [Size]&nbsp;[isSpecified] then this is returned, otherwise [block] is executed
  * and its result is returned.
  */
 inline fun Size.takeOrElse(block: () -> Size): Size =
@@ -180,9 +214,15 @@ inline fun Size.takeOrElse(block: () -> Size): Size =
  */
 @Stable
 fun lerp(start: Size, stop: Size, fraction: Float): Size {
+    if (
+        start.packedValue == UnspecifiedPackedFloats ||
+        stop.packedValue == UnspecifiedPackedFloats
+    ) {
+        throwIllegalStateException("Offset is unspecified")
+    }
     return Size(
-        lerp(start.width, stop.width, fraction),
-        lerp(start.height, stop.height, fraction)
+        lerp(unpackFloat1(start.packedValue), unpackFloat1(stop.packedValue), fraction),
+        lerp(unpackFloat2(start.packedValue), unpackFloat2(stop.packedValue), fraction)
     )
 }
 
@@ -201,6 +241,13 @@ inline operator fun Int.times(size: Size) = size * this.toFloat()
 inline operator fun Double.times(size: Size) = size * this.toFloat()
 
 /**
+ * Returns a [Size] with [size]'s [Size.width] and [Size.height] multiplied by [this]
+ */
+@Suppress("NOTHING_TO_INLINE")
+@Stable
+inline operator fun Float.times(size: Size) = size * this
+
+/**
  * Convert a [Size] to a [Rect].
  */
 @Stable
@@ -209,15 +256,13 @@ fun Size.toRect(): Rect {
 }
 
 /**
- * Returns a [Size] with [size]'s [Size.width] and [Size.height] multiplied by [this]
- */
-@Suppress("NOTHING_TO_INLINE")
-@Stable
-inline operator fun Float.times(size: Size) = size * this
-
-/**
  * Returns the [Offset] of the center of the rect from the point of [0, 0]
  * with this [Size].
  */
 @Stable
-val Size.center: Offset get() = Offset(width / 2f, height / 2f)
+val Size.center: Offset get() {
+    if (packedValue == UnspecifiedPackedFloats) {
+        throwIllegalStateException("Size is unspecified")
+    }
+    return Offset(unpackFloat1(packedValue) / 2f, unpackFloat2(packedValue) / 2f)
+}

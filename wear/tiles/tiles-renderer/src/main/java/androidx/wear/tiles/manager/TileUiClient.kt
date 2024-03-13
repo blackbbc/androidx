@@ -30,16 +30,18 @@ import android.widget.FrameLayout
 import androidx.annotation.MainThread
 import androidx.concurrent.futures.await
 import androidx.core.content.ContextCompat
-import androidx.wear.tiles.DeviceParametersBuilders
-import androidx.wear.tiles.LayoutElementBuilders
+import androidx.wear.protolayout.DeviceParametersBuilders
+import androidx.wear.protolayout.LayoutElementBuilders
+import androidx.wear.protolayout.ResourceBuilders
+import androidx.wear.protolayout.StateBuilders
+import androidx.wear.protolayout.TimelineBuilders
 import androidx.wear.tiles.RequestBuilders
-import androidx.wear.tiles.ResourceBuilders
-import androidx.wear.tiles.StateBuilders
-import androidx.wear.tiles.TimelineBuilders
 import androidx.wear.tiles.checkers.TimelineChecker
-import androidx.wear.tiles.connection.DefaultTileProviderClient
+import androidx.wear.tiles.connection.DefaultTileClient
 import androidx.wear.tiles.renderer.TileRenderer
 import androidx.wear.tiles.timeline.TilesTimelineManager
+import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,62 +50,55 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.Executors
 
 /**
- * UI client for a single tile. This handles binding to a Tile Provider, and inflating the given
- * tile contents into the provided parentView. This also handles requested updates, re-fetching the
- * tile on-demand.
+ * UI client for a single tile. This handles binding to a Tile Service, and inflating the given tile
+ * contents into the provided parentView. This also handles requested updates, re-fetching the tile
+ * on-demand.
  *
  * After creation, you should call {@link #connect} to connect and start the initial fetch.
- * Likewise, when the owning activity is destroyed, you should call {@link #close} to disconnect
- * and release resources.
+ * Likewise, when the owning activity is destroyed, you should call {@link #close} to disconnect and
+ * release resources.
  */
 public class TileUiClient(
     private val context: Context,
     component: ComponentName,
-    private val parentView: ViewGroup,
-    private val timelineChecker: TimelineChecker? = TimelineChecker()
+    private val parentView: ViewGroup
 ) : AutoCloseable {
     private companion object {
         private const val ACTION_REQUEST_TILE_UPDATE =
             "androidx.wear.tiles.action.REQUEST_TILE_UPDATE"
     }
 
-    constructor(
-        context: Context,
-        component: ComponentName,
-        parentView: ViewGroup
-    ) : this(context, component, parentView, TimelineChecker())
-
     private val job = Job()
     private val coroutineScope = CoroutineScope(Dispatchers.Main + job)
+    private val timelineChecker = TimelineChecker()
 
-    private val tilesConnection = DefaultTileProviderClient(
-        context = context,
-        componentName = component,
-        coroutineScope = coroutineScope,
-        coroutineDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-    )
+    private val tilesConnection =
+        DefaultTileClient(
+            context = context,
+            componentName = component,
+            coroutineScope = coroutineScope,
+            coroutineDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher())
 
     private var timelineManager: TilesTimelineManager? = null
     private var tileResources: ResourceBuilders.Resources? = null
-    private val updateScheduler = UpdateScheduler(
-        context.getSystemService(AlarmManager::class.java),
-        SystemClock::elapsedRealtime
-    )
+    private val updateScheduler =
+        UpdateScheduler(
+            context.getSystemService(AlarmManager::class.java), SystemClock::elapsedRealtime)
 
-    private val updateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            updateScheduler.updateNow(false)
+    private val updateReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                updateScheduler.updateNow(false)
+            }
         }
-    }
 
     private var isRunning = false
 
     /**
      * Initialize this {@link TileManager}. This will cause the {@link TileManager} to connect to
-     * the tile provider and request the first tile. It will also trigger any requested updates.
+     * the tile service and request the first tile. It will also trigger any requested updates.
      */
     @MainThread
     public fun connect() {
@@ -113,9 +108,7 @@ public class TileUiClient(
 
         coroutineScope.launch { requestTile() }
         updateScheduler.enableUpdates()
-        updateScheduler.setUpdateReceiver {
-            coroutineScope.launch { requestTile() }
-        }
+        updateScheduler.setUpdateReceiver { coroutineScope.launch { requestTile() } }
         registerBroadcastReceiver()
 
         isRunning = true
@@ -123,7 +116,7 @@ public class TileUiClient(
 
     /**
      * Shut down this {@link TileManager}. This will cancel any scheduled updates, and close the
-     * connection with the tile provider.
+     * connection with the tile service.
      */
     @MainThread
     override fun close() {
@@ -141,46 +134,45 @@ public class TileUiClient(
     }
 
     private suspend fun requestTile(
-        state: StateBuilders.State = StateBuilders.State.builder().build()
+        state: StateBuilders.State = StateBuilders.State.Builder().build()
     ) = coroutineScope {
         withContext(Dispatchers.Main) {
-            val tileRequest = RequestBuilders.TileRequest
-                .builder()
-                .setState(state)
-                .setDeviceParameters(buildDeviceParameters())
-                .build()
+            val tileRequest =
+                RequestBuilders.TileRequest.Builder()
+                    .setCurrentState(state)
+                    .setDeviceConfiguration(buildDeviceParameters())
+                    .build()
 
             val tile = tilesConnection.requestTile(tileRequest).await()
 
-            if (tile.resourcesVersion.isNotEmpty() &&
-                tile.resourcesVersion != tileResources?.version
-            ) {
-                val resourcesRequest = RequestBuilders.ResourcesRequest
-                    .builder()
-                    .setVersion(tile.resourcesVersion)
-                    .setDeviceParameters(buildDeviceParameters())
-                    .build()
+            if (tile.resourcesVersion.isEmpty()) {
+                tileResources = ResourceBuilders.Resources.Builder().build()
+            } else if (tile.resourcesVersion != tileResources?.version) {
+                val resourcesRequest =
+                    RequestBuilders.ResourcesRequest.Builder()
+                        .setVersion(tile.resourcesVersion)
+                        .setDeviceConfiguration(buildDeviceParameters())
+                        .build()
 
-                tileResources = tilesConnection.requestResources(resourcesRequest).await()
+                tileResources = tilesConnection.requestTileResourcesAsync(resourcesRequest).await()
             }
 
-            timelineManager?.apply {
-                close()
-            }
+            timelineManager?.apply { close() }
 
             // Check the tile and raise any validation errors.
-            if (tile.timeline != null) {
-                timelineChecker?.doCheck(tile.timeline!!)
+            if (tile.tileTimeline != null) {
+                timelineChecker.doCheck(tile.tileTimeline!!)
             }
 
-            val localTimelineManager = TilesTimelineManager(
-                context.getSystemService(AlarmManager::class.java),
-                System::currentTimeMillis,
-                tile.timeline ?: TimelineBuilders.Timeline.builder().build(),
-                0,
-                ContextCompat.getMainExecutor(context),
-                { _, layout -> updateContents(layout) }
-            )
+            val localTimelineManager =
+                TilesTimelineManager(
+                    context.getSystemService(AlarmManager::class.java),
+                    System::currentTimeMillis,
+                    tile.tileTimeline ?: TimelineBuilders.Timeline.Builder().build(),
+                    0,
+                    ContextCompat.getMainExecutor(context)) { _, layout ->
+                        coroutineScope.launch { updateContents(layout) }
+                    }
             timelineManager = localTimelineManager
 
             val freshnessInterval = tile.freshnessIntervalMillis
@@ -195,17 +187,15 @@ public class TileUiClient(
         }
     }
 
-    private fun updateContents(layout: LayoutElementBuilders.Layout) {
+    private suspend fun updateContents(layout: LayoutElementBuilders.Layout) {
         parentView.removeAllViews()
 
-        val renderer = TileRenderer(
-            context,
-            layout,
-            tileResources!!,
-            ContextCompat.getMainExecutor(context),
-            { state -> coroutineScope.launch { requestTile(state) } }
-        )
-        renderer.inflate(parentView)?.apply {
+        val renderer =
+            TileRenderer(context, ContextCompat.getMainExecutor(context)) { state ->
+                coroutineScope.launch { requestTile(state) }
+            }
+
+        renderer.inflateAsync(layout, tileResources!!, parentView).await()?.apply {
             (layoutParams as FrameLayout.LayoutParams).gravity = Gravity.CENTER
         }
     }
@@ -218,14 +208,13 @@ public class TileUiClient(
     private fun buildDeviceParameters(): DeviceParametersBuilders.DeviceParameters {
         val displayMetrics: DisplayMetrics = context.resources.displayMetrics
         val isScreenRound: Boolean = context.resources.configuration.isScreenRound
-        return DeviceParametersBuilders.DeviceParameters.builder()
-            .setScreenWidthDp(Math.round(displayMetrics.widthPixels / displayMetrics.density))
-            .setScreenHeightDp(Math.round(displayMetrics.heightPixels / displayMetrics.density))
+        return DeviceParametersBuilders.DeviceParameters.Builder()
+            .setScreenWidthDp((displayMetrics.widthPixels / displayMetrics.density).roundToInt())
+            .setScreenHeightDp((displayMetrics.heightPixels / displayMetrics.density).roundToInt())
             .setScreenDensity(displayMetrics.density)
             .setScreenShape(
                 if (isScreenRound) DeviceParametersBuilders.SCREEN_SHAPE_ROUND
-                else DeviceParametersBuilders.SCREEN_SHAPE_RECT
-            )
+                else DeviceParametersBuilders.SCREEN_SHAPE_RECT)
             .setDevicePlatform(DeviceParametersBuilders.DEVICE_PLATFORM_WEAR_OS)
             .build()
     }

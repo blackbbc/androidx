@@ -18,18 +18,17 @@ package androidx.compose.foundation.text.selection
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.ResolvedTextDirection
+import androidx.compose.ui.unit.DpSize
 
 @Composable
 internal actual fun SelectionHandle(
-    startHandlePosition: Offset?,
-    endHandlePosition: Offset?,
+    offsetProvider: OffsetProvider,
     isStartHandle: Boolean,
-    directions: Pair<ResolvedTextDirection, ResolvedTextDirection>,
+    direction: ResolvedTextDirection,
     handlesCrossed: Boolean,
+    minTouchTargetSize: DpSize,
     modifier: Modifier,
-    content: (@Composable () -> Unit)?
 ) {
     // TODO
 }

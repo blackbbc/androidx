@@ -16,6 +16,7 @@
 
 package androidx.room.compiler.processing
 
+import androidx.kruth.assertThat
 import androidx.room.compiler.processing.ksp.KspTypeElement
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.XTestInvocation
@@ -23,20 +24,27 @@ import androidx.room.compiler.processing.util.compileFiles
 import androidx.room.compiler.processing.util.getAllFieldNames
 import androidx.room.compiler.processing.util.runKspTest
 import androidx.room.compiler.processing.util.runProcessorTest
-import com.google.common.truth.Truth.assertThat
 import com.google.devtools.ksp.symbol.Origin
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 
 /**
  * see: https://github.com/google/ksp/issues/250
  */
-class KspClassFileUtilityTest {
+@RunWith(Parameterized::class)
+class KspClassFileUtilityTest(
+    val preCompile: Boolean
+) {
     @Test
     fun outOfOrderKotlin_fields() {
         val libSource = Source.kotlin(
             "lib.kt",
             """
-            class KotlinClass {
+            class KotlinClass(
+                val consA: String,
+                val consB: String,
+            ) {
                 val b: String = TODO()
                 val a: String = TODO()
                 val c: String = TODO()
@@ -46,22 +54,20 @@ class KspClassFileUtilityTest {
             }
             """.trimIndent()
         )
-        val classpath = compileFiles(listOf(libSource))
-        runProcessorTest(
-            sources = emptyList(),
-            classpath = classpath
+        runTest(
+            sources = listOf(libSource)
         ) { invocation ->
             val element = invocation.processingEnv.requireTypeElement("KotlinClass")
             assertThat(element.getAllFieldNames())
-                .containsExactly("b", "a", "c", "isB", "isA", "isC")
+                .containsExactly("consA", "consB", "b", "a", "c", "isB", "isA", "isC")
                 .inOrder()
         }
     }
 
     @Test
     fun outOfOrderJava_fields() {
-        val libSource = Source.kotlin(
-            "JavaClass.java",
+        val libSource = Source.java(
+            "JavaClass",
             """
             class JavaClass {
                 String b;
@@ -73,10 +79,8 @@ class KspClassFileUtilityTest {
             }
             """.trimIndent()
         )
-        val classpath = compileFiles(listOf(libSource))
-        runProcessorTest(
-            sources = emptyList(),
-            classpath = classpath
+        runTest(
+            sources = listOf(libSource),
         ) { invocation ->
             val element = invocation.processingEnv.requireTypeElement("JavaClass")
             assertThat(element.getAllFieldNames())
@@ -100,13 +104,11 @@ class KspClassFileUtilityTest {
             }
             """.trimIndent()
         )
-        val classpath = compileFiles(listOf(libSource))
-        runProcessorTest(
-            sources = listOf(Source.kotlin("Placeholder.kt", "")),
-            classpath = classpath
+        runTest(
+            sources = listOf(libSource)
         ) { invocation ->
             val element = invocation.processingEnv.requireTypeElement("KotlinClass")
-            assertThat(element.getDeclaredMethods().map { it.name })
+            assertThat(element.getDeclaredMethods().map { it.jvmName })
                 .containsExactly("b", "a", "c", "isB", "isA", "isC")
                 .inOrder()
         }
@@ -114,8 +116,8 @@ class KspClassFileUtilityTest {
 
     @Test
     fun outOfOrderJava_methods() {
-        val libSource = Source.kotlin(
-            "JavaClass.java",
+        val libSource = Source.java(
+            "JavaClass",
             """
             class JavaClass {
                 String b() { return ""; }
@@ -127,13 +129,11 @@ class KspClassFileUtilityTest {
             }
             """.trimIndent()
         )
-        val classpath = compileFiles(listOf(libSource))
-        runProcessorTest(
-            sources = listOf(Source.kotlin("Placeholder.kt", "")),
-            classpath = classpath
+        runTest(
+            sources = listOf(libSource),
         ) { invocation ->
             val element = invocation.processingEnv.requireTypeElement("JavaClass")
-            assertThat(element.getDeclaredMethods().map { it.name })
+            assertThat(element.getDeclaredMethods().map { it.jvmName })
                 .containsExactly("b", "a", "c", "isB", "isA", "isC")
                 .inOrder()
         }
@@ -159,6 +159,7 @@ class KspClassFileUtilityTest {
                 """.trimIndent()
             )
         )
+
         fun XTestInvocation.findOrigin(
             qName: String
         ) = (processingEnv.requireTypeElement(qName) as KspTypeElement).declaration.origin
@@ -183,5 +184,28 @@ class KspClassFileUtilityTest {
                 invocation.findOrigin("main.KotlinClass")
             ).isEqualTo(Origin.KOTLIN)
         }
+    }
+
+    @Suppress("NAME_SHADOWING") // intentional
+    private fun runTest(
+        sources: List<Source>,
+        handler: (XTestInvocation) -> Unit
+    ) {
+        val (sources, classpath) = if (preCompile) {
+            emptyList<Source>() to compileFiles(sources)
+        } else {
+            sources to emptyList()
+        }
+        runProcessorTest(
+            sources = sources + Source.kotlin("Placeholder.kt", ""),
+            classpath = classpath,
+            handler = handler
+        )
+    }
+
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "preCompile_{0}")
+        fun params() = arrayOf(false, true)
     }
 }

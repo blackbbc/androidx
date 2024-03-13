@@ -16,8 +16,6 @@
 
 package androidx.camera.view;
 
-import static androidx.annotation.RestrictTo.Scope.TESTS;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -26,16 +24,18 @@ import android.util.Log;
 import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.OptIn;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RequiresPermission;
-import androidx.annotation.RestrictTo;
+import androidx.annotation.VisibleForTesting;
 import androidx.camera.core.Camera;
+import androidx.camera.core.CameraEffect;
 import androidx.camera.core.UseCase;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.core.impl.utils.Threads;
-import androidx.camera.lifecycle.ExperimentalUseCaseGroupLifecycle;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.lifecycle.LifecycleOwner;
+
+import com.google.common.util.concurrent.ListenableFuture;
 
 /**
  * A controller that provides most of the CameraX features.
@@ -60,6 +60,7 @@ import androidx.lifecycle.LifecycleOwner;
  *     controller.setZoomRatio(.5F);
  * </code></pre>
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class LifecycleCameraController extends CameraController {
 
     private static final String TAG = "CamLifecycleController";
@@ -69,6 +70,12 @@ public final class LifecycleCameraController extends CameraController {
 
     public LifecycleCameraController(@NonNull Context context) {
         super(context);
+    }
+
+    @VisibleForTesting
+    LifecycleCameraController(@NonNull Context context,
+            @NonNull ListenableFuture<ProcessCameraProviderWrapper> cameraProviderFuture) {
+        super(context, cameraProviderFuture);
     }
 
     /**
@@ -109,11 +116,9 @@ public final class LifecycleCameraController extends CameraController {
      * Unbind and rebind all use cases to {@link LifecycleOwner}.
      *
      * @return null if failed to start camera.
+     * @throws IllegalStateException for invalid {@link UseCase} combinations.
+     * @throws RuntimeException      for invalid {@link CameraEffect} combinations.
      */
-    // ExperimentalUseCaseGroupLifecycle is removed and has to be replaced with
-    // ExperimentalUseCaseGroup when the dependency to camera-lifecycle is updated to alpha
-    // versions.
-    @OptIn(markerClass = ExperimentalUseCaseGroupLifecycle.class)
     @RequiresPermission(Manifest.permission.CAMERA)
     @Override
     @Nullable
@@ -132,18 +137,25 @@ public final class LifecycleCameraController extends CameraController {
             // Use cases can't be created.
             return null;
         }
-        return mCameraProvider.bindToLifecycle(mLifecycleOwner, mCameraSelector, useCaseGroup);
+        try {
+            return mCameraProvider.bindToLifecycle(mLifecycleOwner, mCameraSelector, useCaseGroup);
+        } catch (IllegalArgumentException e) {
+            // Catches the invalid use case combination exception and throw a more readable one.
+            String errorMessage =
+                    "The selected camera does not support the enabled use cases. Please "
+                            + "disable use case and/or select a different camera. e.g. "
+                            + "#setVideoCaptureEnabled(false)";
+            throw new IllegalStateException(errorMessage, e);
+        }
     }
 
     /**
-     * @hide
      */
-    @RestrictTo(TESTS)
+    @VisibleForTesting
     @SuppressWarnings("FutureReturnValueIgnored")
     void shutDownForTests() {
         if (mCameraProvider != null) {
-            mCameraProvider.unbindAll();
-            mCameraProvider.shutdown();
+            mCameraProvider.shutdownAsync();
         }
     }
 }

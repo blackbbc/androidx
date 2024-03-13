@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
-import androidx.build.LibraryVersions
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("AndroidXPlugin")
@@ -26,16 +32,20 @@ plugins {
 }
 
 dependencies {
-    kotlinPlugin "androidx.compose.compiler:compiler:1.0.0-rc01"
+    compileOnly(project(":annotation:annotation-sampled"))
     implementation(libs.kotlinStdlib)
+    implementation projectOrArtifact(":lifecycle:lifecycle-common-java8")
     implementation projectOrArtifact(":lifecycle:lifecycle-viewmodel-compose")
+    implementation projectOrArtifact(":lifecycle:lifecycle-viewmodel-savedstate")
 }
 
 androidx {
-    name = "AndroidX Lifecycle ViewModel Compose Integration Samples"
+    name = "Lifecycle ViewModel Compose Integration Samples"
     type = LibraryType.SAMPLES
-    mavenVersion = LibraryVersions.LIFECYCLE
-    mavenGroup = LibraryGroups.LIFECYCLE
     inceptionYear = "2021"
     description = "Samples for Compose integration with Lifecycle ViewModel"
+}
+
+android {
+    namespace "androidx.lifecycle.viewmodel.compose.samples"
 }

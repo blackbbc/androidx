@@ -39,7 +39,7 @@ import android.view.View;
 import android.widget.ImageButton;
 
 import androidx.annotation.DrawableRes;
-import androidx.core.view.ViewCompat;
+import androidx.annotation.NonNull;
 import androidx.test.annotation.UiThreadTest;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.FlakyTest;
@@ -93,13 +93,13 @@ public class AnimatedVectorDrawableTest {
             new AnimationCallback() {
                 @Override
                 public void onAnimationStart(
-                        Drawable drawable) {
+                        @NonNull Drawable drawable) {
                     mAnimationStarted = true;
                 }
 
                 @Override
                 public void onAnimationEnd(
-                        Drawable drawable) {
+                        @NonNull Drawable drawable) {
                     mAnimationEnded = true;
                 }
             };
@@ -309,7 +309,7 @@ public class AnimatedVectorDrawableTest {
             public void run() {
                 AnimatedVectorDrawableCompat avd = AnimatedVectorDrawableCompat.create(mContext,
                         R.drawable.animated_color_fill);
-                ViewCompat.setBackground(imageButton, avd);
+                imageButton.setBackground(avd);
                 avd.start();
             }
         });
@@ -391,7 +391,7 @@ public class AnimatedVectorDrawableTest {
 
         AnimatedVectorDrawableCompat avd = AnimatedVectorDrawableCompat.create(mContext,
                 R.drawable.animation_vector_drawable_grouping_1); // Duration is 50 ms.
-        ViewCompat.setBackground(imageButton, avd);
+        imageButton.setBackground(avd);
         return avd;
     }
 
@@ -486,12 +486,12 @@ public class AnimatedVectorDrawableTest {
 
         avd.registerAnimationCallback(new AnimationCallback() {
             @Override
-            public void onAnimationStart(Drawable drawable) {
+            public void onAnimationStart(@NonNull Drawable drawable) {
                 // Nothing to do.
             }
 
             @Override
-            public void onAnimationEnd(Drawable drawable) {
+            public void onAnimationEnd(@NonNull Drawable drawable) {
                 bitmap.eraseColor(0);
                 drawable.draw(c);
                 int centerColor = bitmap.getPixel(IMAGE_WIDTH / 2 , IMAGE_WIDTH / 2);

@@ -14,10 +14,16 @@
  * limitations under the License.
  */
 
-import androidx.build.AndroidXComposePlugin
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
+
 import androidx.build.LibraryType
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import androidx.build.PlatformIdentifier
 
 plugins {
     id("AndroidXPlugin")
@@ -25,69 +31,80 @@ plugins {
     id("AndroidXComposePlugin")
 }
 
-AndroidXComposePlugin.applyAndConfigureKotlinPlugin(project)
+androidXMultiplatform {
+    android()
+    desktop()
 
-if(!AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-    dependencies {
-        /*
-         * When updating dependencies, make sure to make the an an analogous update in the
-         * corresponding block below
-         */
+    defaultPlatform(PlatformIdentifier.ANDROID)
 
-        implementation(libs.kotlinStdlib)
-
-        testImplementation(libs.junit)
-        testImplementation(libs.truth)
-        testImplementation(libs.kotlinTest)
-    }
-}
-
-if(AndroidXComposePlugin.isMultiplatformEnabled(project)) {
-    kotlin {
-        android()
-        jvm("desktop")
-
-        /*
-         * When updating dependencies, make sure to make the an an analogous update in the
-         * corresponding block above
-         */
-        sourceSets {
-            commonMain.dependencies {
+    sourceSets {
+        commonMain {
+            dependencies {
                 implementation(libs.kotlinStdlibCommon)
             }
+        }
 
-            jvmMain.dependencies {
-                implementation(libs.kotlinStdlib)
-            }
-
-            androidMain.dependencies {
-                implementation(libs.kotlinStdlib)
-            }
-
-            desktopMain.dependsOn(jvmMain)
-
-            commonTest.dependencies {
+        commonTest {
+            dependencies {
                 implementation(kotlin("test-junit"))
             }
+        }
 
-            androidTest.dependencies {
+        jvmMain {
+            dependencies {
+                implementation(libs.kotlinStdlib)
+            }
+        }
+
+
+        androidMain {
+            dependsOn(jvmMain)
+            dependencies {
+                implementation(libs.kotlinStdlib)
+                api("androidx.annotation:annotation-experimental:1.4.0")
+            }
+        }
+
+        desktopMain {
+            dependsOn(jvmMain)
+        }
+
+        jvmTest {
+            dependencies {
+            }
+        }
+
+        androidInstrumentedTest {
+            dependsOn(jvmTest)
+            dependencies {
+            }
+        }
+
+        androidUnitTest {
+            dependsOn(jvmTest)
+            dependencies {
                 implementation(libs.truth)
             }
+        }
+
+        desktopTest {
+            dependsOn(jvmTest)
         }
     }
 }
 
 androidx {
     name = "Compose Util"
-    type = LibraryType.PUBLISHED_LIBRARY
-    mavenGroup = LibraryGroups.Compose.UI
+    type = LibraryType.PUBLISHED_KOTLIN_ONLY_LIBRARY
     inceptionYear = "2020"
     description = "Internal Compose utilities used by other modules"
     legacyDisableKotlinStrictApiMode = true
 }
 
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        freeCompilerArgs += ["-XXLanguage:+InlineClasses"]
-    }
+androidxCompose {
+    composeCompilerPluginEnabled = false
+}
+
+android {
+    namespace "androidx.compose.ui.util"
 }

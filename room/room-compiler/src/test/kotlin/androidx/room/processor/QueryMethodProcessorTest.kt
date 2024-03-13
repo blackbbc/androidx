@@ -17,45 +17,52 @@
 package androidx.room.processor
 
 import COMMON
+import androidx.kruth.assertThat
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.compiler.codegen.CodeLanguage
+import androidx.room.compiler.codegen.XClassName
+import androidx.room.compiler.codegen.XTypeName
 import androidx.room.compiler.processing.XType
 import androidx.room.compiler.processing.XTypeElement
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.XTestInvocation
 import androidx.room.compiler.processing.util.runProcessorTest
 import androidx.room.ext.CommonTypeNames
+import androidx.room.ext.CommonTypeNames.LIST
+import androidx.room.ext.CommonTypeNames.MUTABLE_LIST
+import androidx.room.ext.CommonTypeNames.STRING
+import androidx.room.ext.GuavaUtilConcurrentTypeNames
 import androidx.room.ext.KotlinTypeNames
 import androidx.room.ext.LifecyclesTypeNames
 import androidx.room.ext.PagingTypeNames
-import androidx.room.ext.typeName
+import androidx.room.ext.ReactiveStreamsTypeNames
+import androidx.room.ext.RxJava2TypeNames
+import androidx.room.ext.RxJava3TypeNames
 import androidx.room.parser.QueryType
 import androidx.room.parser.Table
+import androidx.room.processor.ProcessorErrors.CANNOT_USE_MAP_COLUMN_AND_MAP_INFO_SIMULTANEOUSLY
 import androidx.room.processor.ProcessorErrors.DO_NOT_USE_GENERIC_IMMUTABLE_MULTIMAP
+import androidx.room.processor.ProcessorErrors.MAP_INFO_MUST_HAVE_AT_LEAST_ONE_COLUMN_PROVIDED
 import androidx.room.processor.ProcessorErrors.cannotFindQueryResultAdapter
+import androidx.room.processor.ProcessorErrors.mayNeedMapColumn
 import androidx.room.solver.query.result.DataSourceFactoryQueryResultBinder
 import androidx.room.solver.query.result.ListQueryResultAdapter
 import androidx.room.solver.query.result.LiveDataQueryResultBinder
 import androidx.room.solver.query.result.PojoRowAdapter
 import androidx.room.solver.query.result.SingleColumnRowAdapter
-import androidx.room.solver.query.result.SingleEntityQueryResultAdapter
+import androidx.room.solver.query.result.SingleItemQueryResultAdapter
 import androidx.room.testing.context
 import androidx.room.vo.Field
 import androidx.room.vo.QueryMethod
 import androidx.room.vo.ReadQueryMethod
 import androidx.room.vo.Warning
 import androidx.room.vo.WriteQueryMethod
-import com.google.common.truth.Truth.assertThat
-import com.squareup.javapoet.ArrayTypeName
-import com.squareup.javapoet.ClassName
-import com.squareup.javapoet.ParameterizedTypeName
-import com.squareup.javapoet.TypeName
-import com.squareup.javapoet.TypeVariableName
 import createVerifierFromEntitiesAndViews
 import mockElementAndType
-import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.CoreMatchers.hasItem
 import org.hamcrest.CoreMatchers.instanceOf
+import org.hamcrest.CoreMatchers.`is`
 import org.hamcrest.CoreMatchers.not
 import org.hamcrest.CoreMatchers.notNullValue
 import org.hamcrest.MatcherAssert.assertThat
@@ -66,7 +73,6 @@ import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.mockito.Mockito
 
-@Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
 @RunWith(Parameterized::class)
 class QueryMethodProcessorTest(private val enableVerification: Boolean) {
     companion object {
@@ -75,11 +81,26 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 import androidx.annotation.NonNull;
                 import androidx.room.*;
                 import java.util.*;
+                import com.google.common.collect.*;
+                @Dao
+                abstract class MyClass {
+                """
+        const val DAO_PREFIX_KT = """
+                package foo.bar
+                import androidx.room.*
+                import java.util.*
+                import io.reactivex.*         
+                import io.reactivex.rxjava3.core.*
+                import androidx.lifecycle.*
+                import com.google.common.util.concurrent.*
+                import org.reactivestreams.*
+                import kotlinx.coroutines.flow.*
+            
                 @Dao
                 abstract class MyClass {
                 """
         const val DAO_SUFFIX = "}"
-        val POJO: ClassName = ClassName.get("foo.bar", "MyClass.Pojo")
+        val POJO = XClassName.get("foo.bar", "MyClass.Pojo")
         @Parameterized.Parameters(name = "enableDbVerification={0}")
         @JvmStatic
         fun getParams() = arrayOf(true, false)
@@ -104,11 +125,11 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public int[] foo();
             """
         ) { parsedQuery, _ ->
-            assertThat(parsedQuery.name, `is`("foo"))
+            assertThat(parsedQuery.element.jvmName, `is`("foo"))
             assertThat(parsedQuery.parameters.size, `is`(0))
             assertThat(
-                parsedQuery.returnType.typeName,
-                `is`(ArrayTypeName.of(TypeName.INT) as TypeName)
+                parsedQuery.returnType.asTypeName(),
+                `is`(XTypeName.getArrayName(XTypeName.PRIMITIVE_INT))
             )
         }
     }
@@ -121,15 +142,15 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public long foo(int x);
                 """
         ) { parsedQuery, invocation ->
-            assertThat(parsedQuery.name, `is`("foo"))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.LONG))
+            assertThat(parsedQuery.element.jvmName, `is`("foo"))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.PRIMITIVE_LONG))
             assertThat(parsedQuery.parameters.size, `is`(1))
             val param = parsedQuery.parameters.first()
             assertThat(param.name, `is`("x"))
             assertThat(param.sqlName, `is`("x"))
             assertThat(
                 param.type,
-                `is`(invocation.processingEnv.requireType(TypeName.INT))
+                `is`(invocation.processingEnv.requireType(XTypeName.PRIMITIVE_INT))
             )
         }
     }
@@ -142,15 +163,15 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public long foo(int... ids);
                 """
         ) { parsedQuery, _ ->
-            assertThat(parsedQuery.name, `is`("foo"))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.LONG))
+            assertThat(parsedQuery.element.jvmName, `is`("foo"))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.PRIMITIVE_LONG))
             assertThat(parsedQuery.parameters.size, `is`(1))
             val param = parsedQuery.parameters.first()
             assertThat(param.name, `is`("ids"))
             assertThat(param.sqlName, `is`("ids"))
             assertThat(
-                param.type.typeName,
-                `is`(ArrayTypeName.of(TypeName.INT))
+                param.type.asTypeName(),
+                `is`(XTypeName.getArrayName(XTypeName.PRIMITIVE_INT))
             )
         }
     }
@@ -310,14 +331,13 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<ReadQueryMethod>(
             """
                 @Query("select * from User")
-                abstract public <T> ${CommonTypeNames.LIST}<T> foo(int x);
+                abstract public <T> ${LIST.canonicalName}<T> foo(int x);
                 """
         ) { parsedQuery, invocation ->
-            val expected: TypeName = ParameterizedTypeName.get(
-                ClassName.get(List::class.java),
-                TypeVariableName.get("T")
+            val expected = MUTABLE_LIST.parametrizedBy(
+                XTypeName.getTypeVariableName("T", listOf(XTypeName.ANY_OBJECT))
             )
-            assertThat(parsedQuery.returnType.typeName, `is`(expected))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(expected))
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.CANNOT_USE_UNBOUND_GENERICS_IN_QUERY_METHODS
@@ -347,7 +367,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             """
                 @Query("WITH RECURSIVE tempTable(n, fact) AS (SELECT 0, 1 UNION ALL SELECT n+1,"
                 + " (n+1)*fact FROM tempTable WHERE n < 9) SELECT fact FROM tempTable, User")
-                abstract public ${LifecyclesTypeNames.LIVE_DATA}<${CommonTypeNames.LIST}<Integer>>
+                abstract public ${LifecyclesTypeNames.LIVE_DATA.canonicalName}<${LIST.canonicalName}<Integer>>
                 getFactorialLiveData();
                 """
         ) { parsedQuery, _ ->
@@ -365,7 +385,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<ReadQueryMethod>(
             """
                 @Query("SELECT 1")
-                abstract public ${LifecyclesTypeNames.LIVE_DATA}<Integer> getOne();
+                abstract public ${LifecyclesTypeNames.LIVE_DATA.canonicalName}<Integer> getOne();
                 """
         ) { _, invocation ->
             invocation.assertCompilationResult {
@@ -382,7 +402,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             """
                 @Query("WITH RECURSIVE tempTable(n, fact) AS (SELECT 0, 1 UNION ALL SELECT n+1,"
                 + " (n+1)*fact FROM tempTable WHERE n < 9) SELECT fact FROM tempTable")
-                abstract public ${LifecyclesTypeNames.LIVE_DATA}<${CommonTypeNames.LIST}<Integer>>
+                abstract public ${LifecyclesTypeNames.LIVE_DATA.canonicalName}<${LIST.canonicalName}<Integer>>
                 getFactorialLiveData();
                 """
         ) { _, invocation ->
@@ -408,8 +428,8 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 """
         ) { parsedQuery, _ ->
             assertThat(
-                parsedQuery.returnType.typeName,
-                `is`(ClassName.get(Integer::class.java) as TypeName)
+                parsedQuery.returnType.asTypeName(),
+                `is`(XTypeName.BOXED_INT)
             )
         }
     }
@@ -428,9 +448,9 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 """
         ) { parsedQuery, _ ->
             assertThat(
-                parsedQuery.parameters.first().type.typeName,
+                parsedQuery.parameters.first().type.asTypeName(),
                 `is`(
-                    TypeName.INT.box()
+                    XTypeName.BOXED_INT
                 )
             )
         }
@@ -447,7 +467,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors
-                        .cannotFindPreparedQueryResultAdapter(TypeName.FLOAT, QueryType.DELETE)
+                        .cannotFindPreparedQueryResultAdapter("float", QueryType.DELETE)
                 )
             }
         }
@@ -461,9 +481,9 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public int foo(int id);
                 """
         ) { parsedQuery, _ ->
-            assertThat(parsedQuery.name, `is`("foo"))
+            assertThat(parsedQuery.element.jvmName, `is`("foo"))
             assertThat(parsedQuery.parameters.size, `is`(1))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.INT))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.PRIMITIVE_INT))
         }
     }
 
@@ -475,9 +495,9 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public void foo(int id);
                 """
         ) { parsedQuery, _ ->
-            assertThat(parsedQuery.name, `is`("foo"))
+            assertThat(parsedQuery.element.jvmName, `is`("foo"))
             assertThat(parsedQuery.parameters.size, `is`(1))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.VOID))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.UNIT_VOID))
         }
     }
 
@@ -488,13 +508,13 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 @Query("update user set name = :name")
                 abstract public void updateAllNames(String name);
                 """
-        ) { parsedQuery, invocation ->
-            assertThat(parsedQuery.name, `is`("updateAllNames"))
+        ) { parsedQuery, _ ->
+            assertThat(parsedQuery.element.jvmName, `is`("updateAllNames"))
             assertThat(parsedQuery.parameters.size, `is`(1))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.VOID))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.UNIT_VOID))
             assertThat(
-                parsedQuery.parameters.first().type.typeName,
-                `is`(invocation.context.COMMON_TYPES.STRING.typeName)
+                parsedQuery.parameters.first().type.asTypeName(),
+                `is`(STRING)
             )
         }
     }
@@ -506,14 +526,11 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 @Query("insert into user (name) values (:name)")
                 abstract public void insertUsername(String name);
                 """
-        ) { parsedQuery, invocation ->
-            assertThat(parsedQuery.name, `is`("insertUsername"))
+        ) { parsedQuery, _ ->
+            assertThat(parsedQuery.element.jvmName, `is`("insertUsername"))
             assertThat(parsedQuery.parameters.size, `is`(1))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.VOID))
-            assertThat(
-                parsedQuery.parameters.first().type.typeName,
-                `is`(invocation.context.COMMON_TYPES.STRING.typeName)
-            )
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.UNIT_VOID))
+            assertThat(parsedQuery.parameters.first().type.asTypeName(), `is`(STRING))
         }
     }
 
@@ -524,14 +541,11 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 @Query("insert into user (name) values (:name)")
                 abstract public long insertUsername(String name);
                 """
-        ) { parsedQuery, invocation ->
-            assertThat(parsedQuery.name, `is`("insertUsername"))
+        ) { parsedQuery, _ ->
+            assertThat(parsedQuery.element.jvmName, `is`("insertUsername"))
             assertThat(parsedQuery.parameters.size, `is`(1))
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.LONG))
-            assertThat(
-                parsedQuery.parameters.first().type.typeName,
-                `is`(invocation.context.COMMON_TYPES.STRING.typeName)
-            )
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.PRIMITIVE_LONG))
+            assertThat(parsedQuery.parameters.first().type.asTypeName(), `is`(STRING))
         }
     }
 
@@ -543,11 +557,11 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public int insert(String name);
                 """
         ) { parsedQuery, invocation ->
-            assertThat(parsedQuery.returnType.typeName, `is`(TypeName.INT))
+            assertThat(parsedQuery.returnType.asTypeName(), `is`(XTypeName.PRIMITIVE_INT))
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors
-                        .cannotFindPreparedQueryResultAdapter(TypeName.INT, QueryType.INSERT)
+                        .cannotFindPreparedQueryResultAdapter("int", QueryType.INSERT)
                 )
             }
         }
@@ -558,16 +572,13 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<ReadQueryMethod>(
             """
                 @Query("select name from user where uid = :id")
-                abstract ${LifecyclesTypeNames.LIVE_DATA}<String> nameLiveData(String id);
+                abstract ${LifecyclesTypeNames.LIVE_DATA.canonicalName}<String> nameLiveData(String id);
                 """
         ) { parsedQuery, _ ->
             assertThat(
-                parsedQuery.returnType.typeName,
+                parsedQuery.returnType.asTypeName(),
                 `is`(
-                    ParameterizedTypeName.get(
-                        LifecyclesTypeNames.LIVE_DATA,
-                        String::class.typeName
-                    ) as TypeName
+                    LifecyclesTypeNames.LIVE_DATA.parametrizedBy(STRING)
                 )
             )
             assertThat(
@@ -582,16 +593,13 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<WriteQueryMethod>(
             """
                 @Query("delete from user where uid = :id")
-                abstract ${LifecyclesTypeNames.LIVE_DATA}<Integer> deleteLiveData(String id);
+                abstract ${LifecyclesTypeNames.LIVE_DATA.canonicalName}<Integer> deleteLiveData(String id);
                 """
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.cannotFindPreparedQueryResultAdapter(
-                        ParameterizedTypeName.get(
-                            LifecyclesTypeNames.LIVE_DATA,
-                            TypeName.INT.box()
-                        ),
+                        "androidx.lifecycle.LiveData<java.lang.Integer>",
                         QueryType.DELETE
                     )
                 )
@@ -604,16 +612,13 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<WriteQueryMethod>(
             """
                 @Query("update user set name = :name")
-                abstract ${LifecyclesTypeNames.LIVE_DATA}<Integer> updateNameLiveData(String name);
+                abstract ${LifecyclesTypeNames.LIVE_DATA.canonicalName}<Integer> updateNameLiveData(String name);
                 """
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.cannotFindPreparedQueryResultAdapter(
-                        ParameterizedTypeName.get(
-                            LifecyclesTypeNames.LIVE_DATA,
-                            TypeName.INT.box()
-                        ),
+                        "androidx.lifecycle.LiveData<java.lang.Integer>",
                         QueryType.UPDATE
                     )
                 )
@@ -626,17 +631,17 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<ReadQueryMethod>(
             """
                 @Query("select name from user")
-                abstract ${PagingTypeNames.DATA_SOURCE_FACTORY}<Integer, String>
+                abstract ${PagingTypeNames.DATA_SOURCE_FACTORY.canonicalName}<Integer, String>
                 nameDataSourceFactory();
                 """
         ) { parsedQuery, _ ->
             assertThat(
-                parsedQuery.returnType.typeName,
+                parsedQuery.returnType.asTypeName(),
                 `is`(
-                    ParameterizedTypeName.get(
-                        PagingTypeNames.DATA_SOURCE_FACTORY,
-                        Integer::class.typeName, String::class.typeName
-                    ) as TypeName
+                    PagingTypeNames.DATA_SOURCE_FACTORY.parametrizedBy(
+                        XTypeName.BOXED_INT,
+                        STRING
+                    )
                 )
             )
             assertThat(
@@ -655,17 +660,17 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<ReadQueryMethod>(
             """
                 @Query("select name from User u LEFT OUTER JOIN Book b ON u.uid == b.uid")
-                abstract ${PagingTypeNames.DATA_SOURCE_FACTORY}<Integer, String>
+                abstract ${PagingTypeNames.DATA_SOURCE_FACTORY.canonicalName}<Integer, String>
                 nameDataSourceFactory();
                 """
         ) { parsedQuery, _ ->
             assertThat(
-                parsedQuery.returnType.typeName,
+                parsedQuery.returnType.asTypeName(),
                 `is`(
-                    ParameterizedTypeName.get(
-                        PagingTypeNames.DATA_SOURCE_FACTORY,
-                        Integer::class.typeName, String::class.typeName
-                    ) as TypeName
+                    PagingTypeNames.DATA_SOURCE_FACTORY.parametrizedBy(
+                        XTypeName.BOXED_INT,
+                        STRING
+                    )
                 )
             )
             assertThat(
@@ -684,14 +689,14 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<QueryMethod>(
             """
                 @Query("select * from user")
-                abstract ${KotlinTypeNames.CHANNEL}<User> getUsersChannel();
+                abstract ${KotlinTypeNames.CHANNEL.canonicalName}<User> getUsersChannel();
                 """,
             additionalSources = listOf(COMMON.CHANNEL)
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.invalidChannelType(
-                        KotlinTypeNames.CHANNEL.toString()
+                        KotlinTypeNames.CHANNEL.canonicalName
                     )
                 )
             }
@@ -703,14 +708,14 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<QueryMethod>(
             """
                 @Query("select * from user")
-                abstract ${KotlinTypeNames.SEND_CHANNEL}<User> getUsersChannel();
+                abstract ${KotlinTypeNames.SEND_CHANNEL.canonicalName}<User> getUsersChannel();
                 """,
             additionalSources = listOf(COMMON.SEND_CHANNEL)
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.invalidChannelType(
-                        KotlinTypeNames.SEND_CHANNEL.toString()
+                        KotlinTypeNames.SEND_CHANNEL.canonicalName
                     )
                 )
             }
@@ -722,14 +727,14 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         singleQueryMethod<QueryMethod>(
             """
                 @Query("select * from user")
-                abstract ${KotlinTypeNames.RECEIVE_CHANNEL}<User> getUsersChannel();
+                abstract ${KotlinTypeNames.RECEIVE_CHANNEL.canonicalName}<User> getUsersChannel();
                 """,
             additionalSources = listOf(COMMON.RECEIVE_CHANNEL)
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     ProcessorErrors.invalidChannelType(
-                        KotlinTypeNames.RECEIVE_CHANNEL.toString()
+                        KotlinTypeNames.RECEIVE_CHANNEL.toString(CodeLanguage.JAVA)
                     )
                 )
             }
@@ -770,11 +775,11 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract public int[] foo();
                 """
         ) { parsedQuery, _ ->
-            assertThat(parsedQuery.name, `is`("foo"))
+            assertThat(parsedQuery.element.jvmName, `is`("foo"))
             assertThat(parsedQuery.parameters.size, `is`(0))
             assertThat(
-                parsedQuery.returnType.typeName,
-                `is`(ArrayTypeName.of(TypeName.INT) as TypeName)
+                parsedQuery.returnType.asTypeName(),
+                `is`(XTypeName.getArrayName(XTypeName.PRIMITIVE_INT))
             )
         }
     }
@@ -788,17 +793,16 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 abstract NotAnEntity getPojo();
                 """
         ) { parsedQuery, _ ->
-            assertThat(parsedQuery.name, `is`("getPojo"))
+            assertThat(parsedQuery.element.jvmName, `is`("getPojo"))
             assertThat(parsedQuery.parameters.size, `is`(0))
             assertThat(
-                parsedQuery.returnType.typeName,
-                `is`(COMMON.NOT_AN_ENTITY_TYPE_NAME as TypeName)
+                parsedQuery.returnType.asTypeName(),
+                `is`(COMMON.NOT_AN_ENTITY_TYPE_NAME)
             )
             val adapter = parsedQuery.queryResultBinder.adapter
-            assertThat(checkNotNull(adapter))
-            assertThat(adapter::class, `is`(SingleEntityQueryResultAdapter::class))
+            checkNotNull(adapter)
+            assertThat(adapter::class, `is`(SingleItemQueryResultAdapter::class))
             val rowAdapter = adapter.rowAdapters.single()
-            assertThat(checkNotNull(rowAdapter))
             assertThat(rowAdapter::class, `is`(PojoRowAdapter::class))
         }
     }
@@ -852,10 +856,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             assertThat(
                 pojoRowAdapter.relationCollectors[0].relationTypeName,
                 `is`(
-                    ParameterizedTypeName.get(
-                        ClassName.get(ArrayList::class.java),
-                        COMMON.USER_TYPE_NAME
-                    ) as TypeName
+                    CommonTypeNames.ARRAY_LIST.parametrizedBy(COMMON.USER_TYPE_NAME)
                 )
             )
             invocation.assertCompilationResult {
@@ -988,6 +989,18 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             """
                 public static class Username {
                     public String name;
+                    @Override
+                    public boolean equals(Object o) {
+                        if (this == o) return true;
+                        if (o == null || getClass() != o.getClass()) return false;
+                        Username username = (Username) o;
+                        if (name != username.name) return false;
+                        return true;
+                    }
+                    @Override
+                    public int hashCode() {
+                        return name.hashCode();
+                    }
                 }
                 @RewriteQueriesToDropUnusedColumns
                 @Query("SELECT * FROM User JOIN Relation ON (User.uid = Relation.userId)")
@@ -1063,15 +1076,15 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             invocation.assertCompilationResult {
                 hasErrorContaining(
                     cannotFindQueryResultAdapter(
-                        ClassName.get("foo.bar", "MyClass", "Pojo")
+                        XClassName.get("foo.bar", "MyClass", "Pojo").canonicalName
                     )
                 )
                 hasWarningContaining(
                     ProcessorErrors.cursorPojoMismatch(
-                        pojoTypeNames = listOf(POJO),
+                        pojoTypeNames = listOf(POJO.canonicalName),
                         unusedColumns = listOf("name", "lastName"),
                         pojoUnusedFields = mapOf(
-                            POJO to listOf(
+                            POJO.canonicalName to listOf(
                                 createField("nameX"),
                                 createField("lastNameX")
                             )
@@ -1098,7 +1111,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
                 hasErrorContaining("no such column: age")
                 hasErrorContaining(
                     cannotFindQueryResultAdapter(
-                        ClassName.get("foo.bar", "MyClass", "Pojo")
+                        XClassName.get("foo.bar", "MyClass", "Pojo").canonicalName
                     )
                 )
                 hasErrorCount(2)
@@ -1121,7 +1134,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             invocation.assertCompilationResult {
                 hasWarningContaining(
                     ProcessorErrors.cursorPojoMismatch(
-                        pojoTypeNames = listOf(POJO),
+                        pojoTypeNames = listOf(POJO.canonicalName),
                         unusedColumns = listOf("uid"),
                         pojoUnusedFields = emptyMap(),
                         allColumns = listOf("uid", "name", "lastName"),
@@ -1150,10 +1163,10 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             invocation.assertCompilationResult {
                 hasWarningContaining(
                     ProcessorErrors.cursorPojoMismatch(
-                        pojoTypeNames = listOf(POJO),
+                        pojoTypeNames = listOf(POJO.canonicalName),
                         unusedColumns = emptyList(),
                         allColumns = listOf("lastName"),
-                        pojoUnusedFields = mapOf(POJO to listOf(createField("name"))),
+                        pojoUnusedFields = mapOf(POJO.canonicalName to listOf(createField("name"))),
                     )
                 )
             }
@@ -1180,15 +1193,15 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             invocation.assertCompilationResult {
                 hasWarningContaining(
                     ProcessorErrors.cursorPojoMismatch(
-                        pojoTypeNames = listOf(POJO),
+                        pojoTypeNames = listOf(POJO.canonicalName),
                         unusedColumns = emptyList(),
-                        pojoUnusedFields = mapOf(POJO to listOf(createField("name"))),
+                        pojoUnusedFields = mapOf(POJO.canonicalName to listOf(createField("name"))),
                         allColumns = listOf("lastName"),
                     )
                 )
                 hasErrorContaining(
                     ProcessorErrors.pojoMissingNonNull(
-                        pojoTypeName = POJO,
+                        pojoTypeName = POJO.canonicalName,
                         missingPojoFields = listOf("name"),
                         allQueryColumns = listOf("lastName")
                     )
@@ -1216,10 +1229,12 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             invocation.assertCompilationResult {
                 hasWarningContaining(
                     ProcessorErrors.cursorPojoMismatch(
-                        pojoTypeNames = listOf(POJO),
+                        pojoTypeNames = listOf(POJO.canonicalName),
                         unusedColumns = listOf("uid"),
                         allColumns = listOf("uid", "name"),
-                        pojoUnusedFields = mapOf(POJO to listOf(createField("lastName")))
+                        pojoUnusedFields = mapOf(
+                            POJO.canonicalName to listOf(createField("lastName"))
+                        )
                     )
                 )
             }
@@ -1264,7 +1279,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         ) { parsedQuery, invocation ->
             val adapter = parsedQuery.queryResultBinder.adapter
             if (enableVerification) {
-                if (adapter is SingleEntityQueryResultAdapter) {
+                if (adapter is SingleItemQueryResultAdapter) {
                     handler(
                         adapter.rowAdapters.single() as? PojoRowAdapter,
                         parsedQuery,
@@ -1290,9 +1305,63 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
             DAO_PREFIX + input.joinToString("\n") + DAO_SUFFIX
         )
         val commonSources = listOf(
-            COMMON.LIVE_DATA, COMMON.COMPUTABLE_LIVE_DATA, COMMON.USER, COMMON.BOOK,
-            COMMON.NOT_AN_ENTITY
+            COMMON.LIVE_DATA, COMMON.COMPUTABLE_LIVE_DATA, COMMON.USER, COMMON.BOOK, COMMON.PAGE,
+            COMMON.NOT_AN_ENTITY, COMMON.ARTIST, COMMON.SONG, COMMON.IMAGE, COMMON.IMAGE_FORMAT,
+            COMMON.CONVERTER
         )
+        runProcessorTest(
+            sources = additionalSources + commonSources + inputSource,
+            options = options
+        ) { invocation ->
+            val (owner, methods) = invocation.roundEnv
+                .getElementsAnnotatedWith(Dao::class.qualifiedName!!)
+                .filterIsInstance<XTypeElement>()
+                .map { typeElement ->
+                    Pair(
+                        typeElement,
+                        typeElement.getAllMethods().filter { method ->
+                            method.hasAnnotation(Query::class)
+                        }.toList()
+                    )
+                }.first { it.second.isNotEmpty() }
+            val verifier = if (enableVerification) {
+                createVerifierFromEntitiesAndViews(invocation).also(
+                    invocation.context::attachDatabaseVerifier
+                )
+            } else {
+                null
+            }
+            val parser = QueryMethodProcessor(
+                baseContext = invocation.context,
+                containing = owner.type,
+                executableElement = methods.first(),
+                dbVerifier = verifier
+            )
+            val parsedQuery = parser.process()
+            @Suppress("UNCHECKED_CAST")
+            handler(parsedQuery as T, invocation)
+        }
+    }
+
+    private fun <T : QueryMethod> singleQueryMethodKotlin(
+        vararg input: String,
+        additionalSources: Iterable<Source> = emptyList(),
+        options: Map<String, String> = emptyMap(),
+        handler: (T, XTestInvocation) -> Unit
+    ) {
+        val inputSource = Source.kotlin(
+            "MyClass.kt",
+            DAO_PREFIX_KT + input.joinToString("\n") + DAO_SUFFIX
+        )
+        val commonSources = listOf(
+            COMMON.USER, COMMON.BOOK, COMMON.NOT_AN_ENTITY, COMMON.RX2_COMPLETABLE,
+            COMMON.RX2_MAYBE, COMMON.RX2_SINGLE, COMMON.RX2_FLOWABLE, COMMON.RX2_OBSERVABLE,
+            COMMON.RX3_COMPLETABLE, COMMON.RX3_MAYBE, COMMON.RX3_SINGLE, COMMON.RX3_FLOWABLE,
+            COMMON.RX3_OBSERVABLE, COMMON.LISTENABLE_FUTURE, COMMON.LIVE_DATA,
+            COMMON.COMPUTABLE_LIVE_DATA, COMMON.PUBLISHER, COMMON.FLOW, COMMON.GUAVA_ROOM,
+            COMMON.RX2_ROOM, COMMON.RX2_EMPTY_RESULT_SET_EXCEPTION
+        )
+
         runProcessorTest(
             sources = additionalSources + commonSources + inputSource,
             options = options
@@ -1337,7 +1406,7 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorCount(2)
-                hasErrorContaining("Multimap 'value' collection type must be a List or Set.")
+                hasErrorContaining("Multimap 'value' collection type must be a List, Set or Map.")
                 hasErrorContaining("Not sure how to convert a Cursor to this method's return type")
             }
         }
@@ -1354,8 +1423,558 @@ class QueryMethodProcessorTest(private val enableVerification: Boolean) {
         ) { _, invocation ->
             invocation.assertCompilationResult {
                 hasErrorCount(2)
-                hasError(DO_NOT_USE_GENERIC_IMMUTABLE_MULTIMAP)
+                hasErrorContaining(DO_NOT_USE_GENERIC_IMMUTABLE_MULTIMAP)
                 hasErrorContaining("Not sure how to convert a Cursor to this method's return type")
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapInfoWithBothEmptyColumnsProvided() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @MapInfo
+                @Query("select * from User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<User, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorCount(1)
+                hasErrorContaining(MAP_INFO_MUST_HAVE_AT_LEAST_ONE_COLUMN_PROVIDED)
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapInfoWithTableAndColumnName() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @MapInfo(keyColumn = "uid", keyTable = "u")
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<Integer, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapInfoWithOriginalTableAndColumnName() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @MapInfo(keyColumn = "uid", keyTable = "User")
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<Integer, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapInfoWithColumnAlias() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(RoomWarnings.CURSOR_MISMATCH)
+                @MapInfo(keyColumn = "name", valueColumn = "bookCount")
+                @Query("SELECT name, (SELECT count(*) FROM User u JOIN Book b ON u.uid == b.uid) "
+                    + "AS bookCount FROM User")
+                abstract Map<String, Integer> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapColumnWithColumnName() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<@MapColumn(columnName = "uid") Integer, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapColumnWithColumnNameWrongTableName() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<@MapColumn(columnName = "uid", tableName = "NoName") Integer, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    "Column specified in the provided @MapColumn " +
+                    "annotation must be present in the query."
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testUseNestedMapColumnWithColumnName() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid JOIN Page on b.uid == pBid")
+                abstract Map<@MapColumn(columnName = "uid") Integer, Map<Book, @MapColumn(columnName = "pBid") Integer>> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testUseNestedMapColumnWithNestedKeyColumnName() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid JOIN Page on b.uid == pBid")
+                abstract Map<@MapColumn(columnName = "uid") Integer, Map<@MapColumn(columnName = "bookId") Integer, @MapColumn(columnName = "pBid") Integer>> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapColumnWithColumnAlias() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(RoomWarnings.CURSOR_MISMATCH)
+                @Query("SELECT name, (SELECT count(*) FROM User u JOIN Book b ON u.uid == b.uid) "
+                    + "AS bookCount FROM User")
+                abstract Map<@MapColumn(columnName = "name") String, @MapColumn(columnName = "bookCount") Integer> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasNoWarnings()
+            }
+        }
+    }
+
+    @Test
+    fun testCannotHaveMapInfoAndMapColumn() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(
+                    {RoomWarnings.CURSOR_MISMATCH, RoomWarnings.AMBIGUOUS_COLUMN_IN_RESULT}
+                )
+                @MapInfo(keyColumn = "uid", keyTable = "u")
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<@MapColumn(columnName = "uid") Integer, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    CANNOT_USE_MAP_COLUMN_AND_MAP_INFO_SIMULTANEOUSLY
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testDoesNotImplementEqualsAndHashcodeQuery() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("select * from User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<User, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasWarningCount(1)
+                hasWarningContaining(
+                    ProcessorErrors.classMustImplementEqualsAndHashCode(
+                        "foo.bar.User"
+                    )
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoOneToOneString() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("select * from Artist JOIN Song ON Artist.mArtistName == Song.mArtist")
+                abstract Map<Artist, String> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(STRING.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testOneToOneStringMapInfoForKeyInsteadOfColumn() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @MapInfo(keyColumn = "mArtistName")
+                @Query("select * from Artist JOIN Song ON Artist.mArtistName == Song.mArtist")
+                abstract Map<Artist, String> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(STRING.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoOneToManyString() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("select * from Artist JOIN Song ON Artist.mArtistName == Song.mArtist")
+                abstract Map<Artist, List<String>> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(STRING.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoImmutableListMultimapOneToOneString() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("select * from Artist JOIN Song ON Artist.mArtistName == Song.mArtist")
+                abstract ImmutableListMultimap<Artist, String> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(STRING.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoOneToOneLong() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+                Map<Artist, Long> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(XTypeName.BOXED_LONG.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoOneToManyLong() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+                Map<Artist, Set<Long>> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(XTypeName.BOXED_LONG.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoImmutableListMultimapOneToOneLong() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+                ImmutableListMultimap<Artist, Long> getAllArtistsWithAlbumCoverYear();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn(XTypeName.BOXED_LONG.canonicalName)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoImmutableListMultimapOneToOneTypeConverterKey() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @TypeConverters(DateConverter.class)
+                @Query("SELECT * FROM Image JOIN Artist ON Artist.mArtistName = Image.mArtistInImage")
+                ImmutableMap<java.util.Date, Artist> getAlbumDateWithBandActivity();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn("java.util.Date")
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testMissingMapInfoImmutableListMultimapOneToOneTypeConverterValue() {
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @TypeConverters(DateConverter.class)
+                @Query("SELECT * FROM Artist JOIN Image ON Artist.mArtistName = Image.mArtistInImage")
+                ImmutableMap<Artist, java.util.Date> getAlbumDateWithBandActivity();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(
+                    mayNeedMapColumn("java.util.Date")
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testUseMapInfoWithColumnsNotInQuery() {
+        if (!enableVerification) {
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @MapInfo(keyColumn="cat", valueColumn="dog")
+                @Query("select * from User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<User, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasWarningCount(1)
+                hasWarningContaining(
+                    ProcessorErrors.classMustImplementEqualsAndHashCode(
+                        "foo.bar.User"
+                    )
+                )
+                hasErrorCount(2)
+                hasErrorContaining(
+                    "Column specified in the provided @MapInfo annotation must " +
+                        "be present in the query. Provided: cat."
+                )
+                hasErrorContaining(
+                    "Column specified in the provided @MapInfo annotation must " +
+                        "be present in the query. Provided: dog."
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testAmbiguousColumnInMapInfo() {
+        if (!enableVerification) {
+            // No warning without verification, avoiding false positives
+            return
+        }
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(RoomWarnings.CURSOR_MISMATCH)
+                @MapInfo(keyColumn = "uid")
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<Integer, Book> getMultimap();
+            """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasWarning(
+                    ProcessorErrors.ambiguousColumn(
+                        "uid",
+                        ProcessorErrors.AmbiguousColumnLocation.MAP_INFO,
+                        null
+                    )
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testAmbiguousColumnInMapPojo() {
+        if (!enableVerification) {
+            // No warning without verification, avoiding false positives
+            return
+        }
+        val extraPojo = Source.java(
+            "foo.bar.Id",
+            """
+                package foo.bar;
+                public class Id {
+                    public int uid;
+
+                    @Override
+                    public boolean equals(Object o) {
+                        return true;
+                    }
+
+                    @Override
+                    public int hashCode() {
+                        return 0;
+                    }
+                }
+            """.trimIndent()
+        )
+        singleQueryMethod<ReadQueryMethod>(
+            """
+                @SuppressWarnings(RoomWarnings.CURSOR_MISMATCH)
+                @Query("SELECT * FROM User u JOIN Book b ON u.uid == b.uid")
+                abstract Map<Id, Book> getMultimap();
+            """,
+            additionalSources = listOf(extraPojo)
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasWarning(
+                    ProcessorErrors.ambiguousColumn(
+                        "uid",
+                        ProcessorErrors.AmbiguousColumnLocation.POJO,
+                        "foo.bar.Id"
+                    )
+                )
+            }
+        }
+    }
+
+    @Test
+    fun suspendReturnsDeferredType() {
+        listOf(
+            "${RxJava2TypeNames.FLOWABLE.canonicalName}<Int>",
+            "${RxJava2TypeNames.OBSERVABLE.canonicalName}<Int>",
+            "${RxJava2TypeNames.MAYBE.canonicalName}<Int>",
+            "${RxJava2TypeNames.SINGLE.canonicalName}<Int>",
+            "${RxJava2TypeNames.COMPLETABLE.canonicalName}",
+            "${RxJava3TypeNames.FLOWABLE.canonicalName}<Int>",
+            "${RxJava3TypeNames.OBSERVABLE.canonicalName}<Int>",
+            "${RxJava3TypeNames.MAYBE.canonicalName}<Int>",
+            "${RxJava3TypeNames.SINGLE.canonicalName}<Int>",
+            "${RxJava3TypeNames.COMPLETABLE.canonicalName}",
+            "${LifecyclesTypeNames.LIVE_DATA.canonicalName}<Int>",
+            "${LifecyclesTypeNames.COMPUTABLE_LIVE_DATA.canonicalName}<Int>",
+            "${GuavaUtilConcurrentTypeNames.LISTENABLE_FUTURE.canonicalName}<Int>",
+            "${ReactiveStreamsTypeNames.PUBLISHER.canonicalName}<Int>",
+            "${KotlinTypeNames.FLOW.canonicalName}<Int>"
+        ).forEach { type ->
+            singleQueryMethodKotlin<WriteQueryMethod>(
+                """
+                @Query("DELETE from User where uid = :id")
+                abstract suspend fun foo(id: Int): $type
+                """
+            ) { _, invocation ->
+                invocation.assertCompilationResult {
+                    val rawTypeName = type.substringBefore("<")
+                    hasErrorContaining(ProcessorErrors.suspendReturnsDeferredType(rawTypeName))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun nonNullVoidGuava() {
+        singleQueryMethodKotlin<WriteQueryMethod>(
+            """
+                @Query("DELETE from User where uid = :id")
+                abstract fun foo(id: Int): ListenableFuture<Void>
+                """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorContaining(ProcessorErrors.NONNULL_VOID)
+            }
+        }
+    }
+
+    @Test
+    fun maybe() {
+        singleQueryMethodKotlin<ReadQueryMethod>(
+            """
+                @Query("SELECT * FROM book WHERE bookId = :bookId")
+                abstract fun getBookMaybe(bookId: String): io.reactivex.Maybe<Book>
+                """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorCount(0)
+            }
+        }
+    }
+
+    @Test
+    fun single() {
+        singleQueryMethodKotlin<ReadQueryMethod>(
+            """
+                @Query("SELECT * FROM book WHERE bookId = :bookId")
+                abstract fun getBookSingle(bookId: String): io.reactivex.Single<Book>
+                """
+        ) { _, invocation ->
+            invocation.assertCompilationResult {
+                hasErrorCount(0)
             }
         }
     }

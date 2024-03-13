@@ -19,17 +19,19 @@ package androidx.room.compiler.processing.util
 import androidx.room.compiler.processing.ExperimentalProcessingApi
 import androidx.room.compiler.processing.SyntheticJavacProcessor
 import androidx.room.compiler.processing.SyntheticProcessor
+import androidx.room.compiler.processing.util.compiler.TestCompilationResult
 import androidx.room.compiler.processing.util.runner.CompilationTestRunner
 import com.google.common.truth.Fact.fact
 import com.google.common.truth.Fact.simpleFact
 import com.google.common.truth.FailureMetadata
+import com.google.common.truth.StringSubject
 import com.google.common.truth.Subject
 import com.google.common.truth.Subject.Factory
 import com.google.common.truth.Truth
 import com.google.testing.compile.Compilation
-import com.tschuchort.compiletesting.KotlinCompilation
-import java.io.File
+import java.util.regex.Pattern
 import javax.tools.Diagnostic
+import org.junit.AssumptionViolatedException
 
 /**
  * Holds the information about a test compilation result.
@@ -37,7 +39,7 @@ import javax.tools.Diagnostic
 @ExperimentalProcessingApi
 abstract class CompilationResult internal constructor(
     /**
-     * The test infra which run this test
+     * The test infra dwhich run this test
      */
     internal val testRunnerName: String,
     /**
@@ -48,10 +50,18 @@ abstract class CompilationResult internal constructor(
      * True if compilation result was success.
      */
     internal val successfulCompilation: Boolean,
+
+    /**
+     * List of diagnostics that were reported during compilation
+     */
+    diagnostics: Map<Diagnostic.Kind, List<DiagnosticMessage>>
 ) {
+
     internal abstract val generatedSources: List<Source>
 
-    private val diagnostics = processor.messageWatcher.diagnostics()
+    val diagnostics = diagnostics.mapValues {
+        it.value.filterNot { it.isIgnored() }
+    }
 
     fun diagnosticsOfKind(kind: Diagnostic.Kind) = diagnostics[kind].orEmpty()
 
@@ -74,13 +84,37 @@ abstract class CompilationResult internal constructor(
                 }
                 appendLine()
             }
-            appendLine("Generated files:")
-            generatedSources.forEach {
-                appendLine(it.relativePath)
+            if (generatedSources.isEmpty()) {
+                appendLine("Generated files: NONE")
+            } else {
+                appendLine("Generated files:")
+                generatedSources.forEach {
+                    appendLine(it.relativePath)
+                }
             }
+            appendLine()
             appendLine("RAW OUTPUT:")
             appendLine(rawOutput())
         }
+    }
+
+    internal companion object {
+        fun DiagnosticMessage.isIgnored() = FILTERED_MESSAGE_PREFIXES.any {
+            msg.startsWith(it)
+        }
+
+        /**
+         * These messages are mostly verbose and not helpful for testing.
+         */
+        private val FILTERED_MESSAGE_PREFIXES = listOf(
+            "No processor claimed any of these annotations:",
+            "The following options were not recognized by any processor:",
+            "Using Kotlin home directory",
+            "Scripting plugin will not be loaded: not",
+            "Using JVM IR backend",
+            "Configuring the compilation environment",
+            "Loading modules:"
+        )
     }
 }
 
@@ -151,7 +185,7 @@ class CompilationResultSubject internal constructor(
      * @see hasError
      * @see hasNote
      */
-    fun hasWarning(expected: String) = apply {
+    fun hasWarning(expected: String) =
         hasDiagnosticWithMessage(
             kind = Diagnostic.Kind.WARNING,
             expected = expected,
@@ -159,7 +193,6 @@ class CompilationResultSubject internal constructor(
         ) {
             "expected warning: $expected"
         }
-    }
 
     /**
      * Asserts that compilation has a warning that contains the given text.
@@ -167,13 +200,28 @@ class CompilationResultSubject internal constructor(
      * @see hasErrorContaining
      * @see hasNoteContaining
      */
-    fun hasWarningContaining(expected: String) = apply {
+    fun hasWarningContaining(expected: String) =
         hasDiagnosticWithMessage(
             kind = Diagnostic.Kind.WARNING,
             expected = expected,
             acceptPartialMatch = true
         ) {
             "expected warning: $expected"
+        }
+
+    /**
+     * Asserts that compilation has a warning containing text that matches the given pattern.
+     *
+     * @see hasErrorContainingMatch
+     * @see hasNoteContainingMatch
+     */
+    fun hasWarningContainingMatch(expectedPattern: String): DiagnosticMessagesSubject {
+        return hasDiagnosticWithPattern(
+            kind = Diagnostic.Kind.WARNING,
+            expectedPattern = expectedPattern,
+            acceptPartialMatch = true
+        ) {
+            "expected warning containing pattern: $expectedPattern"
         }
     }
 
@@ -183,7 +231,7 @@ class CompilationResultSubject internal constructor(
      * @see hasError
      * @see hasWarning
      */
-    fun hasNote(expected: String) = apply {
+    fun hasNote(expected: String) =
         hasDiagnosticWithMessage(
             kind = Diagnostic.Kind.NOTE,
             expected = expected,
@@ -191,7 +239,6 @@ class CompilationResultSubject internal constructor(
         ) {
             "expected note: $expected"
         }
-    }
 
     /**
      * Asserts that compilation has a note that contains the given text.
@@ -199,13 +246,28 @@ class CompilationResultSubject internal constructor(
      * @see hasErrorContaining
      * @see hasWarningContaining
      */
-    fun hasNoteContaining(expected: String) = apply {
+    fun hasNoteContaining(expected: String) =
         hasDiagnosticWithMessage(
             kind = Diagnostic.Kind.NOTE,
             expected = expected,
             acceptPartialMatch = true
         ) {
             "expected note: $expected"
+        }
+
+    /**
+     * Asserts that compilation has a note containing text that matches the given pattern.
+     *
+     * @see hasErrorContainingMatch
+     * @see hasWarningContainingMatch
+     */
+    fun hasNoteContainingMatch(expectedPattern: String): DiagnosticMessagesSubject {
+        return hasDiagnosticWithPattern(
+            kind = Diagnostic.Kind.NOTE,
+            expectedPattern = expectedPattern,
+            acceptPartialMatch = true
+        ) {
+            "expected note containing pattern: $expectedPattern"
         }
     }
 
@@ -215,9 +277,9 @@ class CompilationResultSubject internal constructor(
      * @see hasWarning
      * @see hasNote
      */
-    fun hasError(expected: String) = apply {
+    fun hasError(expected: String): DiagnosticMessagesSubject {
         shouldSucceed = false
-        hasDiagnosticWithMessage(
+        return hasDiagnosticWithMessage(
             kind = Diagnostic.Kind.ERROR,
             expected = expected,
             acceptPartialMatch = false
@@ -232,14 +294,31 @@ class CompilationResultSubject internal constructor(
      * @see hasWarningContaining
      * @see hasNoteContaining
      */
-    fun hasErrorContaining(expected: String) = apply {
+    fun hasErrorContaining(expected: String): DiagnosticMessagesSubject {
         shouldSucceed = false
-        hasDiagnosticWithMessage(
+        return hasDiagnosticWithMessage(
             kind = Diagnostic.Kind.ERROR,
             expected = expected,
             acceptPartialMatch = true
         ) {
             "expected error: $expected"
+        }
+    }
+
+    /**
+     * Asserts that compilation has an error containing text that matches the given pattern.
+     *
+     * @see hasWarningContainingMatch
+     * @see hasNoteContainingMatch
+     */
+    fun hasErrorContainingMatch(expectedPattern: String): DiagnosticMessagesSubject {
+        shouldSucceed = false
+        return hasDiagnosticWithPattern(
+            kind = Diagnostic.Kind.ERROR,
+            expectedPattern = expectedPattern,
+            acceptPartialMatch = true
+        ) {
+            "expected error containing pattern: $expectedPattern"
         }
     }
 
@@ -263,16 +342,21 @@ class CompilationResultSubject internal constructor(
      *
      * @see generatedSource
      */
-    fun generatedSourceFileWithPath(relativePath: String) = apply {
-        val match = compilationResult.generatedSources.firstOrNull {
-            it.relativePath == relativePath
-        }
+    fun generatedSourceFileWithPath(relativePath: String): StringSubject {
+        val match = findGeneratedSource(relativePath)
         if (match == null) {
             failWithActual(
                 simpleFact("Didn't generate file with path: $relativePath")
             )
         }
+        return Truth.assertThat(match!!.contents)
     }
+
+    fun findGeneratedSource(relativePath: String) = compilationResult.generatedSources
+        .firstOrNull {
+            it.relativePath == relativePath
+        }
+
     /**
      * Asserts that the given source file is generated.
      *
@@ -332,9 +416,14 @@ class CompilationResultSubject internal constructor(
     internal fun assertNoProcessorAssertionErrors() {
         val processingException = compilationResult.processor.getProcessingException()
         if (processingException != null) {
+            // processor has an assumption violation, re-throw so test case does not generate
+            // a failure
+            if (processingException is AssumptionViolatedException) {
+                throw processingException
+            }
             // processor has an error which we want to throw but we also want the subject, hence
             // we wrap it
-            throw createProcessorAssertionError(
+            throw CompilationAssertionError(
                 compilationResult = compilationResult,
                 realError = processingException
             )
@@ -346,25 +435,55 @@ class CompilationResultSubject internal constructor(
         expected: String,
         acceptPartialMatch: Boolean,
         buildErrorMessage: () -> String
-    ) {
+    ): DiagnosticMessagesSubject {
+        fun String.trimLines() = lines().joinToString(System.lineSeparator()) { it.trim() }
+        val expectedTrimmed = expected.trimLines()
         val diagnostics = compilationResult.diagnosticsOfKind(kind)
-        if (diagnostics.any { it.msg == expected }) {
-            return
+        val matches = diagnostics.filter {
+            if (acceptPartialMatch) {
+                it.msg.trimLines().contains(expectedTrimmed)
+            } else {
+                it.msg.trimLines() == expectedTrimmed
+            }
         }
-        if (acceptPartialMatch && diagnostics.any { it.msg.contains(expected) }) {
-            return
+        if (matches.isEmpty()) {
+            failWithActual(simpleFact(buildErrorMessage()))
         }
-        failWithActual(simpleFact(buildErrorMessage()))
+        return DiagnosticMessagesSubject.assertThat(matches)
+    }
+
+    private fun hasDiagnosticWithPattern(
+        kind: Diagnostic.Kind,
+        expectedPattern: String,
+        acceptPartialMatch: Boolean,
+        buildErrorMessage: () -> String
+    ): DiagnosticMessagesSubject {
+        val diagnostics = compilationResult.diagnosticsOfKind(kind)
+        val pattern = Pattern.compile(expectedPattern)
+        val matches = diagnostics.filter {
+            val matcher = pattern.matcher(it.msg)
+            if (acceptPartialMatch) {
+                matcher.find()
+            } else {
+                matcher.matches()
+            }
+        }
+        if (matches.isEmpty()) {
+            failWithActual(simpleFact(buildErrorMessage()))
+        }
+        return DiagnosticMessagesSubject.assertThat(matches)
     }
 
     /**
-     * Helper method to create an exception that does not include the stack trace from the test
-     * infra, instead, it just reports the stack trace of the actual error with added log.
+     * Helper error that does not include the stack trace from the test infra, instead, it just
+     * reports the stack trace of the actual error with added log.
      */
-    private fun createProcessorAssertionError(
-        compilationResult: CompilationResult,
-        realError: Throwable
-    ) = object : AssertionError("processor did throw an error\n$compilationResult", realError) {
+    private class CompilationAssertionError(
+        val compilationResult: CompilationResult,
+        val realError: Throwable
+    ) : AssertionError(
+        "Processor did throw an error.\n$compilationResult", realError
+    ) {
         override fun fillInStackTrace(): Throwable {
             return realError
         }
@@ -391,65 +510,41 @@ internal class JavaCompileTestingCompilationResult(
     testRunner: CompilationTestRunner,
     @Suppress("unused")
     private val delegate: Compilation,
-    processor: SyntheticJavacProcessor
+    processor: SyntheticJavacProcessor,
+    diagnostics: Map<Diagnostic.Kind, List<DiagnosticMessage>>,
+    override val generatedSources: List<Source>
 ) : CompilationResult(
     testRunnerName = testRunner.name,
     processor = processor,
-    successfulCompilation = delegate.status() == Compilation.Status.SUCCESS
+    successfulCompilation = delegate.status() == Compilation.Status.SUCCESS,
+    diagnostics = diagnostics
 ) {
-    override val generatedSources: List<Source> by lazy {
-        if (successfulCompilation) {
-            delegate.generatedSourceFiles().map(Source::fromJavaFileObject)
-        } else {
-            // java compile testing does not provide access to generated files when compilation
-            // fails
-            emptyList()
-        }
-    }
-
     override fun rawOutput(): String {
-        return delegate.diagnostics().joinToString {
+        return delegate.diagnostics().joinToString(separator = System.lineSeparator()) {
             it.toString()
         }
     }
 }
+
 @ExperimentalProcessingApi
-internal class KotlinCompileTestingCompilationResult(
+internal class KotlinCompilationResult constructor(
     testRunner: CompilationTestRunner,
-    @Suppress("unused")
-    private val delegate: KotlinCompilation.Result,
     processor: SyntheticProcessor,
-    successfulCompilation: Boolean,
-    outputSourceDirs: List<File>,
-    private val rawOutput: String,
+    private val delegate: TestCompilationResult
 ) : CompilationResult(
     testRunnerName = testRunner.name,
     processor = processor,
-    successfulCompilation = successfulCompilation
+    successfulCompilation = delegate.success,
+    diagnostics = delegate.diagnostics
 ) {
-    override val generatedSources: List<Source> by lazy {
-        outputSourceDirs.flatMap { srcRoot ->
-            srcRoot.walkTopDown().mapNotNull { sourceFile ->
-                when {
-                    sourceFile.name.endsWith(".java") -> {
-                        val qName = sourceFile.absolutePath.substringAfter(
-                            srcRoot.absolutePath
-                        ).dropWhile { it == '/' }
-                            .replace('/', '.')
-                            .dropLast(".java".length)
-                        Source.loadJavaSource(sourceFile, qName)
-                    }
-                    sourceFile.name.endsWith(".kt") -> {
-                        val relativePath = sourceFile.absolutePath.substringAfter(
-                            srcRoot.absolutePath
-                        ).dropWhile { it == '/' }
-                        Source.loadKotlinSource(sourceFile, relativePath)
-                    }
-                    else -> null
-                }
-            }
+    override val generatedSources: List<Source>
+        get() = delegate.generatedSources
+
+    override fun rawOutput(): String {
+        return delegate.diagnostics.flatMap {
+            it.value
+        }.joinToString(separator = System.lineSeparator()) {
+            it.toString()
         }
     }
-
-    override fun rawOutput() = rawOutput
 }

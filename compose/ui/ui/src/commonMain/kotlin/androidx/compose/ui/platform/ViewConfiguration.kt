@@ -16,9 +16,14 @@
 
 package androidx.compose.ui.platform
 
+import androidx.compose.ui.internal.JvmDefaultWithCompatibility
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+
 /**
  * Contains methods to standard constants used in the UI for timeouts, sizes, and distances.
  */
+@JvmDefaultWithCompatibility
 interface ViewConfiguration {
     /**
      * The duration before a press turns into a long press.
@@ -41,4 +46,23 @@ interface ViewConfiguration {
      * Distance in pixels a touch can wander before we think the user is scrolling.
      */
     val touchSlop: Float
+
+    /**
+     * Distance in pixels a stylus touch can wander before we think the user is handwriting.
+     */
+    val handwritingSlop: Float
+        get() = 2f
+
+    /**
+     * The minimum touch target size. If layout has reduced the pointer input bounds below this,
+     * the touch target will be expanded evenly around the layout to ensure that it is at least
+     * this big.
+     */
+    val minimumTouchTargetSize: DpSize
+        get() = DpSize(48.dp, 48.dp)
+
+    /**
+     * The maximum velocity a fling have at any given time. This value should be in pixels/second.
+     */
+    val maximumFlingVelocity: Float get() = Float.MAX_VALUE
 }

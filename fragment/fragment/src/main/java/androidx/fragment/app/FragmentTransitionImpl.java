@@ -21,13 +21,14 @@ import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 import android.annotation.SuppressLint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
-import androidx.core.os.CancellationSignal;
 import androidx.core.view.OneShotPreDrawListener;
 import androidx.core.view.ViewCompat;
 
@@ -37,7 +38,6 @@ import java.util.Map;
 
 
 /**
- * @hide
  */
 @RestrictTo(LIBRARY_GROUP_PREFIX)
 @SuppressLint("UnknownNullness")
@@ -46,18 +46,18 @@ public abstract class FragmentTransitionImpl {
     /**
      * Returns {@code true} if this implementation can handle the specified {@link transition}.
      */
-    public abstract boolean canHandle(Object transition);
+    public abstract boolean canHandle(@NonNull Object transition);
 
     /**
      * Returns a clone of a transition or null if it is null
      */
-    public abstract Object cloneTransition(Object transition);
+    public abstract Object cloneTransition(@Nullable Object transition);
 
     /**
      * Wraps a transition in a TransitionSet and returns the set. If transition is null, null is
      * returned.
      */
-    public abstract Object wrapTransitionInSet(Object transition);
+    public abstract Object wrapTransitionInSet(@Nullable Object transition);
 
     /**
      * Finds all children of the shared elements and sets the wrapping TransitionSet
@@ -65,20 +65,20 @@ public abstract class FragmentTransitionImpl {
      * specific shared elements. This allows developers to target child views of the
      * shared elements specifically, but this doesn't happen by default.
      */
-    public abstract void setSharedElementTargets(Object transitionObj,
-            View nonExistentView, ArrayList<View> sharedViews);
+    public abstract void setSharedElementTargets(@NonNull Object transitionObj,
+            @NonNull View nonExistentView, @NonNull ArrayList<View> sharedViews);
 
     /**
      * Sets a transition epicenter to the rectangle of a given View.
      */
-    public abstract void setEpicenter(Object transitionObj, View view);
+    public abstract void setEpicenter(@NonNull Object transitionObj, @Nullable View view);
 
     /**
      * Replacement for view.getBoundsOnScreen because that is not public. This returns a rect
      * containing the bounds relative to the screen that the view is in.
      */
     protected void getBoundsOnScreen(View view, Rect epicenter) {
-        if (!ViewCompat.isAttachedToWindow(view)) {
+        if (!view.isAttachedToWindow()) {
             return;
         }
 
@@ -114,22 +114,22 @@ public abstract class FragmentTransitionImpl {
      * Otherwise, if you happened to have targeted the exact views for the transition,
      * the replaceTargets call will remove them unexpectedly.
      */
-    public abstract void addTargets(Object transitionObj, ArrayList<View> views);
+    public abstract void addTargets(@NonNull Object transitionObj, @NonNull ArrayList<View> views);
 
     /**
      * Creates a TransitionSet that plays all passed transitions together. Any null
      * transitions passed will not be added to the set. If all are null, then an empty
      * TransitionSet will be returned.
      */
-    public abstract Object mergeTransitionsTogether(Object transition1, Object transition2,
-            Object transition3);
+    public abstract Object mergeTransitionsTogether(@Nullable Object transition1,
+            @Nullable Object transition2, @Nullable Object transition3);
 
     /**
      * After the transition completes, the fragment's view is set to GONE and the exiting
      * views are set to VISIBLE.
      */
-    public abstract void scheduleHideFragmentView(Object exitTransitionObj, View fragmentView,
-            ArrayList<View> exitingViews);
+    public abstract void scheduleHideFragmentView(@NonNull Object exitTransitionObj,
+            @NonNull View fragmentView, @NonNull ArrayList<View> exitingViews);
 
     /**
      * Combines enter, exit, and shared element transition so that they play in the proper
@@ -140,13 +140,60 @@ public abstract class FragmentTransitionImpl {
      * @return A TransitionSet with all of enter, exit, and shared element transitions in
      * it (modulo null values), ordered such that they play in the proper sequence.
      */
-    public abstract Object mergeTransitionsInSequence(Object exitTransitionObj,
-            Object enterTransitionObj, Object sharedElementTransitionObj);
+    public abstract Object mergeTransitionsInSequence(@Nullable Object exitTransitionObj,
+            @Nullable Object enterTransitionObj, @Nullable Object sharedElementTransitionObj);
 
     /**
      * Calls {@code TransitionManager#beginDelayedTransition(ViewGroup, Transition)}.
      */
-    public abstract void beginDelayedTransition(ViewGroup sceneRoot, Object transition);
+    public abstract void beginDelayedTransition(@NonNull ViewGroup sceneRoot,
+            @Nullable Object transition);
+
+    /**
+     * Returns {@code true} if the Transition is seekable.
+     */
+    public boolean isSeekingSupported() {
+        if (FragmentManager.isLoggingEnabled(Log.INFO)) {
+            Log.i(FragmentManager.TAG,
+                    "Older versions of AndroidX Transition do not support seeking. Add dependency "
+                            + "on AndroidX Transition 1.5.0 or higher to enable seeking.");
+        }
+        return false;
+    }
+
+    /**
+     * Returns {@code true} if the Transition is seekable.
+     */
+    public boolean isSeekingSupported(@NonNull Object transition) {
+        return false;
+    }
+
+    /**
+     * Allows for controlling a seekable transition
+     */
+    @Nullable
+    public Object controlDelayedTransition(@NonNull ViewGroup sceneRoot,
+            @NonNull Object transition) {
+        return null;
+    }
+
+    /**
+     * Uses given progress to set the current play time of the transition.
+     */
+    public void setCurrentPlayTime(@NonNull Object transitionController, float progress) { }
+
+    /**
+     * Animate the transition to end.
+     */
+    public void animateToEnd(@NonNull Object transitionController) { }
+
+    /**
+     * Animate the transition to start.
+     */
+    public void animateToStart(
+            @NonNull Object transitionController,
+            @NonNull Runnable completeRunnable) {
+    }
 
     /**
      * Prepares for setting the shared element names by gathering the names of the incoming
@@ -210,10 +257,10 @@ public abstract class FragmentTransitionImpl {
      * After the transition has started, remove all targets that we added to the transitions
      * so that the transitions are left in a clean state.
      */
-    public abstract void scheduleRemoveTargets(Object overallTransitionObj,
-            Object enterTransition, ArrayList<View> enteringViews,
-            Object exitTransition, ArrayList<View> exitingViews,
-            Object sharedElementTransition, ArrayList<View> sharedElementsIn);
+    public abstract void scheduleRemoveTargets(@NonNull Object overallTransitionObj,
+            @Nullable Object enterTransition, @Nullable ArrayList<View> enteringViews,
+            @Nullable Object exitTransition, @Nullable ArrayList<View> exitingViews,
+            @Nullable Object sharedElementTransition, @Nullable ArrayList<View> sharedElementsIn);
 
 
     /**
@@ -226,8 +273,36 @@ public abstract class FragmentTransitionImpl {
      * @param transitionCompleteRunnable used to notify the FragmentManager when a transition is
      *                                   complete
      */
+    @SuppressWarnings("deprecation") // TODO(b/309499026): Migrate to platform-provided class.
     public void setListenerForTransitionEnd(@NonNull final Fragment outFragment,
-            @NonNull Object transition, @NonNull CancellationSignal signal,
+            @NonNull Object transition, @NonNull androidx.core.os.CancellationSignal signal,
+            @NonNull Runnable transitionCompleteRunnable) {
+        setListenerForTransitionEnd(
+                outFragment, transition, signal, null, transitionCompleteRunnable
+        );
+    }
+
+    /**
+     * Set a listener for Transition end events. The default behavior immediately completes the
+     * transition.
+     *
+     * Use this when the given transition is seeking. The cancelRunnable should handle
+     * cleaning up the transition when seeking is cancelled.
+     *
+     * If the transition is not seeking, you should use
+     * {@link #setListenerForTransitionEnd(Fragment, Object, androidx.core.os.CancellationSignal, Runnable)}.
+     *
+     * @param outFragment The first fragment that is exiting
+     * @param transition all transitions to be executed on a single container
+     * @param signal used indicate the desired behavior on transition cancellation
+     * @param cancelRunnable runnable to handle the logic when the signal is cancelled
+     * @param transitionCompleteRunnable used to notify the FragmentManager when a transition is
+     *                                   complete
+     */
+    @SuppressWarnings("deprecation")
+    public void setListenerForTransitionEnd(@NonNull final Fragment outFragment,
+            @NonNull Object transition, @NonNull androidx.core.os.CancellationSignal signal,
+            @Nullable Runnable cancelRunnable,
             @NonNull Runnable transitionCompleteRunnable) {
         transitionCompleteRunnable.run();
     }
@@ -236,8 +311,9 @@ public abstract class FragmentTransitionImpl {
      * Swap the targets for the shared element transition from those Views in sharedElementsOut
      * to those in sharedElementsIn
      */
-    public abstract void swapSharedElementTargets(Object sharedElementTransitionObj,
-            ArrayList<View> sharedElementsOut, ArrayList<View> sharedElementsIn);
+    public abstract void swapSharedElementTargets(@Nullable Object sharedElementTransitionObj,
+            @Nullable ArrayList<View> sharedElementsOut,
+            @Nullable ArrayList<View> sharedElementsIn);
 
     /**
      * This method removes the views from transitions that target ONLY those views and
@@ -245,24 +321,25 @@ public abstract class FragmentTransitionImpl {
      * The views list should match those added in addTargets and should contain
      * one view that is not in the view hierarchy (state.nonExistentView).
      */
-    public abstract void replaceTargets(Object transitionObj, ArrayList<View> oldTargets,
-            ArrayList<View> newTargets);
+    public abstract void replaceTargets(@NonNull Object transitionObj,
+            @SuppressLint("UnknownNullness") ArrayList<View> oldTargets,
+            @SuppressLint("UnknownNullness") ArrayList<View> newTargets);
 
     /**
      * Adds a View target to a transition. If transitionObj is null, nothing is done.
      */
-    public abstract void addTarget(Object transitionObj, View view);
+    public abstract void addTarget(@NonNull Object transitionObj, @NonNull View view);
 
     /**
      * Remove a View target to a transition. If transitionObj is null, nothing is done.
      */
-    public abstract void removeTarget(Object transitionObj, View view);
+    public abstract void removeTarget(@NonNull Object transitionObj, @NonNull View view);
 
     /**
      * Sets the epicenter of a transition to a rect object. The object can be modified until
      * the transition runs.
      */
-    public abstract void setEpicenter(Object transitionObj, Rect epicenter);
+    public abstract void setEpicenter(@NonNull Object transitionObj, @NonNull Rect epicenter);
 
     /**
      * Uses a breadth-first scheme to add startView and all of its children to views.

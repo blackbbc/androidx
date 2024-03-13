@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.LibraryType
-import androidx.build.LibraryVersions
 
 plugins {
     id("AndroidXPlugin")
@@ -31,7 +36,6 @@ androidx {
     name = "VersionedParcelable - Compiler"
     type = LibraryType.ANNOTATION_PROCESSOR
     mavenVersion = LibraryVersions.VERSIONED_PARCELABLE
-    mavenGroup = LibraryGroups.VERSIONEDPARCELABLE
     inceptionYear = "2018"
     description = "Annotation processor for VersionedParcelable"
 }

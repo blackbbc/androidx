@@ -50,7 +50,6 @@ final class RegisteredMediaRouteProviderWatcher {
     private final ArrayList<RegisteredMediaRouteProvider> mProviders = new ArrayList<>();
     private boolean mRunning;
 
-    @SuppressWarnings("deprecation")
     RegisteredMediaRouteProviderWatcher(Context context, Callback callback) {
         mContext = context;
         mCallback = callback;
@@ -69,12 +68,19 @@ final class RegisteredMediaRouteProviderWatcher {
             filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
             filter.addAction(Intent.ACTION_PACKAGE_RESTARTED);
             filter.addDataScheme("package");
-            mContext.registerReceiver(mScanPackagesReceiver, filter, null, mHandler);
+            // We are listening for protected system broadcast actions, so we intentionally avoid
+            // adding the RECEIVER_NOT_EXPORTED flag. See b/197817693#comment23.
+            mContext.registerReceiver(
+                    mScanPackagesReceiver, filter, /* broadcastPermission= */ null, mHandler);
 
             // Scan packages.
             // Also has the side-effect of restarting providers if needed.
             mHandler.post(mScanPackagesRunnable);
         }
+    }
+
+    public void rescan() {
+        mHandler.post(mScanPackagesRunnable);
     }
 
     public void stop() {
@@ -197,7 +203,9 @@ final class RegisteredMediaRouteProviderWatcher {
 
     public interface Callback {
         void addProvider(@NonNull MediaRouteProvider provider);
+
         void removeProvider(@NonNull MediaRouteProvider provider);
+
         void releaseProviderController(@NonNull RegisteredMediaRouteProvider provider,
                 @NonNull MediaRouteProvider.RouteController controller);
     }

@@ -142,7 +142,6 @@ public final class MediaDescriptionCompat implements Parcelable {
      * Custom key to store a media URI on API 21-22 devices (before it became part of the
      * framework class) when parceling/converting to and from framework objects.
      *
-     * @hide
      */
     @RestrictTo(LIBRARY)
     public static final String DESCRIPTION_KEY_MEDIA_URI =
@@ -150,7 +149,6 @@ public final class MediaDescriptionCompat implements Parcelable {
     /**
      * Custom key to store whether the original Bundle provided by the developer was null
      *
-     * @hide
      */
     @RestrictTo(LIBRARY)
     public static final String DESCRIPTION_KEY_NULL_BUNDLE_FLAG =
@@ -205,6 +203,7 @@ public final class MediaDescriptionCompat implements Parcelable {
         mMediaUri = mediaUri;
     }
 
+    @SuppressWarnings("deprecation")
     MediaDescriptionCompat(Parcel in) {
         mMediaId = in.readString();
         mTitle = TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(in);
@@ -349,15 +348,19 @@ public final class MediaDescriptionCompat implements Parcelable {
         // ensure the data is not lost - this ensures that
         // fromMediaDescription(getMediaDescription(mediaDescriptionCompat)) returns
         // an equivalent MediaDescriptionCompat on all API levels
-        Bundle extras = mExtras;
         if (Build.VERSION.SDK_INT < 23 && mMediaUri != null) {
-            if (extras == null) {
+            Bundle extras;
+            if (mExtras == null) {
                 extras = new Bundle();
                 extras.putBoolean(DESCRIPTION_KEY_NULL_BUNDLE_FLAG, true);
+            } else {
+                extras = new Bundle(mExtras);
             }
             extras.putParcelable(DESCRIPTION_KEY_MEDIA_URI, mMediaUri);
+            Api21Impl.setExtras(bob, extras);
+        } else {
+            Api21Impl.setExtras(bob, mExtras);
         }
-        Api21Impl.setExtras(bob, extras);
         if (Build.VERSION.SDK_INT >= 23) {
             Api23Impl.setMediaUri(bob, mMediaUri);
         }
@@ -378,6 +381,7 @@ public final class MediaDescriptionCompat implements Parcelable {
      * @return An equivalent {@link MediaMetadataCompat} object, or null if
      *         none.
      */
+    @SuppressWarnings("deprecation")
     public static MediaDescriptionCompat fromMediaDescription(Object descriptionObj) {
         if (descriptionObj != null && Build.VERSION.SDK_INT >= 21) {
             Builder bob = new Builder();

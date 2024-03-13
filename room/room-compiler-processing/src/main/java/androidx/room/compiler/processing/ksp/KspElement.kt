@@ -23,10 +23,11 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration
+import com.google.devtools.ksp.validate
 import java.util.Locale
 
 internal abstract class KspElement(
-    protected val env: KspProcessingEnv,
+    internal val env: KspProcessingEnv,
     open val declaration: KSAnnotated
 ) : XElement, XEquality {
     override fun kindName(): String {
@@ -38,6 +39,10 @@ internal abstract class KspElement(
             is KSFunctionDeclaration -> "function"
             else -> declaration::class.simpleName ?: "unknown"
         }
+    }
+
+    final override val equalityItems: Array<out Any?> by lazy {
+        arrayOf(declaration)
     }
 
     override fun equals(other: Any?): Boolean {
@@ -52,17 +57,11 @@ internal abstract class KspElement(
         return declaration.toString()
     }
 
-    /**
-     * Return a reference to the containing file that implements the
-     * [javax.lang.model.element.Element] API so that we can report it to JavaPoet.
-     */
-    fun containingFileAsOriginatingElement(): KSFileAsOriginatingElement? {
-        return (declaration as? KSDeclaration)?.containingFile?.let {
-            KSFileAsOriginatingElement(it)
-        }
-    }
-
     override val docComment: String? by lazy {
         (declaration as? KSDeclaration)?.docString
+    }
+
+    override fun validate(): Boolean {
+        return declaration.validate()
     }
 }

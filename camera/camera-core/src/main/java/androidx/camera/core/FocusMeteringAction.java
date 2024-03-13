@@ -19,6 +19,7 @@ package androidx.camera.core;
 import androidx.annotation.IntDef;
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.core.util.Preconditions;
 
@@ -67,6 +68,7 @@ import java.util.concurrent.TimeUnit;
  * default the auto-cancel duration is 5 seconds. Apps can call {@link Builder#disableAutoCancel()}
  * to disable auto-cancel.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public final class FocusMeteringAction {
 
     /**
@@ -143,7 +145,6 @@ public final class FocusMeteringAction {
      * Focus/Metering mode used to specify which 3A regions is activated for corresponding
      * {@link MeteringPoint}.
      *
-     * @hide
      */
     @IntDef(flag = true, value = {FLAG_AF, FLAG_AE, FLAG_AWB})
     @Retention(RetentionPolicy.SOURCE)
@@ -182,6 +183,17 @@ public final class FocusMeteringAction {
          */
         public Builder(@NonNull MeteringPoint point, @MeteringMode int meteringMode) {
             addPoint(point, meteringMode);
+        }
+
+        /**
+         * Create a Builder from a {@link FocusMeteringAction}.
+         */
+        @RestrictTo(RestrictTo.Scope.LIBRARY)
+        public Builder(@NonNull FocusMeteringAction focusMeteringAction) {
+            mMeteringPointsAf.addAll(focusMeteringAction.getMeteringPointsAf());
+            mMeteringPointsAe.addAll(focusMeteringAction.getMeteringPointsAe());
+            mMeteringPointsAwb.addAll(focusMeteringAction.getMeteringPointsAwb());
+            mAutoCancelDurationInMillis = focusMeteringAction.getAutoCancelDurationInMillis();
         }
 
         /**
@@ -266,6 +278,27 @@ public final class FocusMeteringAction {
         @NonNull
         public Builder disableAutoCancel() {
             mAutoCancelDurationInMillis = 0;
+            return this;
+        }
+
+        /**
+         *
+         * Remove all points of the given meteringMode.
+         */
+        @RestrictTo(RestrictTo.Scope.LIBRARY)
+        @NonNull
+        public Builder removePoints(@MeteringMode int meteringMode) {
+            if ((meteringMode & FLAG_AF) != 0) {
+                mMeteringPointsAf.clear();
+            }
+
+            if ((meteringMode & FLAG_AE) != 0) {
+                mMeteringPointsAe.clear();
+            }
+
+            if ((meteringMode & FLAG_AWB) != 0) {
+                mMeteringPointsAwb.clear();
+            }
             return this;
         }
 

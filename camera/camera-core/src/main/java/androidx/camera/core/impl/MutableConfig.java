@@ -18,12 +18,14 @@ package androidx.camera.core.impl;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 
 /**
  * MutableConfig is a {@link Config} that can be modified.
  *
  * <p>MutableConfig is the interface used to create immutable Config objects.
  */
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public interface MutableConfig extends Config {
 
     /**
@@ -41,7 +43,7 @@ public interface MutableConfig extends Config {
      * @param opt      The option to be added or modified
      * @param value    The value to insert for this option.
      * @param <ValueT> The type of the value being inserted.
-     * @throws {@link IllegalArgumentException} if there is a conflict that cannot be resolved.
+     * @throws IllegalArgumentException if there is a conflict that cannot be resolved.
      */
     <ValueT> void insertOption(@NonNull Option<ValueT> opt, @NonNull OptionPriority priority,
             @Nullable ValueT value);

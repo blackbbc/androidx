@@ -45,13 +45,14 @@ import android.widget.ListView;
 import android.widget.PopupWindow;
 
 import androidx.annotation.AttrRes;
+import androidx.annotation.DoNotInline;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.StyleRes;
 import androidx.appcompat.R;
 import androidx.appcompat.view.menu.ShowableListMenu;
-import androidx.core.view.ViewCompat;
 import androidx.core.widget.PopupWindowCompat;
 
 import java.lang.reflect.Method;
@@ -65,6 +66,7 @@ import java.lang.reflect.Method;
  *
  * @see android.widget.ListPopupWindow
  */
+@SuppressWarnings("HiddenSuperclass")
 public class ListPopupWindow implements ShowableListMenu {
     private static final String TAG = "ListPopupWindow";
     private static final boolean DEBUG = false;
@@ -350,7 +352,6 @@ public class ListPopupWindow implements ShowableListMenu {
      * false, we allow outside touch to dismiss the dropdown. If this is set to true, then we
      * ignore outside touch even when the drop down is not set to always visible.
      *
-     * @hide Used only by AutoCompleteTextView to handle some internal special cases.
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public void setForceIgnoreOutsideTouch(boolean forceIgnoreOutsideTouch) {
@@ -366,7 +367,6 @@ public class ListPopupWindow implements ShowableListMenu {
      *
      * @param dropDownAlwaysVisible Whether to keep the drop-down visible.
      *
-     * @hide Only used by AutoCompleteTextView under special conditions.
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public void setDropDownAlwaysVisible(boolean dropDownAlwaysVisible) {
@@ -376,7 +376,6 @@ public class ListPopupWindow implements ShowableListMenu {
     /**
      * @return Whether the drop-down is visible under special conditions.
      *
-     * @hide Only used by AutoCompleteTextView under special conditions.
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public boolean isDropDownAlwaysVisible() {
@@ -387,10 +386,10 @@ public class ListPopupWindow implements ShowableListMenu {
      * Sets the operating mode for the soft input area.
      *
      * @param mode The desired mode, see
-     *        {@link android.view.WindowManager.LayoutParams#softInputMode}
+     *        {@link WindowManager.LayoutParams#softInputMode}
      *        for the full list
      *
-     * @see android.view.WindowManager.LayoutParams#softInputMode
+     * @see WindowManager.LayoutParams#softInputMode
      * @see #getSoftInputMode()
      */
     public void setSoftInputMode(int mode) {
@@ -401,7 +400,7 @@ public class ListPopupWindow implements ShowableListMenu {
      * Returns the current value in {@link #setSoftInputMode(int)}.
      *
      * @see #setSoftInputMode(int)
-     * @see android.view.WindowManager.LayoutParams#softInputMode
+     * @see WindowManager.LayoutParams#softInputMode
      */
     public int getSoftInputMode() {
         return mPopup.getSoftInputMode();
@@ -613,7 +612,7 @@ public class ListPopupWindow implements ShowableListMenu {
      *
      * @param clickListener Listener to register
      *
-     * @see ListView#setOnItemClickListener(android.widget.AdapterView.OnItemClickListener)
+     * @see ListView#setOnItemClickListener(AdapterView.OnItemClickListener)
      */
     public void setOnItemClickListener(@Nullable AdapterView.OnItemClickListener clickListener) {
         mItemClickListener = clickListener;
@@ -666,7 +665,7 @@ public class ListPopupWindow implements ShowableListMenu {
         PopupWindowCompat.setWindowLayoutType(mPopup, mDropDownWindowLayoutType);
 
         if (mPopup.isShowing()) {
-            if (!ViewCompat.isAttachedToWindow(getAnchorView())) {
+            if (!getAnchorView().isAttachedToWindow()) {
                 //Don't update position if the anchor view is detached from window.
                 return;
             }
@@ -749,7 +748,7 @@ public class ListPopupWindow implements ShowableListMenu {
                     }
                 }
             } else {
-                mPopup.setEpicenterBounds(mEpicenterBounds);
+                Api29Impl.setEpicenterBounds(mPopup, mEpicenterBounds);
             }
             PopupWindowCompat.showAsDropDown(mPopup, getAnchorView(), mDropDownHorizontalOffset,
                     mDropDownVerticalOffset, mDropDownGravity);
@@ -1158,7 +1157,7 @@ public class ListPopupWindow implements ShowableListMenu {
         if (mDropDownList == null) {
             Context context = mContext;
 
-            /**
+            /*
              * This Runnable exists for the sole purpose of checking if the view layout has got
              * completed and if so call showDropDown to display the drop down. This is used to show
              * the drop down as soon as possible after user opens up the search dialog, without
@@ -1330,7 +1329,6 @@ public class ListPopupWindow implements ShowableListMenu {
     }
 
     /**
-     * @hide Only used by {@link androidx.appcompat.view.menu.CascadingMenuPopup} to position
      * a submenu correctly.
      */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
@@ -1373,7 +1371,7 @@ public class ListPopupWindow implements ShowableListMenu {
 
         @Override
         public void run() {
-            if (mDropDownList != null && ViewCompat.isAttachedToWindow(mDropDownList)
+            if (mDropDownList != null && mDropDownList.isAttachedToWindow()
                     && mDropDownList.getCount() > mDropDownList.getChildCount()
                     && mDropDownList.getChildCount() <= mListItemExpandMaximum) {
                 mPopup.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
@@ -1437,7 +1435,7 @@ public class ListPopupWindow implements ShowableListMenu {
                 }
             }
         } else {
-            mPopup.setIsClippedToScreen(clip);
+            Api29Impl.setIsClippedToScreen(mPopup, clip);
         }
     }
 
@@ -1454,7 +1452,38 @@ public class ListPopupWindow implements ShowableListMenu {
             }
             return mPopup.getMaxAvailableHeight(anchor, yOffset);
         } else {
-            return mPopup.getMaxAvailableHeight(anchor, yOffset, ignoreBottomDecorations);
+            return Api24Impl.getMaxAvailableHeight(mPopup, anchor, yOffset,
+                    ignoreBottomDecorations);
+        }
+    }
+
+    @RequiresApi(29)
+    static class Api29Impl {
+        private Api29Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static void setEpicenterBounds(PopupWindow popupWindow, Rect bounds) {
+            popupWindow.setEpicenterBounds(bounds);
+        }
+
+        @DoNotInline
+        static void setIsClippedToScreen(PopupWindow popupWindow, boolean enabled) {
+            popupWindow.setIsClippedToScreen(enabled);
+        }
+    }
+
+    @RequiresApi(24)
+    static class Api24Impl {
+        private Api24Impl() {
+            // This class is not instantiable.
+        }
+
+        @DoNotInline
+        static int getMaxAvailableHeight(PopupWindow popupWindow, View anchor, int yOffset,
+                boolean ignoreBottomDecorations) {
+            return popupWindow.getMaxAvailableHeight(anchor, yOffset, ignoreBottomDecorations);
         }
     }
 }

@@ -24,7 +24,12 @@ import androidx.annotation.Nullable;
  * Static library support version of the framework's {@link android.os.CancellationSignal}.
  * Used to write apps that run on platforms prior to Android 4.1.  See the framework SDK
  * documentation for a class overview.
+ *
+ * @deprecated This class was added to the platform in SDK 16, which is below Jetpack's
+ * minimum SDK requirement. Use the platform-supplied version of this class:
+ * {@link android.os.CancellationSignal}
  */
+@Deprecated
 public final class CancellationSignal {
     private boolean mIsCanceled;
     private OnCancelListener mOnCancelListener;
@@ -80,7 +85,7 @@ public final class CancellationSignal {
             if (listener != null) {
                 listener.onCancel();
             }
-            if (obj != null && Build.VERSION.SDK_INT >= 16) {
+            if (obj != null) {
                 ((android.os.CancellationSignal) obj).cancel();
             }
         } finally {
@@ -126,7 +131,7 @@ public final class CancellationSignal {
      * Gets the framework {@link android.os.CancellationSignal} associated with this object.
      * <p>
      * Framework support for cancellation signals was added in
-     * {@link android.os.Build.VERSION_CODES#JELLY_BEAN} so this method will always
+     * {@link Build.VERSION_CODES#JELLY_BEAN} so this method will always
      * return null on older versions of the platform.
      * </p>
      *
@@ -135,9 +140,6 @@ public final class CancellationSignal {
      */
     @Nullable
     public Object getCancellationSignalObject() {
-        if (Build.VERSION.SDK_INT < 16) {
-            return null;
-        }
         synchronized (this) {
             if (mCancellationSignalObj == null) {
                 mCancellationSignalObj = new android.os.CancellationSignal();
@@ -154,6 +156,7 @@ public final class CancellationSignal {
             try {
                 wait();
             } catch (InterruptedException ex) {
+                // Do nothing
             }
         }
     }

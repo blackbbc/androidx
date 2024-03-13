@@ -25,10 +25,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import androidx.core.view.ViewCompat;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
-import androidx.test.filters.SdkSuppress;
 import androidx.test.rule.ActivityTestRule;
 
 import org.junit.Rule;
@@ -114,7 +114,6 @@ public class RecyclerViewFocusTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 17)
     public void focusSearch_horizontalRtlAndHasChildInDirection_findsCorrectChild()
             throws Throwable {
         setupRecyclerView(true, RecyclerView.HORIZONTAL, false);
@@ -153,7 +152,6 @@ public class RecyclerViewFocusTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 17)
     public void focusSearch_horizontalRtlAndHasChildInDirection_doesNotCallOnFocusSearchFailed()
             throws Throwable {
         setupRecyclerView(true, RecyclerView.HORIZONTAL, false);
@@ -188,7 +186,6 @@ public class RecyclerViewFocusTest {
     }
 
     @Test
-    @SdkSuppress(minSdkVersion = 17)
     public void focusSearch_horizontalRtlAndDoesNotHaveChildInDirection_callsOnFocusSearchFailed()
             throws Throwable {
         setupRecyclerView(true, RecyclerView.HORIZONTAL, false);
@@ -236,7 +233,7 @@ public class RecyclerViewFocusTest {
 
         mRecyclerView = new RecyclerView(ApplicationProvider.getApplicationContext());
         if (!ltr) {
-            mRecyclerView.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+            ViewCompat.setLayoutDirection(mRecyclerView, View.LAYOUT_DIRECTION_RTL);
         }
         mRecyclerView.setBackgroundColor(0xFFFF0000);
         mRecyclerView.setLayoutParams(

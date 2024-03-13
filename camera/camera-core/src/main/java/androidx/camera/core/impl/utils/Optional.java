@@ -16,7 +16,9 @@
 
 package androidx.camera.core.impl.utils;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.core.util.Preconditions;
 import androidx.core.util.Supplier;
 
@@ -68,6 +70,8 @@ import java.io.Serializable;
  *            this type, so it is safe to cast an {@code Optional<T>} to {@code Optional<S>} for any
  *            supertype {@code S} of {@code T}.
  */
+@SuppressWarnings("unused")
+@RequiresApi(21) // TODO(b/200306659): Remove and replace with annotation on package-info.java
 public abstract class Optional<T> implements Serializable {
     /**
      * Returns an {@code Optional} instance with no contained reference.
@@ -75,6 +79,7 @@ public abstract class Optional<T> implements Serializable {
      * <p><b>Comparison to {@code java.util.Optional}:</b> this method is equivalent to Java 8's
      * {@code Optional.empty}.
      */
+    @NonNull
     public static <T> Optional<T> absent() {
         return Absent.withType();
     }
@@ -87,8 +92,9 @@ public abstract class Optional<T> implements Serializable {
      *
      * @throws NullPointerException if {@code reference} is null
      */
-    public static <T> Optional<T> of(T reference) {
-        return new Present<T>(Preconditions.checkNotNull(reference));
+    @NonNull
+    public static <T> Optional<T> of(@NonNull T reference) {
+        return new Present<>(Preconditions.checkNotNull(reference));
     }
 
     /**
@@ -99,8 +105,9 @@ public abstract class Optional<T> implements Serializable {
      * <p><b>Comparison to {@code java.util.Optional}:</b> this method is equivalent to Java 8's
      * {@code Optional.ofNullable}.
      */
+    @NonNull
     public static <T> Optional<T> fromNullable(@Nullable T nullableReference) {
-        return (nullableReference == null) ? Optional.<T>absent() : new Present<T>(
+        return (nullableReference == null) ? Optional.absent() : new Present<>(
                 nullableReference);
     }
 
@@ -127,6 +134,7 @@ public abstract class Optional<T> implements Serializable {
      *                               (over the more general {@link
      *                               RuntimeException}) is discouraged
      */
+    @NonNull
     public abstract T get();
 
     /**
@@ -165,7 +173,8 @@ public abstract class Optional<T> implements Serializable {
      * must be used instead). As a result, the value returned by this method is guaranteed non-null,
      * which is not the case for the {@code java.util} equivalent.
      */
-    public abstract T or(T defaultValue);
+    @NonNull
+    public abstract T or(@NonNull T defaultValue);
 
     /**
      * Returns this {@code Optional} if it has a value present; {@code secondChoice} otherwise.
@@ -174,7 +183,8 @@ public abstract class Optional<T> implements Serializable {
      * {@code Optional} class; write {@code thisOptional.isPresent() ? thisOptional : secondChoice}
      * instead.
      */
-    public abstract Optional<T> or(Optional<? extends T> secondChoice);
+    @NonNull
+    public abstract Optional<T> or(@NonNull Optional<? extends T> secondChoice);
 
     /**
      * Returns the contained instance if it is present; {@code supplier.get()} otherwise.
@@ -186,7 +196,8 @@ public abstract class Optional<T> implements Serializable {
      * @throws NullPointerException if this optional's value is absent and the supplier returns
      *                              {@code null}
      */
-    public abstract T or(Supplier<? extends T> supplier);
+    @NonNull
+    public abstract T or(@NonNull Supplier<? extends T> supplier);
 
     /**
      * Returns the contained instance if it is present; {@code null} otherwise. If the instance is
@@ -223,6 +234,7 @@ public abstract class Optional<T> implements Serializable {
      * <p><b>Comparison to {@code java.util.Optional}:</b> this class leaves the specific string
      * representation unspecified, unlike the Java 8 equivalent.
      */
+    @NonNull
     @Override
     public abstract String toString();
 

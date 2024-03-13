@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-import androidx.build.LibraryGroups
+/**
+ * This file was created using the `create_project.py` script located in the
+ * `<AndroidX root>/development/project-creator` directory.
+ *
+ * Please use that script when creating a new project, rather than copying an existing project and
+ * modifying its settings.
+ */
 import androidx.build.Publish
 
 plugins {
@@ -28,6 +34,7 @@ android {
         test.java.srcDirs += "src/test-common/java"
         androidTest.java.srcDirs += "src/test-common/java"
     }
+    namespace "androidx.datastore.preferences.rxjava3"
 }
 
 dependencies {
@@ -56,10 +63,10 @@ dependencies {
 }
 
 androidx {
-    name = "Android DataStore Core RxJava2 Wrappers"
+    name = "DataStore Preferences RxJava3"
     publish = Publish.SNAPSHOT_AND_RELEASE
-    mavenGroup = LibraryGroups.DATASTORE
     inceptionYear = "2020"
     description = "Android DataStore Core - contains wrappers for using DataStore using RxJava2"
     legacyDisableKotlinStrictApiMode = true
+    metalavaK2UastEnabled = true
 }

@@ -29,6 +29,7 @@ internal data class View(
     val className: ClassName = ClassName.get(type)
 }
 
+@JvmDefaultWithCompatibility
 internal interface Attribute {
     val name: String
     val namespace: String
@@ -70,7 +71,8 @@ internal data class ShadowedAttribute(
 internal data class IntMap(
     val name: String,
     val value: Int,
-    val mask: Int = 0
+    val mask: Int = 0,
+    val annotation: AnnotationMirror? = null
 )
 
 /** Represents the type of the attribute, determined from context and the annotation itself. */

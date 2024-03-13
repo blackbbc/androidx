@@ -16,6 +16,7 @@
 package androidx.navigation.ui
 
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -27,6 +28,7 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.view.forEach
 import androidx.customview.widget.Openable
 import androidx.navigation.ActivityNavigator
+import androidx.navigation.FloatingWindow
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -45,6 +47,8 @@ import java.lang.ref.WeakReference
  * navigation patterns like a navigation drawer or bottom nav bar with your [NavController].
  */
 public object NavigationUI {
+    private const val TAG = "NavigationUI"
+
     /**
      * Attempt to navigate to the [NavDestination] associated with the given MenuItem. This
      * MenuItem should have been added via one of the helper methods in this class.
@@ -90,8 +94,16 @@ public object NavigationUI {
         return try {
             // TODO provide proper API instead of using Exceptions as Control-Flow.
             navController.navigate(item.itemId, null, options)
-            true
+            // Return true only if the destination we've navigated to matches the MenuItem
+            navController.currentDestination?.matchDestination(item.itemId) == true
         } catch (e: IllegalArgumentException) {
+            val name = NavDestination.getDisplayName(navController.context, item.itemId)
+            Log.i(
+                TAG,
+                "Ignoring onNavDestinationSelected for MenuItem $name as it cannot be found " +
+                    "from the current destination ${navController.currentDestination}",
+                e
+            )
             false
         }
     }
@@ -153,8 +165,16 @@ public object NavigationUI {
         return try {
             // TODO provide proper API instead of using Exceptions as Control-Flow.
             navController.navigate(item.itemId, null, options)
-            true
+            // Return true only if the destination we've navigated to matches the MenuItem
+            navController.currentDestination?.matchDestination(item.itemId) == true
         } catch (e: IllegalArgumentException) {
+            val name = NavDestination.getDisplayName(navController.context, item.itemId)
+            Log.i(
+                TAG,
+                "Ignoring onNavDestinationSelected for MenuItem $name as it cannot be found " +
+                    "from the current destination ${navController.currentDestination}",
+                e
+            )
             false
         }
     }
@@ -202,9 +222,8 @@ public object NavigationUI {
     ): Boolean {
         val openableLayout = configuration.openableLayout
         val currentDestination = navController.currentDestination
-        val topLevelDestinations = configuration.topLevelDestinations
         return if (openableLayout != null && currentDestination != null &&
-            currentDestination.matchDestinations(topLevelDestinations)
+            configuration.isTopLevelDestination(currentDestination)
         ) {
             openableLayout.open()
             true
@@ -440,6 +459,8 @@ public object NavigationUI {
      * it (as is the case when using a [com.google.android.material.bottomsheet.BottomSheetDialog]),
      * the bottom sheet will be hidden when a menu item is selected.
      *
+     * Destinations that implement [androidx.navigation.FloatingWindow] will be ignored.
+     *
      * @param navigationView The NavigationView that should be kept in sync with changes to the
      * NavController.
      * @param navController The NavController that supplies the primary and secondary menu.
@@ -479,6 +500,9 @@ public object NavigationUI {
                         navController.removeOnDestinationChangedListener(this)
                         return
                     }
+                    if (destination is FloatingWindow) {
+                        return
+                    }
                     view.menu.forEach { item ->
                         item.isChecked = destination.matchDestination(item.itemId)
                     }
@@ -498,6 +522,8 @@ public object NavigationUI {
      * Similarly, if the [NavigationView] has a [BottomSheetBehavior] associated with
      * it (as is the case when using a [com.google.android.material.bottomsheet.BottomSheetDialog]),
      * the bottom sheet will be hidden when a menu item is selected.
+     *
+     * Destinations that implement [androidx.navigation.FloatingWindow] will be ignored.
      *
      * @param navigationView The NavigationView that should be kept in sync with changes to the
      * NavController.
@@ -548,6 +574,9 @@ public object NavigationUI {
                         navController.removeOnDestinationChangedListener(this)
                         return
                     }
+                    if (destination is FloatingWindow) {
+                        return
+                    }
                     view.menu.forEach { item ->
                         item.isChecked = destination.matchDestination(item.itemId)
                     }
@@ -558,7 +587,6 @@ public object NavigationUI {
     /**
      * Walks up the view hierarchy, trying to determine if the given View is contained within
      * a bottom sheet.
-     * @suppress
      */
     @JvmStatic
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -583,6 +611,8 @@ public object NavigationUI {
      * [onNavDestinationSelected] when a menu item is selected. The
      * selected item in the NavigationBarView will automatically be updated when the destination
      * changes.
+     *
+     * Destinations that implement [androidx.navigation.FloatingWindow] will be ignored.
      *
      * @param navigationBarView The NavigationBarView ([BottomNavigationView] or
      * [NavigationRailView])
@@ -615,6 +645,9 @@ public object NavigationUI {
                         navController.removeOnDestinationChangedListener(this)
                         return
                     }
+                    if (destination is FloatingWindow) {
+                        return
+                    }
                     view.menu.forEach { item ->
                         if (destination.matchDestination(item.itemId)) {
                             item.isChecked = true
@@ -629,6 +662,8 @@ public object NavigationUI {
      * [onNavDestinationSelected] when a menu item is selected. The
      * selected item in the NavigationBarView will automatically be updated when the destination
      * changes.
+     *
+     * Destinations that implement [androidx.navigation.FloatingWindow] will be ignored.
      *
      * @param navigationBarView The NavigationBarView ([BottomNavigationView] or
      * [NavigationRailView])
@@ -668,6 +703,9 @@ public object NavigationUI {
                         navController.removeOnDestinationChangedListener(this)
                         return
                     }
+                    if (destination is FloatingWindow) {
+                        return
+                    }
                     view.menu.forEach { item ->
                         if (destination.matchDestination(item.itemId)) {
                             item.isChecked = true
@@ -685,13 +723,4 @@ public object NavigationUI {
     @JvmStatic
     internal fun NavDestination.matchDestination(@IdRes destId: Int): Boolean =
         hierarchy.any { it.id == destId }
-
-    /**
-     * Determines whether the given `destinationIds` match the NavDestination. This
-     * handles both the default case (the destination's id is in the given ids) and the nested
-     * case where the given ids is a parent/grandparent/etc of the destination.
-     */
-    @JvmStatic
-    internal fun NavDestination.matchDestinations(destinationIds: Set<Int?>): Boolean =
-        hierarchy.any { destinationIds.contains(it.id) }
 }

@@ -17,19 +17,20 @@
 package androidx.wear.tiles.checkers
 
 import android.util.Log
-import androidx.wear.tiles.TimelineBuilders.Timeline
-import androidx.wear.tiles.TimelineBuilders.TimelineEntry
+import androidx.wear.protolayout.TimelineBuilders
 import kotlin.jvm.Throws
 
-/** Exception thrown when a TimelineEntryChecker fails. */
-public class CheckerException(message: String) : Exception(message)
+/**
+ * Exception thrown when a TimelineEntryChecker fails.
+ */
+internal class CheckerException(message: String) : Exception(message)
 
 /**
  * Checker for a Tile's TimelineEntries. Instances of this interface should check for a certain
  * condition on the given [TimelineEntry], and throw an instance of [CheckerException] if there
  * is a problem with that [TimelineEntry].
  */
-public interface TimelineEntryChecker {
+internal interface TimelineEntryChecker {
     /** The name of this TimelineEntryChecker. This will be printed in any error output. */
     val name: String
 
@@ -39,7 +40,7 @@ public interface TimelineEntryChecker {
      * @throws CheckerException if there was an issue while checking the [TimelineEntry]
      */
     @Throws(CheckerException::class)
-    fun check(entry: TimelineEntry)
+    fun check(entry: TimelineBuilders.TimelineEntry)
 }
 
 /**
@@ -48,7 +49,7 @@ public interface TimelineEntryChecker {
  *
  * @param entryCheckers The list of checkers to use. Defaults to all built in checks.
  */
-public class TimelineChecker(
+internal class TimelineChecker(
     private val entryCheckers: List<TimelineEntryChecker> = listOf(CheckAccessibilityAvailable()),
 ) {
     companion object {
@@ -56,7 +57,7 @@ public class TimelineChecker(
     }
 
     /** Check a given [Timeline] against all registered [TimelineEntryChecker]s. */
-    public fun doCheck(timeline: Timeline) {
+    fun doCheck(timeline: TimelineBuilders.Timeline) {
         timeline.timelineEntries.forEach { entry ->
             entryCheckers.forEach {
                 try {

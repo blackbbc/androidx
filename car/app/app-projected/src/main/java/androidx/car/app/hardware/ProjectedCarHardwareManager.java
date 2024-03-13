@@ -18,8 +18,11 @@ package androidx.car.app.hardware;
 import static androidx.annotation.RestrictTo.Scope.LIBRARY;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
 import androidx.annotation.RestrictTo;
+import androidx.car.app.CarContext;
 import androidx.car.app.HostDispatcher;
+import androidx.car.app.annotations.ExperimentalCarApi;
 import androidx.car.app.hardware.common.CarHardwareHostDispatcher;
 import androidx.car.app.hardware.info.CarInfo;
 import androidx.car.app.hardware.info.CarSensors;
@@ -30,7 +33,6 @@ import androidx.car.app.hardware.info.ProjectedCarSensors;
  * {@link CarHardwareManager} which access projected vehicle specific properties, sensors, and
  * actions via a host interface.
  *
- * @hide
  */
 @RestrictTo(LIBRARY)
 public class ProjectedCarHardwareManager implements CarHardwareManager {
@@ -53,7 +55,10 @@ public class ProjectedCarHardwareManager implements CarHardwareManager {
     /**
      * Creates an instance of {@link CarHardwareManager}.
      */
-    public ProjectedCarHardwareManager(@NonNull HostDispatcher hostDispatcher) {
+    // TODO(b/216177515): Remove this annotation once EvStatus is ready.
+    @OptIn(markerClass = ExperimentalCarApi.class)
+    public ProjectedCarHardwareManager(@NonNull CarContext context,
+            @NonNull HostDispatcher hostDispatcher) {
         CarHardwareHostDispatcher carHardwareHostDispatcher =
                 new CarHardwareHostDispatcher(hostDispatcher);
         mVehicleInfo = new ProjectedCarInfo(carHardwareHostDispatcher);
