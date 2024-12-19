@@ -52,28 +52,24 @@ def prebuiltsRoot = new File(
 ).absolutePath
 def rootProjectRepositories
 
-apply from: "buildSrc/out.gradle"
-def (outDir, buildSrcOut) = init.getOutDir()
+apply from: "buildSrc/settingsScripts/out-setup.groovy"
 
-getGradle().beforeProject {
+getGradle().beforeProject { project ->
     // Migrate to dependencyResolutionManagement.repositories when
     // https://github.com/gradle/gradle/issues/17295 is fixed
-    if (it.path == ":") {
-        repos.addMavenRepositories(it.repositories)
-        rootProjectRepositories = it.repositories
-
-        // Set buildSrcOut and outDir extras on root project
-        it.ext.buildSrcOut = buildSrcOut
-        it.ext.outDir = outDir
+    if (project.path == ":") {
+        repos.addMavenRepositories(project.repositories)
+        rootProjectRepositories = project.repositories
     } else {
         // Performance optimization because it is more efficient to reuse
         // repositories from the root project than recreate identical ones
         // on each project
-        it.repositories.addAll(rootProjectRepositories)
+        project.repositories.addAll(rootProjectRepositories)
     }
-    it.ext.prebuiltsRoot = prebuiltsRoot
-    // Expected out directory structure for :foo:bar is out/androidx/foo/bar
-    it.buildDir = new File(outDir, "androidx/${it.path.replace(":", "/")}/build")
+    project.ext.prebuiltsRoot = prebuiltsRoot
+    init.chooseBuildDirectory(
+            new File("${buildscript.sourceFile.parent}/../.."), rootProject.name, project
+    )
 }
 
 apply(plugin: "com.gradle.enterprise")
@@ -380,6 +376,7 @@ includeProject(":appsearch:appsearch-builtin-types", [BuildType.MAIN])
 includeProject(":appsearch:appsearch-compiler", "appsearch/compiler", [BuildType.MAIN])
 includeProject(":appsearch:appsearch-debug-view", [BuildType.MAIN])
 includeProject(":appsearch:appsearch-debug-view:samples", [BuildType.MAIN])
+includeProject(":appsearch:appsearch-external-protobuf", [BuildType.MAIN])
 includeProject(":appsearch:appsearch-ktx", [BuildType.MAIN])
 includeProject(":appsearch:appsearch-local-storage", [BuildType.MAIN])
 includeProject(":appsearch:appsearch-platform-storage", [BuildType.MAIN])
@@ -624,6 +621,7 @@ includeProject(":core:core-google-shortcuts", [BuildType.MAIN])
 includeProject(":core:core-i18n", [BuildType.MAIN])
 includeProject(":core:core-ktx", [BuildType.MAIN, BuildType.GLANCE, BuildType.MEDIA, BuildType.FLAN, BuildType.COMPOSE])
 includeProject(":core:core-location-altitude", [BuildType.MAIN])
+includeProject(":core:core-location-altitude-external-protobuf", [BuildType.MAIN])
 includeProject(":core:core-location-altitude-proto", [BuildType.MAIN])
 includeProject(":core:core-performance", [BuildType.MAIN])
 includeProject(":core:core-performance:integration-tests:testapp", [BuildType.MAIN])
@@ -661,6 +659,7 @@ includeProject(":datastore:datastore-core-okio", [BuildType.MAIN, BuildType.INFR
 includeProject(":datastore:datastore-compose-samples", [BuildType.COMPOSE])
 includeProject(":datastore:datastore-preferences", [BuildType.MAIN, BuildType.INFRAROGUE, BuildType.KMP])
 includeProject(":datastore:datastore-preferences-core", [BuildType.MAIN, BuildType.INFRAROGUE, BuildType.KMP])
+includeProject(":datastore:datastore-preferences-external-protobuf", [BuildType.MAIN, BuildType.INFRAROGUE, BuildType.KMP])
 includeProject(":datastore:datastore-preferences-proto", [BuildType.MAIN, BuildType.INFRAROGUE, BuildType.KMP])
 includeProject(":datastore:datastore-preferences-rxjava2", [BuildType.MAIN, BuildType.INFRAROGUE, BuildType.KMP])
 includeProject(":datastore:datastore-preferences-rxjava3", [BuildType.MAIN, BuildType.INFRAROGUE, BuildType.KMP])
@@ -704,6 +703,7 @@ includeProject(":fragment:fragment-truth", [BuildType.MAIN, BuildType.FLAN])
 includeProject(":fragment:integration-tests:testapp", [BuildType.MAIN, BuildType.FLAN])
 includeProject(":glance:glance", [BuildType.GLANCE])
 includeProject(":glance:glance-appwidget", [BuildType.GLANCE])
+includeProject(":glance:glance-appwidget-external-protobuf", [BuildType.GLANCE])
 includeProject(":glance:glance-appwidget-preview", [BuildType.GLANCE])
 includeProject(":glance:glance-appwidget-proto", [BuildType.GLANCE])
 includeProject(":glance:glance-appwidget-testing", [BuildType.GLANCE])
@@ -897,6 +897,7 @@ includeProject(":room:room-common", [BuildType.MAIN, BuildType.COMPOSE, BuildTyp
 includeProject(":room:room-compiler", [BuildType.MAIN, BuildType.COMPOSE, BuildType.KMP])
 includeProject(":room:room-compiler-processing", [BuildType.MAIN, BuildType.COMPOSE, BuildType.FLAN, BuildType.KMP])
 includeProject(":room:room-compiler-processing-testing", [BuildType.MAIN, BuildType.COMPOSE, BuildType.FLAN])
+includeProject(":room:room-external-antlr", [BuildType.MAIN])
 includeProject(":room:room-guava", [BuildType.MAIN])
 includeProject(":room:room-gradle-plugin", [BuildType.MAIN])
 includeProject(":room:room-ktx", [BuildType.MAIN, BuildType.COMPOSE])
@@ -981,6 +982,7 @@ includeProject(":viewpager:viewpager", [BuildType.MAIN])
 includeProject(":wear:protolayout:protolayout", [BuildType.MAIN, BuildType.WEAR])
 includeProject(":wear:protolayout:protolayout-expression", [BuildType.MAIN, BuildType.WEAR])
 includeProject(":wear:protolayout:protolayout-expression-pipeline", [BuildType.MAIN, BuildType.WEAR])
+includeProject(":wear:protolayout:protolayout-external-protobuf", [BuildType.MAIN, BuildType.WEAR])
 includeProject(":wear:protolayout:protolayout-material", [BuildType.MAIN, BuildType.WEAR])
 includeProject(":wear:protolayout:protolayout-material-core", [BuildType.MAIN, BuildType.WEAR])
 includeProject(":wear:protolayout:protolayout-proto", [BuildType.MAIN, BuildType.WEAR])
