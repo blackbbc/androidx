@@ -177,8 +177,9 @@ internal open class FileReadScope<T>(
                 return FileInputStream(file).use { stream ->
                     serializer.readFrom(stream)
                 }
+            } else {
+              serializer.defaultValue
             }
-            return serializer.defaultValue
         }
     }
 
