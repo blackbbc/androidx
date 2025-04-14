@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The Android Open Source Project
+ * Copyright 2024 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package androidx.datastore.preferences.core
 
-import androidx.datastore.OkioPath
-import androidx.datastore.OkioTestIO
+import androidx.datastore.FileTestIO
+import androidx.datastore.JavaIOFile
 import androidx.datastore.core.CorruptionException
-import androidx.datastore.core.okio.OkioSerializer
+import androidx.datastore.core.Serializer
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,40 +28,34 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import okio.FileSystem
 
+// TODO(b/375233479): try to dedup the tests between Okio and File
 @kotlinx.coroutines.ExperimentalCoroutinesApi
 @kotlinx.coroutines.ObsoleteCoroutinesApi
 @kotlinx.coroutines.FlowPreview
-class PreferencesSerializerJavaTest {
+class PreferencesFileSerializerTest {
 
-    private val testIO = OkioTestIO()
+    private val testIO = FileTestIO()
 
-    private lateinit var testFile: OkioPath
-    private val preferencesSerializer: OkioSerializer<Preferences> = PreferencesSerializer
-    private val fileSystem: FileSystem = FileSystem.SYSTEM
+    private lateinit var testFile: JavaIOFile
+    private val preferencesSerializer: Serializer<Preferences> = PreferencesFileSerializer
 
     @BeforeTest
     fun setUp() {
         testFile = testIO.newTempFile()
     }
+
     fun doTest(test: suspend TestScope.() -> Unit) {
-        runTest(timeout = 10000.milliseconds) {
-            test(this)
-        }
+        runTest(timeout = 10000.milliseconds) { test(this) }
     }
 
     @Test
     fun testThrowsCorruptionException() = doTest {
         // Not a valid proto - protos cannot start with a 0 byte.
-        fileSystem.write(testFile.path) {
-            this.write(byteArrayOf(0, 1, 2, 3, 4))
-        }
+        testFile.protectedWrite(byteArrayOf(0, 1, 2, 3, 4))
 
         assertFailsWith<CorruptionException> {
-            fileSystem.read(testFile.path) {
-                preferencesSerializer.readFrom(this)
-            }
+            testFile.file.inputStream().use { preferencesSerializer.readFrom(it) }
         }
     }
 
@@ -69,18 +63,12 @@ class PreferencesSerializerJavaTest {
     @Suppress("UNCHECKED_CAST")
     fun testGetAllCantMutateInternalState() {
         val intKey = intPreferencesKey("int_key")
-        val stringSetKey =
-            stringSetPreferencesKey("string_set_key")
+        val stringSetKey = stringSetPreferencesKey("string_set_key")
 
-        val prefs = preferencesOf(
-            intKey to 123,
-            stringSetKey to setOf("1", "2", "3")
-        )
+        val prefs = preferencesOf(intKey to 123, stringSetKey to setOf("1", "2", "3"))
 
         val mutableAllPreferences = prefs.asMap() as MutableMap
-        assertFailsWith<UnsupportedOperationException> {
-            mutableAllPreferences[intKey] = 99999
-        }
+        assertFailsWith<UnsupportedOperationException> { mutableAllPreferences[intKey] = 99999 }
         assertFailsWith<UnsupportedOperationException> {
             (mutableAllPreferences[stringSetKey] as MutableSet<String>).clear()
         }
@@ -91,8 +79,7 @@ class PreferencesSerializerJavaTest {
 
     @Test
     fun testModifyingStringSetDoesntModifyInternalState() {
-        val stringSetKey =
-            stringSetPreferencesKey("string_set_key")
+        val stringSetKey = stringSetPreferencesKey("string_set_key")
 
         val stringSet = mutableSetOf("1", "2", "3")
 
@@ -104,9 +91,7 @@ class PreferencesSerializerJavaTest {
         val returnedSet: Set<String> = prefs[stringSetKey]!!
         val mutableReturnedSet: MutableSet<String> = returnedSet as MutableSet<String>
 
-        assertFailsWith<UnsupportedOperationException> {
-            mutableReturnedSet.clear()
-        }
+        assertFailsWith<UnsupportedOperationException> { mutableReturnedSet.clear() }
         assertFailsWith<UnsupportedOperationException> {
             mutableReturnedSet.add("Original set does not contain this string")
         }
@@ -119,8 +104,7 @@ class PreferencesSerializerJavaTest {
     @Suppress("UNUSED_VARIABLE")
     fun testWrongTypeThrowsClassCastException() {
         val stringKey = stringPreferencesKey("string_key")
-        val intKey =
-            intPreferencesKey("string_key") // long key of the same name as stringKey!
+        val intKey = intPreferencesKey("string_key") // long key of the same name as stringKey!
         val longKey = longPreferencesKey("string_key")
 
         val prefs = preferencesOf(intKey to 123456)
