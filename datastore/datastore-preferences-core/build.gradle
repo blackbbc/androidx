@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 plugins {
     id("AndroidXPlugin")
     alias(libs.plugins.kotlinSerialization)
+    id("com.android.library")
 }
 
 androidXMultiplatform {
@@ -35,16 +36,7 @@ androidXMultiplatform {
     mac()
     linux()
     ios()
-    androidLibrary {
-        namespace = "androidx.datastore.preferences.core"
-        optimization {
-            it.consumerKeepRules.publish = true
-            it.consumerKeepRules.files.add(
-                    new File("src/jvmMain/resources/META-INF/proguard/androidx.datastore_datastore-preferences-core.pro")
-            )
-        }
-        experimentalProperties["android.lint.useK2Uast"] = false
-    }
+    android()
 
     defaultPlatform(PlatformIdentifier.JVM)
 
@@ -120,6 +112,16 @@ androidXMultiplatform {
             }
         }
     }
+}
+
+android {
+    namespace = "androidx.datastore.preferences.core"
+    buildTypes.configureEach {
+        it.consumerProguardFiles.file.add(
+                new File("src/jvmMain/resources/META-INF/proguard/androidx.datastore_datastore-preferences-core.pro")
+        )
+    }
+    experimentalProperties["android.lint.useK2Uast"] = false
 }
 
 androidx {
