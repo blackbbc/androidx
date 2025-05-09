@@ -116,10 +116,8 @@ androidXMultiplatform {
 
 android {
     namespace = "androidx.datastore.preferences.core"
-    buildTypes.configureEach {
-        it.consumerProguardFiles.file.add(
-                new File("src/jvmMain/resources/META-INF/proguard/androidx.datastore_datastore-preferences-core.pro")
-        )
+    defaultConfig {
+        consumerProguardFiles("src/jvmMain/resources/META-INF/proguard/androidx.datastore_datastore-preferences-core.pro")
     }
     experimentalProperties["android.lint.useK2Uast"] = false
 }
