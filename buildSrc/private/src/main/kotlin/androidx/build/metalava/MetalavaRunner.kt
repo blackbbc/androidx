@@ -67,7 +67,7 @@ fun runMetalavaWithArgs(
                 // - We prefer for developers to specify api information via annotations instead
                 //   of just javadoc comments (like @hide)
                 // - This allows us to improve cacheability of Metalava tasks
-                "--ignore-comments",
+                // "--ignore-comments",
                 "--hide",
                 "DeprecationMismatch",
                 "--hide",

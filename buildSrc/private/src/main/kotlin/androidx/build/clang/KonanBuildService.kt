@@ -120,61 +120,61 @@ abstract class KonanBuildService @Inject constructor(private val execOperations:
 
     /** @see ClangSharedLibraryTask */
     fun createSharedLibrary(parameters: ClangSharedLibraryParameters) {
-        val outputFile = parameters.outputFile.get().asFile
-        outputFile.delete()
-        outputFile.parentFile.mkdirs()
-
-        val platform = getPlatform(parameters.konanTarget)
-
-        // Specify max-page-size to align ELF regions to 16kb
-        val linkerFlags =
-            parameters.linkerArgs.get() +
-                if (parameters.konanTarget.get().asKonanTarget.family == Family.ANDROID) {
-                    listOf("-z", "max-page-size=16384")
-                } else {
-                    emptyList()
-                }
-
-        val objectFiles = parameters.objectFiles.regularFilePaths()
-        val linkedObjectFiles = parameters.linkedObjects.regularFilePaths()
-        val linkCommands =
-            platform.linker.finalLinkCommands(
-                objectFiles = objectFiles,
-                executable = outputFile.canonicalPath,
-                libraries = linkedObjectFiles,
-                linkerArgs = linkerFlags,
-                optimize = true,
-                debug = false,
-                kind = LinkerOutputKind.DYNAMIC_LIBRARY,
-                outputDsymBundle = "unused",
-                needsProfileLibrary = false,
-                mimallocEnabled = false,
-                sanitizer = null
-            )
-        linkCommands
-            .map { it.argsWithExecutable }
-            .forEach { args ->
-                execOperations.executeSilently { execSpec ->
-                    execSpec.executable = args.first()
-                    args
-                        .drop(1)
-                        .filterNot {
-                            // TODO b/305804211 Figure out if we would rather pass all args manually
-                            // We use the linker that konan uses to be as similar as possible but
-                            // that
-                            // linker also has konan demangling, which we don't need and not even
-                            // available
-                            // in the default distribution. Hence we remove that parameters.
-                            // In the future, we can consider not using the `platform.linker` but
-                            // then
-                            // we would need to parse the konan.properties file to get the relevant
-                            // necessary parameters like sysroot etc.
-                            // https://github.com/JetBrains/kotlin/blob/master/kotlin-native/build-tools/src/main/kotlin/org/jetbrains/kotlin/KotlinNativeTest.kt#L536
-                            it.contains("--defsym") || it.contains("Konan_cxa_demangle")
-                        }
-                        .forEach { execSpec.args(it) }
-                }
-            }
+//        val outputFile = parameters.outputFile.get().asFile
+//        outputFile.delete()
+//        outputFile.parentFile.mkdirs()
+//
+//        val platform = getPlatform(parameters.konanTarget)
+//
+//        // Specify max-page-size to align ELF regions to 16kb
+//        val linkerFlags =
+//            parameters.linkerArgs.get() +
+//                if (parameters.konanTarget.get().asKonanTarget.family == Family.ANDROID) {
+//                    listOf("-z", "max-page-size=16384")
+//                } else {
+//                    emptyList()
+//                }
+//
+//        val objectFiles = parameters.objectFiles.regularFilePaths()
+//        val linkedObjectFiles = parameters.linkedObjects.regularFilePaths()
+//        val linkCommands =
+//            platform.linker.finalLinkCommands(
+//                objectFiles = objectFiles,
+//                executable = outputFile.canonicalPath,
+//                libraries = linkedObjectFiles,
+//                linkerArgs = linkerFlags,
+//                optimize = true,
+//                debug = false,
+//                kind = LinkerOutputKind.DYNAMIC_LIBRARY,
+//                outputDsymBundle = "unused",
+//                needsProfileLibrary = false,
+//                mimallocEnabled = false,
+//                sanitizer = null
+//            )
+//        linkCommands
+//            .map { it.argsWithExecutable }
+//            .forEach { args ->
+//                execOperations.executeSilently { execSpec ->
+//                    execSpec.executable = args.first()
+//                    args
+//                        .drop(1)
+//                        .filterNot {
+//                            // TODO b/305804211 Figure out if we would rather pass all args manually
+//                            // We use the linker that konan uses to be as similar as possible but
+//                            // that
+//                            // linker also has konan demangling, which we don't need and not even
+//                            // available
+//                            // in the default distribution. Hence we remove that parameters.
+//                            // In the future, we can consider not using the `platform.linker` but
+//                            // then
+//                            // we would need to parse the konan.properties file to get the relevant
+//                            // necessary parameters like sysroot etc.
+//                            // https://github.com/JetBrains/kotlin/blob/master/kotlin-native/build-tools/src/main/kotlin/org/jetbrains/kotlin/KotlinNativeTest.kt#L536
+//                            it.contains("--defsym") || it.contains("Konan_cxa_demangle")
+//                        }
+//                        .forEach { execSpec.args(it) }
+//                }
+//            }
     }
 
     private fun FileCollection.regularFilePaths(): List<String> {

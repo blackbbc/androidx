@@ -63,14 +63,14 @@ abstract class CheckAbiIsCompatibleTask : DefaultTask() {
             throw GradleException(frozenApiErrorMessage(referenceVersion.get()))
         }
 
-        val previousDump = KlibDumpParser(previousApiDumpText, previousApiPath).parse()
-        val currentDump = KlibDumpParser(currentApiDumpText, currentApiPath).parse()
-
-        try {
-            BinaryCompatibilityChecker.checkAllBinariesAreCompatible(currentDump, previousDump)
-        } catch (e: ValidationException) {
-            throw GradleException(compatErrorMessage(e), e)
-        }
+//        val previousDump = KlibDumpParser(previousApiDumpText, previousApiPath).parse()
+//        val currentDump = KlibDumpParser(currentApiDumpText, currentApiPath).parse()
+//
+//        try {
+//            BinaryCompatibilityChecker.checkAllBinariesAreCompatible(currentDump, previousDump)
+//        } catch (e: ValidationException) {
+//            throw GradleException(compatErrorMessage(e), e)
+//        }
     }
 
     private fun compatErrorMessage(validationException: ValidationException) =

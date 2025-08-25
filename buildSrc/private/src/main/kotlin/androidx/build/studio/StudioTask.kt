@@ -48,8 +48,8 @@ abstract class StudioTask : DefaultTask() {
     // TODO: support -y and --update-only options? Can use @Option for this
     @TaskAction
     fun studiow() {
-        validateEnvironment()
-        install()
+//        validateEnvironment()
+//        install()
         launch()
     }
 
@@ -168,7 +168,7 @@ abstract class StudioTask : DefaultTask() {
                 }
             }
 
-        val canonicalSdkPath = File(File(System.getProperty("user.home")).parent, relativeSdkPath)
+        val canonicalSdkPath = File(File("/Users/luoyi"), relativeSdkPath)
         if (!canonicalSdkPath.exists()) {
             // In the future, we might want to try a little harder to locate a canonical SDK path.
             println("Failed to locate canonical SDK, not found at: $canonicalSdkPath")
@@ -226,7 +226,7 @@ abstract class StudioTask : DefaultTask() {
         }
         val pid = with(platformUtilities) { findProcess() }
         check(pid == null) { "Found managed instance of Studio already running as PID $pid" }
-        val logFile = File(System.getProperty("user.home"), ".AndroidXStudioLog")
+        val logFile = File("/Users/luoyi", ".AndroidXStudioLog")
         ProcessBuilder().apply {
             // Can't just use inheritIO due to https://github.com/gradle/gradle/issues/16719
             // Also can't use waitFor because it causes Studio to get stuck: b/241386076

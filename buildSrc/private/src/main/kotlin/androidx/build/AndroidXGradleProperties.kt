@@ -50,6 +50,8 @@ const val ALTERNATIVE_PROJECT_URL = "androidx.alternativeProjectUrl"
  */
 const val VERSION_EXTRA_CHECK_ENABLED = "androidx.versionExtraCheckEnabled"
 
+const val SUBVERSION_CHECK_ENABLED = "androidx.subVersionCheckEnabled"
+
 /** Validate the project structure against Jetpack guidelines */
 const val VALIDATE_PROJECT_STRUCTURE = "androidx.validateProjectStructure"
 
@@ -201,6 +203,9 @@ fun Project.getAlternativeProjectUrl(): String? =
  */
 fun Project.isVersionExtraCheckEnabled(): Boolean =
     findBooleanProperty(VERSION_EXTRA_CHECK_ENABLED) ?: true
+
+fun Project.isSubversionCheckEnabled(): Boolean =
+    findBooleanProperty(SUBVERSION_CHECK_ENABLED) ?: false
 
 /** Validate the project structure against Jetpack guidelines */
 fun Project.isValidateProjectStructureEnabled(): Boolean =

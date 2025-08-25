@@ -142,6 +142,9 @@ class AndroidXPlaygroundRootImplPlugin : Plugin<Project> {
         google()
         mavenCentral()
         gradlePluginPortal()
+        maven {
+            it.url = URI("https://mirrors.tencent.com/nexus/repository/maven-public")
+        }
     }
 
     private class PlaygroundRepositories(props: PlaygroundProperties) {

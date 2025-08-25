@@ -41,6 +41,7 @@ androidXMultiplatform {
     mac()
     linux()
     ios()
+    ohosNative()
 
     kotlin {
         explicitApi = ExplicitApiMode.Strict
@@ -55,9 +56,10 @@ androidXMultiplatform {
 
         commonMain {
             dependencies {
-                api("androidx.annotation:annotation:1.8.0")
+                api(libs.androidx.annotation)
                 api(libs.kotlinStdlib)
                 api(libs.kotlinCoroutinesCore)
+                api(libs.atomicFu)
             }
         }
 
@@ -118,8 +120,10 @@ androidXMultiplatform {
                         dependsOn(darwinMain)
                     } else if (konanTargetFamily == Family.LINUX) {
                         dependsOn(linuxMain)
+                    } else if (konanTargetFamily == Family.OHOS) {
+                        dependsOn(nativeMain)
                     } else {
-                        throw new GradleException("unknown native target ${target}")
+                        throw new GradleException("unknown native target ${target}, konanTargetFamily: ${konanTargetFamily}")
                     }
                 }
             }

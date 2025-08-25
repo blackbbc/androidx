@@ -36,6 +36,8 @@ data class Version(val major: Int, val minor: Int, val patch: Int, val extra: St
         else null
     )
 
+    fun subVersion(): Version? = extra?.takeIf { it.startsWith("-") }?.let { Version(it.drop(1)) }
+
     fun isPatch(): Boolean = patch != 0
 
     fun isSnapshot(): Boolean = "-SNAPSHOT" == extra

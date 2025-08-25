@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # All of the following should be updated in sync.
 # -----------------------------------------------------------------------------
-androidGradlePlugin = "8.6.0-alpha03"
+androidGradlePlugin = "8.6.1"
 # NOTE: When updating the lint version we also need to update the `api` version
 # supported by `IssueRegistry`'s.' For e.g. r.android.com/1331903
 androidLint = "31.6.0-alpha03"
@@ -20,8 +20,8 @@ androidxTestMonitor = "1.7.0-rc01"
 androidxTestCore = "1.6.0-rc01"
 androidxTestExtJunit = "1.2.0-rc01"
 androidxTestExtTruth = "1.6.0-rc01"
-annotationVersion = "1.7.0"
-atomicFu = "0.17.0"
+annotationVersion = "1.8.0-KBA-001"
+atomicFu = "0.23.2-KBA-001"
 autoService = "1.0-rc6"
 autoValue = "1.6.3"
 binaryCompatibilityValidator = "0.15.0-Beta.2"
@@ -43,11 +43,11 @@ jcodec = "0.2.5"
 kotlin17 = "1.7.10"
 kotlin18 = "1.8.22"
 kotlin19 = "1.9.24"
-kotlin = "1.9.24"
+kotlin = "2.0.21-KBA-005"
 kotlinBenchmark = "0.4.8"
-kotlinNative = "1.9.24"
+kotlinNative = "2.0.21-KBA-005"
 kotlinCompileTesting = "1.4.9"
-kotlinCoroutines = "1.7.3"
+kotlinCoroutines = "1.8.0-KBA-001"
 kotlinSerialization = "1.6.3"
 ksp = "1.9.24-1.0.20"
 ktfmt = "0.50"
@@ -173,6 +173,7 @@ kotlinAnnotationProcessingEmbeddable = { module = "org.jetbrains.kotlin:kotlin-a
 kotlinBenchmarkRuntime = { module = "org.jetbrains.kotlinx:kotlinx-benchmark-runtime", version.ref = "kotlinBenchmark" }
 kotlinBom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
 kotlinCompiler = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlin" }
+kotlinComposeCompiler = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlinCompilerEmbeddable = { module = "org.jetbrains.kotlin:kotlin-compiler-embeddable" }
 kotlinCompileTesting = { module = "com.github.tschuchortdev:kotlin-compile-testing", version.ref = "kotlinCompileTesting" }
 kotlinCompileTestingKsp = { module = "com.github.tschuchortdev:kotlin-compile-testing-ksp", version.ref = "kotlinCompileTesting" }

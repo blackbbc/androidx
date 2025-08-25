@@ -30,10 +30,12 @@ import java.io.File
 import java.io.StringWriter
 import org.dom4j.Element
 import org.dom4j.io.XMLWriter
+import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.XmlProvider
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.repositories.PasswordCredentials
 import org.gradle.api.component.ComponentWithVariants
 import org.gradle.api.component.SoftwareComponent
 import org.gradle.api.component.SoftwareComponentFactory
@@ -159,6 +161,17 @@ private fun Project.configureComponentPublishing(
 
     configure<PublishingExtension> {
         repositories { it.maven { repo -> repo.setUrl(getRepositoryDirectory()) } }
+        repositories {
+            it.maven { repo ->
+                repo.name = "RemoteMaven"
+                repo.setUrl(findProperty("maven.remote.url").toString())
+                val passwordCredentials = Action<PasswordCredentials> { credentials ->
+                    credentials.username = findProperty("maven.remote.username")?.toString()
+                    credentials.password = findProperty("maven.remote.password")?.toString()
+                }
+                repo.credentials(passwordCredentials)
+            }
+        }
         publications {
             if (appliesJavaGradlePluginPlugin()) {
                 // The 'java-gradle-plugin' will also add to the 'pluginMaven' publication

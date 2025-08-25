@@ -24,6 +24,7 @@ androidXMultiplatform {
     mac()
     linux()
     ios()
+    ohosNative()
 
     kotlin {
         explicitApi = ExplicitApiMode.Strict
@@ -36,11 +37,12 @@ androidXMultiplatform {
             dependencies {
                 api(libs.kotlinStdlib)
                 api(project(":lifecycle:lifecycle-common"))
-                api("androidx.annotation:annotation:1.8.0")
+                api(libs.androidx.annotation)
             }
         }
 
-        commonTest {
+        // :kruth:kruth un support ohosArm64
+        /*commonTest {
             dependencies {
                 implementation(project(":internal-testutils-lifecycle"))
                 implementation(libs.kotlinCoroutinesTest)
@@ -48,7 +50,7 @@ androidXMultiplatform {
                 implementation(project(":kruth:kruth"))
                 implementation(libs.atomicFu)
             }
-        }
+        }*/
 
         jvmMain {
             dependsOn(commonMain)
@@ -61,12 +63,12 @@ androidXMultiplatform {
             dependsOn(jvmMain)
         }
 
-        desktopTest {
+        /*desktopTest {
             dependsOn(commonTest)
             dependencies {
                 implementation(libs.kotlinCoroutinesSwing)
             }
-        }
+        }*/
 
         androidMain {
             dependsOn(jvmMain)
@@ -77,15 +79,15 @@ androidXMultiplatform {
             }
         }
 
-        androidUnitTest {
+        /*androidUnitTest {
             dependsOn(commonTest)
             dependencies {
                 implementation(libs.junit)
                 implementation(libs.mockitoCore4)
             }
-        }
+        }*/
 
-        androidInstrumentedTest {
+        /*androidInstrumentedTest {
             dependsOn(commonTest)
             dependencies {
                 implementation(libs.junit)
@@ -95,7 +97,7 @@ androidXMultiplatform {
                 implementation(libs.testRunner)
                 implementation(libs.kotlinCoroutinesTest)
             }
-        }
+        }*/
 
         nonJvmMain {
             dependsOn(commonMain)
@@ -108,9 +110,9 @@ androidXMultiplatform {
             languageSettings.optIn("kotlin.experimental.ExperimentalNativeApi")
         }
 
-        nativeTest {
+        /*nativeTest {
             dependsOn(commonTest)
-        }
+        }*/
 
         targets.configureEach { target ->
             if (target.platformType == KotlinPlatformType.native) {
@@ -120,9 +122,9 @@ androidXMultiplatform {
                     // Required for WeakReference usage
                     languageSettings.optIn("kotlin.experimental.ExperimentalNativeApi")
                 }
-                target.compilations["test"].defaultSourceSet {
+                /*target.compilations["test"].defaultSourceSet {
                     dependsOn(nativeTest)
-                }
+                }*/
             }
         }
     }

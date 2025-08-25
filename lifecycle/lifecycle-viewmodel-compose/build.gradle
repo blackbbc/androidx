@@ -34,7 +34,7 @@ androidXMultiplatform {
     enableBinaryCompatibilityValidator = true
 
     android()
-    desktop()
+//    desktop()
 
     defaultPlatform(PlatformIdentifier.ANDROID)
 
@@ -43,7 +43,7 @@ androidXMultiplatform {
             dependencies {
                 api(projectOrArtifact(":lifecycle:lifecycle-common"))
                 api(projectOrArtifact(":lifecycle:lifecycle-viewmodel"))
-                api("androidx.annotation:annotation:1.8.0")
+                api(libs.androidx.annotation)
                 api("androidx.compose.runtime:runtime:1.6.0")
                 implementation(libs.kotlinStdlib)
             }

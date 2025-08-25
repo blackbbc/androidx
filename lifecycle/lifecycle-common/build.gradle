@@ -39,6 +39,7 @@ androidXMultiplatform {
     mac()
     linux()
     ios()
+    ohosNative()
 
     kotlin {
         explicitApi = ExplicitApiMode.Strict
@@ -51,7 +52,7 @@ androidXMultiplatform {
             dependencies {
                 api(libs.kotlinStdlib)
                 api(libs.kotlinCoroutinesCore)
-                api("androidx.annotation:annotation:1.8.0")
+                api(libs.androidx.annotation)
             }
         }
 

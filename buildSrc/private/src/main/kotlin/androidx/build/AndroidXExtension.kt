@@ -222,13 +222,13 @@ abstract class AndroidXExtension(val project: Project) : ExtensionAware, Android
                         ")"
                 )
             } else {
-                verifyVersionExtraFormat(mavenVersion)
+//                verifyVersionExtraFormat(mavenVersion)
                 version = mavenVersion
             }
         } else {
             projectDirectlySpecifiesMavenVersion = false
             if (groupVersion != null) {
-                verifyVersionExtraFormat(groupVersion)
+//                verifyVersionExtraFormat(groupVersion)
                 version = groupVersion
             } else {
                 return
@@ -243,28 +243,58 @@ abstract class AndroidXExtension(val project: Project) : ExtensionAware, Android
 
     private fun verifyVersionExtraFormat(version: Version) {
         val ALLOWED_EXTRA_PREFIXES = listOf("-alpha", "-beta", "-rc", "-dev", "-SNAPSHOT")
-        val extra = version.extra
-        if (extra != null) {
-            if (!version.isSnapshot() && project.isVersionExtraCheckEnabled()) {
-                if (ALLOWED_EXTRA_PREFIXES.any { extra.startsWith(it) }) {
-                    for (potentialPrefix in ALLOWED_EXTRA_PREFIXES) {
-                        if (extra.startsWith(potentialPrefix)) {
-                            val secondExtraPart = extra.removePrefix(potentialPrefix)
-                            if (secondExtraPart.toIntOrNull() == null) {
-                                throw IllegalArgumentException(
-                                    "Version $version is not" +
-                                        " a properly formatted version, please ensure that " +
-                                        "$potentialPrefix is followed by a number only"
-                                )
+        if (project.isSubversionCheckEnabled()) {
+            val subVersion = version.subVersion()
+                ?: throw IllegalArgumentException("Version $version is not a properly formatted version, version should be something like major.minor.patch-x.y.z")
+            val extra = subVersion.extra
+            if (extra != null) {
+                if (!version.isSnapshot() && project.isVersionExtraCheckEnabled()) {
+                    if (ALLOWED_EXTRA_PREFIXES.any { extra.startsWith(it) }) {
+                        for (potentialPrefix in ALLOWED_EXTRA_PREFIXES) {
+                            if (extra.startsWith(potentialPrefix)) {
+                                val secondExtraPart = extra.removePrefix(potentialPrefix)
+                                if (secondExtraPart.toIntOrNull() == null) {
+                                    throw IllegalArgumentException(
+                                        "Version $version is not" +
+                                            " a properly formatted version, please ensure that " +
+                                            "$potentialPrefix is followed by a number only"
+                                    )
+                                }
                             }
                         }
+                    } else {
+                        throw IllegalArgumentException(
+                            "Version $version is not a proper " +
+                                "version, version suffixes following major.minor.patch-x.y.z should " +
+                                "be one of ${ALLOWED_EXTRA_PREFIXES.joinToString(", ")}"
+                        )
                     }
-                } else {
-                    throw IllegalArgumentException(
-                        "Version $version is not a proper " +
-                            "version, version suffixes following major.minor.patch should " +
-                            "be one of ${ALLOWED_EXTRA_PREFIXES.joinToString(", ")}"
-                    )
+                }
+            }
+        } else {
+            val extra = version.extra
+            if (extra != null) {
+                if (!version.isSnapshot() && project.isVersionExtraCheckEnabled()) {
+                    if (ALLOWED_EXTRA_PREFIXES.any { extra.startsWith(it) }) {
+                        for (potentialPrefix in ALLOWED_EXTRA_PREFIXES) {
+                            if (extra.startsWith(potentialPrefix)) {
+                                val secondExtraPart = extra.removePrefix(potentialPrefix)
+                                if (secondExtraPart.toIntOrNull() == null) {
+                                    throw IllegalArgumentException(
+                                        "Version $version is not" +
+                                            " a properly formatted version, please ensure that " +
+                                            "$potentialPrefix is followed by a number only"
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        throw IllegalArgumentException(
+                            "Version $version is not a proper " +
+                                "version, version suffixes following major.minor.patch should " +
+                                "be one of ${ALLOWED_EXTRA_PREFIXES.joinToString(", ")}"
+                        )
+                    }
                 }
             }
         }
