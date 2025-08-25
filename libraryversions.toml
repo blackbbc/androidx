@@ -35,7 +35,7 @@ CORE = "1.14.0-alpha01"
 CORE_ANIMATION = "1.0.0"
 CORE_ANIMATION_TESTING = "1.0.0"
 CORE_APPDIGEST = "1.0.0-alpha01"
-CORE_BUNDLE = "1.0.0-KBA-001"
+CORE_BUNDLE = "1.0.1-KBA-001"
 CORE_GOOGLE_SHORTCUTS = "1.2.0-alpha02"
 CORE_HAPTICS = "1.0.0-alpha01"
 CORE_I18N = "1.0.0-alpha02"
@@ -120,7 +120,7 @@ REMOTECALLBACK = "1.0.0-alpha02"
 RESOURCEINSPECTION = "1.1.0-alpha01"
 ROOM = "2.7.0-alpha04"
 SAFEPARCEL = "1.0.0-alpha01"
-SAVEDSTATE = "1.2.1-KBA-001"
+SAVEDSTATE = "1.2.2-KBA-001"
 SECURITY = "1.1.0-alpha07"
 SECURITY_APP_AUTHENTICATOR = "1.0.0-rc01"
 SECURITY_APP_AUTHENTICATOR_TESTING = "1.0.0-rc01"
@@ -275,7 +275,7 @@ REMOTECALLBACK = { group = "androidx.remotecallback", atomicGroupVersion = "vers
 RESOURCEINSPECTION = { group = "androidx.resourceinspection", atomicGroupVersion = "versions.RESOURCEINSPECTION" }
 ROOM = { group = "androidx.room", atomicGroupVersion = "versions.ROOM" }
 SAFEPARCEL = { group = "androidx.safeparcel", atomicGroupVersion = "versions.SAFEPARCEL" }
-SAVEDSTATE = { group = "androidx.savedstate", atomicGroupVersion = "versions.SAVEDSTATE" }
+#SAVEDSTATE = { group = "androidx.savedstate", atomicGroupVersion = "versions.SAVEDSTATE" }
 SECURITY = { group = "androidx.security" }
 SHARETARGET = { group = "androidx.sharetarget", atomicGroupVersion = "versions.SHARETARGET" }
 SLICE = { group = "androidx.slice" }
@@ -309,3 +309,20 @@ WINDOW_EXTENSIONS_CORE = { group = "androidx.window.extensions.core", atomicGrou
 WINDOW_SIDECAR = { group = "androidx.window.sidecar", atomicGroupVersion = "versions.WINDOW_SIDECAR" }
 WORK = { group = "androidx.work", atomicGroupVersion = "versions.WORK" }
 XR = { group = "androidx.xr", atomicGroupVersion = "versions.XR" }
+
+# JetBrains overrides
+
+CORE_BUNDLE_JETBRAINS = { group = "org.jetbrains.androidx.core", atomicGroupVersion = "versions.CORE_BUNDLE", overrideInclude = [ ":core:core-bundle" ] }
+SAVEDSTATE_JETBRAINS = { group = "org.jetbrains.androidx.savedstate", atomicGroupVersion = "versions.SAVEDSTATE", overrideInclude = [ ":savedstate:savedstate" ] }
+
+[groups.LIFECYCLE_JETBRAINS]
+group = "org.jetbrains.androidx.lifecycle"
+atomicGroupVersion = "versions.LIFECYCLE"
+overrideInclude = [
+    ":lifecycle:lifecycle-common",
+    ":lifecycle:lifecycle-runtime",
+    ":lifecycle:lifecycle-runtime-compose",
+    ":lifecycle:lifecycle-viewmodel",
+    ":lifecycle:lifecycle-viewmodel-compose",
+    ":lifecycle:lifecycle-viewmodel-savedstate"
+]

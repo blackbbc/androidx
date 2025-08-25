@@ -75,7 +75,6 @@ android {
 androidx {
     name = "androidx.core:core-bundle"
     type = LibraryType.PUBLISHED_LIBRARY
-    mavenVersion = LibraryVersions.CORE_BUNDLE
     inceptionYear = "2024"
     description = "Provides Bundle in Kotlin Multiplatform projects"
     legacyDisableKotlinStrictApiMode = true
