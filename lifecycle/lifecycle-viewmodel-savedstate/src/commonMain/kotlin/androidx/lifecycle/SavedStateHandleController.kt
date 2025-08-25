@@ -16,10 +16,12 @@
 package androidx.lifecycle
 
 import androidx.savedstate.SavedStateRegistry
-import java.io.Closeable
 
-internal class SavedStateHandleController(private val key: String, val handle: SavedStateHandle) :
-    LifecycleEventObserver, Closeable {
+@OptIn(ExperimentalStdlibApi::class)
+internal class SavedStateHandleController(
+    private val key: String,
+    val handle: SavedStateHandle
+) : LifecycleEventObserver, AutoCloseable {
 
     var isAttached = false
         private set

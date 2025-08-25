@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+  <root dir="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/androidMain/kotlin" />
+  <module name="commonMain" android="false" >
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/commonMain/kotlin/androidx/lifecycle/AbstractSavedStateViewModelFactory.kt" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/commonMain/kotlin/androidx/lifecycle/SavedStateHandle.kt" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/commonMain/kotlin/androidx/lifecycle/SavedStateHandleController.kt" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/commonMain/kotlin/androidx/lifecycle/SavedStateHandleSupport.kt" />
+    <classpath jar="/Users/luoyi/Library/Android/sdk/platforms/android-34/android.jar" />
+    <classpath jar="/Users/luoyi/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-viewmodel-savedstate/build/intermediates/compile_r_class_jar/release/generateReleaseRFile/R.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/savedstate/savedstate/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/core/core-bundle/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/6cd5f144d2c00428b0e27d0661a4c10d/transformed/core-ktx-1.2.0-api.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-livedata-core/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-viewmodel/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/2208bda2cc819d41b86513b3825eb394/transformed/core-1.2.0-api.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/66604298e7b724e9431052ac238d72ba/transformed/lifecycle-runtime-2.0.0-api.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-common/build/libs/lifecycle-common-jvm-2.8.3-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.8.0-KBA-001/511370d64c87d39f917c991bbae679a577af2db/kotlinx-coroutines-core-jvm-1.8.0-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-android/1.8.0-KBA-001/e9b356c11c4e120059aa74fecc8d487e51087794/kotlinx-coroutines-android-1.8.0-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/androidx.arch.core/core-common/2.2.0/5e1b8b81dfd5f52c56a8d53b18ca759c19a301f3/core-common-2.2.0.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/75e9d6f5b3b2216ff31f7fa269469d8e/transformed/versionedparcelable-1.1.0-api.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/androidx.collection/collection/1.0.0/42858b26cafdaa69b6149f45dfc2894007bc2c7a/collection-1.0.0.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/androidx.annotation/annotation-jvm/1.8.0-KBA-001/a06fd68f009e068330abefa15b4b7b6d69031b42/annotation-jvm-1.8.0-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.0.21-KBA-001/c4c031eda8be7a51a259db4c12f1c005dd682413/kotlin-stdlib-2.0.21-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains/annotations/23.0.0/8cc20c07506ec18e0834947b84a864bfc094484e/annotations-23.0.0.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/atomicfu-jvm/0.23.2-KBA-001/8886a0c1867542c419c6f8ce149a8af13b7bb09/atomicfu-jvm-0.23.2-KBA-001.jar" />
+  </module>
+  <module name="app" >
+    <dep module="commonMain" kind="dependsOn" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/androidMain/kotlin/androidx/lifecycle/AbstractSavedStateViewModelFactory.android.kt" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/androidMain/kotlin/androidx/lifecycle/LegacySavedStateHandleController.android.kt" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/androidMain/kotlin/androidx/lifecycle/SavedStateHandle.android.kt" />
+    <src file="/Users/luoyi/Projects/support/lifecycle/lifecycle-viewmodel-savedstate/src/androidMain/kotlin/androidx/lifecycle/SavedStateViewModelFactory.android.kt" />
+    <classpath jar="/Users/luoyi/Library/Android/sdk/platforms/android-34/android.jar" />
+    <classpath jar="/Users/luoyi/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-viewmodel-savedstate/build/intermediates/compile_r_class_jar/release/generateReleaseRFile/R.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/savedstate/savedstate/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/core/core-bundle/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/6cd5f144d2c00428b0e27d0661a4c10d/transformed/core-ktx-1.2.0-api.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-livedata-core/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-viewmodel/build/intermediates/compile_library_classes_jar/release/bundleLibCompileToJarRelease/classes.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/2208bda2cc819d41b86513b3825eb394/transformed/core-1.2.0-api.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/66604298e7b724e9431052ac238d72ba/transformed/lifecycle-runtime-2.0.0-api.jar" />
+    <classpath jar="/Users/luoyi/Projects/support/out/lifecycle-playground/lifecycle/lifecycle-common/build/libs/lifecycle-common-jvm-2.8.3-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.8.0-KBA-001/511370d64c87d39f917c991bbae679a577af2db/kotlinx-coroutines-core-jvm-1.8.0-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-android/1.8.0-KBA-001/e9b356c11c4e120059aa74fecc8d487e51087794/kotlinx-coroutines-android-1.8.0-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/androidx.arch.core/core-common/2.2.0/5e1b8b81dfd5f52c56a8d53b18ca759c19a301f3/core-common-2.2.0.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/8.8/transforms/75e9d6f5b3b2216ff31f7fa269469d8e/transformed/versionedparcelable-1.1.0-api.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/androidx.collection/collection/1.0.0/42858b26cafdaa69b6149f45dfc2894007bc2c7a/collection-1.0.0.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/androidx.annotation/annotation-jvm/1.8.0-KBA-001/a06fd68f009e068330abefa15b4b7b6d69031b42/annotation-jvm-1.8.0-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.0.21-KBA-001/c4c031eda8be7a51a259db4c12f1c005dd682413/kotlin-stdlib-2.0.21-KBA-001.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains/annotations/23.0.0/8cc20c07506ec18e0834947b84a864bfc094484e/annotations-23.0.0.jar" />
+    <classpath jar="/Users/luoyi/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/atomicfu-jvm/0.23.2-KBA-001/8886a0c1867542c419c6f8ce149a8af13b7bb09/atomicfu-jvm-0.23.2-KBA-001.jar" />
+  </module>
+</project>

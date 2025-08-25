@@ -17,6 +17,7 @@
 import androidx.build.KmpPlatformsKt
 import androidx.build.PlatformIdentifier
 import androidx.build.Publish
+import org.jetbrains.kotlin.gradle.dsl.ExplicitApiMode
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import androidx.build.LibraryType
 
@@ -77,4 +78,5 @@ androidx {
     mavenVersion = LibraryVersions.CORE_BUNDLE
     inceptionYear = "2024"
     description = "Provides Bundle in Kotlin Multiplatform projects"
+    legacyDisableKotlinStrictApiMode = true
 }

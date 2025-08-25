@@ -21,40 +21,88 @@
  * Please use that script when creating a new project, rather than copying an existing project and
  * modifying its settings.
  */
+
 import androidx.build.LibraryType
+import androidx.build.PlatformIdentifier
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 plugins {
     id("AndroidXPlugin")
     id("com.android.library")
-    id("kotlin-android")
+}
+
+androidXMultiplatform {
+    android()
+    desktop()
+    mac()
+    linux()
+    ios()
+    ohosNative()
+
+    defaultPlatform(PlatformIdentifier.ANDROID)
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                api(libs.androidx.annotation)
+                api(project(":core:core-bundle"))
+                api(project(":lifecycle:lifecycle-common"))
+                api(project(":lifecycle:lifecycle-viewmodel"))
+                api(project(":savedstate:savedstate"))
+                api(libs.kotlinStdlib)
+            }
+        }
+
+        jvmMain {
+            dependsOn(commonMain)
+        }
+
+        androidMain {
+            dependsOn(jvmMain)
+            dependencies {
+                api("androidx.core:core-ktx:1.2.0")
+                api(projectOrArtifact(":lifecycle:lifecycle-livedata-core"))
+                api(libs.kotlinCoroutinesAndroid)
+            }
+        }
+
+        androidInstrumentedTest {
+//            dependencies {
+//                implementation project(":lifecycle:lifecycle-runtime")
+//                implementation("androidx.fragment:fragment:1.3.0")
+//                implementation project(":internal-testutils-runtime")
+//                implementation(libs.truth)
+//                implementation(libs.kotlinStdlib)
+//                implementation(libs.testExtJunit)
+//                implementation(libs.testCore)
+//                implementation(libs.testRunner)
+//                implementation(libs.testRules)
+//            }
+        }
+
+        jbMain.dependsOn(commonMain)
+        nonJvmMain.dependsOn(jbMain)
+        desktopMain {
+            dependsOn(jvmMain)
+            dependsOn(jbMain)
+        }
+
+        targets.configureEach { target ->
+            println("target: $target")
+            if (target.platformType == KotlinPlatformType.native) {
+                target.compilations["main"].defaultSourceSet {
+                    dependsOn(nonJvmMain)
+                }
+            }
+        }
+    }
 }
 
 android {
-    buildTypes.configureEach {
+    buildTypes.all {
         consumerProguardFiles("proguard-rules.pro")
     }
     namespace "androidx.lifecycle.viewmodel.savedstate"
-}
-
-dependencies {
-    api("androidx.annotation:annotation:1.0.0")
-    api("androidx.core:core-ktx:1.2.0")
-    api(projectOrArtifact(":savedstate:savedstate"))
-    api(projectOrArtifact(":lifecycle:lifecycle-livedata-core"))
-    api(projectOrArtifact(":lifecycle:lifecycle-viewmodel"))
-    api(libs.kotlinStdlib)
-    api(libs.kotlinCoroutinesAndroid)
-
-    androidTestImplementation projectOrArtifact(":lifecycle:lifecycle-runtime")
-    androidTestImplementation projectOrArtifact(":lifecycle:lifecycle-livedata-core")
-    androidTestImplementation ("androidx.fragment:fragment:1.3.0")
-    androidTestImplementation project(":internal-testutils-runtime")
-    androidTestImplementation(libs.truth)
-    androidTestImplementation(libs.kotlinStdlib)
-    androidTestImplementation(libs.testExtJunit)
-    androidTestImplementation(libs.testCore)
-    androidTestImplementation(libs.testRunner)
-    androidTestImplementation(libs.testRules)
 }
 
 androidx {
