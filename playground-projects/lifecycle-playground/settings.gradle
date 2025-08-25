@@ -30,6 +30,8 @@ playground {
         // gradle compilation test, not supported in playground b/302031827
         if (name == ":lifecycle:integration-tests:incrementality") return false
         if (name.startsWith(":lifecycle")) return true
+        if (name == ":core:core-bundle") return true
+        if (name == ":savedstate:savedstate") return true
         return false
     })
 }
