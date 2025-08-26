@@ -14,15 +14,10 @@
  * limitations under the License.
  */
 
-@file:JvmName("LocalLifecycleOwnerKt")
+package androidx.lifecycle.viewmodel.compose
 
-package androidx.lifecycle.compose
+import androidx.compose.runtime.Composable
+import androidx.lifecycle.ViewModelStoreOwner
 
-import androidx.compose.runtime.ProvidableCompositionLocal
-import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.lifecycle.LifecycleOwner
-
-public actual val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner> =
-    staticCompositionLocalOf {
-        error("CompositionLocal LocalLifecycleOwner not present")
-    }
+@Composable
+internal actual fun findViewTreeViewModelStoreOwner(): ViewModelStoreOwner? = null

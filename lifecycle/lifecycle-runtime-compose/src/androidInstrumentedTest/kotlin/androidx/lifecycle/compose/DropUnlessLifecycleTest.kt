@@ -27,7 +27,7 @@ import kotlin.test.Test
 @OptIn(ExperimentalTestApi::class)
 class DropUnlessLifecycleTest {
 
-    // region dropUnlessStarted
+    //region dropUnlessStarted
     @Test
     fun dropUnlessStarted_lifecycleInitialized_doNothing() {
         testDropUnlessStarted(currentLifecycleState = State.INITIALIZED, shouldInvoke = false)
@@ -53,26 +53,32 @@ class DropUnlessLifecycleTest {
         testDropUnlessStarted(currentLifecycleState = State.DESTROYED, shouldInvoke = false)
     }
 
-    private fun testDropUnlessStarted(currentLifecycleState: State, shouldInvoke: Boolean) =
-        runComposeUiTest {
-            val lifecycleOwner =
-                TestLifecycleOwner(State.CREATED).apply { currentState = currentLifecycleState }
-            var hasBeenInvoked = false
+    private fun testDropUnlessStarted(
+        currentLifecycleState: State,
+        shouldInvoke: Boolean
+    ) = runComposeUiTest {
+        val lifecycleOwner = TestLifecycleOwner(State.CREATED).apply {
+            currentState = currentLifecycleState
+        }
+        var hasBeenInvoked = false
 
-            waitForIdle()
-            setContent {
-                CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
-                    val underTest = dropUnlessStarted { hasBeenInvoked = true }
-                    underTest.invoke()
+        waitForIdle()
+        setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                val underTest = dropUnlessStarted {
+                    hasBeenInvoked = true
                 }
+                underTest.invoke()
             }
-
-            runOnIdle { assertThat(hasBeenInvoked).isEqualTo(shouldInvoke) }
         }
 
-    // endregion
+        runOnIdle {
+            assertThat(hasBeenInvoked).isEqualTo(shouldInvoke)
+        }
+    }
+    //endregion
 
-    // region dropUnlessResumed
+    //region dropUnlessResumed
     @Test
     fun dropUnlessResumed_lifecycleInitialized_doNothing() {
         testDropUnlessResumed(currentLifecycleState = State.INITIALIZED, shouldInvoke = false)
@@ -98,21 +104,28 @@ class DropUnlessLifecycleTest {
         testDropUnlessResumed(currentLifecycleState = State.DESTROYED, shouldInvoke = false)
     }
 
-    private fun testDropUnlessResumed(currentLifecycleState: State, shouldInvoke: Boolean) =
-        runComposeUiTest {
-            val lifecycleOwner =
-                TestLifecycleOwner(State.CREATED).apply { currentState = currentLifecycleState }
-            var hasBeenInvoked = false
-
-            waitForIdle()
-            setContent {
-                CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
-                    val underTest = dropUnlessResumed { hasBeenInvoked = true }
-                    underTest.invoke()
-                }
-            }
-
-            runOnIdle { assertThat(hasBeenInvoked).isEqualTo(shouldInvoke) }
+    private fun testDropUnlessResumed(
+        currentLifecycleState: State,
+        shouldInvoke: Boolean
+    ) = runComposeUiTest {
+        val lifecycleOwner = TestLifecycleOwner(State.CREATED).apply {
+            currentState = currentLifecycleState
         }
-    // endregion
+        var hasBeenInvoked = false
+
+        waitForIdle()
+        setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                val underTest = dropUnlessResumed {
+                    hasBeenInvoked = true
+                }
+                underTest.invoke()
+            }
+        }
+
+        runOnIdle {
+            assertThat(hasBeenInvoked).isEqualTo(shouldInvoke)
+        }
+    }
+    //endregion
 }

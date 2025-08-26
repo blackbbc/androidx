@@ -23,6 +23,8 @@
  */
 import androidx.build.LibraryType
 import androidx.build.PlatformIdentifier
+import androidx.build.AndroidXComposePlugin
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 plugins {
     id("AndroidXPlugin")
@@ -31,42 +33,38 @@ plugins {
 }
 
 androidXMultiplatform {
-    enableBinaryCompatibilityValidator = true
+    enableBinaryCompatibilityValidator = false
 
     android()
 //    desktop()
+//    mac()
+//    linux()
+    ios()
+    ohosNative()
 
     defaultPlatform(PlatformIdentifier.ANDROID)
 
     sourceSets {
         commonMain {
             dependencies {
-                api(projectOrArtifact(":lifecycle:lifecycle-runtime"))
                 api(libs.androidx.annotation)
-                api("androidx.compose.runtime:runtime:1.6.5")
+                implementation(project(":lifecycle:lifecycle-common"))
+                api(project(":lifecycle:lifecycle-runtime"))
+                api("org.jetbrains.compose.runtime:runtime:1.6.1-KBA-006")
+
+                implementation(libs.kotlinStdlib)
             }
         }
 
-        androidMain {
-            dependsOn(commonMain)
-            dependencies {
-                // Although this artifact is empty, it ensures that upgrading
-                // `lifecycle-runtime-compose` also updates `lifecycle-runtime-ktx`
-                // in cases where our constraints fail (e.g., internally in AndroidX
-                // when using project dependencies).
-                api(projectOrArtifact(":lifecycle:lifecycle-runtime-ktx"))
-            }
-        }
+        nonAndroidMain.dependsOn(commonMain)
+        desktopMain.dependsOn(nonAndroidMain)
+        nativeMain.dependsOn(nonAndroidMain)
 
-        androidInstrumentedTest {
-            dependencies {
-                implementation(projectOrArtifact(":lifecycle:lifecycle-runtime-testing"))
-                implementation(projectOrArtifact(":compose:ui:ui-test"))
-                implementation(project(":compose:test-utils"))
-                implementation(libs.testRules)
-                implementation(libs.testRunner)
-                implementation(libs.kotlinTest)
-                implementation(project(":kruth:kruth"))
+        targets.all { target ->
+            if (target.platformType == KotlinPlatformType.native) {
+                target.compilations["main"].defaultSourceSet {
+                    dependsOn(nativeMain)
+                }
             }
         }
     }
@@ -78,7 +76,6 @@ androidx {
     inceptionYear = "2021"
     description = "Compose integration with Lifecycle"
     legacyDisableKotlinStrictApiMode = true
-    samples(project(":lifecycle:lifecycle-runtime-compose:lifecycle-runtime-compose-samples"))
 }
 
 android {

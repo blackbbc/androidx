@@ -28,8 +28,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 class LifecycleExtTest {
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val lifecycleOwner =
-        TestLifecycleOwner(Lifecycle.State.INITIALIZED, UnconfinedTestDispatcher())
+    private val lifecycleOwner = TestLifecycleOwner(
+        Lifecycle.State.INITIALIZED,
+        UnconfinedTestDispatcher()
+    )
 
     @Test
     fun lifecycleCollectAsState() = runComposeUiTest {
@@ -37,9 +39,13 @@ class LifecycleExtTest {
         assertThat(lifecycle.currentStateFlow.value).isEqualTo(Lifecycle.State.INITIALIZED)
 
         var realStateValue: Lifecycle.State? = null
-        setContent { realStateValue = lifecycle.currentStateAsState().value }
+        setContent {
+            realStateValue = lifecycle.currentStateAsState().value
+        }
 
-        runOnIdle { assertThat(realStateValue).isEqualTo(Lifecycle.State.INITIALIZED) }
+        runOnIdle {
+            assertThat(realStateValue).isEqualTo(Lifecycle.State.INITIALIZED)
+        }
 
         // TODO(b/280362188): commenting this portion out until bug is fixed
         /*

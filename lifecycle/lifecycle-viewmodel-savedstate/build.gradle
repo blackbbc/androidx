@@ -33,9 +33,9 @@ plugins {
 
 androidXMultiplatform {
     android()
-    desktop()
-    mac()
-    linux()
+//    desktop()
+//    mac()
+//    linux()
     ios()
     ohosNative()
 
@@ -88,7 +88,6 @@ androidXMultiplatform {
         }
 
         targets.configureEach { target ->
-            println("target: $target")
             if (target.platformType == KotlinPlatformType.native) {
                 target.compilations["main"].defaultSourceSet {
                     dependsOn(nonJvmMain)
