@@ -8,4 +8,7 @@ repositories {
     mavenCentral()
     google()
     gradlePluginPortal()
+    maven {
+        url = "https://mirrors.tencent.com/nexus/repository/maven-public"
+    }
 }

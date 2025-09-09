@@ -49,8 +49,8 @@ abstract class StudioTask : DefaultTask() {
     // TODO: support -y and --update-only options? Can use @Option for this
     @TaskAction
     fun studiow() {
-        validateEnvironment()
-        install()
+//        validateEnvironment()
+//        install()
         launch()
     }
 

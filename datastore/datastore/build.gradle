@@ -39,6 +39,7 @@ androidXMultiplatform {
     ios()
     linux()
     android()
+    ohosNative()
 
     defaultPlatform(PlatformIdentifier.ANDROID)
 
@@ -47,7 +48,7 @@ androidXMultiplatform {
             dependencies {
                 api(libs.kotlinStdlib)
                 api(libs.kotlinCoroutinesCore)
-                api("androidx.annotation:annotation:1.2.0")
+                api(libs.androidx.annotation)
                 api(project(":datastore:datastore-core"))
                 api(project(":datastore:datastore-core-okio"))
             }

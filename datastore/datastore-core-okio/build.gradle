@@ -35,6 +35,7 @@ androidXMultiplatform {
     mac()
     linux()
     ios()
+    ohosNative()
 
     defaultPlatform(PlatformIdentifier.JVM)
 

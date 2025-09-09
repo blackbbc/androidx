@@ -63,6 +63,9 @@ def addMavenRepositories(RepositoryHandler handler) {
             }
         }
     }
+    handler.maven {
+        url = "https://mirrors.tencent.com/nexus/repository/maven-public"
+    }
     if (System.getenv("ALLOW_PUBLIC_REPOS") != null || System.getProperty("ALLOW_PUBLIC_REPOS") != null) {
         handler.mavenCentral()
         handler.google()

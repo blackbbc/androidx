@@ -234,13 +234,13 @@ abstract class AndroidXExtension(val project: Project) : ExtensionAware, Android
                         ")"
                 )
             } else {
-                verifyVersionExtraFormat(mavenVersion)
+//                verifyVersionExtraFormat(mavenVersion)
                 version = mavenVersion
             }
         } else {
             projectDirectlySpecifiesMavenVersion = false
             if (groupVersion != null) {
-                verifyVersionExtraFormat(groupVersion)
+//                verifyVersionExtraFormat(groupVersion)
                 version = groupVersion
             } else {
                 return
