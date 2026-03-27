@@ -26,6 +26,9 @@ import kotlinx.serialization.encodeToByteArray
 import kotlinx.serialization.protobuf.ProtoBuf
 import okio.BufferedSink
 import okio.BufferedSource
+import okio.FileNotFoundException
+import okio.FileSystem
+import okio.Path
 
 /**
  * Proto based serializer for Preferences. Can be used to manually create
@@ -65,7 +68,7 @@ actual object PreferencesSerializer : OkioSerializer<Preferences> {
         sink.write(byteArray)
     }
 
-    private fun addProtoEntryToPreferences(
+    internal fun addProtoEntryToPreferences(
         name: String,
         value: Value,
         mutablePreferences: MutablePreferences
@@ -165,3 +168,26 @@ internal data class Value(
 internal data class StringSet(
     val strings: List<String> = emptyList(),
 )
+
+/**
+ * 同步读取 preferences 文件，绕过 DataStore 的协程管道。
+ * 用于 Kotlin Native (OHOS) 启动时初始化，因为 DataStore 内部的
+ * withContext(scope.coroutineContext) 在 Native 上存在结构性问题。
+ */
+@OptIn(ExperimentalSerializationApi::class)
+fun readPreferencesFromFile(path: Path): Preferences {
+    return try {
+        val bytes = FileSystem.SYSTEM.read(path) { readByteArray() }
+        val prefMap: PreferencesMap = ProtoBuf.decodeFromByteArray(bytes)
+        val mutablePreferences = mutablePreferencesOf()
+        prefMap.preferences.forEach { (name, value) ->
+            PreferencesSerializer.addProtoEntryToPreferences(name, value, mutablePreferences)
+        }
+        mutablePreferences.toPreferences()
+    } catch (_: FileNotFoundException) {
+        emptyPreferences()
+    } catch (e: Exception) {
+        println("[DataStore] readPreferencesFromFile failed: $e")
+        emptyPreferences()
+    }
+}
